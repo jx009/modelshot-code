@@ -1,0 +1,277 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-1.0.x", "rhel-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Account {
+  id                 String  @id @default(cuid())
+  userId             String
+  type               String
+  provider           String
+  providerAccountId  String
+  refresh_token      String?  @db.Text
+  access_token       String?  @db.Text
+  expires_at         Int?
+  token_type         String?
+  scope              String?
+  id_token           String?  @db.Text
+  session_state      String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  credits       Int       @default(10)
+  customApiKey  String?   @db.Text
+  role          String    @default("user")       // user | agent | admin | root（四级，层级校验见 lib/admin-auth）
+  status        String    @default("active")     // active | banned（封禁：登录拒绝+session失效，数据保留可解封）
+  plan          String    @default("free")       // free | standard | pro
+  planExpiresAt DateTime?
+  locale        String    @default("zh-CN")
+  theme         String    @default("dark")   // 主题偏好 dark | light | system
+  passwordHash  String?                        // 邮箱密码登录（bcrypt）；Google/API key 用户为 null
+  // ── 分销流量手体系（P2，方案 4.8）──
+  inviteCode          String?  @unique          // 6 位邀请码（注册时生成）
+  inviterId           String?                    // 邀请人（一次性绑定，不可改绑）
+  invitedAt           DateTime?                  // 被邀请时间
+  agentCommissionRate Float?                     // 个人佣金比例（null=用全局默认）
+  agentNote           String?                    // 流量手备注（渠道/合作方式）
+  accounts      Account[]
+  sessions      Session[]
+  tryons        TryOn[]
+  orders        Order[]
+  batchJobs     BatchJob[]
+  transactions  CreditTransaction[]
+}
+
+// 扣费流水 — 「钱」的唯一真相源，每次消费/退款/充值/赠送都有独立记录
+// 邮箱验证码（注册/找回密码；5 分钟有效，替代 LetAiCode 的 Redis 方案）
+// 系统配置（站点级：SMTP/Google OAuth/Stripe；敏感项 AES 加密存 value，读取顺序 DB > env）
+model SystemConfig {
+  key       String   @id                // smtp_host | smtp_port | smtp_user | smtp_pass | smtp_from | google_client_id | google_client_secret | stripe_secret_key | stripe_publishable_key | stripe_webhook_secret
+  value     String?  @db.Text           // 敏感 key 存 aes:gcm: 密文
+  updatedAt DateTime @updatedAt
+}
+
+// 佣金记录（分销：被邀请人付费成功 → pending；管理员结算 → settled；退款 → cancelled）
+model InviteCommission {
+  id               String    @id @default(cuid())
+  inviterId        String                     // 邀请人（流量手）
+  inviteeId        String                     // 被邀请人
+  orderId          String    @unique          // 关联订单（一单一佣金，防重复记）
+  orderAmount      Float                      // 订单金额快照（对账用）
+  commissionRate   Float                      // 佣金比例快照（记佣金时定格，改比例不影响历史）
+  commissionAmount Float                      // = orderAmount × commissionRate
+  status           String    @default("pending") // pending | settled | cancelled
+  settledAt        DateTime?
+  createdAt        DateTime  @default(now())
+
+  @@index([inviterId, status])
+  @@index([inviteeId])
+}
+
+// 佣金结算日志（管理员手动结算留痕：快照 + 结算后余额 + 影响记录数）
+model AgentCommissionSettlementLog {
+  id                     String   @id @default(cuid())
+  agentId                String                     // 流量手 ID
+  agentEmail             String                     // 邮箱快照
+  agentName              String?                    // 昵称快照
+  amount                 Float                      // 本次结算金额
+  pendingCommissionAfter Float                      // 结算后待结算余额
+  settledRecordCount     Int      @default(0)       // 本次影响记录数
+  remark                 String?                    // 备注
+  operatorId             String                     // 操作管理员
+  createdAt              DateTime @default(now())
+
+  @@index([agentId, createdAt])
+}
+
+// 订单（Stripe 支付落库：checkout 创建 pending → webhook paid/refunded；对账/退款/佣金联动依据）
+model Order {
+  id              String    @id @default(cuid())
+  userId          String
+  type            String                     // subscription | credits
+  planId          String                     // sub_standard / pro / basic / ...（产品 SKU）
+  amount          Float                      // 金额（USD）
+  currency        String    @default("usd")
+  status          String    @default("pending")  // pending | paid | failed | refunded
+  stripeSessionId String?  @unique           // checkout session（对账依据）
+  metadata        String?   @db.Text         // 快照：当时价格/积分数/套餐名
+  paidAt          DateTime?
+  refundedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  User            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([status])
+}
+
+// 管理操作审计（调积分/改角色/封禁/改通道key 全留痕；detail 含前后值，密钥内容除外）
+model AdminAuditLog {
+  id           String   @id @default(cuid())
+  adminId      String
+  action       String   // GRANT_CREDITS / SET_ROLE / BAN_USER / UNBAN_USER / UPDATE_PROVIDER_KEY / ...
+  targetUserId String?
+  detail       String?  @db.Text  // JSON：变更前后值
+  createdAt    DateTime @default(now())
+
+  @@index([adminId, createdAt])
+}
+
+model VerificationCode {
+  id        String   @id @default(cuid())
+  email     String
+  code      String
+  purpose   String   // REGISTER | RESET_PASSWORD
+  attempts  Int      @default(0)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([email, purpose])
+}
+
+model CreditTransaction {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String   // consume | refund | purchase | grant
+  channel   String   // credits | subscription | custom_key
+  amount    Int      // 正数入账，负数出账
+  tryOnId   String?  // 关联生成记录（充值/赠送为空）
+  reason    String?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([tryOnId])
+}
+
+model TryOn {
+  id            String    @id @default(cuid())
+  userId        String
+  personImage   String    @db.Text
+  clothesImage  String    @db.Text
+  resultImage   String    @default("") @db.Text
+  prompt        String    @db.Text
+  aspectRatio   String    @default("auto")
+  requestId     String    @unique
+  status        String    @default("processing")  // processing | completed | failed | needs_review
+  creditCost    Int       @default(18)
+  billingType   String?                            // credits | subscription | custom_key（计费方式）
+  modelPresetId String?
+  scenePresetId String?
+  provider      String?
+  costUsd       Float?
+  qaScore       Float?
+  qaFlags       String?   @db.Text
+  platformSpec  String?
+  batchJobId    String?
+  pose          String    @default("")   // 姿态（standing/walking/three_quarter/sitting/leaning/closeup）
+  camera        String    @default("")   // 相机（eye_level/low_angle/high_angle/full_body）
+  lighting      String    @default("")   // 光线（soft/natural/editorial/golden）
+  variantGroupId String   @default("")   // 变体组：一次生成 N 张的共享分组 ID
+  durationMs    Int      @default(0)    // 生成耗时（ms，通道健康/成本分析用）
+  createTime    DateTime  @default(now())
+  updateTime    DateTime  @updatedAt
+  User          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  batchJob      BatchJob? @relation(fields: [batchJobId], references: [id])
+
+  @@index([userId, createTime])
+  @@index([status])
+}
+
+// 预设模特库
+model ModelPreset {
+  id             String   @id @default(cuid())
+  name           String   // 中文展示名 "亚洲女模-01"
+  nameEn         String   @default("")         // 英文展示名 "Asian Female 01"
+  gender         String   // male | female
+  ethnicity      String   // asian | caucasian | african | latin
+  bodyType       String   @default("standard")  // slim | standard | plus
+  referenceImage String   // 参考图 URL
+  isActive       Boolean  @default(true)
+  sortOrder      Int      @default(0)
+  createdAt      DateTime @default(now())
+}
+
+// 预设场景库
+model ScenePreset {
+  id             String   @id @default(cuid())
+  name           String   // 中文展示名
+  nameEn         String   @default("")         // 英文展示名
+  category       String   // white | street | indoor | outdoor | studio
+  referenceImage String?  // 场景参考图 URL
+  promptSnippet  String   @default("") @db.Text
+  isActive       Boolean  @default(true)
+  sortOrder      Int      @default(0)
+  createdAt      DateTime @default(now())
+}
+
+// 模型提供商配置（管理员后台可编辑）
+model ModelProvider {
+  id           String   @id @default(cuid())
+  name         String   @unique  // openai | gemini | fashn
+  displayName  String   // "GPT Image 2" | "Gemini Flash" | "FASHN.ai"
+  isActive     Boolean  @default(true)
+  isDefault    Boolean  @default(false)
+  priority     Int      @default(0)  // fallback 优先级
+  costPerImage Float    // 预估单张成本（美元）
+  config       String?  @db.Text     // JSON 格式的模型配置
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// 批量任务
+model BatchJob {
+  id             String   @id @default(cuid())
+  userId         String
+  name           String?
+  totalCount     Int
+  completedCount Int      @default(0)
+  failedCount    Int      @default(0)
+  status         String   @default("pending")  // pending | processing | completed | failed
+  config         String?  @db.Text             // JSON: 统一的模特/场景/平台配置
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tryons         TryOn[]
+}
+
+// Prompt 模板
+model PromptTemplate {
+  id        String   @id @default(cuid())
+  name      String
+  category  String   // garment_type: top | bottom | dress | outerwear | swimwear
+  template  String   @db.Text
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}

@@ -1,0 +1,16 @@
+export async function downloadImage(url, filename) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error("Image download failed");
+  downloadBlob(await response.blob(), filename);
+}
+
+export function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}

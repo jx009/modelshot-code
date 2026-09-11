@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth/next";
 import { buildAuthOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
+import { connection } from "next/server";
 import Link from "next/link";
 import AdminNav from "@/components/admin/AdminNav";
 import { ROLE_LEVEL } from "@/lib/admin-auth";
@@ -10,6 +11,7 @@ import { ROLE_LEVEL } from "@/lib/admin-auth";
  * Admin 布局 — 服务端鉴权守卫（层级校验：admin 及以上可进，agent/user 一律踢回首页）
  */
 export default async function AdminLayout({ children }) {
+  await connection();
   const session = await getServerSession(await buildAuthOptions());
   if (!session?.user?.id) redirect("/login");
 

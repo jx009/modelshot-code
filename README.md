@@ -61,6 +61,8 @@ npm run check:dependencies
 
 ## 架构与运维
 
+push 到 main 或 v* tag 会触发多架构 Docker 镜像构建并推送 Docker Hub。首次使用需配置 `DOCKERHUB_USERNAME`、`DOCKERHUB_TOKEN` Secrets，镜像名可通过 `DOCKERHUB_IMAGE` Variable 指定。标签、签名及 Web/Worker 启动方式见 [Docker 发布说明](docs/docker-publishing.md)。
+
 Next.js / React / next-intl + Prisma / PostgreSQL 模块化单体，BullMQ / Redis 独立 Worker，私有 S3 兼容存储。PostgreSQL 保存任务、预留、账本、支付事件和 Outbox；队列可由数据库重建。
 
 - `src/lib/domain/`：身份、素材、生成、支付和运维规则。

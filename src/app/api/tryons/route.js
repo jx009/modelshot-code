@@ -1,91 +1,60 @@
-import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { buildAuthOptions } from "../../../lib/auth";
-import { prisma } from "../../../lib/prisma";
+import { z } from "zod";
+import { prisma } from "../../../lib/prisma.js";
+import { requireUser } from "../../../lib/require-user.js";
+import { AppError, errorResponse, readJson, sameOrigin } from "../../../lib/http.js";
+import { ACTIVE, TERMINAL } from "../../../lib/domain/generation/contracts.js";
 
-/**
- * 生成任务查询 — 生成流程已在服务端异步完成，直接读 DB 即可
- * GET  /api/tryons          → 用户全部记录
- * GET  /api/tryons?id=xxx   → 单条记录（前端轮询用）
- */
-export async function GET(req) {
+export async function GET(request) {
   try {
-    const session = await getServerSession(await buildAuthOptions());
-    if (!session?.user) {
-      return new NextResponse("Unauthorized", { status: 401 });
-    }
-
-    const { searchParams } = new URL(req.url);
-    const id = searchParams.get("id");
-    const ids = searchParams.get("ids")
-      ?.split(",")
-      .map(value => value.trim())
-      .filter(Boolean)
-      .slice(0, 50);
-
+    const user = await requireUser();
+    const params = new URL(request.url).searchParams;
+    const id = params.get("id");
     if (id) {
-      const tryon = await prisma.tryOn.findFirst({
-        where: { id, userId: session.user.id }
-      });
-      if (!tryon) {
-        return new NextResponse("Not Found", { status: 404 });
-      }
-      return NextResponse.json(tryon);
+      const item = await prisma.tryOn.findFirst({ where: { id, userId: user.id } });
+      if (!item) throw new AppError("JOB_NOT_FOUND", 404);
+      const quality = await prisma.processingStep.findUnique({ where: { entityId_kind: { entityId: id, kind: "qa" } } });
+      return Response.json({ ...item, qualityReport: quality?.report || null });
     }
-
-    if (ids?.length) {
-      const tryons = await prisma.tryOn.findMany({
-        where: { id: { in: ids }, userId: session.user.id },
-      });
-      const byId = new Map(tryons.map(tryon => [tryon.id, tryon]));
-      return NextResponse.json(ids.map(tryonId => byId.get(tryonId)).filter(Boolean));
-    }
-
-    // 惰性清理超时僵尸记录（批处理进程被回收的兜底）
-    const { sweepStaleTryOns } = await import("../../../lib/generation.js");
-    await sweepStaleTryOns(session.user.id).catch(() => {});
-
-    const tryons = await prisma.tryOn.findMany({
-      where: { userId: session.user.id },
-      orderBy: { createTime: "desc" }
-    });
-
-    return NextResponse.json(tryons);
-  } catch (error) {
-    console.error("[TRYONS_GET]", error);
-    return new NextResponse("Internal Error", { status: 500 });
-  }
+    const ids = params.get("ids")?.split(",").filter(Boolean).slice(0, 100);
+    if (ids?.length) return Response.json(await prisma.tryOn.findMany({ where: { id: { in: ids }, userId: user.id } }));
+    const status = params.get("status");
+    const cursor = params.get("cursor");
+    const limit = Math.max(1, Math.min(50, Number(params.get("limit")) || 24));
+    const search = params.get("q")?.trim().slice(0, 100);
+    const base = { userId: user.id, archivedAt: null,
+      ...(params.get("projectId") ? { projectId: params.get("projectId") } : {}),
+      ...(params.get("batchId") ? { batchJobId: params.get("batchId") } : {}),
+      ...(search ? { OR: [{ sku: { contains: search, mode: "insensitive" } }, { id: { contains: search } }, { prompt: { contains: search, mode: "insensitive" } }] } : {}),
+    };
+    const where = { ...base, ...(status === "active" ? { status: { in: ACTIVE } } : status === "needs_review" ? { qaStatus: "needs_review" } : TERMINAL.includes(status) ? { status } : {}) };
+    if (cursor && !await prisma.tryOn.findFirst({ where: { id: cursor, userId: user.id }, select: { id: true } })) throw new AppError("INVALID_CURSOR");
+    const [rows, total, counts] = await Promise.all([
+      prisma.tryOn.findMany({ where, orderBy: [{ createTime: "desc" }, { id: "desc" }], take: limit + 1, ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}) }),
+      prisma.tryOn.count({ where }), prisma.tryOn.groupBy({ by: ["status"], where: base, _count: true }),
+    ]);
+    const items = rows.slice(0, limit);
+    return Response.json({ items, total, counts, nextCursor: rows.length > limit ? items.at(-1).id : null });
+  } catch (error) { return errorResponse(error); }
 }
 
-export async function DELETE(req) {
+export async function PATCH(request) {
   try {
-    const session = await getServerSession(await buildAuthOptions());
-    if (!session?.user) {
-      return new NextResponse("Unauthorized", { status: 401 });
-    }
+    const user = await requireUser();
+    const { id, decision } = await readJson(request, z.object({ id: z.string().max(128), decision: z.enum(["approved", "rejected", "unreviewed"]) }).strict());
+    const changed = await prisma.tryOn.updateMany({ where: { id, userId: user.id, status: "succeeded" }, data: { reviewDecision: decision === "unreviewed" ? null : decision } });
+    if (!changed.count) throw new AppError("OUTPUT_NOT_FOUND", 404);
+    return Response.json({ ok: true });
+  } catch (error) { return errorResponse(error); }
+}
 
-    const { searchParams } = new URL(req.url);
-    const id = searchParams.get("id");
-
-    if (!id) {
-      return new NextResponse("Missing try-on ID", { status: 400 });
-    }
-
-    const tryon = await prisma.tryOn.findFirst({
-      where: { id, userId: session.user.id }
-    });
-
-    if (!tryon) {
-      return new NextResponse("Not Found", { status: 404 });
-    }
-
-    await prisma.tryOn.delete({
-      where: { id }
-    });
-
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error("[TRYONS_DELETE]", error);
-    return new NextResponse("Internal Error", { status: 500 });
-  }
+export async function DELETE(request) {
+  try {
+    const user = await requireUser();
+    sameOrigin(request);
+    const id = new URL(request.url).searchParams.get("id");
+    if (!id) throw new AppError("JOB_ID_REQUIRED");
+    const changed = await prisma.tryOn.updateMany({ where: { id, userId: user.id, status: { in: TERMINAL } }, data: { archivedAt: new Date() } });
+    if (!changed.count) throw new AppError("JOB_NOT_ARCHIVABLE", 409);
+    return Response.json({ success: true });
+  } catch (error) { return errorResponse(error); }
 }

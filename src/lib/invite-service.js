@@ -1,164 +1,66 @@
-import crypto from "crypto";
-import { prisma } from "./prisma";
+import { randomBytes, randomUUID } from "node:crypto";
+import { prisma } from "./prisma.js";
+import { AppError } from "./http.js";
 
-/**
- * 分销服务（照搬 LetAiCode invite.service 机制）
- * - 邀请码：6 位随机，注册时生成，碰撞重试
- * - 绑定：?ref= 参数一次性绑定 inviterId，不可改绑
- * - 佣金：比例三级解析（个人 > 全局配置 > 兜底 0.10），记佣金时快照
- * - 结算：管理员手动，写 SettlementLog 快照
- */
-
-const DEFAULT_COMMISSION_RATE = 0.1;
-
-/** 生成 6 位随机邀请码（去掉易混淆字符） */
-export function generateInviteCode() {
-  const chars = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
-  let code = "";
-  for (let i = 0; i < 6; i++) code += chars[crypto.randomInt(0, chars.length)];
-  return code;
-}
-
-/** 确保用户有邀请码（懒生成，碰撞重试） */
+export function generateInviteCode() { return randomBytes(6).toString("hex").toUpperCase(); }
 export async function ensureInviteCode(userId) {
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { inviteCode: true } });
   if (user?.inviteCode) return user.inviteCode;
-  for (let i = 0; i < 5; i++) {
-    const code = generateInviteCode();
-    try {
-      const updated = await prisma.user.update({ where: { id: userId }, data: { inviteCode: code }, select: { inviteCode: true } });
-      return updated.inviteCode;
-    } catch {
-      // 碰撞重试
-    }
-  }
-  throw new Error("Failed to generate unique invite code");
+  const code = generateInviteCode();
+  await prisma.user.updateMany({ where: { id: userId, inviteCode: null }, data: { inviteCode: code } });
+  return (await prisma.user.findUnique({ where: { id: userId }, select: { inviteCode: true } })).inviteCode;
 }
 
-/** 邀请码绑定（一次性，不可改绑；防自我邀请） */
 export async function bindInviter(inviteeId, refCode) {
   if (!refCode) return false;
-  const invitee = await prisma.user.findUnique({ where: { id: inviteeId }, select: { inviterId: true } });
-  if (invitee?.inviterId) return false; // 已绑定，不可改
-
   const inviter = await prisma.user.findUnique({ where: { inviteCode: String(refCode).trim().toUpperCase() }, select: { id: true, status: true } });
-  if (!inviter || inviter.id === inviteeId || inviter.status === "banned") return false;
-
-  await prisma.user.update({
-    where: { id: inviteeId },
-    data: { inviterId: inviter.id, invitedAt: new Date() },
-  });
-  return true;
+  if (!inviter || inviter.id === inviteeId || inviter.status !== "active") return false;
+  const updated = await prisma.user.updateMany({ where: { id: inviteeId, inviterId: null }, data: { inviterId: inviter.id, invitedAt: new Date() } });
+  return updated.count > 0;
 }
 
-/** 佣金比例三级解析：个人 > 全局 Option 表 > 兜底 */
-export async function resolveCommissionRate(inviterId) {
-  const inviter = await prisma.user.findUnique({ where: { id: inviterId }, select: { agentCommissionRate: true } });
-  if (inviter?.agentCommissionRate != null) return inviter.agentCommissionRate;
-  try {
-    const opt = await prisma.option.findUnique({ where: { key: "commission_rate" } });
-    if (opt) return parseFloat(opt.value);
-  } catch { /* Option 表可能不存在，忽略 */ }
-  return DEFAULT_COMMISSION_RATE;
-}
-
-/**
- * 记佣金（webhook checkout.session.completed 调用）
- * - 被邀请人无邀请人 → 跳过
- * - orderId unique 约束防重复（webhook 重放安全）
- * - 比例在记录时快照
- */
-export async function recordCommission(inviteeId, orderId, orderAmount) {
-  try {
-    const invitee = await prisma.user.findUnique({ where: { id: inviteeId }, select: { inviterId: true } });
-    if (!invitee?.inviterId) return null;
-
-    const rate = await resolveCommissionRate(invitee.inviterId);
-    const amount = Number((orderAmount * rate).toFixed(2));
-
-    const commission = await prisma.inviteCommission.create({
-      data: {
-        inviterId: invitee.inviterId,
-        inviteeId,
-        orderId,
-        orderAmount,
-        commissionRate: rate,
-        commissionAmount: amount,
-        status: "pending",
-      },
-    });
-    return commission;
-  } catch (err) {
-    // unique 冲突（重复 webhook）静默；其他记日志
-    if (!String(err.message).includes("Unique constraint")) {
-      console.error("[RecordCommission]", err.message);
-    }
-    return null;
-  }
-}
-
-/** 流量手业绩汇总（邀请中心/管理页共用） */
 export async function getAgentSummary(agentId) {
-  const [invitees, paidInviteeIds, commissions] = await Promise.all([
+  const [invitees, paidCount, commissions, adjustments] = await Promise.all([
     prisma.user.count({ where: { inviterId: agentId } }),
-    prisma.user.findMany({ where: { inviterId: agentId }, select: { id: true } }),
-    prisma.inviteCommission.findMany({
-      where: { inviterId: agentId },
-      select: { status: true, commissionAmount: true, orderAmount: true },
-    }),
+    prisma.user.count({ where: { inviterId: agentId, orders: { some: { status: { in: ["paid", "partially_refunded"] } } } } }),
+    prisma.inviteCommission.findMany({ where: { inviterId: agentId, currency: "usd" } }),
+    prisma.commissionAdjustment.aggregate({ where: { inviterId: agentId, currency: "usd", settledAt: null }, _sum: { amountMinor: true } }),
   ]);
-
-  // 付费人数：有 paid 订单的被邀请人
-  const paidCount = paidInviteeIds.length > 0
-    ? (await prisma.order.groupBy({ by: ["userId"], where: { status: "paid", userId: { in: paidInviteeIds.map(u => u.id) } } })).length
-    : 0;
-
   return {
-    inviteeCount: invitees,
-    paidInviteeCount: paidCount,
-    totalOrderAmount: Number(commissions.reduce((s, c) => s + c.orderAmount, 0).toFixed(2)),
-    pendingCommission: Number(commissions.filter(c => c.status === "pending").reduce((s, c) => s + c.commissionAmount, 0).toFixed(2)),
-    settledCommission: Number(commissions.filter(c => c.status === "settled").reduce((s, c) => s + c.commissionAmount, 0).toFixed(2)),
+    inviteeCount: invitees, paidInviteeCount: paidCount, currency: "usd",
+    totalOrderAmount: commissions.reduce((sum, row) => sum + row.orderAmountMinor, 0) / 100,
+    pendingCommission: (commissions.filter(row => row.status === "pending").reduce((sum, row) => sum + row.amountMinor - row.reversedMinor, 0) + (adjustments._sum.amountMinor || 0)) / 100,
+    settledCommission: commissions.filter(row => row.status === "settled").reduce((sum, row) => sum + row.amountMinor, 0) / 100,
   };
 }
 
-/**
- * 结算（管理员手动）：把某流量手全部 pending → settled，写结算日志快照
- * @returns 结算结果（金额/条数/结算后余额）
- */
-export async function settleCommission(agentId, operatorId, remark) {
-  const pending = await prisma.inviteCommission.findMany({
-    where: { inviterId: agentId, status: "pending" },
-    select: { id: true, commissionAmount: true },
+export async function settleCommission(agentId, operatorId, remark, key, db = prisma) {
+  if (!/^[a-zA-Z0-9_-]{16,128}$/.test(key || "")) throw new AppError("IDEMPOTENCY_KEY_REQUIRED");
+  if (typeof remark !== "string" || remark.trim().length < 3 || remark.length > 500) throw new AppError("SETTLEMENT_REASON_REQUIRED");
+  return db.$transaction(async tx => {
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`commission:${agentId}`}, 0))::text`;
+    const actor = await tx.user.findUnique({ where: { id: operatorId } });
+    const agent = await tx.user.findUnique({ where: { id: agentId } });
+    if (!actor || actor.status !== "active" || !["admin", "root"].includes(actor.role) || !agent || ["admin", "root"].includes(agent.role)) throw new AppError("ADMIN_SCOPE_DENIED", 403);
+    const businessKey = `settlement:${operatorId}:${key}`;
+    const old = await tx.agentCommissionSettlementLog.findUnique({ where: { businessKey } });
+    if (old) {
+      if (old.agentId !== agentId || old.remark !== remark) throw new AppError("IDEMPOTENCY_CONFLICT", 409);
+      return { amount: old.amountMinor / 100, count: old.settledRecordCount, pendingAfter: old.pendingMinorAfter / 100 };
+    }
+    const pending = await tx.inviteCommission.findMany({ where: { inviterId: agentId, status: "pending", currency: "usd" } });
+    const adjustments = await tx.commissionAdjustment.findMany({ where: { inviterId: agentId, currency: "usd", settledAt: null } });
+    const amountMinor = pending.reduce((sum, row) => sum + row.amountMinor - row.reversedMinor, 0) + adjustments.reduce((sum, row) => sum + row.amountMinor, 0);
+    if (amountMinor <= 0) throw new AppError("NO_PAYABLE_COMMISSION", 409);
+    const settledAt = new Date();
+    await tx.inviteCommission.updateMany({ where: { id: { in: pending.map(row => row.id) }, status: "pending" }, data: { status: "settled", settledAt } });
+    await tx.commissionAdjustment.updateMany({ where: { id: { in: adjustments.map(row => row.id) }, settledAt: null }, data: { settledAt } });
+    await tx.agentCommissionSettlementLog.create({ data: { agentId, agentEmail: agent.email || "", agentName: agent.name, operatorId, remark, amountMinor, pendingMinorAfter: 0, settledRecordCount: pending.length, businessKey } });
+    await tx.adminAuditLog.create({ data: { adminId: operatorId, action: "SETTLE_COMMISSION", targetUserId: agentId, detail: JSON.stringify({ amountMinor, currency: "usd", reason: remark, key }) } });
+    return { amount: amountMinor / 100, count: pending.length, pendingAfter: 0 };
   });
-  if (pending.length === 0) throw new Error("No pending commissions");
+}
 
-  const amount = Number(pending.reduce((s, c) => s + c.commissionAmount, 0).toFixed(2));
-  const ids = pending.map(c => c.id);
-
-  // 结算人快照（邮箱/昵称）
-  const agent = await prisma.user.findUnique({ where: { id: agentId }, select: { email: true, name: true } });
-
-  await prisma.$transaction([
-    // 批量置 settled
-    prisma.inviteCommission.updateMany({
-      where: { id: { in: ids } },
-      data: { status: "settled", settledAt: new Date() },
-    }),
-    // 结算日志快照（邮箱/昵称定格，人走了账还在）
-    prisma.agentCommissionSettlementLog.create({
-      data: {
-        agentId,
-        agentEmail: agent?.email || "",
-        agentName: agent?.name || null,
-        amount,
-        pendingCommissionAfter: 0, // 全部 pending 结清
-        settledRecordCount: ids.length,
-        remark: remark || null,
-        operatorId,
-      },
-    }),
-  ]);
-
-  return { amount, count: ids.length, pendingAfter: 0 };
+export function commissionView(row) {
+  return { ...row, orderAmount: row.orderAmountMinor / 100, commissionRate: row.rateBps / 10000, commissionAmount: (row.amountMinor - row.reversedMinor) / 100 };
 }

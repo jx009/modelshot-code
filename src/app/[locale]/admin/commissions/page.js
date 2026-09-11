@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { useRemoteResource } from "@/hooks/useRemoteResource";
 import { LoaderCircle, RefreshCw, X } from "lucide-react";
 import toast from "react-hot-toast";
+import { useAdminReason } from "@/hooks/useAdminReason";
 
 const statusCls = {
   pending: "text-warning bg-warning/10 border-warning/30",
@@ -14,21 +16,11 @@ const statusCls = {
  * 分销佣金管理（方案 4.8.5）— 流量手列表 / 改比例备注 / 结算 / 结算历史
  */
 export default function AdminCommissions() {
-  const [agents, setAgents] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const reasonPrompt = useAdminReason();
+  const { data: agents, loading, error, reload: load } = useRemoteResource("/api/admin/commissions");
   const [acting, setActing] = useState(null);
   const [detail, setDetail] = useState(null); // { agentId, ...commissions/logs }
 
-  async function load() {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/admin/commissions");
-      if (res.ok) setAgents(await res.json());
-    } finally {
-      setLoading(false);
-    }
-  }
-  useEffect(() => { load(); }, []);
 
   const openDetail = async (agentId) => {
     const res = await fetch(`/api/admin/commissions?agentId=${agentId}`);
@@ -36,13 +28,14 @@ export default function AdminCommissions() {
   };
 
   const settle = async (agent) => {
-    if (!confirm(`结算 ${agent.email} 的全部待结算佣金 $${agent.pendingCommission}？（线下打款后点此核销）`)) return;
+    const approval = await reasonPrompt.ask();
+    if (!approval) return;
     setActing(agent.id);
     try {
       const res = await fetch("/api/admin/commissions", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentId: agent.id }),
+        headers: { "Content-Type": "application/json", "Idempotency-Key": approval.key },
+        body: JSON.stringify({ agentId: agent.id, remark: approval.reason }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed");
@@ -56,12 +49,14 @@ export default function AdminCommissions() {
   };
 
   const patch = async (agentId, body, note) => {
+    const approval = await reasonPrompt.ask();
+    if (!approval) return;
     setActing(agentId);
     try {
       const res = await fetch("/api/admin/commissions", {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentId, ...body }),
+        headers: { "Content-Type": "application/json", "Idempotency-Key": approval.key },
+        body: JSON.stringify({ agentId, ...body, reason: approval.reason }),
       });
       if (!res.ok) throw new Error();
       toast.success(note);
@@ -75,6 +70,7 @@ export default function AdminCommissions() {
 
   return (
     <div className="space-y-5">
+      {reasonPrompt.dialog}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-base font-medium text-primary-text">分销佣金</h1>
@@ -85,7 +81,7 @@ export default function AdminCommissions() {
         </button>
       </div>
 
-      {loading ? (
+      {error ? <p role="alert" className="text-sm text-danger">加载失败，请刷新重试。</p> : loading ? (
         <div className="flex items-center gap-2 text-secondary-text text-sm py-10"><LoaderCircle className="animate-spin" size={14} /> Loading…</div>
       ) : !agents || agents.agents.length === 0 ? (
         <p className="text-sm text-secondary-text py-10 text-center">暂无流量手（用户管理页可升为 agent，或用户带邀请码注册后自动出现）</p>

@@ -36,12 +36,12 @@ export async function GET(req) {
         },
       }),
       prisma.order.count({ where }),
-      prisma.order.aggregate({ where: { status: "paid" }, _sum: { amount: true } }),
+      prisma.order.aggregate({ where: { currency: "usd", paidAt: { not: null } }, _sum: { amountMinor: true, refundedMinor: true } }),
       prisma.order.aggregate({
-        where: { status: "paid", paidAt: { gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1) } },
-        _sum: { amount: true },
+        where: { currency: "usd", paidAt: { gte: new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1)) } },
+        _sum: { amountMinor: true, refundedMinor: true },
       }),
-      prisma.order.aggregate({ where: { status: "refunded" }, _sum: { amount: true } }),
+      prisma.order.aggregate({ where: { currency: "usd" }, _sum: { refundedMinor: true } }),
     ]);
 
     // 漏单提示：pending 超过 24h（webhook 没吃到的）
@@ -50,14 +50,14 @@ export async function GET(req) {
     });
 
     return NextResponse.json({
-      orders,
+      orders: orders.map(order => ({ ...order, amount: order.amountMinor / 100 })),
       total,
       page,
       pageSize,
       summary: {
-        totalRevenue: aggAll._sum.amount || 0,
-        monthRevenue: aggMonth._sum.amount || 0,
-        totalRefunded: aggRefund._sum.amount || 0,
+        totalRevenue: ((aggAll._sum.amountMinor || 0) - (aggAll._sum.refundedMinor || 0)) / 100,
+        monthRevenue: ((aggMonth._sum.amountMinor || 0) - (aggMonth._sum.refundedMinor || 0)) / 100,
+        totalRefunded: (aggRefund._sum.refundedMinor || 0) / 100,
         stalePending,
       },
     });

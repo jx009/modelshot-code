@@ -1,4 +1,5 @@
 "use client";
+import AssetImage from "@/components/ui/AssetImage";
 
 import { useEffect, useRef, useState } from "react";
 import { X, ZoomIn, ZoomOut, Scan } from "lucide-react";
@@ -27,6 +28,6 @@ export default function ImageViewer({ src, onClose }) {
         <button className="icon-button" title={t("close")} aria-label={t("close")} onClick={onClose}><X size={20} /></button>
       </div>
     </div>
-    <div className="viewer-image-scroll"><div style={{ width: `${zoom * 100}%`, height: `${zoom * 100}%` }}>{src && <img src={src} alt={t("result")} />}</div></div>
+    <div className="viewer-image-scroll"><div style={{ width: `${zoom * 100}%`, height: `${zoom * 100}%` }}>{src && <AssetImage src={src} alt={t("result")} />}</div></div>
   </dialog>;
 }

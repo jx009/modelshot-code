@@ -1,4 +1,4 @@
-import { prisma } from "./prisma";
+import { prisma } from "./prisma.js";
 
 /**
  * PromptTemplate DB 存取 — Admin 在线编辑实时生效

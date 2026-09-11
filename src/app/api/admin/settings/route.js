@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { prisma } from "../../../../lib/prisma";
 import { requireAdmin, auditLog } from "../../../../lib/admin-auth";
 import { getSiteConfigView, setSiteConfig, invalidateSiteConfig, getSiteConfigs } from "../../../../lib/site-config";
+import { z } from "zod";
+import { readJson, errorResponse } from "../../../../lib/http.js";
+import { auditedOperation } from "../../../../lib/domain/identity/admin-operation.js";
 
 /**
  * 系统配置（SMTP / Google OAuth / Stripe）— 方案：DB > env 兜底，敏感项 AES 加密
@@ -23,13 +26,15 @@ export async function PATCH(req) {
   if (auth.response) return auth.response;
 
   try {
-    const { key, value } = await req.json();
-    const result = await setSiteConfig(key, value);
-    await auditLog(auth.user.id, "SET_SITE_CONFIG", null, { key, source: value ? "db" : "cleared" });
-    return NextResponse.json({ ok: true, ...result });
+    const input = await readJson(req, z.object({ key: z.string().max(100), value: z.string().max(4096), reason: z.string().min(3).max(500) }).strict());
+    const result = await auditedOperation(auth.user.id, req.headers.get("idempotency-key"), "SET_SITE_CONFIG", input, async tx => {
+      await setSiteConfig(input.key, input.value, tx);
+      return { audit: { key: input.key, source: input.value ? "db" : "cleared" } };
+    }, prisma, "root");
+    invalidateSiteConfig();
+    return NextResponse.json(result);
   } catch (error) {
-    console.error("[ADMIN_SETTINGS_PATCH]", error);
-    return new NextResponse(error.message || "Internal Error", { status: 500 });
+    return errorResponse(error);
   }
 }
 

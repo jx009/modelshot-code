@@ -21,6 +21,8 @@ function useMounted() {
 export default function UserMenu({ user }) {
   const isAgent = ["agent", "admin", "root"].includes(user?.role);
   const t = useTranslations("common");
+  const f = useTranslations("flow");
+  const invite = useTranslations("invite");
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   const { theme, setTheme, resolvedTheme } = useTheme();
@@ -75,6 +77,7 @@ export default function UserMenu({ user }) {
           )}
 
           {/* 邀请中心（agent+ 可见——普通用户看不到，制造升为流量手的动机） */}
+          <Link href="/account" role="menuitem" onClick={() => setOpen(false)} className="flex items-center gap-2 px-3 py-2 text-sm"><User size={15} />{f("account")}</Link>
           {isAgent && (
             <Link
               href="/invite"
@@ -83,7 +86,7 @@ export default function UserMenu({ user }) {
               className="flex w-full items-center gap-2 px-3 py-2 text-xs font-medium text-primary-text hover:bg-bg-card-hover transition-colors cursor-pointer"
             >
               <Users size={13} className="text-primary" />
-              <span>邀请中心</span>
+              <span>{invite("title")}</span>
             </Link>
           )}
 

@@ -1,12 +1,13 @@
 "use client";
 
-import { signIn, useSession } from "next-auth/react";
+import { signIn, useSession, getProviders } from "next-auth/react";
 import { ArrowRight, Info, Key, Mail } from "lucide-react";
 import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import toast, { Toaster } from "react-hot-toast";
 import ContentShell from "@/components/ContentShell";
 import { useTranslations } from "next-intl";
+import { safeNext } from "@/lib/client-api";
 
 const GoogleIcon = () => (
   <svg width="14" height="14" viewBox="0 0 48 48" aria-hidden>
@@ -24,10 +25,12 @@ function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const rawNext = searchParams.get("callbackUrl") || searchParams.get("next") || "";
-  const next = rawNext && rawNext !== "/" ? rawNext : "/studio";
+  const next = safeNext(rawNext && rawNext !== "/" ? rawNext : "/studio");
   const refCode = searchParams.get("ref") || ""; // 分销邀请码（注册时绑定，一次性）
 
   const [activeTab, setActiveTab] = useState("google"); // "google" | "email"
+  const [googleAvailable, setGoogleAvailable] = useState(false);
+  useEffect(() => { getProviders().then(providers => { setGoogleAvailable(!!providers?.google); if (!providers?.google) setActiveTab("email"); }); }, []);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // 邮箱登录状态（login / register / reset 三态，照搬 LetAiCode 交互）
@@ -43,7 +46,7 @@ function LoginContent() {
     }
   }, [status, router, next]);
 
-  // 发送验证码（开发模式响应带 devCode 便于本地调试）
+  // 发送验证码到邮箱；本地环境由 Mailpit 捕获。
   const handleSendCode = async (purpose) => {
     if (!emailInput.trim()) {
       toast.error(te("INVALID_EMAIL"));
@@ -62,9 +65,6 @@ function LoginContent() {
         return;
       }
       toast.success(t("codeSent"));
-      if (data.devCode) {
-        toast(t("devCodeHint", { code: data.devCode }), { icon: "🔧", duration: 8000 });
-      }
     } catch (err) {
       toast.error(te("GENERIC"));
     } finally {
@@ -162,6 +162,7 @@ function LoginContent() {
         <div className="flex bg-bg-page p-1 rounded-lg border border-divider/60">
           <button
             type="button"
+            disabled={!googleAvailable}
             onClick={() => setActiveTab("google")}
             className={`flex-1 py-2 rounded-md text-xs font-medium transition-all flex items-center justify-center gap-2 ${
               activeTab === "google"
@@ -193,6 +194,7 @@ function LoginContent() {
         {activeTab === "google" ? (
           <div className="space-y-4 pt-2">
             <button
+              disabled={!googleAvailable}
               onClick={() => signIn("google", { callbackUrl: next })}
               className="w-full py-3.5 bg-bg-card text-primary-text border border-divider rounded-full text-xs font-medium flex items-center justify-center gap-3 hover:opacity-90 transition-all shadow-md active:scale-[0.98] cursor-pointer"
             >
@@ -208,8 +210,9 @@ function LoginContent() {
             <p className="text-xs text-secondary-text leading-relaxed">{t("emailHint")}</p>
 
             <div className="space-y-1.5">
-              <label className="block text-xs font-medium text-secondary-text">{t("emailLabel")}</label>
+              <label htmlFor="login-email" className="block text-xs font-medium text-secondary-text">{t("emailLabel")}</label>
               <input
+                id="login-email"
                 type="email"
                 required
                 autoComplete="email"
@@ -222,9 +225,10 @@ function LoginContent() {
 
             {emailMode !== "login" && (
               <div className="space-y-1.5">
-                <label className="block text-xs font-medium text-secondary-text">{t("codeLabel")}</label>
+                <label htmlFor="login-code" className="block text-xs font-medium text-secondary-text">{t("codeLabel")}</label>
                 <div className="flex gap-2">
                   <input
+                    id="login-code"
                     type="text"
                     inputMode="numeric"
                     maxLength={6}
@@ -247,10 +251,11 @@ function LoginContent() {
             )}
 
             <div className="space-y-1.5">
-              <label className="block text-xs font-medium text-secondary-text">
+              <label htmlFor="login-password" className="block text-xs font-medium text-secondary-text">
                 {emailMode === "reset" ? t("newPasswordLabel") : t("passwordLabel")}
               </label>
               <input
+                id="login-password"
                 type="password"
                 required
                 minLength={8}

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "../../../lib/prisma";
+import { readPreset } from "../../../lib/domain/assets/service.js";
 
 /**
  * 预设列表（公开接口，生图页选择器用）
@@ -31,7 +32,8 @@ export async function GET(req) {
       },
       orderBy: { sortOrder: "asc" },
     });
-    return NextResponse.json(models);
+    const usable = await Promise.all(models.map(async model => { try { await readPreset(model.referenceImage); return model; } catch { return null; } }));
+    return NextResponse.json(usable.filter(Boolean));
   } catch (error) {
     console.error("[PRESETS_GET]", error);
     return new NextResponse("Internal Error", { status: 500 });

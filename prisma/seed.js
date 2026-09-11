@@ -8,6 +8,7 @@ import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
+import { existsSync } from "node:fs";
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
@@ -41,11 +42,11 @@ async function main() {
   ];
   let i = 0;
   for (const m of models) {
-    const referenceImage = `/presets/models/${m.name}.png`;
+    const referenceImage = `/presets/models/model-${String(i + 1).padStart(2, "0")}.png`;
     const existing = await prisma.modelPreset.findFirst({ where: { name: m.name } });
     if (!existing) {
       await prisma.modelPreset.create({
-        data: { ...m, referenceImage, sortOrder: i },
+        data: { ...m, referenceImage, sortOrder: i, isActive: existsSync(`public${referenceImage}`) },
       });
     }
     i++;

@@ -14,7 +14,7 @@ export class GeminiAdapter extends BaseAdapter {
     if (!prompt) throw new Error("prompt is required");
 
     const model = this.genAI.getGenerativeModel({
-      model: GEMINI_IMAGE_MODEL,
+      model: this.config.model || GEMINI_IMAGE_MODEL,
       generationConfig: { responseModalities: ["image", "text"] },
     });
 

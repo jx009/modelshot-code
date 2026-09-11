@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { prisma } from "../../../../lib/prisma";
-import { requireAdmin, auditLog } from "../../../../lib/admin-auth";
+import { requireAdmin } from "../../../../lib/admin-auth";
+import { z } from "zod";
+import { readJson, AppError, errorResponse } from "../../../../lib/http.js";
+import { auditedOperation } from "../../../../lib/domain/identity/admin-operation.js";
 
 /**
  * 生成记录审计
@@ -20,12 +23,12 @@ export async function GET(req) {
     const q = searchParams.get("q")?.trim();
 
     const where = {
-      ...(status && { status }),
+      ...(status === "needs_review" ? { qaStatus: "needs_review", reviewDecision: null } : status === "processing" ? { status: { in: ["queued", "running", "provider_pending", "reconciling"] } } : status ? { status: status === "completed" ? "succeeded" : status } : {}),
       ...(provider && { provider }),
       ...(q && { User: { OR: [{ email: { contains: q } }, { name: { contains: q } }] } }),
     };
 
-    const [tryons, total, statusCounts, costAgg, avgDuration] = await Promise.all([
+    const [tryons, total, statusCounts, costAgg, avgDuration, succeeded, reviews] = await Promise.all([
       prisma.tryOn.findMany({
         where,
         include: {
@@ -38,11 +41,13 @@ export async function GET(req) {
       prisma.tryOn.count({ where }),
       prisma.tryOn.groupBy({ by: ["status"], _count: { _all: true } }),
       prisma.tryOn.aggregate({ where, _sum: { costUsd: true } }),
-      prisma.tryOn.aggregate({ where: { ...where, status: "completed" }, _avg: { durationMs: true } }),
+      prisma.tryOn.aggregate({ where: { ...where, status: "succeeded" }, _avg: { durationMs: true } }),
+      prisma.tryOn.count({ where: { AND: [where, { status: "succeeded" }] } }),
+      prisma.tryOn.count({ where: { qaStatus: "needs_review", reviewDecision: null } }),
     ]);
 
     // needs_review 优先排序（内存排序，MVP 数据量够用）
-    const priority = { needs_review: 0, processing: 1, failed: 2, completed: 3 };
+    const priority = { reconciling: 0, running: 1, queued: 2, failed: 3, succeeded: 4 };
     tryons.sort((a, b) => (priority[a.status] ?? 9) - (priority[b.status] ?? 9));
 
     return NextResponse.json({
@@ -50,10 +55,11 @@ export async function GET(req) {
         id: t.id,
         userEmail: t.User?.email,
         userName: t.User?.name,
-        resultImage: t.resultImage,
-        clothesImage: t.clothesImage,
+        resultImage: t.deliveryAssetId || t.originalAssetId ? `/api/admin/assets/${t.deliveryAssetId || t.originalAssetId}` : null,
+        clothesImage: t.snapshot?.garment?.id ? `/api/admin/assets/${t.snapshot.garment.id}` : null,
         prompt: t.prompt.slice(0, 200),
         status: t.status,
+        qaStatus: t.qaStatus,
         provider: t.provider,
         costUsd: t.costUsd,
         qaScore: t.qaScore,
@@ -70,13 +76,13 @@ export async function GET(req) {
       summary: {
         totalCostUsd: costAgg._sum.costUsd || 0,
         successRate: total > 0
-          ? Math.round(((statusCounts.find(c => c.status === "completed")?._count._all || 0) + (statusCounts.find(c => c.status === "needs_review")?._count._all || 0)) / total * 100)
+          ? Math.round(succeeded / total * 100)
           : 0,
         avgDurationMs: Math.round(avgDuration._avg.durationMs || 0),
       },
       page,
       limit,
-      statusCounts: statusCounts.map(s => ({ status: s.status, count: s._count._all })),
+      statusCounts: [...statusCounts.map(s => ({ status: s.status, count: s._count._all })), { status: "needs_review", count: reviews }, { status: "completed", count: statusCounts.find(s => s.status === "succeeded")?._count._all || 0 }, { status: "processing", count: statusCounts.filter(s => ["queued", "running", "provider_pending", "reconciling", "cancel_requested"].includes(s.status)).reduce((sum, s) => sum + s._count._all, 0) }],
     });
   } catch (error) {
     console.error("[ADMIN_TRYONS_GET]", error);
@@ -91,30 +97,19 @@ export async function GET(req) {
 export async function POST(req) {
   const auth = await requireAdmin(req);
   if (auth.response) return auth.response;
-
   try {
-    const { id } = await req.json();
-    const t = await prisma.tryOn.findUnique({ where: { id } });
-    if (!t) return new NextResponse("Not found", { status: 404 });
-    if (t.status !== "failed") {
-      return new NextResponse("Only failed tryons can be retried", { status: 400 });
-    }
-
-    const { generateOne } = await import("../../../../lib/generation");
-    // 重置状态并后台重跑（原始 prompt/图/通道参数）
-    await prisma.tryOn.update({ where: { id }, data: { status: "processing" } });
-    generateOne(id, {
-      garmentImage: t.clothesImage,
-      modelRef: t.personImage || null,
-      prompt: t.prompt,
-      size: "1024x1536",
-      quality: "high",
-    }).catch(err => console.error(`[Retry ${id}]`, err));
-
-    await auditLog(auth.user.id, "RETRY_TRYON", t.userId, { tryonId: id });
+    const input = await readJson(req, z.object({ id: z.string().min(1).max(128), reason: z.string().min(3).max(500) }).strict());
+    const { id } = input;
+    const output = await prisma.tryOn.findUnique({ where: { id } });
+    if (!output) throw new AppError("JOB_NOT_FOUND", 404);
+    if (!["queued", "reconciling", "provider_pending", "running"].includes(output.status)) throw new AppError("NEW_QUOTE_REQUIRED", 409);
+    const key = req.headers.get("idempotency-key");
+    await auditedOperation(auth.user.id, key, "RECOVER_JOB", input, async tx => {
+      await tx.outboxEvent.create({ data: { kind: "generate", entityId: id, businessKey: `admin-recover:${auth.user.id}:${key}` } });
+      return { audit: { outputId: id } };
+    });
     return NextResponse.json({ ok: true });
   } catch (error) {
-    console.error("[ADMIN_TRYONS_RETRY]", error);
-    return new NextResponse("Internal Error", { status: 500 });
+    return errorResponse(error);
   }
 }

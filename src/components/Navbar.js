@@ -13,12 +13,14 @@ export default function Navbar() {
   const { data: session } = useSession();
   const t = useTranslations("workspace");
   const tn = useTranslations("nav");
+  const f = useTranslations("flow");
   const path = usePathname();
   const [open, setOpen] = useState(false);
   const links = [
     { href: "/studio", label: tn("studio"), icon: Camera },
     { href: "/gallery", label: t("gallery"), icon: Images },
     { href: "/pricing", label: tn("pricing"), icon: CreditCard },
+    { href: "/account", label: f("account"), icon: Coins },
   ];
   return (
     <header className="site-nav">

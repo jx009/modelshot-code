@@ -1,0 +1,38 @@
+{
+  "reviewedAt": "2026-09-11",
+  "expiresAt": "2026-09-25",
+  "exceptions": {},
+  "resolvedExceptions": {
+    "deepmerge-ts": {
+      "milestone": "M1",
+      "reason": "Prisma CLI consumes trusted local configuration. Reassess upstream compatibility before overriding its merge implementation.",
+      "advisories": ["https://github.com/advisories/GHSA-ggr8-5vv4-36mx"]
+    },
+    "mysql2": {
+      "milestone": "M1",
+      "reason": "Transitive Prisma tooling dependency; this application and local tests use PostgreSQL exclusively.",
+      "advisories": ["https://github.com/advisories/GHSA-3f6p-5ww8-9rcr", "https://github.com/advisories/GHSA-rgwj-5xj2-c3m3"]
+    },
+    "nodemailer": {
+      "milestone": "M1",
+      "reason": "Development-only temporary exception, not a release waiver. Bound recipient validation and resolve the NextAuth v4 optional peer range before public use.",
+      "advisories": [
+        "https://github.com/advisories/GHSA-c7w3-x93f-qmm8",
+        "https://github.com/advisories/GHSA-vvjj-xcjg-gr5g",
+        "https://github.com/advisories/GHSA-268h-hp4c-crq3",
+        "https://github.com/advisories/GHSA-wqvq-jvpq-h66f",
+        "https://github.com/advisories/GHSA-r7g4-qg5f-qqm2",
+        "https://github.com/advisories/GHSA-p6gq-j5cr-w38f",
+        "https://github.com/advisories/GHSA-8m3c-c648-2xjj",
+        "https://github.com/advisories/GHSA-wmmp-3585-3rmp",
+        "https://github.com/advisories/GHSA-2x7j-588g-ccc2",
+        "https://github.com/advisories/GHSA-cc9r-2j5m-2m83"
+      ]
+    },
+    "sharp": {
+      "milestone": "M3",
+      "reason": "Only the optional C2PA nested copy is affected; signing is excluded from the default build. The application directly uses sharp 0.35.4.",
+      "advisories": ["https://github.com/advisories/GHSA-f88m-g3jw-g9cj", "https://github.com/advisories/GHSA-rgj7-g3m4-5g8c"]
+    }
+  }
+}

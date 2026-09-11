@@ -1,10 +1,10 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { Link, usePathname } from "@/i18n/navigation";
 
 const LINKS = [
   { href: "/admin", label: "数据看板" },
+  { href: "/admin/operations", label: "运行与账务" },
   { href: "/admin/providers", label: "模型通道" },
   { href: "/admin/users", label: "用户管理" },
   { href: "/admin/tryons", label: "生成审计" },

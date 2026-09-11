@@ -1,0 +1,50 @@
+name: V1 Development Acceptance
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  local-acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      DATABASE_URL: postgresql://modelshot:local-modelshot-only@127.0.0.1:55432/modelshot_test
+      DIRECT_URL: postgresql://modelshot:local-modelshot-only@127.0.0.1:55432/modelshot_test
+      NEXTAUTH_URL: http://127.0.0.1:3100
+      NEXTAUTH_SECRET: isolated-ci-session-secret-not-for-deployment
+      C2PA_ENABLED: "0"
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm install --global npm@10.9.2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npm run infra:up
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:acceptance
+      - run: npm run test:recovery
+      - run: npm run test:capacity
+      - name: Dependency audit report
+        if: always()
+        run: npm run check:dependencies
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: acceptance-reports
+          path: |
+            playwright-report/
+            test-results/
+      - if: always()
+        run: docker compose down

@@ -1,17 +1,12 @@
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
-import { Pool } from "pg";
 
 /**
- * Prisma client 单例
- * 注意：故意不用 globalThis 缓存 —— Next.js 16 dev mode（Turbopack）的模块缓存层
- * 会持有旧 PrismaClient 实例（schema 变更后不更新），缓存是 schema 漂移的根因。
- * 每次请求新建 client 代价大但能 100% 保证 schema 一致 —— 由 Prisma 自身的连接池复用 DB 连接。
+ * 开发热更新复用连接池；重新生成 Prisma Client 后需重启开发服务器。
  */
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-const adapter = new PrismaPg(pool);
-
-export const prisma = new PrismaClient({
-  adapter,
+export const prisma = globalThis.modelshotPrisma || new PrismaClient({
+  adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL, max: 5, connectionTimeoutMillis: 5000 }),
   log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
 });
+
+if (process.env.NODE_ENV !== "production") globalThis.modelshotPrisma = prisma;

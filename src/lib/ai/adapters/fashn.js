@@ -1,56 +1,34 @@
-import { BaseAdapter } from "./base.js";
+import { BaseAdapter, toDataUri } from "./base.js";
 
 export class FASHNAdapter extends BaseAdapter {
   constructor(config = {}) {
     super("fashn", config);
-    this.apiKey = config.apiKey || process.env.FASHN_API_KEY;
+    this.apiKey = config.apiKey;
     this.baseUrl = "https://api.fashn.ai/v1";
   }
 
-  async generateTryOn({ garmentImage, modelRef, category = "auto" }) {
-    if (!garmentImage) throw new Error("garmentImage is required");
-    if (!modelRef) throw new Error("FASHN requires a model reference image");
-
-    // FASHN API：提交任务 → 轮询结果
-    const submitRes = await fetch(`${this.baseUrl}/run`, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${this.apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model_image: modelRef,
-        garment_image: garmentImage,
-        category,
-      }),
+  async generateTryOn({ garmentImage, modelRef, category = "auto", onSubmitted }) {
+    const response = await fetch(`${this.baseUrl}/run`, {
+      method: "POST", signal: AbortSignal.timeout(30_000), redirect: "error",
+      headers: { Authorization: `Bearer ${this.apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model_name: this.config.model || "tryon-v1.6", inputs: { model_image: toDataUri(modelRef), garment_image: toDataUri(garmentImage), category } }),
     });
-    if (!submitRes.ok) {
-      const err = await submitRes.json().catch(() => ({}));
-      throw new Error(`FASHN submit error: ${err.error || submitRes.status}`);
-    }
-    const { id: jobId } = await submitRes.json();
-    if (!jobId) throw new Error("FASHN returned no job id");
-
-    // 轮询（FASHN 通常 10-30s，最多等 120s）
-    const startedAt = Date.now();
-    while (Date.now() - startedAt < 120_000) {
-      await new Promise(r => setTimeout(r, 3000));
-      const statusRes = await fetch(`${this.baseUrl}/status/${jobId}`, {
-        headers: { "Authorization": `Bearer ${this.apiKey}` },
-      });
-      if (!statusRes.ok) throw new Error(`FASHN status error: ${statusRes.status}`);
-      const data = await statusRes.json();
-      if (data.status === "completed") {
-        return { imageBase64: null, imageUrl: data.output, costUsd: 0.05, raw: { jobId } };
-      }
-      if (data.status === "failed") {
-        throw new Error(`FASHN job failed: ${data.error || "unknown"}`);
-      }
-    }
-    throw new Error("FASHN job timed out after 120s");
+    if (!response.ok) { const error = new Error("Supplier rejected submission"); error.status = response.status; throw error; }
+    const { id } = await response.json();
+    if (typeof id !== "string" || !/^[a-zA-Z0-9_-]{1,256}$/.test(id)) throw new Error("Supplier response missing request ID");
+    await onSubmitted(id);
+    return { state: "pending", requestId: id };
   }
 
-  async healthCheck() {
-    return { ok: !!this.apiKey, provider: "fashn" };
+  async query(requestId) {
+    if (!/^[a-zA-Z0-9_-]{1,256}$/.test(requestId)) throw new Error("Invalid supplier request ID");
+    const response = await fetch(`${this.baseUrl}/status/${requestId}`, {
+      signal: AbortSignal.timeout(20_000), redirect: "error", headers: { Authorization: `Bearer ${this.apiKey}` },
+    });
+    if (!response.ok) throw new Error("Supplier query unavailable");
+    const data = await response.json();
+    if (data.status === "completed") return { state: "succeeded", imageUrl: Array.isArray(data.output) ? data.output[0] : data.output, costUsd: 0.05 };
+    if (data.status === "failed") return { state: "failed" };
+    return { state: "pending" };
   }
 }

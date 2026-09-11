@@ -1,3 +1,6 @@
+import { z } from "zod";
+import { AppError, readJson, errorResponse } from "../../../../lib/http.js";
+import { auditedOperation } from "../../../../lib/domain/identity/admin-operation.js";
 import { NextResponse } from "next/server";
 import { prisma } from "../../../../lib/prisma";
 import { requireAdmin, auditLog } from "../../../../lib/admin-auth";
@@ -46,75 +49,30 @@ export async function GET(req) {
 }
 
 export async function PATCH(req) {
-  const auth = await requireAdmin(req);
-  if (auth.response) return auth.response;
-
   try {
-    const { id, isActive, isDefault, priority, displayName, apiKey, baseURL, model } = await req.json();
-    if (!id) return new NextResponse("Missing provider id", { status: 400 });
-
-    const existing = await prisma.modelProvider.findUnique({ where: { id } });
-    if (!existing) return new NextResponse("Provider not found", { status: 404 });
-
-    // 基础字段
-    if (isDefault) {
-      await prisma.modelProvider.updateMany({ data: { isDefault: false } });
+    const auth = await requireAdmin(req, "root");
+    if (auth.response) return auth.response;
+    const input = await readJson(req, z.object({ id: z.string().min(1).max(128), isActive: z.boolean().optional(), isDefault: z.boolean().optional(), priority: z.number().int().min(0).max(1000).optional(), displayName: z.string().min(1).max(100).optional(), apiKey: z.string().max(4096).optional(), baseURL: z.string().max(500).optional(), model: z.string().max(128).optional(), reason: z.string().min(3).max(500) }).strict());
+    if (input.baseURL) {
+      const url = new URL(input.baseURL);
+      const allowed = (process.env.PROVIDER_PROXY_HOSTS || "").split(",").map(value => value.trim());
+      if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash || !allowed.includes(url.hostname)) throw new AppError("PROVIDER_PROXY_NOT_ALLOWED");
     }
-    const baseData = {
-      ...(isActive !== undefined && { isActive }),
-      ...(isDefault !== undefined && { isDefault }),
-      ...(priority !== undefined && { priority }),
-      ...(displayName !== undefined && { displayName }),
-    };
-
-    // config 字段（key/baseURL/model）——apiKey 留空 = 不变更
-    let configData = {};
-    let configChanged = false;
-    if (apiKey !== undefined || baseURL !== undefined || model !== undefined) {
-      let cfg = {};
-      try { cfg = existing.config ? JSON.parse(existing.config) : {}; } catch { cfg = {}; }
-      if (apiKey && apiKey.trim()) {
-        cfg.apiKeyEnc = encryptSecret(apiKey.trim());
-        configChanged = true;
-      }
-      if (baseURL !== undefined) {
-        if (baseURL.trim()) cfg.baseURL = baseURL.trim();
-        else delete cfg.baseURL;
-        configChanged = true;
-      }
-      if (model !== undefined) {
-        if (model.trim()) cfg.model = model.trim();
-        else delete cfg.model;
-        configChanged = true;
-      }
-      configData = configChanged ? { config: JSON.stringify(cfg) } : {};
-    }
-
-    const updated = await prisma.modelProvider.update({
-      where: { id },
-      data: { ...baseData, ...configData },
-    });
-
-    // 审计（key 只记更新动作，不记内容）
-    if (apiKey && apiKey.trim()) {
-      await auditLog(auth.user.id, "UPDATE_PROVIDER_KEY", null, { provider: existing.name });
-    }
-    if (configChanged && !(apiKey && apiKey.trim())) {
-      await auditLog(auth.user.id, "UPDATE_PROVIDER_CONFIG", null, { provider: existing.name, baseURL, model });
-    }
-    if (Object.keys(baseData).length > 0) {
-      await auditLog(auth.user.id, "UPDATE_PROVIDER", null, { provider: existing.name, ...baseData });
-    }
-
+    const result = await auditedOperation(auth.user.id, req.headers.get("idempotency-key"), "UPDATE_PROVIDER", input, async tx => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended('provider-config', 0))::text`;
+      const existing = await tx.modelProvider.findUnique({ where: { id: input.id } });
+      if (!existing) throw new AppError("PROVIDER_NOT_FOUND", 404);
+      const cfg = JSON.parse(existing.config || "{}");
+      if (input.apiKey?.trim()) cfg.apiKeyEnc = encryptSecret(input.apiKey.trim());
+      if (input.baseURL !== undefined) cfg.baseURL = input.baseURL;
+      if (input.model !== undefined) cfg.model = input.model;
+      if (input.isDefault) await tx.modelProvider.updateMany({ data: { isDefault: false } });
+      await tx.modelProvider.update({ where: { id: input.id }, data: { isActive: input.isActive, isDefault: input.isDefault, priority: input.priority, displayName: input.displayName, config: JSON.stringify(cfg) } });
+      return { audit: { provider: existing.name, keyChanged: !!input.apiKey, fields: Object.keys(input).filter(key => !["apiKey", "reason"].includes(key)) } };
+    }, prisma, "root");
     invalidateProviderConfig();
-    return NextResponse.json({
-      ok: true,
-      config: safeConfig(updated.config),
-    });
-  } catch (error) {
-    console.error("[ADMIN_PROVIDERS_PATCH]", error);
-    return new NextResponse("Internal Error", { status: 500 });
-  }
+    return Response.json(result);
+  } catch (error) { return errorResponse(error); }
 }
 
 /** 测试连接：用指定通道发一张最小成本的 dry-run + 真实 1x1 图（验证 key/baseURL/model 全链路） */
@@ -131,7 +89,7 @@ export async function POST(req) {
     // 最小测试：小尺寸低质量，验证配置真实性
     const result = await invokeModel({
       provider: provider.name,
-      garmentImage: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", // 1x1 px
+      garmentImage: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64"), // 1x1 px
       prompt: "A plain white square. Test call.",
       size: "1024x1024",
       quality: "low",

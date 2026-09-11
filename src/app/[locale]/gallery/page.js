@@ -1,95 +1,73 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useTranslations, useLocale } from "next-intl";
-import { Plus, Download, Search, Grid2X2, List, Images, LoaderCircle, RefreshCw, X, ArrowUpRight } from "lucide-react";
+import { Plus, Download, Search, Grid2X2, List, Images, LoaderCircle, RefreshCw, X, ArrowUpRight, ChevronLeft, ChevronRight } from "lucide-react";
 import { Link } from "@/i18n/navigation";
 import DetailDrawer from "@/components/gallery/DetailDrawer";
-import { downloadImage, downloadBlob } from "@/lib/image-download";
+import ExportTray from "@/components/gallery/ExportTray";
+import AssetImage from "@/components/ui/AssetImage";
+import { downloadImage } from "@/lib/image-download";
+import { api, terminalStatus } from "@/lib/client-api";
+import { useRemoteResource } from "@/hooks/useRemoteResource";
 
-const filters = { all: "all", processing: "processing", completed: "ready", needs_review: "review", failed: "failed" };
-const statusKey = status => filters[status] || "processing";
+const filters = { all: "all", active: "processing", succeeded: "ready", needs_review: "review", failed: "failed", cancelled: "cancel" };
 
 export default function GalleryPage() {
   const t = useTranslations("workspace");
+  const f = useTranslations("flow");
   const locale = useLocale();
   const { status } = useSession();
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
+  const [query, setQuery] = useState("");
   const [batch, setBatch] = useState("");
+  const [project, setProject] = useState("");
   const [view, setView] = useState("grid");
   const [selected, setSelected] = useState(new Set());
   const [detailId, setDetailId] = useState("");
-  const [deleting, setDeleting] = useState(false);
+  const [cursors, setCursors] = useState([null]);
+  const [error, setError] = useState("");
   const [exporting, setExporting] = useState(false);
-  const fetchItems = useCallback(async (signal) => {
-    const response = await fetch("/api/tryons", { signal });
-    if (!response.ok) throw new Error("library");
-    setItems(await response.json());
-  }, []);
-  useEffect(() => {
-    if (status !== "authenticated") return;
-    const controller = new AbortController();
-    Promise.resolve().then(() => fetchItems(controller.signal)).catch(err => { if (err.name !== "AbortError") setError(t("loadError")); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
-    return () => controller.abort();
-  }, [status, fetchItems, t]);
-  const hasActive = items.some(item => !["completed", "needs_review", "failed"].includes(item.status));
-  useEffect(() => {
-    if (!hasActive || status !== "authenticated") return;
-    const controller = new AbortController();
-    let timeout;
-    let failures = 0;
-    const poll = async () => {
-      try { await fetchItems(controller.signal); failures = 0; }
-      catch { if (controller.signal.aborted) return; if (++failures >= 5) { setError(t("networkError")); return; } }
-      if (!controller.signal.aborted) timeout = setTimeout(poll, 4000);
-    };
-    timeout = setTimeout(poll, 4000);
-    return () => { controller.abort(); clearTimeout(timeout); };
-  }, [hasActive, status, fetchItems, t]);
-
-  const visible = useMemo(() => items.filter(item => (filter === "all" || (filter === "processing" ? ["processing", "queued"].includes(item.status) : item.status === filter)) && (!batch || item.batchJobId === batch || item.variantGroupId === batch) && (!search.trim() || [item.prompt, item.id, item.platformSpec].join(" ").toLowerCase().includes(search.trim().toLowerCase()))), [items, filter, search, batch]);
-  const batches = [...new Set(items.map(i => i.batchJobId || i.variantGroupId).filter(Boolean))];
-  const downloadable = visible.filter(i => i.resultImage);
-  const exportItems = selected.size ? items.filter(i => selected.has(i.id) && i.resultImage) : downloadable;
-  function toggle(id) { setSelected(prev => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; }); }
-  async function refresh() { setLoading(true); setError(""); try { await fetchItems(); } catch { setError(t("loadError")); } finally { setLoading(false); } }
+  const [exportMode, setExportMode] = useState("delivery");
+  const [exportRevision, setExportRevision] = useState(0);
+  const [deleting, setDeleting] = useState(false);
+  const params = new URLSearchParams({ limit: "24", status: filter, q: query, batchId: batch, projectId: project, cursor: cursors.at(-1) || "" });
+  const resource = useRemoteResource(status === "authenticated" ? `/api/tryons?${params}` : null);
+  const groups = useRemoteResource(status === "authenticated" ? "/api/projects" : null);
+  const batches = useRemoteResource(status === "authenticated" ? "/api/batch" : null);
+  const detail = useRemoteResource(detailId ? `/api/tryons?id=${encodeURIComponent(detailId)}` : null);
+  const detailActive = detail.data && (!terminalStatus(detail.data.status) || detail.data.qaStatus === "pending" || detail.data.exportStatus === "pending");
+  useEffect(() => { if (!detailActive) return; const timer = setInterval(detail.reload, 5000); return () => clearInterval(timer); }, [detailActive, detail.reload]);
+  const items = resource.data?.items || [];
+  const active = items.some(row => !terminalStatus(row.status) || row.qaStatus === "pending" || row.exportStatus === "pending");
+  useEffect(() => { if (!active) return; const timer = setInterval(resource.reload, 5000); return () => clearInterval(timer); }, [active, resource.reload]);
+  useEffect(() => { Promise.resolve().then(() => { const id = new URLSearchParams(window.location.search).get("id"); if (id) setDetailId(id); }); }, []);
+  const downloadable = items.filter(row => row.status === "succeeded");
+  const exportIds = selected.size ? [...selected] : downloadable.map(row => row.id);
+  const statusKey = row => row.status === "succeeded" ? row.qaStatus === "needs_review" ? "review" : "ready" : row.status === "failed" ? "failed" : "processing";
+  const fail = err => setError(f.has(`errors.${err.code}`) ? f(`errors.${err.code}`) : f("requestFailed"));
+  function changeFilter(setter, value) { setter(value); setCursors([null]); }
+  function toggle(id) { setSelected(previous => { const next = new Set(previous); if (next.has(id)) next.delete(id); else next.add(id); return next; }); }
   async function remove(id) {
     setDeleting(true);
-    try { const res = await fetch(`/api/tryons?id=${encodeURIComponent(id)}`, { method: "DELETE" }); if (!res.ok) throw new Error("delete"); setItems(prev => prev.filter(i => i.id !== id)); setSelected(prev => { const next = new Set(prev); next.delete(id); return next; }); setDetailId(""); }
-    catch { setError(t("deleteError")); } finally { setDeleting(false); }
+    try { await api(`/api/tryons?id=${encodeURIComponent(id)}`, { method: "DELETE" }); setDetailId(""); setSelected(previous => { const next = new Set(previous); next.delete(id); return next; }); resource.reload(); } catch (err) { fail(err); } finally { setDeleting(false); }
   }
   async function exportImages() {
-    if (!exportItems.length || exporting) return;
+    if (exporting || !exportIds.length) return;
     setExporting(true); setError("");
-    try {
-      const { default: JSZip } = await import("jszip"); const zip = new JSZip(); let count = 0;
-      for (const item of exportItems) { try { const res = await fetch(item.resultImage); if (!res.ok) continue; zip.file(`modelshot-${item.id}.png`, await res.blob()); count++; } catch { /* Continue exporting the other selected images. */ } }
-      if (count) downloadBlob(await zip.generateAsync({ type: "blob" }), `modelshot-${new Date().toISOString().slice(0, 10)}.zip`);
-      if (count !== exportItems.length) setError(t("partialExport"));
-    } catch { setError(t("partialExport")); } finally { setExporting(false); }
+    try { await api("/api/exports", { method: "POST", key: crypto.randomUUID(), body: { outputIds: exportIds, mode: exportMode } }); setExportRevision(value => value + 1); } catch (err) { fail(err); } finally { setExporting(false); }
   }
-  const reset = () => { setFilter("all"); setSearch(""); setBatch(""); setSelected(new Set()); };
-  const date = value => new Date(value).toLocaleDateString(locale, { month: "short", day: "numeric" });
   return <main className="library-page">
-    <div className="library-heading"><div><div className="eyebrow">MODELSHOT / LIBRARY</div><h1>{t("gallery")}</h1><p>{t("count", { count: items.length })}</p></div><div className="flex gap-2"><button className="button" disabled={exporting || !exportItems.length} onClick={exportImages}>{exporting ? <LoaderCircle size={16} className="animate-spin" /> : <Download size={16} />}<span>{t(exporting ? "exporting" : selected.size ? "export" : "exportAll")}</span></button><Link className="button primary" href="/studio"><Plus size={17} />{t("new")}</Link></div></div>
-    {status === "authenticated" && <>
-      <div className="library-tools"><label className="search-field"><Search size={17} /><input type="search" aria-label={t("search")} placeholder={t("search")} value={search} onChange={e => setSearch(e.target.value)} /></label><div className="flex items-center gap-2"><select aria-label={t("allBatches")} value={batch} onChange={e => setBatch(e.target.value)}><option value="">{t("allBatches")}</option>{batches.map((b, i) => <option key={b} value={b}>{date(items.find(x => (x.batchJobId || x.variantGroupId) === b).createTime)} · #{i + 1}</option>)}</select><button className="icon-button" disabled={loading} title={t("retry")} aria-label={t("retry")} onClick={refresh}><RefreshCw size={16} className={loading ? "animate-spin" : ""} /></button><div className="mode-switch">{[["grid", Grid2X2], ["list", List]].map(([v, Icon]) => <button key={v} aria-label={t(v)} title={t(v)} aria-pressed={view === v} onClick={() => setView(v)}><Icon size={17} /></button>)}</div></div></div>
-      <div className="library-filters">{Object.entries(filters).map(([key, label]) => <button key={key} aria-pressed={filter === key} onClick={() => setFilter(key)}>{t(label)}<span>{key === "all" ? items.length : items.filter(i => key === "processing" ? ["processing", "queued"].includes(i.status) : i.status === key).length}</span></button>)}</div>
+    <div className="library-heading"><div><h1>{t("gallery")}</h1><p>{t("count", { count: resource.data?.total || 0 })}</p></div><div className="flex flex-wrap gap-2"><select className="workflow-select" aria-label={f("delivery")} value={exportMode} onChange={e => setExportMode(e.target.value)}><option value="delivery">{f("delivery")}</option><option value="original">{f("original")}</option></select><button className="button" title={f("createExport")} aria-label={f("createExport")} disabled={exporting || !exportIds.length} onClick={exportImages}>{exporting ? <LoaderCircle size={16} className="animate-spin" /> : <Download size={16} />}<span>{selected.size ? f("exportSelection", { count: selected.size }) : f("exportPage")}</span></button><Link className="button primary" href="/studio"><Plus size={17} />{t("new")}</Link></div></div>
+    {status === "authenticated" && <><div className="library-tools"><form className="search-field" onSubmit={e => { e.preventDefault(); changeFilter(setQuery, search); }}><Search size={17} /><input type="search" aria-label={t("search")} placeholder={`${f("sku")} / ${t("search")}`} value={search} onChange={e => setSearch(e.target.value)} /><button className="icon-button" aria-label={t("search")} title={t("search")}><ArrowUpRight size={15} /></button></form><div className="flex items-center gap-2"><select aria-label={f("project")} value={project} onChange={e => changeFilter(setProject, e.target.value)}><option value="">{f("allProjects")}</option>{groups.data?.map(row => <option value={row.id} key={row.id}>{row.name}</option>)}</select><select aria-label={t("allBatches")} value={batch} onChange={e => changeFilter(setBatch, e.target.value)}><option value="">{t("allBatches")}</option>{batches.data?.map(row => <option key={row.id} value={row.id}>{row.name || row.id.slice(-8)}</option>)}</select><button className="icon-button" disabled={resource.loading} title={f("refresh")} aria-label={f("refresh")} onClick={resource.reload}><RefreshCw size={16} /></button><div className="mode-switch">{[["grid", Grid2X2], ["list", List]].map(([value, Icon]) => <button key={value} aria-label={t(value)} title={t(value)} aria-pressed={view === value} onClick={() => setView(value)}><Icon size={17} /></button>)}</div></div></div><div className="library-filters">{Object.entries(filters).map(([key, label]) => <button key={key} aria-pressed={filter === key} onClick={() => changeFilter(setFilter, key)}>{key === "cancelled" ? f("cancelled") : t(label)}</button>)}</div></>}
+    {(error || resource.error || detail.error) && <div className="inline-error" role="alert">{error || f("loadError")}<button className="button compact" onClick={() => { setError(""); resource.reload(); detail.reload(); }}>{f("retry")}</button></div>}
+    {status === "loading" || resource.loading ? <div className="library-empty"><LoaderCircle size={26} className="animate-spin" />{t("loading")}</div> : status !== "authenticated" ? <div className="library-empty"><Images size={36} /><h2>{t("signInHint")}</h2><Link href="/login" className="button primary">{t("signIn")}</Link></div> : !items.length ? <div className="library-empty"><Images size={36} /><h2>{t("emptyGallery")}</h2><Link href="/studio" className="button primary"><Plus size={16} />{t("new")}</Link></div> : <>
+      <div className="selection-toolbar"><label><input type="checkbox" checked={downloadable.length > 0 && downloadable.every(row => selected.has(row.id))} disabled={!downloadable.length} onChange={event => { const checked = event.target.checked; setSelected(previous => { const next = new Set(previous); for (const row of downloadable) { if (checked) next.add(row.id); else next.delete(row.id); } return next; }); }} />{f("currentPage")}</label>{selected.size > 0 && <><span>{t("selected", { count: selected.size })}</span><button className="icon-button" title={f("clearSelection")} aria-label={f("clearSelection")} onClick={() => setSelected(new Set())}><X size={15} /></button></>}</div>
+      <div className={`shot-collection ${view === "list" ? "shot-list" : "shot-grid"}`}>{items.map((row, index) => <article className={`shot-card ${selected.has(row.id) ? "selected" : ""}`} key={row.id}><div className="shot-image"><button className="shot-open" aria-label={`${t("details")} ${index + 1}`} onClick={() => setDetailId(row.id)}><AssetImage src={row.resultImage || row.clothesImage} alt={row.sku || t(row.resultImage ? "result" : "preview")} loading="lazy" />{!terminalStatus(row.status) && <span className="shot-working"><LoaderCircle size={24} className="animate-spin" /></span>}</button><label className="shot-checkbox"><input type="checkbox" aria-label={`${t("select")} ${index + 1}`} disabled={row.status !== "succeeded"} checked={selected.has(row.id)} onChange={() => toggle(row.id)} /></label></div><div className="shot-meta"><div><span className="shot-name">{row.sku || row.id.slice(-8)}</span><span className={`shot-status ${statusKey(row)}`}>{row.status === "cancelled" ? f("cancelled") : t(statusKey(row))}</span></div><div><span>{row.aspectRatio}</span><time dateTime={row.createTime}>{new Date(row.createTime).toLocaleDateString(locale)}</time></div></div><button className="icon-button shot-detail-button" title={t("details")} aria-label={t("details")} onClick={() => setDetailId(row.id)}><ArrowUpRight size={17} /></button></article>)}</div>
     </>}
-    {error && <div className="inline-error flex items-center gap-3" role="alert"><span>{error}</span><button className="button compact" onClick={refresh}>{t("retry")}</button></div>}
-    {status === "loading" || (status === "authenticated" && loading && !items.length) ? <div className="library-empty"><LoaderCircle size={26} className="animate-spin" /><p>{t("loading")}</p></div> : status !== "authenticated" ? <div className="library-empty"><Images size={36} strokeWidth={1.25} /><h2>{t("signInHint")}</h2><Link href="/login" className="button primary">{t("signIn")}<ArrowUpRight size={16} /></Link></div> : !visible.length ? <div className="library-empty"><Images size={38} strokeWidth={1.25} /><h2>{t(items.length ? "noMatch" : "emptyGallery")}</h2>{items.length ? <button className="button" onClick={reset}><X size={15} />{t("resetFilters")}</button> : <Link href="/studio" className="button primary"><Plus size={16} />{t("new")}</Link>}</div> : <>
-      <div className="selection-toolbar"><label><input type="checkbox" checked={downloadable.length > 0 && downloadable.every(i => selected.has(i.id))} disabled={!downloadable.length} onChange={e => setSelected(e.target.checked ? new Set(downloadable.map(i => i.id)) : new Set())} />{t("selectAll")}</label>{selected.size > 0 && <><span>{t("selected", { count: selected.size })}</span><button className="icon-button" title={t("deselect")} aria-label={t("deselect")} onClick={() => setSelected(new Set())}><X size={14} /></button></>}</div>
-      <div className={`shot-collection ${view === "list" ? "shot-list" : "shot-grid"}`}>{visible.map((item, index) => <article key={item.id} className={`shot-card ${selected.has(item.id) ? "selected" : ""}`}>
-        <div className="shot-image"><button className="shot-open" aria-label={`${t("details")} ${index + 1}`} onClick={() => setDetailId(item.id)}><img src={item.resultImage || item.clothesImage} alt={`${t(item.resultImage ? "result" : "preview")} ${index + 1}`} loading="lazy" />{["processing", "queued"].includes(item.status) && <span className="shot-working"><LoaderCircle size={25} className="animate-spin" /></span>}</button><label className="shot-checkbox"><input type="checkbox" aria-label={`${t("select")} ${index + 1}`} disabled={!item.resultImage} checked={selected.has(item.id)} onChange={() => toggle(item.id)} /></label></div>
-        <div className="shot-meta"><div><span className="shot-name">Shot {String(items.length - items.indexOf(item)).padStart(3, "0")}</span><span className={`shot-status ${statusKey(item.status)}`}>{t(statusKey(item.status))}</span></div><div><span>{item.platformSpec || "ModelShot"} · {item.aspectRatio}</span><time dateTime={item.createTime}>{date(item.createTime)}</time></div></div>
-        <button className="icon-button shot-detail-button" title={t("details")} aria-label={t("details")} onClick={() => setDetailId(item.id)}><ArrowUpRight size={17} /></button>
-      </article>)}</div>
-    </>}
-    {detailId && <DetailDrawer key={detailId} tryon={items.find(i => i.id === detailId)} onClose={() => setDetailId("")} onDownload={item => downloadImage(item.resultImage, `modelshot-${item.id}.png`).catch(() => setError(t("partialExport")))} onDelete={remove} deleting={deleting} />}
+    {status === "authenticated" && <><div className="pagination"><button className="icon-button" title={f("previous")} aria-label={f("previous")} disabled={cursors.length === 1 || resource.loading} onClick={() => setCursors(previous => previous.slice(0, -1))}><ChevronLeft size={18} /></button><span>{f("page", { page: cursors.length })}</span><button className="icon-button" title={f("next")} aria-label={f("next")} disabled={!resource.data?.nextCursor || resource.loading} onClick={() => setCursors(previous => [...previous, resource.data.nextCursor])}><ChevronRight size={18} /></button></div><ExportTray revision={exportRevision} /></>}
+    {detail.data && <DetailDrawer key={detail.data.id} tryon={detail.data} onClose={() => setDetailId("")} onDownload={row => downloadImage(row.resultImage, `modelshot-${row.id}.png`).catch(fail)} onDelete={remove} deleting={deleting} onChanged={() => { detail.reload(); resource.reload(); }} />}
   </main>;
 }

@@ -7,6 +7,8 @@ export class OpenAIAdapter extends BaseAdapter {
     super("openai", config);
     // 三级降级：config.apiKey（用户自带/DB 配置）> env；baseURL 支持 OpenAI 兼容中转站
     this.client = new OpenAI({
+      maxRetries: 0,
+      timeout: 120_000,
       apiKey: config.apiKey || process.env.OPENAI_API_KEY,
       ...(config.baseURL ? { baseURL: config.baseURL } : {}),
     });
@@ -14,7 +16,7 @@ export class OpenAIAdapter extends BaseAdapter {
     this.costMap = getModel("openai").costPerImage;
   }
 
-  async generateTryOn({ garmentImage, modelRef, sceneRef, prompt, size = "1024x1536", quality = "high" }) {
+  async generateTryOn({ garmentImage, modelRef, sceneRef, prompt, size = "1024x1536", quality = "high", signal }) {
     if (!garmentImage) throw new Error("garmentImage is required");
     if (!prompt) throw new Error("prompt is required");
 
@@ -29,7 +31,7 @@ export class OpenAIAdapter extends BaseAdapter {
       prompt,
       size,
       quality,
-    });
+    }, { signal });
 
     const imageData = response.data?.[0];
     if (!imageData?.b64_json && !imageData?.url) {

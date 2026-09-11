@@ -78,11 +78,6 @@ function buildModelDesc(modelPreset) {
  * @param {string} opts.lighting       - soft | natural | editorial | golden（可空）
  */
 export async function buildPrompt({ garmentType, modelPreset, scenePreset, platformSpec, userPrompt, pose, camera, lighting }) {
-  // 用户自己写了 prompt → 只补平台后缀（摄影维度不干预用户 prompt）
-  if (userPrompt && userPrompt.trim()) {
-    return userPrompt.trim() + (PLATFORM_SUFFIXES[platformSpec] || "");
-  }
-
   const type = garmentType || "top";
   let template = BASE_TEMPLATES[type] || BASE_TEMPLATES.top;
 
@@ -108,6 +103,7 @@ export async function buildPrompt({ garmentType, modelPreset, scenePreset, platf
   if (pose && POSE_PROMPTS[pose]) prompt += ` ${POSE_PROMPTS[pose]}`;
   if (camera && CAMERA_PROMPTS[camera]) prompt += ` ${CAMERA_PROMPTS[camera]}`;
   if (lighting && LIGHTING_PROMPTS[lighting]) prompt += ` ${LIGHTING_PROMPTS[lighting]}`;
+  if (userPrompt?.trim()) prompt += ` Additional direction: ${userPrompt.trim()}`;
 
   if (platformSpec && PLATFORM_SUFFIXES[platformSpec]) {
     prompt += PLATFORM_SUFFIXES[platformSpec];

@@ -39,6 +39,7 @@ export async function generateMetadata({ params }) {
   const { locale } = await params;
   const meta = MESSAGES[locale]?.meta || MESSAGES.en.meta;
   return {
+    metadataBase: new URL(process.env.NEXTAUTH_URL || "http://127.0.0.1:3000"),
     title: meta.title,
     description: meta.description,
     alternates: {
@@ -56,11 +57,6 @@ export default async function LocaleLayout({ children, params }) {
 
   return (
     <html lang={locale} className={`${instrumentSerif.variable} ${geist.variable} h-full w-full`} suppressHydrationWarning>
-      <head>
-        {/* 中文衬线：运行时按需加载（分片大不适合构建期打包），失败回退系统宋体 */}
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500&display=swap" rel="stylesheet" />
-      </head>
       <body className={`min-h-dvh w-full flex flex-col antialiased bg-bg-page text-primary-text font-sans`}>
         {/* 双主题：attribute 模式驱动 [data-theme]，浅/深/跟随系统三态，默认深色（品牌基调） */}
         <ThemeProvider attribute="data-theme" defaultTheme="dark" enableSystem disableTransitionOnChange={false}>

@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { LoaderCircle, RefreshCw } from "lucide-react";
-import toast from "react-hot-toast";
+import { useRemoteResource } from "@/hooks/useRemoteResource";
 
 const STATUSES = ["", "pending", "paid", "failed", "refunded"];
 const TYPES = ["", "subscription", "credits"];
@@ -11,27 +11,12 @@ const TYPES = ["", "subscription", "credits"];
  * 订单管理 — 筛选（状态/类型）+ 汇总（总收入/本月/退款）+ 漏单提示（pending>24h）
  */
 export default function AdminOrders() {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("");
   const [type, setType] = useState("");
   const [page, setPage] = useState(1);
 
-  async function load() {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams({ page: String(page) });
-      if (status) params.set("status", status);
-      if (type) params.set("type", type);
-      const res = await fetch(`/api/admin/orders?${params}`);
-      if (res.ok) setData(await res.json());
-    } catch {
-      toast.error("Load failed");
-    } finally {
-      setLoading(false);
-    }
-  }
-  useEffect(() => { load(); }, [status, type, page]);
+  const params = new URLSearchParams({ page: String(page), status, type });
+  const { data, loading, error, reload: load } = useRemoteResource(`/api/admin/orders?${params}`);
 
   const statusCls = {
     paid: "text-success bg-success/10 border-success/30",
@@ -73,7 +58,7 @@ export default function AdminOrders() {
       </div>
 
       {/* 列表 */}
-      {loading ? (
+      {error ? <p role="alert" className="text-sm text-danger">加载失败，请刷新重试。</p> : loading ? (
         <div className="flex items-center gap-2 text-secondary-text text-sm py-10"><LoaderCircle className="animate-spin" size={14} /> Loading…</div>
       ) : !data || data.orders.length === 0 ? (
         <p className="text-sm text-secondary-text py-10 text-center">暂无订单</p>

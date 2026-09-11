@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { useRemoteResource } from "@/hooks/useRemoteResource";
 import { Ban, Check, LoaderCircle, RotateCcw, Search, ShieldCheck, User } from "lucide-react";
 import toast from "react-hot-toast";
+import Modal from "@/components/ui/Modal";
 
 const ROLES = ["", "user", "agent", "admin", "root"];
 const STATUSES = ["", "active", "banned"];
@@ -23,40 +25,33 @@ const roleCls = {
  * 用户管理 — 搜索/筛选/排序/分页 + 行内操作（调积分/角色/封禁，全走后端审计）
  */
 export default function AdminUsers() {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
+  const [query, setQuery] = useState("");
   const [role, setRole] = useState("");
   const [status, setStatus] = useState("");
   const [sort, setSort] = useState("newest");
   const [page, setPage] = useState(1);
   const [acting, setActing] = useState(null);
   const [creditDelta, setCreditDelta] = useState("");
+  const [editing, setEditing] = useState(null);
+  const [operation, setOperation] = useState(null);
+  const [reason, setReason] = useState("");
 
-  async function load() {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams({ page: String(page), sort });
-      if (q) params.set("q", q);
-      if (role) params.set("role", role);
-      if (status) params.set("status", status);
-      const res = await fetch(`/api/admin/users?${params}`);
-      if (res.ok) setData(await res.json());
-    } finally {
-      setLoading(false);
-    }
-  }
-  useEffect(() => { load(); }, [role, status, sort, page]);
+  const params = new URLSearchParams({ page: String(page), sort, q: query, role, status });
+  const { data, loading, error, reload: load } = useRemoteResource(`/api/admin/users?${params}`);
 
-  const search = e => { e.preventDefault(); setPage(1); load(); };
+  const search = e => { e.preventDefault(); setPage(1); setQuery(q.trim()); load(); };
 
-  const patch = async (id, body, note) => {
+  const patch = (id, body, note) => { setOperation({ id, body, note, key: crypto.randomUUID() }); setReason(""); };
+  const confirm = async event => {
+    event.preventDefault();
+    const { id, body, note, key } = operation;
     setActing(id);
     try {
       const res = await fetch("/api/admin/users", {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, ...body }),
+        headers: { "Content-Type": "application/json", "Idempotency-Key": key },
+        body: JSON.stringify({ id, ...body, reason }),
       });
       const text = await res.text();
       if (!res.ok) {
@@ -64,6 +59,7 @@ export default function AdminUsers() {
         return;
       }
       toast.success(note);
+      setOperation(null);
       await load();
     } catch {
       toast.error("Failed");
@@ -103,13 +99,13 @@ export default function AdminUsers() {
         <select value={status} onChange={e => { setStatus(e.target.value); setPage(1); }} className="bg-bg-card border border-divider rounded-full px-3 py-2 text-xs cursor-pointer">
           {STATUSES.map(s => <option key={s} value={s}>{s || "全部状态"}</option>)}
         </select>
-        <select value={sort} onChange={e => setSort(e.target.value)} className="bg-bg-card border border-divider rounded-full px-3 py-2 text-xs cursor-pointer">
+        <select value={sort} onChange={e => { setSort(e.target.value); setPage(1); }} className="bg-bg-card border border-divider rounded-full px-3 py-2 text-xs cursor-pointer">
           {SORTS.map(s => <option key={s.v} value={s.v}>{s.l}</option>)}
         </select>
       </div>
 
       {/* 列表 */}
-      {loading ? (
+      {error ? <p role="alert" className="text-sm text-danger">加载失败，请重新搜索。</p> : loading ? (
         <div className="flex items-center gap-2 text-secondary-text text-sm py-10"><LoaderCircle className="animate-spin" size={14} /> Loading…</div>
       ) : !data || data.users.length === 0 ? (
         <p className="text-sm text-secondary-text py-10 text-center">无匹配用户</p>
@@ -161,9 +157,9 @@ export default function AdminUsers() {
                         <input
                           type="number"
                           placeholder="±积分"
-                          value={acting === u.id ? creditDelta : ""}
+                          value={editing === u.id ? creditDelta : ""}
                           onChange={e => setCreditDelta(e.target.value)}
-                          onFocus={() => setActing(u.id)}
+                          onFocus={() => { setEditing(u.id); setCreditDelta(""); }}
                           className="w-16 bg-bg-page border border-divider rounded px-1.5 py-1 text-xs tabular-nums"
                         />
                         <button
@@ -204,6 +200,7 @@ export default function AdminUsers() {
           </div>
         </>
       )}
+      {operation && <Modal label="确认用户变更" onClose={() => { if (!acting) setOperation(null); }}><form onSubmit={confirm}><h2>确认用户变更</h2><p>{operation.note}</p><label htmlFor="admin-reason">操作原因</label><input id="admin-reason" required minLength={3} maxLength={500} value={reason} onChange={e => setReason(e.target.value)} /><div className="dialog-actions"><button type="button" className="button" disabled={!!acting} onClick={() => setOperation(null)}>取消</button><button className="button primary" disabled={!!acting}>确认</button></div></form></Modal>}
     </div>
   );
 }

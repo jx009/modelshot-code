@@ -1,45 +1,44 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useState } from "react";
+import { useRemoteResource } from "@/hooks/useRemoteResource";
 import clsx from "clsx";
+import { useAdminReason } from "@/hooks/useAdminReason";
 
 const STATUS_META = {
   needs_review: { label: "需复查", cls: "bg-warning/15 text-warning border-warning/30" },
   completed: { label: "完成", cls: "bg-success/15 text-success border-success/30" },
+  succeeded: { label: "完成", cls: "bg-success/15 text-success border-success/30" },
   failed: { label: "失败", cls: "bg-danger/15 text-danger border-danger/30" },
   processing: { label: "生成中", cls: "bg-primary/15 text-primary border-primary/30" },
 };
 
 export default function AdminTryons() {
-  const [data, setData] = useState({ tryons: [], total: 0, page: 1, limit: 20, statusCounts: [], summary: null });
+  const { ask, dialog } = useAdminReason();
   const [q, setQ] = useState("");
+  const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
   const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(true);
   const [zoom, setZoom] = useState(null); // 点击放大的记录
 
-  const load = useCallback(() => {
-    fetch(`/api/admin/tryons?page=${page}&limit=20${status ? `&status=${status}` : ""}${q ? `&q=${encodeURIComponent(q)}` : ""}`)
-      .then(r => r.json())
-      .then(setData)
-      .finally(() => setLoading(false));
-  }, [page, status]);
-
-  useEffect(() => { load(); }, [load]);
+  const params = new URLSearchParams({ page: String(page), limit: "20", status, q: query });
+  const { data: response, loading, error, reload: load } = useRemoteResource(`/api/admin/tryons?${params}`);
+  const data = response || { tryons: [], total: 0, page: 1, limit: 20, statusCounts: [], summary: null };
 
   const totalPages = Math.max(1, Math.ceil(data.total / data.limit));
   const countOf = s => data.statusCounts.find(x => x.status === s)?.count || 0;
 
   const retry = async (id) => {
+    const confirmation = await ask();
+    if (!confirmation) return;
     try {
       const res = await fetch("/api/admin/tryons", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id }),
+        headers: { "Content-Type": "application/json", "Idempotency-Key": confirmation.key },
+        body: JSON.stringify({ id, reason: confirmation.reason }),
       });
       if (res.ok) {
-        // eslint-disable-next-line no-restricted-globals
-        location.reload();
+        load();
       } else {
         alert(await res.text());
       }
@@ -48,6 +47,8 @@ export default function AdminTryons() {
 
   return (
     <div className="space-y-5">
+      {dialog}
+      {error && <p role="alert" className="text-sm text-danger">加载失败，请重新搜索。</p>}
       <div>
         <h1 className="text-lg font-black tracking-tight">生成记录审计</h1>
         <p className="text-xs text-secondary-text mt-1">
@@ -80,7 +81,7 @@ export default function AdminTryons() {
         <input
           value={q}
           onChange={e => { setQ(e.target.value); }}
-          onKeyDown={e => { if (e.key === "Enter") { setPage(1); load(); } }}
+          onKeyDown={e => { if (e.key === "Enter") { setPage(1); setQuery(q.trim()); load(); } }}
           placeholder="搜索用户邮箱…（回车）"
           className="bg-bg-card border border-divider rounded-full px-3 py-1.5 text-xs text-primary-text placeholder-secondary-text/50 focus:outline-none focus:border-primary/50"
         />
@@ -128,7 +129,7 @@ export default function AdminTryons() {
                       ) : (
                         <div className="w-12 h-16 rounded border border-dashed border-divider flex flex-col items-center justify-center gap-1 text-[8px] text-secondary-text">
                           无图
-                          {t.status === "failed" && (
+                          {["queued", "running", "provider_pending", "reconciling"].includes(t.status) && (
                             <button
                               onClick={() => retry(t.id)}
                               className="px-1.5 py-0.5 rounded border border-primary/40 text-primary text-[9px] hover:bg-primary-muted cursor-pointer"

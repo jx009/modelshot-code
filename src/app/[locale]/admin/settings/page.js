@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { LoaderCircle, Mail, ShieldCheck, CreditCard, Zap } from "lucide-react";
 import toast from "react-hot-toast";
+import { useAdminReason } from "@/hooks/useAdminReason";
 
 /**
  * 系统设置 — SMTP / Google OAuth / Stripe 三区
@@ -15,7 +16,7 @@ const SECTIONS = [
     id: "smtp",
     icon: Mail,
     title: "邮件 SMTP",
-    desc: "验证码真实发送。未配置时走开发模式（验证码打印在服务端日志并回显 devCode）。",
+    desc: "邮件服务未配置时暂停验证码发送。",
     fields: [
       { key: "smtp_host", label: "SMTP Host", placeholder: "smtp.exmail.qq.com" },
       { key: "smtp_port", label: "端口", placeholder: "465（SSL）/ 587（STARTTLS）" },
@@ -51,6 +52,7 @@ const SECTIONS = [
 ];
 
 export default function AdminSettings() {
+  const reasonPrompt = useAdminReason();
   const [configs, setConfigs] = useState([]); // [{key, source, display}]
   const [values, setValues] = useState({}); // 输入中的值
   const [savingKey, setSavingKey] = useState(null);
@@ -79,13 +81,15 @@ export default function AdminSettings() {
   const configOf = key => configs.find(c => c.key === key);
 
   const save = async key => {
+    const approval = await reasonPrompt.ask();
+    if (!approval) return;
     const value = values[key];
     setSavingKey(key);
     try {
       const res = await fetch("/api/admin/settings", {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key, value: value ?? "" }),
+        headers: { "Content-Type": "application/json", "Idempotency-Key": approval.key },
+        body: JSON.stringify({ key, value: value ?? "", reason: approval.reason }),
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || "Failed");
@@ -119,6 +123,7 @@ export default function AdminSettings() {
 
   return (
     <div className="space-y-5">
+      {reasonPrompt.dialog}
       <div>
         <h1 className="text-base font-medium text-primary-text">系统设置</h1>
         <p className="text-xs text-secondary-text mt-1 leading-relaxed">

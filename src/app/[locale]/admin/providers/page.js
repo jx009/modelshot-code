@@ -3,12 +3,14 @@
 import { useState, useEffect } from "react";
 import { LoaderCircle, Zap } from "lucide-react";
 import toast from "react-hot-toast";
+import { useAdminReason } from "@/hooks/useAdminReason";
 
 /**
  * 模型通道管理 — 每通道一张卡：开关/默认/优先级/API Key（加密存储脱敏显示）/Base URL（中转站）/模型名/测试连接
  * 配置读取三级降级：用户自带 key > DB 配置（本页）> env 兜底
  */
 export default function AdminProviders() {
+  const reasonPrompt = useAdminReason();
   const [providers, setProviders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState(null);
@@ -26,12 +28,14 @@ export default function AdminProviders() {
   useEffect(() => { load(); }, []);
 
   const patch = async (id, data, note) => {
+    const approval = await reasonPrompt.ask();
+    if (!approval) return;
     setSavingId(id);
     try {
       const res = await fetch("/api/admin/providers", {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, ...data }),
+        headers: { "Content-Type": "application/json", "Idempotency-Key": approval.key },
+        body: JSON.stringify({ id, ...data, reason: approval.reason }),
       });
       if (!res.ok) throw new Error();
       toast.success(note || "Saved");
@@ -69,11 +73,12 @@ export default function AdminProviders() {
 
   return (
     <div className="space-y-5">
+      {reasonPrompt.dialog}
       <div>
         <h1 className="text-base font-medium text-primary-text">模型通道</h1>
         <p className="text-xs text-secondary-text mt-1 leading-relaxed">
           生图调度的可用通道。Key 加密存储、界面脱敏；Base URL 留空 = 官方直连，填入 = 走 OpenAI 兼容中转站。
-          优先级数字越小越先被使用，失败自动降级到下一个。
+          优先级数字越小越靠前展示。任务固定使用报价时选择的通道。
         </p>
       </div>
 

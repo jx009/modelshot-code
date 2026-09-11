@@ -1,88 +1,28 @@
 import OpenAI from "openai";
-import fs from "fs/promises";
-import path from "path";
+import { z } from "zod";
+import { toDataUri } from "./ai/adapters/base.js";
 
-const QA_PROMPT = `You are a quality inspector for AI-generated fashion product images.
-Analyze this image and check for these issues:
-1. BODY_DISTORTION: Any unnatural body proportions, extra fingers, missing limbs
-2. GARMENT_MISMATCH: Does the garment look significantly different from the reference?
-3. LOGO_MISSING: Any text/logo/pattern that should be there but is missing or garbled
-4. COLOR_SHIFT: Significant color difference from the reference garment
-5. FACE_DISTORTION: Unnatural facial features
+export const qualityReportSchema = z.object({
+  score: z.number().min(0).max(1),
+  flags: z.array(z.enum(["BODY_DISTORTION", "GARMENT_MISMATCH", "LOGO_MISSING", "COLOR_SHIFT", "FACE_DISTORTION"])).max(5),
+  evidence: z.string().min(1).max(2000),
+}).strict();
 
-Respond in JSON format:
-{
-  "score": 0.0-1.0 (overall quality, 1.0 = perfect),
-  "pass": true/false (true if score >= 0.7),
-  "flags": ["BODY_DISTORTION", ...] (list of detected issues, empty if none)
-}`;
-
-/**
- * 把本地 /uploads/xx.png 路径读成 data URI（OpenAI vision API 无法访问 localhost）
- */
-async function toDataUri(source) {
-  if (!source) return null;
-  if (source.startsWith("data:")) return source;
-  if (source.startsWith("http")) return source;
-  if (source.startsWith("/")) {
-    const filepath = path.join(process.cwd(), "public", source.replace(/^\//, ""));
-    const buf = await fs.readFile(filepath);
-    const ext = path.extname(filepath).toLowerCase();
-    const mime = ext === ".jpg" || ext === ".jpeg" ? "image/jpeg" : ext === ".webp" ? "image/webp" : "image/png";
-    return `data:${mime};base64,${buf.toString("base64")}`;
-  }
-  // 纯 base64
-  return `data:image/png;base64,${source}`;
-}
-
-/**
- * 自动 QA 检测（GPT-4o-mini 视觉，~$0.002/张）
- *
- * @param {string} generatedImage - 生成图（本地 /uploads 路径 / data URI / http URL）
- * @param {string} referenceImage - 参考服装图（可空）
- * @returns {Promise<{score: number, pass: boolean, flags: string[]}>}
- *
- * QA 失败不阻塞生图流程——默认通过并打 QA_ERROR/QA_SKIPPED 标记
- */
-export async function runQA(generatedImage, referenceImage) {
-  // 未配置 OpenAI key → 跳过 QA
-  if (!process.env.OPENAI_API_KEY) {
-    return { score: null, pass: true, flags: ["QA_SKIPPED"] };
-  }
-
+export async function runQA(generatedImage, referenceImage, { skip = false, client } = {}) {
+  if (!Buffer.isBuffer(generatedImage) || !Buffer.isBuffer(referenceImage)) return { status: "error", score: null, flags: [], errorCode: "QA_MISSING_IMAGE" };
+  if (skip || !client && (!process.env.OPENAI_API_KEY || process.env.QA_ENABLED !== "1")) return { status: "skipped", score: null, flags: [] };
   try {
-    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-    const generatedUri = await toDataUri(generatedImage);
-    const referenceUri = await toDataUri(referenceImage);
-    if (!generatedUri) return { score: 0.5, pass: true, flags: ["QA_NO_IMAGE"] };
-
-    const content = [
-      { type: "text", text: QA_PROMPT },
-      { type: "image_url", image_url: { url: generatedUri, detail: "low" } },
-    ];
-    if (referenceUri) {
-      content.push({ type: "text", text: "Reference garment image:" });
-      content.push({ type: "image_url", image_url: { url: referenceUri, detail: "low" } });
-    }
-
-    const response = await client.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content }],
-      response_format: { type: "json_object" },
-      max_tokens: 200,
+    const api = client || new OpenAI({ apiKey: process.env.OPENAI_API_KEY, maxRetries: 0, timeout: 45_000 });
+    const response = await api.chat.completions.create({
+      model: "gpt-4o-mini", max_tokens: 800, response_format: { type: "json_object" },
+      messages: [{ role: "user", content: [
+        { type: "text", text: 'Compare the generated fashion image with the reference garment. Check anatomy, garment silhouette, logos, patterns and color. Return only JSON: {"score": number from 0 to 1, "flags": array containing only BODY_DISTORTION, GARMENT_MISMATCH, LOGO_MISSING, COLOR_SHIFT, FACE_DISTORTION as applicable, "evidence": specific visual reasons}. Do not assume details which are not visible.' },
+        { type: "image_url", image_url: { url: toDataUri(generatedImage), detail: "high" } },
+        { type: "text", text: "Reference garment:" },
+        { type: "image_url", image_url: { url: toDataUri(referenceImage), detail: "high" } },
+      ] }],
     });
-
-    const result = JSON.parse(response.choices[0].message.content);
-    const score = typeof result.score === "number" ? result.score : 0.5;
-    return {
-      score,
-      pass: result.pass !== undefined ? Boolean(result.pass) : score >= 0.7,
-      flags: Array.isArray(result.flags) ? result.flags : [],
-    };
-  } catch (error) {
-    console.error("[QA] Error:", error.message);
-    // QA 失败不应阻塞生图流程，默认通过
-    return { score: null, pass: true, flags: ["QA_ERROR"] };
-  }
+    const report = qualityReportSchema.parse(JSON.parse(response.choices[0].message.content));
+    return { status: report.score >= 0.7 && !report.flags.length ? "passed" : "needs_review", ...report };
+  } catch { return { status: "error", score: null, flags: [], errorCode: "QA_SERVICE_ERROR" }; }
 }

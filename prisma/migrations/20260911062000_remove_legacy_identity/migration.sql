@@ -1,0 +1,4 @@
+ALTER TABLE "User" DROP COLUMN "customApiKey";
+ALTER TABLE "User" ALTER COLUMN "credits" SET DEFAULT 0;
+ALTER TABLE "TryOn" ALTER COLUMN "status" SET DEFAULT 'queued';
+ALTER TABLE "BatchJob" ALTER COLUMN "status" SET DEFAULT 'queued';

@@ -1,62 +1,27 @@
-import { NextResponse } from "next/server";
-import { prisma } from "../../../../lib/prisma";
-import { requireAdmin } from "../../../../lib/admin-auth";
-import { invalidatePromptCache } from "../../../../lib/prompt-template-store";
+import { z } from "zod";
+import { prisma } from "../../../../lib/prisma.js";
+import { requireAdmin } from "../../../../lib/admin-auth.js";
+import { readJson, errorResponse, AppError } from "../../../../lib/http.js";
+import { invalidatePromptCache } from "../../../../lib/prompt-template-store.js";
 
-/**
- * Prompt 模板管理
- * GET   /api/admin/prompts          → 列表
- * POST  /api/admin/prompts          → 新增 { name, category, template }
- * PATCH /api/admin/prompts          → 更新 { id, name?, template?, isActive? }（更新后清缓存，立即生效）
- */
-export async function GET(req) {
-  const auth = await requireAdmin(req);
-  if (auth.response) return auth.response;
-
-  const templates = await prisma.promptTemplate.findMany({
-    orderBy: [{ isActive: "desc" }, { category: "asc" }],
-  });
-  return NextResponse.json(templates);
+export async function GET(request) {
+  try { const auth = await requireAdmin(request); if (auth.response) return auth.response; return Response.json(await prisma.promptTemplate.findMany({ orderBy: [{ isActive: "desc" }, { category: "asc" }] })); }
+  catch (error) { return errorResponse(error); }
 }
-
-export async function POST(req) {
-  const auth = await requireAdmin(req);
-  if (auth.response) return auth.response;
-
+const schema = z.object({ id: z.string().max(128).optional(), name: z.string().min(1).max(100).optional(), category: z.enum(["top", "bottom", "dress", "outerwear", "swimwear"]).optional(), template: z.string().min(1).max(8000).optional(), isActive: z.boolean().optional() }).strict();
+async function write(request, create) {
   try {
-    const { name, category, template } = await req.json();
-    if (!name || !category || !template) {
-      return new NextResponse("name, category, template required", { status: 400 });
-    }
-    const created = await prisma.promptTemplate.create({ data: { name, category, template } });
-    invalidatePromptCache();
-    return NextResponse.json(created);
-  } catch (error) {
-    console.error("[ADMIN_PROMPTS_POST]", error);
-    return new NextResponse("Internal Error", { status: 500 });
-  }
-}
-
-export async function PATCH(req) {
-  const auth = await requireAdmin(req);
-  if (auth.response) return auth.response;
-
-  try {
-    const { id, name, template, isActive } = await req.json();
-    if (!id) return new NextResponse("Missing id", { status: 400 });
-
-    const updated = await prisma.promptTemplate.update({
-      where: { id },
-      data: {
-        ...(name !== undefined && { name }),
-        ...(template !== undefined && { template }),
-        ...(isActive !== undefined && { isActive }),
-      },
+    const auth = await requireAdmin(request); if (auth.response) return auth.response;
+    const { id, ...data } = await readJson(request, schema);
+    if (create ? !data.name || !data.category || !data.template : !id) throw new AppError("INVALID_INPUT");
+    const row = await prisma.$transaction(async tx => {
+      const before = create ? null : await tx.promptTemplate.findUnique({ where: { id } });
+      const updated = create ? await tx.promptTemplate.create({ data }) : await tx.promptTemplate.update({ where: { id }, data });
+      await tx.adminAuditLog.create({ data: { adminId: auth.user.id, action: create ? "CREATE_TEMPLATE" : "UPDATE_TEMPLATE", detail: JSON.stringify({ id: updated.id, beforeVersion: before?.updatedAt, fields: Object.keys(data) }) } });
+      return updated;
     });
-    invalidatePromptCache(); // 立即生效
-    return NextResponse.json(updated);
-  } catch (error) {
-    console.error("[ADMIN_PROMPTS_PATCH]", error);
-    return new NextResponse("Internal Error", { status: 500 });
-  }
+    invalidatePromptCache(); return Response.json(row);
+  } catch (error) { return errorResponse(error); }
 }
+export const POST = request => write(request, true);
+export const PATCH = request => write(request, false);

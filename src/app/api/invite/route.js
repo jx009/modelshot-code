@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { buildAuthOptions } from "@/lib/auth";
 import { prisma } from "../../../lib/prisma";
-import { ensureInviteCode, getAgentSummary } from "../../../lib/invite-service";
+import { ensureInviteCode, getAgentSummary, commissionView } from "../../../lib/invite-service";
 
 /**
  * 邀请中心（agent 及以上角色可见）
@@ -37,11 +37,11 @@ export async function GET(req) {
       orderBy: { createdAt: "desc" },
       take: 50,
       select: {
-        id: true, orderAmount: true, commissionRate: true, commissionAmount: true,
+        id: true, orderAmountMinor: true, rateBps: true, amountMinor: true, reversedMinor: true, currency: true,
         status: true, settledAt: true, createdAt: true,
       },
     });
-    return NextResponse.json({ inviteCode, commissions });
+    return NextResponse.json({ inviteCode, commissions: commissions.map(commissionView) });
   }
 
   // 概览：业绩 + 邀请明细
@@ -53,7 +53,7 @@ export async function GET(req) {
       take: 50,
       select: {
         id: true, name: true, email: true, invitedAt: true,
-        orders: { where: { status: "paid" }, select: { amount: true } },
+        orders: { where: { status: "paid", currency: "usd" }, select: { amountMinor: true } },
       },
     }),
   ]);
@@ -67,7 +67,7 @@ export async function GET(req) {
       emailMasked: i.email ? i.email.replace(/^(.).*(@.*)$/, "$1***$2") : "",
       invitedAt: i.invitedAt,
       hasPaid: i.orders.length > 0,
-      paidAmount: Number(i.orders.reduce((s, o) => s + o.amount, 0).toFixed(2)),
+      paidAmount: i.orders.reduce((s, o) => s + o.amountMinor, 0) / 100,
     })),
   });
 }

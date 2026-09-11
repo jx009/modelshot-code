@@ -37,11 +37,14 @@ model Session {
 model User {
   id            String    @id @default(cuid())
   name          String?
+  createdAt DateTime @default(now())
   email         String?   @unique
   emailVerified DateTime?
   image         String?
-  credits       Int       @default(10)
-  customApiKey  String?   @db.Text
+  credits       Int       @default(0)
+  sessionVersion Int     @default(0)
+  credentials ProviderCredential[]
+  assets Asset[]
   role          String    @default("user")       // user | agent | admin | root（四级，层级校验见 lib/admin-auth）
   status        String    @default("active")     // active | banned（封禁：登录拒绝+session失效，数据保留可解封）
   plan          String    @default("free")       // free | standard | pro
@@ -61,6 +64,8 @@ model User {
   orders        Order[]
   batchJobs     BatchJob[]
   transactions  CreditTransaction[]
+  cycles BillingCycle[]
+  quotes GenerationQuote[]
 }
 
 // 扣费流水 — 「钱」的唯一真相源，每次消费/退款/充值/赠送都有独立记录
@@ -78,9 +83,11 @@ model InviteCommission {
   inviterId        String                     // 邀请人（流量手）
   inviteeId        String                     // 被邀请人
   orderId          String    @unique          // 关联订单（一单一佣金，防重复记）
-  orderAmount      Float                      // 订单金额快照（对账用）
-  commissionRate   Float                      // 佣金比例快照（记佣金时定格，改比例不影响历史）
-  commissionAmount Float                      // = orderAmount × commissionRate
+  orderAmountMinor Int
+  rateBps          Int
+  amountMinor      Int
+  currency         String @default("usd")
+  reversedMinor    Int @default(0)
   status           String    @default("pending") // pending | settled | cancelled
   settledAt        DateTime?
   createdAt        DateTime  @default(now())
@@ -95,8 +102,10 @@ model AgentCommissionSettlementLog {
   agentId                String                     // 流量手 ID
   agentEmail             String                     // 邮箱快照
   agentName              String?                    // 昵称快照
-  amount                 Float                      // 本次结算金额
-  pendingCommissionAfter Float                      // 结算后待结算余额
+  amountMinor            Int
+  pendingMinorAfter      Int
+  currency               String @default("usd")
+  businessKey            String? @unique
   settledRecordCount     Int      @default(0)       // 本次影响记录数
   remark                 String?                    // 备注
   operatorId             String                     // 操作管理员
@@ -111,7 +120,14 @@ model Order {
   userId          String
   type            String                     // subscription | credits
   planId          String                     // sub_standard / pro / basic / ...（产品 SKU）
-  amount          Float                      // 金额（USD）
+  amountMinor     Int
+  refundedMinor   Int @default(0)
+  reclaimedCredits Int @default(0)
+  manualReview    Boolean @default(false)
+  idempotencyKey  String?
+  stripePaymentIntentId String? @unique
+  stripeInvoiceId String? @unique
+  receiptUrl String?
   currency        String    @default("usd")
   status          String    @default("pending")  // pending | paid | failed | refunded
   stripeSessionId String?  @unique           // checkout session（对账依据）
@@ -121,10 +137,84 @@ model Order {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  User            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  User            User      @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   @@index([userId, createdAt])
   @@index([status])
+  @@unique([userId, idempotencyKey])
+}
+
+model Subscription {
+  id String @id
+  userId String
+  customerId String
+  planId String
+  status String
+  periodStart DateTime
+  periodEnd DateTime
+  cancelAtPeriodEnd Boolean @default(false)
+  scheduledPlanId String?
+  latestEventAt Int @default(0)
+  updatedAt DateTime @updatedAt
+  @@index([userId, status])
+}
+
+model PaymentEvent {
+  id String @id
+  type String
+  payload Json
+  state String @default("pending")
+  attempts Int @default(0)
+  errorCode String?
+  receivedAt DateTime @default(now())
+  processedAt DateTime?
+  @@index([state, receivedAt])
+}
+
+model RefundRequest {
+  id String @id @default(cuid())
+  orderId String
+  amountMinor Int
+  status String @default("pending")
+  stripeRefundId String?
+  errorCode String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([orderId, status])
+}
+
+model SubscriptionChange {
+  id String @id @default(cuid())
+  userId String
+  subscriptionId String
+  idempotencyKey String
+  digest String
+  input Json
+  state String @default("pending")
+  errorCode String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([userId, idempotencyKey])
+  @@index([subscriptionId, state])
+}
+
+model ServiceHeartbeat {
+  id String @id
+  updatedAt DateTime @updatedAt
+  details Json?
+}
+
+model CommissionAdjustment {
+  id String @id @default(cuid())
+  inviterId String
+  commissionId String
+  businessKey String @unique
+  amountMinor Int
+  currency String
+  reason String
+  settledAt DateTime?
+  createdAt DateTime @default(now())
+  @@index([inviterId, settledAt])
 }
 
 // 管理操作审计（调积分/改角色/封禁/改通道key 全留痕；detail 含前后值，密钥内容除外）
@@ -132,6 +222,8 @@ model AdminAuditLog {
   id           String   @id @default(cuid())
   adminId      String
   action       String   // GRANT_CREDITS / SET_ROLE / BAN_USER / UNBAN_USER / UPDATE_PROVIDER_KEY / ...
+  businessKey String? @unique
+  digest String?
   targetUserId String?
   detail       String?  @db.Text  // JSON：变更前后值
   createdAt    DateTime @default(now())
@@ -142,13 +234,202 @@ model AdminAuditLog {
 model VerificationCode {
   id        String   @id @default(cuid())
   email     String
-  code      String
+  digest    String
+  keyVersion String @default("1")
   purpose   String   // REGISTER | RESET_PASSWORD
   attempts  Int      @default(0)
   expiresAt DateTime
+  consumedAt DateTime?
   createdAt DateTime @default(now())
 
-  @@index([email, purpose])
+  @@unique([email, purpose])
+}
+
+model RateLimit {
+  key String @id
+  hits Int @default(1)
+  expiresAt DateTime
+  @@index([expiresAt])
+}
+
+model ProviderCredential {
+  id String @id @default(cuid())
+  userId String
+  provider String
+  ciphertext String @db.Text
+  keyVersion String
+  mask String
+  status String @default("active")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([userId, provider])
+}
+
+model Asset {
+  id String @id @default(cuid())
+  userId String
+  objectKey String @unique
+  kind String
+  contentType String
+  width Int
+  height Int
+  bytes Int
+  checksum String
+  status String @default("active")
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  references AssetReference[]
+  @@index([userId, createdAt])
+}
+
+model AssetReference {
+  id String @id @default(cuid())
+  assetId String
+  entityId String
+  kind String
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  @@unique([assetId, entityId, kind])
+}
+
+model BillingCycle {
+  id String @id
+  userId String
+  plan String
+  startsAt DateTime
+  endsAt DateTime
+  quota Int
+  used Int @default(0)
+  reserved Int @default(0)
+  status String @default("active")
+  subscriptionId String?
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  reservations CreditReservation[]
+  @@index([userId, startsAt, endsAt])
+}
+
+model GenerationQuote {
+  id String @id @default(cuid())
+  userId String
+  digest String
+  snapshot Json
+  pricing Json
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  batch BatchJob?
+  @@index([userId, createdAt])
+}
+
+model CreditReservation {
+  id String @id @default(cuid())
+  userId String
+  tryOnId String @unique
+  channel String
+  amount Int
+  cycleId String?
+  state String @default("held")
+  sourceTransactionId String? @unique
+  allocations Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  cycle BillingCycle? @relation(fields: [cycleId], references: [id], onDelete: Restrict)
+  output TryOn @relation(fields: [tryOnId], references: [id], onDelete: Restrict)
+  @@index([userId, state])
+}
+
+model CreditLot {
+  id String @id @default(cuid())
+  userId String
+  orderId String? @unique
+  remaining Int
+  reserved Int @default(0)
+  frozen Boolean @default(false)
+  createdAt DateTime @default(now())
+  @@index([userId, createdAt])
+}
+
+model GenerationAttempt {
+  id String @id @default(cuid())
+  tryOnId String
+  fence Int
+  provider String
+  requestId String?
+  state String @default("claimed")
+  errorCode String?
+  startedAt DateTime @default(now())
+  endedAt DateTime?
+  output TryOn @relation(fields: [tryOnId], references: [id], onDelete: Restrict)
+  @@unique([tryOnId, fence])
+}
+
+model OutboxEvent {
+  id String @id @default(cuid())
+  businessKey String @unique
+  kind String
+  entityId String
+  availableAt DateTime @default(now())
+  deliveredAt DateTime?
+  attempts Int @default(0)
+  createdAt DateTime @default(now())
+  @@index([deliveredAt, availableAt])
+}
+
+model ProcessingStep {
+  id String @id @default(cuid())
+  entityId String
+  kind String
+  state String @default("pending")
+  fence Int @default(0)
+  leaseUntil DateTime?
+  report Json?
+  errorCode String?
+  updatedAt DateTime @updatedAt
+  @@unique([entityId, kind])
+  @@index([state, leaseUntil])
+}
+
+model Project {
+  id String @id @default(cuid())
+  userId String
+  name String
+  sku String @default("")
+  archivedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([userId, archivedAt])
+}
+
+model Draft {
+  id String @id @default(cuid())
+  userId String
+  projectId String?
+  name String
+  config Json
+  version Int @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([userId, updatedAt])
+}
+
+model ExportJob {
+  id String @id @default(cuid())
+  userId String
+  idempotencyKey String
+  digest String
+  selection Json
+  status String @default("queued")
+  objectKey String?
+  bytes Int?
+  completedCount Int @default(0)
+  failures Json?
+  expiresAt DateTime?
+  cancelRequestedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([userId, idempotencyKey])
+  @@index([userId, createdAt])
 }
 
 model CreditTransaction {
@@ -159,6 +440,9 @@ model CreditTransaction {
   amount    Int      // 正数入账，负数出账
   tryOnId   String?  // 关联生成记录（充值/赠送为空）
   reason    String?
+  businessKey String? @unique
+  sourceTransactionId String?
+  cycleId String?
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -169,13 +453,33 @@ model CreditTransaction {
 model TryOn {
   id            String    @id @default(cuid())
   userId        String
+  projectId String?
+  sku String @default("")
+  snapshot Json?
+  originalAssetId String?
+  deliveryAssetId String?
+  qaStatus String @default("pending")
+  reviewDecision String?
+  exportStatus String @default("pending")
+  metadataStatus String @default("pending")
+  errorCode String?
+  fence Int @default(0)
+  leaseUntil DateTime?
+  heartbeatAt DateTime?
+  nextAttemptAt DateTime?
+  archivedAt DateTime?
+  reconcileUntil DateTime?
+  cancelRequestedAt DateTime?
+  retryOfId String?
+  reservation CreditReservation?
+  attempts GenerationAttempt[]
   personImage   String    @db.Text
   clothesImage  String    @db.Text
   resultImage   String    @default("") @db.Text
   prompt        String    @db.Text
   aspectRatio   String    @default("auto")
   requestId     String    @unique
-  status        String    @default("processing")  // processing | completed | failed | needs_review
+  status        String    @default("queued")
   creditCost    Int       @default(18)
   billingType   String?                            // credits | subscription | custom_key（计费方式）
   modelPresetId String?
@@ -197,6 +501,7 @@ model TryOn {
   batchJob      BatchJob? @relation(fields: [batchJobId], references: [id])
 
   @@index([userId, createTime])
+  @@index([userId, projectId, sku])
   @@index([status])
 }
 
@@ -245,16 +550,20 @@ model ModelProvider {
 model BatchJob {
   id             String   @id @default(cuid())
   userId         String
+  idempotencyKey String?
+  quoteId String? @unique
+  quote GenerationQuote? @relation(fields: [quoteId], references: [id], onDelete: Restrict)
   name           String?
   totalCount     Int
   completedCount Int      @default(0)
   failedCount    Int      @default(0)
-  status         String   @default("pending")  // pending | processing | completed | failed
+  status         String   @default("queued")
   config         String?  @db.Text             // JSON: 统一的模特/场景/平台配置
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
   user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   tryons         TryOn[]
+  @@unique([userId, idempotencyKey])
 }
 
 // Prompt 模板

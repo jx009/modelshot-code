@@ -1,0 +1,1 @@
+ALTER TABLE "CreditLot" ADD COLUMN "frozen" BOOLEAN NOT NULL DEFAULT false;

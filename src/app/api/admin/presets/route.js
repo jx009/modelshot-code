@@ -1,128 +1,42 @@
-import { NextResponse } from "next/server";
-import { prisma } from "../../../../lib/prisma";
-import { requireAdmin } from "../../../../lib/admin-auth";
+import { z } from "zod";
+import { prisma } from "../../../../lib/prisma.js";
+import { requireAdmin } from "../../../../lib/admin-auth.js";
+import { readJson, errorResponse, sameOrigin, AppError } from "../../../../lib/http.js";
+import { readPreset } from "../../../../lib/domain/assets/service.js";
 
-/**
- * 预设管理（模特 + 场景）
- * GET    /api/admin/presets?type=models|scenes  → 列表
- * POST   /api/admin/presets                    → 新增
- * PATCH  /api/admin/presets                    → 更新 { id, ...fields }
- * DELETE /api/admin/presets?id=xxx&type=xxx    → 删除
- */
-export async function GET(req) {
-  const auth = await requireAdmin(req);
-  if (auth.response) return auth.response;
-
-  const { searchParams } = new URL(req.url);
-  const type = searchParams.get("type") || "models";
-
-  if (type === "scenes") {
-    const scenes = await prisma.scenePreset.findMany({
-      orderBy: [{ isActive: "desc" }, { sortOrder: "asc" }],
-    });
-    return NextResponse.json(scenes);
-  }
-  const models = await prisma.modelPreset.findMany({
-    orderBy: [{ isActive: "desc" }, { sortOrder: "asc" }],
-  });
-  return NextResponse.json(models);
+const schema = z.object({ type: z.enum(["models", "scenes"]), id: z.string().max(128).optional(), name: z.string().min(1).max(100).optional(), nameEn: z.string().max(100).optional(), gender: z.string().max(30).optional(), ethnicity: z.string().max(50).optional(), bodyType: z.string().max(50).optional(), category: z.string().max(50).optional(), promptSnippet: z.string().max(4000).optional(), referenceImage: z.string().max(256).nullable().optional(), sortOrder: z.number().int().min(0).max(10000).optional(), isActive: z.boolean().optional() }).strict();
+export async function GET(request) {
+  try { const auth = await requireAdmin(request); if (auth.response) return auth.response; const model = new URL(request.url).searchParams.get("type") === "scenes" ? prisma.scenePreset : prisma.modelPreset; return Response.json(await model.findMany({ orderBy: [{ isActive: "desc" }, { sortOrder: "asc" }] })); }
+  catch (error) { return errorResponse(error); }
 }
-
-export async function POST(req) {
-  const auth = await requireAdmin(req);
-  if (auth.response) return auth.response;
-
+async function write(request, create) {
   try {
-    const body = await req.json();
-    const { type } = body;
-    if (!type) return new NextResponse("Missing type", { status: 400 });
-
-    if (type === "scenes") {
-      const { name, nameEn, category, promptSnippet, referenceImage, sortOrder } = body;
-      if (!name || !category) return new NextResponse("name and category required", { status: 400 });
-      const created = await prisma.scenePreset.create({
-        data: { name, nameEn: nameEn || name, category, promptSnippet: promptSnippet || "", referenceImage: referenceImage || null, sortOrder: sortOrder ?? 99 },
-      });
-      return NextResponse.json(created);
-    }
-
-    const { name, nameEn, gender, ethnicity, bodyType, referenceImage, sortOrder } = body;
-    if (!name || !gender || !ethnicity) return new NextResponse("name, gender, ethnicity required", { status: 400 });
-    const created = await prisma.modelPreset.create({
-      data: { name, nameEn: nameEn || name, gender, ethnicity, bodyType: bodyType || "standard", referenceImage: referenceImage || "", sortOrder: sortOrder ?? 99 },
+    const auth = await requireAdmin(request); if (auth.response) return auth.response;
+    const { type, id, ...input } = await readJson(request, schema);
+    if (!create && !id) throw new AppError("INVALID_INPUT");
+    const fields = type === "scenes" ? ["name", "nameEn", "category", "promptSnippet", "referenceImage", "sortOrder", "isActive"] : ["name", "nameEn", "gender", "ethnicity", "bodyType", "referenceImage", "sortOrder", "isActive"];
+    const data = Object.fromEntries(Object.entries(input).filter(([key]) => fields.includes(key)));
+    if (create && (!data.name || (type === "models" ? !data.gender || !data.ethnicity : !data.category))) throw new AppError("INVALID_INPUT");
+    const result = await prisma.$transaction(async tx => {
+      const model = type === "scenes" ? tx.scenePreset : tx.modelPreset;
+      const old = create ? null : await model.findUnique({ where: { id } });
+      const reference = data.referenceImage === undefined ? old?.referenceImage : data.referenceImage;
+      if ((data.isActive ?? old?.isActive ?? true) && (type === "models" || reference)) { if (!reference) throw new AppError("PRESET_IMAGE_REQUIRED"); await readPreset(reference); }
+      const row = create ? await model.create({ data }) : await model.update({ where: { id }, data });
+      await tx.adminAuditLog.create({ data: { adminId: auth.user.id, action: create ? "CREATE_PRESET" : "UPDATE_PRESET", detail: JSON.stringify({ id: row.id, type, fields: Object.keys(data), wasActive: old?.isActive }) } });
+      return row;
     });
-    return NextResponse.json(created);
-  } catch (error) {
-    console.error("[ADMIN_PRESETS_POST]", error);
-    return new NextResponse("Internal Error", { status: 500 });
-  }
+    return Response.json(result);
+  } catch (error) { return errorResponse(error); }
 }
-
-export async function PATCH(req) {
-  const auth = await requireAdmin(req);
-  if (auth.response) return auth.response;
-
+export const POST = request => write(request, true);
+export const PATCH = request => write(request, false);
+export async function DELETE(request) {
   try {
-    const body = await req.json();
-    const { id, type } = body;
-    if (!id || !type) return new NextResponse("Missing id or type", { status: 400 });
-
-    if (type === "scenes") {
-      const { name, nameEn, category, promptSnippet, referenceImage, isActive, sortOrder } = body;
-      const updated = await prisma.scenePreset.update({
-        where: { id },
-        data: {
-          ...(name !== undefined && { name }),
-          ...(nameEn !== undefined && { nameEn }),
-          ...(category !== undefined && { category }),
-          ...(promptSnippet !== undefined && { promptSnippet }),
-          ...(referenceImage !== undefined && { referenceImage }),
-          ...(isActive !== undefined && { isActive }),
-          ...(sortOrder !== undefined && { sortOrder }),
-        },
-      });
-      return NextResponse.json(updated);
-    }
-
-    const { name, nameEn, gender, ethnicity, bodyType, referenceImage, isActive, sortOrder } = body;
-    const updated = await prisma.modelPreset.update({
-      where: { id },
-      data: {
-        ...(name !== undefined && { name }),
-        ...(nameEn !== undefined && { nameEn }),
-        ...(gender !== undefined && { gender }),
-        ...(ethnicity !== undefined && { ethnicity }),
-        ...(bodyType !== undefined && { bodyType }),
-        ...(referenceImage !== undefined && { referenceImage }),
-        ...(isActive !== undefined && { isActive }),
-        ...(sortOrder !== undefined && { sortOrder }),
-      },
-    });
-    return NextResponse.json(updated);
-  } catch (error) {
-    console.error("[ADMIN_PRESETS_PATCH]", error);
-    return new NextResponse("Internal Error", { status: 500 });
-  }
-}
-
-export async function DELETE(req) {
-  const auth = await requireAdmin(req);
-  if (auth.response) return auth.response;
-
-  try {
-    const { searchParams } = new URL(req.url);
-    const id = searchParams.get("id");
-    const type = searchParams.get("type");
-    if (!id || !type) return new NextResponse("Missing id or type", { status: 400 });
-
-    if (type === "scenes") {
-      await prisma.scenePreset.delete({ where: { id } });
-    } else {
-      await prisma.modelPreset.delete({ where: { id } });
-    }
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error("[ADMIN_PRESETS_DELETE]", error);
-    return new NextResponse("Internal Error", { status: 500 });
-  }
+    sameOrigin(request); const auth = await requireAdmin(request); if (auth.response) return auth.response;
+    const query = new URL(request.url).searchParams, id = query.get("id"), type = query.get("type");
+    if (!id || !["models", "scenes"].includes(type)) throw new AppError("INVALID_INPUT");
+    await prisma.$transaction(async tx => { await (type === "scenes" ? tx.scenePreset : tx.modelPreset).update({ where: { id }, data: { isActive: false } }); await tx.adminAuditLog.create({ data: { adminId: auth.user.id, action: "ARCHIVE_PRESET", detail: JSON.stringify({ id, type }) } }); });
+    return Response.json({ success: true });
+  } catch (error) { return errorResponse(error); }
 }

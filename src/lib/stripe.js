@@ -1,5 +1,5 @@
 import Stripe from "stripe";
-import { getSiteConfig } from "./site-config";
+import { getSiteConfig } from "./site-config.js";
 
 /**
  * Stripe 懒初始化（key 来源：DB SystemConfig > env；60s 缓存随 site-config）
@@ -9,9 +9,10 @@ let instance = null;
 let instanceKey = null;
 
 export async function getStripe() {
-  const apiKey = (await getSiteConfig("stripe_secret_key")) || "sk_test_placeholder_key_for_build_purposes";
+  const apiKey = await getSiteConfig("stripe_secret_key");
+  if (!apiKey) throw new Error("Stripe is not configured");
   if (!instance || instanceKey !== apiKey) {
-    instance = new Stripe(apiKey, { apiVersion: "2023-10-16" });
+    instance = new Stripe(apiKey, { apiVersion: "2023-10-16", maxNetworkRetries: 0, timeout: 15_000 });
     instanceKey = apiKey;
   }
   return instance;

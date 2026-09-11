@@ -1,7 +1,10 @@
+import { z } from "zod";
+import { AppError, readJson, errorResponse } from "../../../../lib/http.js";
+import { auditedOperation } from "../../../../lib/domain/identity/admin-operation.js";
 import { NextResponse } from "next/server";
 import { prisma } from "../../../../lib/prisma";
-import { requireAdmin, auditLog, ROLE_LEVEL } from "../../../../lib/admin-auth";
-import { settleCommission } from "../../../../lib/invite-service";
+import { requireAdmin } from "../../../../lib/admin-auth";
+import { settleCommission, commissionView } from "../../../../lib/invite-service";
 
 /**
  * 分销佣金管理（admin 及以上）
@@ -32,7 +35,7 @@ export async function GET(req) {
           take: 20,
         }),
       ]);
-      return NextResponse.json({ commissions, logs });
+      return NextResponse.json({ commissions: commissions.map(commissionView), logs: logs.map(row => ({ ...row, amount: row.amountMinor / 100, pendingCommissionAfter: row.pendingMinorAfter / 100 })) });
     }
 
     // 列表：正式流量手（role=agent）或有邀请下线的用户（inviterId 标量聚合，无 self-relation）
@@ -52,10 +55,11 @@ export async function GET(req) {
     const commissionAgg = await prisma.inviteCommission.groupBy({
       by: ["inviterId", "status"],
       where: { inviterId: { in: agentIds } },
-      _sum: { commissionAmount: true },
+      _sum: { amountMinor: true, reversedMinor: true },
       _count: { _all: true },
     });
 
+    const adjustments = await prisma.commissionAdjustment.groupBy({ by: ["inviterId"], where: { inviterId: { in: agentIds }, settledAt: null }, _sum: { amountMinor: true } });
     const agents = agentsRaw.map(a => {
       const rows = commissionAgg.filter(c => c.inviterId === a.id);
       const get = (status) => rows.find(r => r.status === status);
@@ -67,8 +71,8 @@ export async function GET(req) {
         agentCommissionRate: a.agentCommissionRate,
         agentNote: a.agentNote,
         inviteeCount: inviteeCountMap[a.id] || 0,
-        pendingCommission: Number((get("pending")?._sum.commissionAmount || 0).toFixed(2)),
-        settledCommission: Number((get("settled")?._sum.commissionAmount || 0).toFixed(2)),
+        pendingCommission: ((get("pending")?._sum.amountMinor || 0) - (get("pending")?._sum.reversedMinor || 0) + (adjustments.find(row => row.inviterId === a.id)?._sum.amountMinor || 0)) / 100,
+        settledCommission: (get("settled")?._sum.amountMinor || 0) / 100,
         cancelledCount: get("cancelled")?._count._all || 0,
       };
     }); // role=agent 已过滤
@@ -81,29 +85,18 @@ export async function GET(req) {
 }
 
 export async function PATCH(req) {
-  const auth = await requireAdmin(req);
-  if (auth.response) return auth.response;
-
   try {
-    const { agentId, agentCommissionRate, agentNote } = await req.json();
-    if (!agentId) return new NextResponse("Missing agentId", { status: 400 });
-
-    // 全局成本结构变更（个人比例）放 admin；比例范围 0-1
-    if (agentCommissionRate !== undefined) {
-      const r = parseFloat(agentCommissionRate);
-      if (isNaN(r) || r < 0 || r > 1) return new NextResponse("Invalid rate (0-1)", { status: 400 });
-      await prisma.user.update({ where: { id: agentId }, data: { agentCommissionRate: r } });
-      await auditLog(auth.user.id, "SET_AGENT_RATE", agentId, { rate: r });
-    }
-    if (agentNote !== undefined) {
-      await prisma.user.update({ where: { id: agentId }, data: { agentNote: agentNote || null } });
-      await auditLog(auth.user.id, "SET_AGENT_NOTE", agentId, {});
-    }
-    return NextResponse.json({ ok: true });
-  } catch (error) {
-    console.error("[ADMIN_COMMISSIONS_PATCH]", error);
-    return new NextResponse("Internal Error", { status: 500 });
-  }
+    const auth = await requireAdmin(req);
+    if (auth.response) return auth.response;
+    const input = await readJson(req, z.object({ agentId: z.string().min(1).max(128), agentCommissionRate: z.number().min(0).max(1).optional(), agentNote: z.string().max(500).optional(), reason: z.string().min(3).max(500) }).strict());
+    return Response.json(await auditedOperation(auth.user.id, req.headers.get("idempotency-key"), "UPDATE_AGENT", input, async tx => {
+      await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${input.agentId} FOR UPDATE`;
+      const target = await tx.user.findUnique({ where: { id: input.agentId } });
+      if (!target || !["user", "agent"].includes(target.role)) throw new AppError("ADMIN_SCOPE_DENIED", 403);
+      await tx.user.update({ where: { id: target.id }, data: { agentCommissionRate: input.agentCommissionRate, agentNote: input.agentNote } });
+      return { audit: { targetId: target.id, before: { rate: target.agentCommissionRate, note: target.agentNote }, after: input } };
+    }));
+  } catch (error) { return errorResponse(error); }
 }
 
 export async function POST(req) {
@@ -114,8 +107,7 @@ export async function POST(req) {
     const { agentId, remark } = await req.json();
     if (!agentId) return new NextResponse("Missing agentId", { status: 400 });
 
-    const result = await settleCommission(agentId, auth.user.id, remark);
-    await auditLog(auth.user.id, "SETTLE_COMMISSION", agentId, { amount: result.amount, count: result.count, remark });
+    const result = await settleCommission(agentId, auth.user.id, remark, req.headers.get("idempotency-key") || undefined);
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {
     console.error("[ADMIN_COMMISSIONS_SETTLE]", error);

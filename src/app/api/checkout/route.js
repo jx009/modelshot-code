@@ -1,28 +1,14 @@
-import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { buildAuthOptions } from "@/lib/auth";
-import { BillingService } from "@/lib/services/billing";
+import { z } from "zod";
+import { requireUser } from "../../../lib/require-user.js";
+import { AppError, errorResponse, readJson } from "../../../lib/http.js";
+import { getStripe } from "../../../lib/stripe.js";
+import { startCheckout } from "../../../lib/domain/billing/payments.js";
 
-export async function POST(req) {
+export async function POST(request) {
   try {
-    const session = await getServerSession(await buildAuthOptions());
-    if (!session || !session.user) {
-      return NextResponse.json({ error: "Unauthorized. Please sign in." }, { status: 401 });
-    }
-
-    const { planId } = await req.json();
-    if (!planId) {
-      return NextResponse.json({ error: "Missing planId parameter" }, { status: 400 });
-    }
-
-    // 订阅套餐（sub_ 前缀）走 Subscription 模式
-    const checkoutUrl = planId.startsWith("sub_")
-      ? await BillingService.createSubscriptionCheckout(session.user.id, planId)
-      : await BillingService.createCheckoutSession(session.user.id, planId);
-
-    return NextResponse.json({ url: checkoutUrl });
-  } catch (error) {
-    console.error("Checkout route error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+    if (process.env.PAYMENTS_ENABLED !== "1") throw new AppError("CHECKOUT_UNAVAILABLE", 503);
+    const user = await requireUser();
+    const { planId } = await readJson(request, z.object({ planId: z.string().max(40) }).strict());
+    return Response.json(await startCheckout(user.id, planId, request.headers.get("idempotency-key"), await getStripe()));
+  } catch (error) { return errorResponse(error); }
 }

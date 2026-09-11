@@ -27,15 +27,15 @@ export async function GET(req) {
       providerRaw, yesterdayCost, todayCost,
     ] = await Promise.all([
       // 本月收入（paid）
-      prisma.order.aggregate({ where: { status: "paid", paidAt: { gte: monthStart } }, _sum: { amount: true }, _count: true }),
+      prisma.order.aggregate({ where: { currency: "usd", paidAt: { gte: monthStart } }, _sum: { amountMinor: true, refundedMinor: true }, _count: true }),
       // 本月成本
       prisma.tryOn.aggregate({ where: { createTime: { gte: monthStart } }, _sum: { costUsd: true } }),
       // 本月生成量（计费口径：完成+待复查）
-      prisma.tryOn.count({ where: { createTime: { gte: monthStart }, status: { in: ["completed", "needs_review"] } } }),
+      prisma.tryOn.count({ where: { createTime: { gte: monthStart }, status: { in: ["succeeded"] } } }),
       // 本月订单数
-      prisma.order.count({ where: { status: "paid", paidAt: { gte: monthStart } } }),
+      prisma.order.count({ where: { currency: "usd", paidAt: { gte: monthStart } } }),
       // 30 天订单（按天收入）
-      prisma.order.findMany({ where: { status: "paid", paidAt: { gte: day30Start } }, select: { paidAt: true, amount: true } }),
+      prisma.order.findMany({ where: { currency: "usd", paidAt: { gte: day30Start } }, select: { paidAt: true, amountMinor: true, refundedMinor: true } }),
       // 30 天生成（按天成本）
       prisma.tryOn.findMany({ where: { createTime: { gte: day30Start } }, select: { createTime: true, costUsd: true, status: true, provider: true } }),
       // 通道对比（30 天）
@@ -51,7 +51,7 @@ export async function GET(req) {
     ]);
 
     // ── 月指标 ──
-    const revenue = monthRevenue._sum.amount || 0;
+    const revenue = ((monthRevenue._sum.amountMinor || 0) - (monthRevenue._sum.refundedMinor || 0)) / 100;
     const cost = Number((monthCost._sum.costUsd || 0).toFixed(4));
     const margin = revenue > 0 ? Number((((revenue - cost) / revenue) * 100).toFixed(1)) : null;
     // 单张口径：成本按实际生成张；收入按付费成功张（估算：收入/订单平均张数不可知，用 收入/生成张 为上界口径）
@@ -63,7 +63,7 @@ export async function GET(req) {
     for (let i = 0; i < 30; i++) {
       const d = new Date(day30Start.getTime() + i * 24 * 3600 * 1000);
       const next = new Date(d.getTime() + 24 * 3600 * 1000);
-      const dayRevenue = trendOrders.filter(o => o.paidAt >= d && o.paidAt < next).reduce((s, o) => s + o.amount, 0);
+      const dayRevenue = trendOrders.filter(o => o.paidAt >= d && o.paidAt < next).reduce((s, o) => s + (o.amountMinor - o.refundedMinor) / 100, 0);
       const dayRows = trendTryons.filter(t => t.createTime >= d && t.createTime < next);
       const dayCost = Number(dayRows.reduce((s, t) => s + (t.costUsd || 0), 0).toFixed(4));
       trend.push({

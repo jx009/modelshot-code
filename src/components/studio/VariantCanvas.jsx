@@ -1,4 +1,5 @@
 "use client";
+import AssetImage from "@/components/ui/AssetImage";
 
 import { useState } from "react";
 import { Camera, Download, Maximize2, Columns2, LoaderCircle, TriangleAlert, Grid2X2 } from "lucide-react";
@@ -14,8 +15,8 @@ export default function VariantCanvas({ variants, selectedId, onSelect, onDownlo
   const result = selected?.resultImage;
   const original = selected?.clothesImage || garmentImage;
   let qaKey = "unchecked";
-  if (selected?.status === "needs_review") qaKey = "review";
-  else if (selected?.status === "completed" && selected?.qaScore != null) qaKey = "passed";
+  if (selected?.qaStatus === "needs_review") qaKey = "review";
+  else if (selected?.qaStatus === "passed") qaKey = "passed";
   return <section className="canvas-panel" aria-label={t("output")}>
     <div className="canvas-toolbar"><div className="flex items-center gap-2 min-w-0"><span className="status-dot" /><span>{t("output")}</span>{variants.length > 0 && <span className="count-label">{variants.length}</span>}</div>
       <div className="flex items-center gap-1">
@@ -26,9 +27,9 @@ export default function VariantCanvas({ variants, selectedId, onSelect, onDownlo
       </div>
     </div>
     <div className={`canvas-stage ${grid ? "canvas-grid" : ""}`}>
-      {grid && variants.length > 0 ? variants.map(v => <button key={v.id} className={`variant-tile ${v.id === selectedId ? "selected" : ""}`} onClick={() => { onSelect(v.id); setGrid(false); }}><img src={v.resultImage || v.clothesImage} alt={t(v.resultImage ? "result" : "preview")} /><span className="image-caption">{t(v.status === "failed" ? "failed" : v.resultImage ? "ready" : "processing")}</span></button>) : (result || original) ? <div className={`canvas-images ${compare && result ? "comparing" : ""}`}>
-        {compare && result && <figure><img src={original} alt={t("preview")} /><figcaption>{t("preview")}</figcaption></figure>}
-        <figure><img src={result || original} alt={t(result ? "result" : "preview")} /><figcaption>{t(result ? "result" : "preview")}{selected?.aspectRatio && <span>{selected.aspectRatio}</span>}</figcaption>
+      {grid && variants.length > 0 ? variants.map(v => <button key={v.id} className={`variant-tile ${v.id === selectedId ? "selected" : ""}`} onClick={() => { onSelect(v.id); setGrid(false); }}><AssetImage src={v.resultImage || v.clothesImage} alt={t(v.resultImage ? "result" : "preview")} /><span className="image-caption">{t(v.status === "failed" ? "failed" : v.resultImage ? "ready" : "processing")}</span></button>) : (result || original) ? <div className={`canvas-images ${compare && result ? "comparing" : ""}`}>
+        {compare && result && <figure><AssetImage src={original} alt={t("preview")} /><figcaption>{t("preview")}</figcaption></figure>}
+        <figure><AssetImage src={result || original} alt={t(result ? "result" : "preview")} /><figcaption>{t(result ? "result" : "preview")}{selected?.aspectRatio && <span>{selected.aspectRatio}</span>}</figcaption>
           {busy && !result && <span className="canvas-progress"><LoaderCircle size={17} className="animate-spin" />{t("processing")}</span>}
           {selected?.status === "failed" && <span className="canvas-progress text-danger"><TriangleAlert size={17} />{t("failed")}</span>}
           {result && <span className={`canvas-quality ${qaKey}`}>{qaKey === "review" && <TriangleAlert size={14} />}{t(qaKey)}</span>}

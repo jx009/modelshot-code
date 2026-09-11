@@ -68,7 +68,7 @@ for f in sorted(js_files):
         ("滚动容器带宽度约束（max-w 与 overflow-y-auto 同元素）", SCROLL_WITH_WIDTH),
     ]
     # 语义容器规则仅对用户侧页面生效（admin 内部工具豁免）
-    if "/admin/" not in f:
+    if "/admin/" not in f.replace("\\", "/"):
         rules.append(("非语义容器宽度（页面级只允许 max-w-prose/content/wide）", NON_SEMANTIC_CONTAINER))
     for rule, pat in rules:
         hits = pat.findall(s)

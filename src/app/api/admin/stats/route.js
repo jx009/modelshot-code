@@ -32,10 +32,9 @@ export async function GET(req) {
         _count: { _all: true },
       }),
       prisma.tryOn.aggregate({ _sum: { costUsd: true } }),
-      // 今日新增用户（User 模型无注册时间字段——P1 补 createdAt 后启用，先占位 0）
-      0,
+      prisma.user.count({ where: { createdAt: { gte: todayStart } } }),
       // 今日收入（paid 订单）
-      prisma.order.aggregate({ where: { status: "paid", paidAt: { gte: todayStart } }, _sum: { amount: true } }),
+      prisma.order.aggregate({ where: { currency: "usd", paidAt: { gte: todayStart } }, _sum: { amountMinor: true, refundedMinor: true } }),
       // 今日成本
       prisma.tryOn.aggregate({ where: { createTime: { gte: todayStart } }, _sum: { costUsd: true } }),
       // 14 天趋势（按天聚合成功/失败）
@@ -52,7 +51,7 @@ export async function GET(req) {
       }),
     ]);
 
-    const needsReview = statusDist.find(s => s.status === "needs_review")?._count?._all || 0;
+    const needsReview = await prisma.tryOn.count({ where: { qaStatus: "needs_review", reviewDecision: null } });
 
     // 14 天趋势整理
     const trend = [];
@@ -62,7 +61,7 @@ export async function GET(req) {
       const rows = trendRaw.filter(t => t.createTime >= d && t.createTime < next);
       trend.push({
         date: `${d.getMonth() + 1}/${d.getDate()}`,
-        success: rows.filter(t => t.status === "completed" || t.status === "needs_review").length,
+        success: rows.filter(t => t.status === "succeeded").length,
         failed: rows.filter(t => t.status === "failed").length,
       });
     }
@@ -73,7 +72,7 @@ export async function GET(req) {
       const p = providerMap[row.provider] || (providerMap[row.provider] = { provider: row.provider, count: 0, failed: 0, avgDurationMs: 0 });
       p.count += row._count._all;
       if (row.status === "failed") p.failed += row._count._all;
-      if (row._avg.durationMs) p.avgDurationMs = Math.round(row._avg.durationMs);
+      p.avgDurationMs += (row._avg.durationMs || 0) * row._count._all;
     }
 
     return NextResponse.json({
@@ -81,14 +80,14 @@ export async function GET(req) {
       todayNewUsers,
       totalTryons,
       todayTryons,
-      todayRevenue: todayRevenue._sum.amount || 0,
+      todayRevenue: ((todayRevenue._sum.amountMinor || 0) - (todayRevenue._sum.refundedMinor || 0)) / 100,
       todayCostUsd: Number((todayCost._sum.costUsd || 0).toFixed(4)),
       totalCostUsd: Number((costAgg._sum.costUsd || 0).toFixed(4)),
       needsReview,
       providerDistribution: providerDist.map(p => ({ provider: p.provider, count: p._count._all })),
       statusDistribution: statusDist.map(s => ({ status: s.status, count: s._count._all })),
       trend,
-      providerHealth: Object.values(providerMap),
+      providerHealth: Object.values(providerMap).map(p => ({ ...p, avgDurationMs: Math.round(p.avgDurationMs / p.count) })),
     });
   } catch (error) {
     console.error("[ADMIN_STATS]", error);

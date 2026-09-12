@@ -1,0 +1,91 @@
+{
+  "version": 1,
+  "notice": "Demo fixtures only. Do not use these images to benchmark output quality or as customer content.",
+  "models": [
+    { "name": "亚洲女模-01", "nameEn": "Asian Female 01", "gender": "female", "ethnicity": "asian", "bodyType": "standard", "referenceImage": "/presets/models/model-01.png", "sha256": "46de5970fe1861661ea77514a924b12a8d1c0b5306e53242664a51b5c1d5b725" },
+    { "name": "亚洲女模-02", "nameEn": "Asian Female 02", "gender": "female", "ethnicity": "asian", "bodyType": "slim", "referenceImage": "/presets/models/model-02.png", "sha256": "544e6f09a935160d9efe9bb3757d39a1b57065273d4f0e21c11f5bd8e0e42f81" },
+    { "name": "亚洲男模-01", "nameEn": "Asian Male 01", "gender": "male", "ethnicity": "asian", "bodyType": "standard", "referenceImage": "/presets/models/model-03.png", "sha256": "67039c4f58a4dd5c7806d5ff58767589acfa96c3e6adc5d69bb1b215fba7ba4c" },
+    { "name": "欧美女模-01", "nameEn": "Caucasian Female 01", "gender": "female", "ethnicity": "caucasian", "bodyType": "standard", "referenceImage": "/presets/models/model-04.png", "sha256": "ea25d44baff84fcdde877e49ae842d6371558808e7d22ccfa8ac2ba9efa83060" },
+    { "name": "欧美男模-01", "nameEn": "Caucasian Male 01", "gender": "male", "ethnicity": "caucasian", "bodyType": "standard", "referenceImage": "/presets/models/model-05.png", "sha256": "fe208d32c04050dd78d7131d1303420f85346b4950451e4fa774a0cf332d4468" },
+    { "name": "非裔女模-01", "nameEn": "African Female 01", "gender": "female", "ethnicity": "african", "bodyType": "standard", "referenceImage": "/presets/models/model-06.png", "sha256": "bec736d7e7cc2f8a420cc45ae8abac5ba31cd9d666cd2e4e79f32811811ad9c7" },
+    { "name": "拉丁裔女模-01", "nameEn": "Latin Female 01", "gender": "female", "ethnicity": "latin", "bodyType": "standard", "referenceImage": "/presets/models/model-07.png", "sha256": "a803a2dccaf7f5cb1edec272ecb3889a70c68b7b88d6fda932ca83c720b1c5c8" },
+    { "name": "大码女模-01", "nameEn": "Plus-size Female 01", "gender": "female", "ethnicity": "asian", "bodyType": "plus", "referenceImage": "/presets/models/model-08.png", "sha256": "d1ef32bd5e1969670dad3e264e21e707b78e9ceff29392f6eec3062105e6e6ff" }
+  ],
+  "scenes": [
+    { "name": "纯白背景", "nameEn": "Pure White", "category": "white", "referenceImage": "/presets/scenes/scene-01.png", "promptSnippet": "Clean white studio background, professional even lighting.", "sha256": "9200f049e97d3d75d5a27159dc04496f11fc9a18c2cd348ad3c86b8805af97ce" },
+    { "name": "灰色影棚", "nameEn": "Gray Studio", "category": "studio", "referenceImage": "/presets/scenes/scene-02.png", "promptSnippet": "Professional gray studio backdrop, three-point lighting.", "sha256": "17615257ebed8c938a64c9d603dfb407c7602f9f94f189e4b75209ad6dd20f9a" },
+    { "name": "街拍-城市", "nameEn": "Urban Street", "category": "street", "referenceImage": "/presets/scenes/scene-03.jpg", "promptSnippet": "Urban street setting, natural daylight, modern city background.", "sha256": "570fbb2c7aee4fbccf711935ea267eaa9b79aa33d07963fe7b76916b10ed8fc1" },
+    { "name": "室内-极简", "nameEn": "Minimalist Indoor", "category": "indoor", "referenceImage": "/presets/scenes/scene-04.jpg", "promptSnippet": "Minimalist modern interior, warm ambient lighting.", "sha256": "8a5006ac5e5e0aca053f43eef1bbe08eeeafd939cc343801bd9340bbb2e3405e" },
+    { "name": "户外-公园", "nameEn": "Outdoor Park", "category": "outdoor", "referenceImage": "/presets/scenes/scene-05.jpg", "promptSnippet": "Park setting with trees, natural golden hour lighting.", "sha256": "e1251bc53730a085e588918dbe188b494a1fc54563eff351c9ae4ea6dd99fdff" },
+    { "name": "海滩", "nameEn": "Beach", "category": "outdoor", "referenceImage": "/presets/scenes/scene-06.jpg", "promptSnippet": "Sandy beach setting, bright sunlight, blue sky and ocean.", "sha256": "7b3c4f24643ff86dc933d15e6d24c76626696edfaf0b79648c1c8135b51823b3" }
+  ],
+  "garments": [
+    {
+      "id": "demo-garment-met-105229",
+      "name": "Shirt, 1815-25",
+      "source": "The Metropolitan Museum of Art Open Access",
+      "creator": "Unknown",
+      "license": "CC0 1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "sourcePage": "https://www.metmuseum.org/art/collection/search/105229",
+      "downloadUrl": "https://images.metmuseum.org/CRDImages/ci/web-large/1980.280.7.jpg",
+      "bundledPath": "demo-assets/garments/met-105229.jpg",
+      "sha256": "449dd29fd04b6f14f9d49004b9fbc1c4f642e0c64c2e4959b9e1783e3ac3ae0a"
+    },
+    {
+      "id": "demo-garment-met-91005",
+      "name": "Trousers, 1850s",
+      "source": "The Metropolitan Museum of Art Open Access",
+      "creator": "Unknown",
+      "license": "CC0 1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "sourcePage": "https://www.metmuseum.org/art/collection/search/91005",
+      "downloadUrl": "https://images.metmuseum.org/CRDImages/ci/web-large/1978.88.10_F.jpg",
+      "bundledPath": "demo-assets/garments/met-91005.jpg",
+      "sha256": "1994ef123496764c3484676b2e11300dc62f425b46741d1a34e9e8ac36ee78e9"
+    },
+    {
+      "id": "demo-garment-met-107620",
+      "name": "Dress, ca. 1870",
+      "source": "The Metropolitan Museum of Art Open Access",
+      "creator": "Unknown",
+      "license": "CC0 1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "sourcePage": "https://www.metmuseum.org/art/collection/search/107620",
+      "downloadUrl": "https://images.metmuseum.org/CRDImages/ci/web-large/1980.409.1a-c.jpg",
+      "bundledPath": "demo-assets/garments/met-107620.jpg",
+      "sha256": "72d6d04ff0d28f63cc25dacaf43eaa31289011e37aaba62e2af641fa3f5baf67"
+    },
+    {
+      "id": "demo-garment-met-81107",
+      "name": "Coat, ca. 1833",
+      "source": "The Metropolitan Museum of Art Open Access",
+      "creator": "Unknown",
+      "license": "CC0 1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "sourcePage": "https://www.metmuseum.org/art/collection/search/81107",
+      "downloadUrl": "https://images.metmuseum.org/CRDImages/ci/web-large/DT412.jpg",
+      "bundledPath": "demo-assets/garments/met-81107.jpg",
+      "sha256": "7b74d7cb945382cef7cc397b545472bf4bf69560c7786f404ef423c47ede0e5a"
+    },
+    {
+      "id": "demo-garment-met-106518",
+      "name": "Suit, ca. 1900",
+      "source": "The Metropolitan Museum of Art Open Access",
+      "creator": "Unknown",
+      "license": "CC0 1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "sourcePage": "https://www.metmuseum.org/art/collection/search/106518",
+      "downloadUrl": "https://images.metmuseum.org/CRDImages/ci/web-large/1978.88.4ab_F.jpg",
+      "bundledPath": "demo-assets/garments/met-106518.jpg",
+      "sha256": "b3b66e4c8a5fddeb2b685a7f48d544d4b4ef9d9d5b8d251eecf71d7c90fa68e7"
+    }
+  ],
+  "presetSources": [
+    { "files": ["public/presets/models/model-01.png", "public/presets/models/model-02.png", "public/presets/models/model-03.png", "public/presets/models/model-04.png", "public/presets/models/model-05.png", "public/presets/models/model-06.png", "public/presets/models/model-07.png", "public/presets/models/model-08.png", "public/presets/scenes/scene-01.png", "public/presets/scenes/scene-02.png"], "source": "ModelShot deterministic synthetic fixtures", "creator": "ModelShot contributors", "license": "CC0 1.0", "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/" },
+    { "files": ["public/presets/scenes/scene-03.jpg"], "sourcePage": "https://commons.wikimedia.org/wiki/File:2013.04_-_%27View_in_rainy_Spring%27,_with_still_empty_trees_in_Amsterdam_West,_urban_photo_in_Amsterdam,_The_Netherlands_by_Fons_Heijnsbroek_(12084191045).jpg", "creator": "Fons Heijnsbroek", "license": "CC0 1.0", "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/" },
+    { "files": ["public/presets/scenes/scene-04.jpg"], "sourcePage": "https://commons.wikimedia.org/wiki/File:Minimal_creative_interior_(Unsplash).jpg", "creator": "Breather", "license": "CC0 1.0", "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/" },
+    { "files": ["public/presets/scenes/scene-05.jpg"], "sourcePage": "https://commons.wikimedia.org/wiki/File:Autumn_park_path_(Unsplash).jpg", "creator": "Toni Lluch", "license": "CC0 1.0", "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/" },
+    { "files": ["public/presets/scenes/scene-06.jpg"], "sourcePage": "https://commons.wikimedia.org/wiki/File:Beach_by_the_pier_(Unsplash).jpg", "creator": "Dakota Corbin", "license": "CC0 1.0", "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/" }
+  ]
+}

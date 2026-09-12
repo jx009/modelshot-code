@@ -92,6 +92,13 @@ export COMPOSE_FILE=compose.prod.yaml COMPOSE_ENV_FILES=.env.production
 docker compose --profile tools run --rm seed
 ```
 
+需要一套可直接测试的模特、场景和服装时，先在网页注册测试账号，再执行下面的幂等命令。素材来源与授权说明见 `docs/demo-assets.md`：
+
+```bash
+docker compose --env-file .env.production -f compose.prod.yaml \
+  --profile tools run --rm demo-seed --user-email=you@example.com
+```
+
 浏览器注册第一个账号，然后提权为 root：
 
 ```bash

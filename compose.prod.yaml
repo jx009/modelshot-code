@@ -201,6 +201,21 @@ services:
     networks:
       - app
 
+  # 为已注册账号导入 5 张 CC0 服装样例，同时更新合成模特与场景预设：
+  #   ... --profile tools run --rm demo-seed --user-email=you@example.com
+  demo-seed:
+    <<: *modelshot-service
+    profiles: [tools]
+    restart: "no"
+    entrypoint: ["node", "scripts/seed-demo-assets.mjs"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      storage-init:
+        condition: service_completed_successfully
+    networks:
+      - app
+
   # 提权管理员。脚本已随镜像发布（见 Dockerfile 的 scripts/ 复制），
   # 因此拉镜像部署时服务器不需要源码，也不要再挂载 ./scripts，
   # 否则宿主机路径不存在时 Docker 会建一个同名空目录，反而把镜像里的文件遮住。

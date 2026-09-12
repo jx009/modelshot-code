@@ -5,7 +5,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { CreditCard, LoaderCircle } from "lucide-react";
 import { Link } from "@/i18n/navigation";
 import { useRemoteResource } from "@/hooks/useRemoteResource";
-import { api } from "@/lib/client-api";
+import { api, requestKey } from "@/lib/client-api";
 import { formatMoney } from "@/lib/domain/billing/catalog";
 
 export default function Pricing() {
@@ -19,7 +19,7 @@ export default function Pricing() {
   const keys = useRef({});
   async function checkout(planId) {
     setBusy(planId); setError("");
-    keys.current[planId] ||= crypto.randomUUID();
+    keys.current[planId] ||= requestKey();
     try {
       const result = await api("/api/checkout", { method: "POST", key: keys.current[planId], body: { planId } });
       const url = new URL(result.url);

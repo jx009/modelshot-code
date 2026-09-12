@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { Download, Ban, RefreshCw, LoaderCircle } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useRemoteResource } from "@/hooks/useRemoteResource";
-import { api } from "@/lib/client-api";
+import { api, requestKey } from "@/lib/client-api";
 
 export default function ExportTray({ revision = 0 }) {
   const f = useTranslations("flow");
@@ -13,7 +13,7 @@ export default function ExportTray({ revision = 0 }) {
   useEffect(() => { if (!active) return; const timer = setInterval(resource.reload, 4000); return () => clearInterval(timer); }, [active, resource.reload]);
   async function action(job, retry) {
     try {
-      if (retry) await api("/api/exports", { method: "POST", key: crypto.randomUUID(), body: { outputIds: job.selection.map(row => row.id), mode: job.selection[0]?.profile ? "delivery" : "original" } });
+      if (retry) await api("/api/exports", { method: "POST", key: requestKey(), body: { outputIds: job.selection.map(row => row.id), mode: job.selection[0]?.profile ? "delivery" : "original" } });
       else await api(`/api/exports/${job.id}`, { method: "DELETE" });
       resource.reload();
     } catch (err) { setError(f.has(`errors.${err.code}`) ? f(`errors.${err.code}`) : f("requestFailed")); }

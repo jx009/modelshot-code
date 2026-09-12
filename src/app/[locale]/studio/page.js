@@ -12,7 +12,7 @@ import VariantCanvas from "@/components/studio/VariantCanvas";
 import Filmstrip from "@/components/ui/Filmstrip";
 import Modal from "@/components/ui/Modal";
 import { downloadImage } from "@/lib/image-download";
-import { api, terminalStatus } from "@/lib/client-api";
+import { api, requestKey, terminalStatus } from "@/lib/client-api";
 
 const defaults = { modelSource: "preset", modelPresetId: "", personImage: "", scenePresetId: "", garmentType: "top", platformSpec: "", aspectRatio: "3:4", prompt: "", pose: "standing", camera: "eye_level", lighting: "soft", variants: 1, provider: "", credentialId: "", projectId: "", sku: "", name: "" };
 
@@ -173,7 +173,7 @@ function StudioContent() {
     if (requestLock.current || busy) return;
     if (!userId) { login(); return; }
     requestLock.current = true; setSubmitting(true); setError("");
-    try { setQuote({ ...await api("/api/quotes", { method: "POST", body: payload() }), key: crypto.randomUUID() }); }
+    try { setQuote({ ...await api("/api/quotes", { method: "POST", body: payload() }), key: requestKey() }); }
     catch (err) { fail(err); } finally { setSubmitting(false); requestLock.current = false; }
   }
   async function confirmQuote() {

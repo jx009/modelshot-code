@@ -9,7 +9,7 @@ import DetailDrawer from "@/components/gallery/DetailDrawer";
 import ExportTray from "@/components/gallery/ExportTray";
 import AssetImage from "@/components/ui/AssetImage";
 import { downloadImage } from "@/lib/image-download";
-import { api, terminalStatus } from "@/lib/client-api";
+import { api, requestKey, terminalStatus } from "@/lib/client-api";
 import { useRemoteResource } from "@/hooks/useRemoteResource";
 
 const filters = { all: "all", active: "processing", succeeded: "ready", needs_review: "review", failed: "failed", cancelled: "cancel" };
@@ -57,7 +57,7 @@ export default function GalleryPage() {
   async function exportImages() {
     if (exporting || !exportIds.length) return;
     setExporting(true); setError("");
-    try { await api("/api/exports", { method: "POST", key: crypto.randomUUID(), body: { outputIds: exportIds, mode: exportMode } }); setExportRevision(value => value + 1); } catch (err) { fail(err); } finally { setExporting(false); }
+    try { await api("/api/exports", { method: "POST", key: requestKey(), body: { outputIds: exportIds, mode: exportMode } }); setExportRevision(value => value + 1); } catch (err) { fail(err); } finally { setExporting(false); }
   }
   return <main className="library-page">
     <div className="library-heading"><div><h1>{t("gallery")}</h1><p>{t("count", { count: resource.data?.total || 0 })}</p></div><div className="flex flex-wrap gap-2"><select className="workflow-select" aria-label={f("delivery")} value={exportMode} onChange={e => setExportMode(e.target.value)}><option value="delivery">{f("delivery")}</option><option value="original">{f("original")}</option></select><button className="button" title={f("createExport")} aria-label={f("createExport")} disabled={exporting || !exportIds.length} onClick={exportImages}>{exporting ? <LoaderCircle size={16} className="animate-spin" /> : <Download size={16} />}<span>{selected.size ? f("exportSelection", { count: selected.size }) : f("exportPage")}</span></button><Link className="button primary" href="/studio"><Plus size={17} />{t("new")}</Link></div></div>

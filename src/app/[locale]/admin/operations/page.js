@@ -4,7 +4,7 @@ import { useLocale } from "next-intl";
 import { RefreshCw, RotateCcw } from "lucide-react";
 import { useRemoteResource } from "@/hooks/useRemoteResource";
 import Modal from "@/components/ui/Modal";
-import { api } from "@/lib/client-api";
+import { api, requestKey } from "@/lib/client-api";
 
 export default function OperationsPage() {
   const zh = useLocale() === "zh";
@@ -14,7 +14,7 @@ export default function OperationsPage() {
   const [amount, setAmount] = useState("");
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState("");
-  const choose = (action, id) => { setOperation({ action, id, key: crypto.randomUUID() }); setReason(""); setAmount(""); setFailure(""); };
+  const choose = (action, id) => { setOperation({ action, id, key: requestKey() }); setReason(""); setAmount(""); setFailure(""); };
   async function submit(event) {
     event.preventDefault(); setSaving(true); setFailure("");
     try { const { key, ...body } = operation; await api("/api/admin/operations", { method: "POST", key, body: { ...body, reason, ...(body.action === "refund" ? { amountMinor: Number(amount) } : {}) } }); setOperation(null); reload(); }

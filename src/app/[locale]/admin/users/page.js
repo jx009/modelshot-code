@@ -5,6 +5,7 @@ import { useRemoteResource } from "@/hooks/useRemoteResource";
 import { Ban, Check, LoaderCircle, RotateCcw, Search, ShieldCheck, User } from "lucide-react";
 import toast from "react-hot-toast";
 import Modal from "@/components/ui/Modal";
+import { requestKey } from "@/lib/client-api";
 
 const ROLES = ["", "user", "agent", "admin", "root"];
 const STATUSES = ["", "active", "banned"];
@@ -42,7 +43,7 @@ export default function AdminUsers() {
 
   const search = e => { e.preventDefault(); setPage(1); setQuery(q.trim()); load(); };
 
-  const patch = (id, body, note) => { setOperation({ id, body, note, key: crypto.randomUUID() }); setReason(""); };
+  const patch = (id, body, note) => { setOperation({ id, body, note, key: requestKey() }); setReason(""); };
   const confirm = async event => {
     event.preventDefault();
     const { id, body, note, key } = operation;

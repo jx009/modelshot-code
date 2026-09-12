@@ -125,13 +125,11 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # 一次性：创建私有 bucket。直接用应用镜像里的 @aws-sdk，不额外拉 mc 镜像。
+  # 一次性：创建私有 bucket。脚本随应用镜像发布，不依赖宿主机源码。
   storage-init:
     <<: *modelshot-service
     restart: "no"
     command: ["node", "docker/create-bucket.mjs"]
-    volumes:
-      - ./docker/create-bucket.mjs:/app/docker/create-bucket.mjs:ro
     depends_on:
       storage:
         condition: service_healthy
@@ -161,8 +159,8 @@ services:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
-      storage:
-        condition: service_healthy
+      storage-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 15s
@@ -182,8 +180,8 @@ services:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
-      storage:
-        condition: service_healthy
+      storage-init:
+        condition: service_completed_successfully
     stop_grace_period: 180s
     networks:
       - app

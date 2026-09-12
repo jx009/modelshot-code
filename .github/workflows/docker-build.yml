@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  IMAGE: ${{ vars.DOCKERHUB_IMAGE || format('{0}/modelshot', github.repository_owner) }}
+  IMAGE: ${{ vars.DOCKERHUB_IMAGE }}
   BUILD_TAG: build-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
 
 concurrency:
@@ -32,10 +32,49 @@ jobs:
             echo '::error::Configure DOCKERHUB_USERNAME and DOCKERHUB_TOKEN repository secrets.'
             exit 1
           fi
+          if [[ -z "$IMAGE" ]]; then
+            echo '::error::Configure DOCKERHUB_IMAGE as a repository variable, for example your-docker-id/modelshot.'
+            exit 1
+          fi
           if [[ ! "$IMAGE" =~ ^[a-z0-9][a-z0-9_-]*/[a-z0-9]+([._-][a-z0-9]+)*$ ]]; then
             echo '::error::DOCKERHUB_IMAGE must be a lowercase Docker Hub namespace/repository.'
             exit 1
           fi
+          auth_response=$(curl --fail --silent --show-error \
+            --user "$DOCKERHUB_USERNAME:$DOCKERHUB_TOKEN" \
+            --get 'https://auth.docker.io/token' \
+            --data-urlencode 'service=registry.docker.io' \
+            --data-urlencode "scope=repository:$IMAGE:pull,push")
+          AUTH_RESPONSE="$auth_response" TARGET_IMAGE="$IMAGE" python3 <<'PY'
+          import base64
+          import json
+          import os
+          import sys
+
+          response = json.loads(os.environ["AUTH_RESPONSE"])
+          token = response.get("token") or response.get("access_token")
+          if not token:
+              print("::error::Docker Hub did not issue a registry token for the configured credentials.")
+              sys.exit(1)
+          payload = token.split(".")[1]
+          payload += "=" * (-len(payload) % 4)
+          claims = json.loads(base64.urlsafe_b64decode(payload))
+          image = os.environ["TARGET_IMAGE"]
+          actions = {
+              action
+              for entry in claims.get("access", [])
+              if entry.get("type") == "repository" and entry.get("name") == image
+              for action in entry.get("actions", [])
+          }
+          if "push" not in actions:
+              print(
+                  f"::error::Docker Hub credentials cannot push to {image}. "
+                  "Create that repository under the authenticated account/organization, "
+                  "or correct DOCKERHUB_IMAGE and the token permissions."
+              )
+              sys.exit(1)
+          print(f"Docker Hub push authorization verified for {image}.")
+          PY
 
   build_single_arch:
     name: Build and push (${{ matrix.arch }})

@@ -10,9 +10,9 @@
 | --- | --- | --- |
 | Secret | `DOCKERHUB_USERNAME` | 有权推送的 Docker Hub 用户名 |
 | Secret | `DOCKERHUB_TOKEN` | Docker Hub Access Token，需要目标仓库写权限 |
-| Variable | `DOCKERHUB_IMAGE` | 镜像名，如 `yourname/modelshot`；不填默认为 GitHub 仓库所有者名加 `/modelshot`，本仓库即 `jx009/modelshot` |
+| Variable | `DOCKERHUB_IMAGE` | 必填，Docker Hub 中已经创建且 Token 有写权限的完整仓库名，如 `your-docker-id/modelshot` |
 
-用户名/Token 不会从参考项目复制，也不提交到源代码。若 Docker Hub 用户名与 GitHub 用户名不同，务必填写 `DOCKERHUB_IMAGE`。组织仓库填写组织命名空间。缺少必要 Secrets 时 prepare 阶段明确失败。
+用户名/Token 不会从参考项目复制，也不提交到源代码。Docker Hub 用户名经常与 GitHub 仓库所有者不同，因此不再自动猜测命名空间。先在 Docker Hub 创建目标仓库，再让 `DOCKERHUB_IMAGE` 与其 `namespace/repository` 完全一致；组织仓库填写组织命名空间，并确保 Token 所属账号有该组织仓库的写权限。prepare 阶段会向 Docker Registry 请求目标仓库的 push scope，在实际构建前明确拦截仓库不存在、命名空间错误或无写权限的情况。
 
 ## 触发与标签
 

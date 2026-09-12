@@ -4,11 +4,11 @@
 
 ## 包含内容
 
-- 8 张 ModelShot 自制的无真实身份数字模特图，覆盖现有性别、体型和展示分类。
+- 8 张使用 Letaicode `gpt-image-2` 生成的无真实身份数字模特图，覆盖现有性别、体型和展示分类。
 - 6 张场景图：2 张自制影棚背景，4 张经 Wikimedia Commons 核验为 CC0 的城市、室内、公园和海滩图片。
 - 5 张服装图，来自 The Metropolitan Museum of Art Open Access，作品 API 标记为 Public Domain，图片以 CC0 提供。
 
-完整的作者、来源页面、许可证、原始下载地址和 SHA-256 记录在 `scripts/demo-assets.manifest.json`。服装图随镜像发布，初始化不依赖服务器访问外部图片站点；写入后仍是用户私有 S3 对象。
+完整的作者、来源页面、许可证、原始下载地址和 SHA-256 记录在 `scripts/demo-assets.manifest.json`。模特图的再分发须遵守中转站和图像模型服务条款；影棚背景仍是 ModelShot 自制 CC0 素材。服装图随镜像发布，初始化不依赖服务器访问外部图片站点；写入后仍是用户私有 S3 对象。
 
 ## 服务器执行
 
@@ -35,6 +35,14 @@ npm run seed:demo -- --user-email=you@example.com
 npm run check:demo-assets
 ```
 
+需要重新生成模特图时，使用不写入密钥的批量脚本。它默认调用 `https://api.letaicode.cn/codex/images/generations` 和 `gpt-image-2`，生成完成后会覆盖 `public/presets/models/model-01.png` 至 `model-08.png`；生成后必须重新运行 `npm run check:demo-assets`，并按服务条款确认输出的再分发权限：
+
+```bash
+LETAICODE_API_KEY=你的中转站密钥 npm run generate:demo-models
+```
+
+只重生成指定编号时可设置 `DEMO_MODEL_INDICES=2,8`。
+
 ## 授权边界
 
-素材清单中的 CC0 状态是初始化集制作时从 The Met API 和 Wikimedia Commons 文件页核验的结果。数字模特不对应真人，因此没有第三方肖像授权问题。正式上线前仍应换成已签署模特授权、与目标市场和商品匹配的生产素材；演示集不构成对任何商标、文化语境或商品适用性的保证。
+素材清单中的 CC0 状态是初始化集制作时从 The Met API 和 Wikimedia Commons 文件页核验的结果，仅适用于对应服装和场景。数字模特由图像服务生成，不对应真人，但不自动构成 CC0；正式对外分发前请按中转站和模型服务条款确认权利范围。正式上线前仍应换成已签署模特授权、与目标市场和商品匹配的生产素材；演示集不构成对任何商标、文化语境或商品适用性的保证。

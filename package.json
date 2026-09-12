@@ -28,6 +28,7 @@
     "db:seed": "node prisma/seed.js",
     "seed:demo": "node scripts/seed-demo-assets.mjs",
     "check:demo-assets": "node scripts/seed-demo-assets.mjs --verify-only",
+    "generate:demo-models": "node scripts/generate-demo-models.mjs",
     "setup:local": "node scripts/setup-local.mjs",
     "test:unit": "vitest run --project unit",
     "test:integration": "vitest run --project integration",

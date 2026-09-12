@@ -22,7 +22,7 @@ COPY --from=build --chown=node:node /app/demo-assets ./demo-assets
 COPY --from=build --chown=node:node /app/src ./src
 COPY --from=build --chown=node:node /app/messages ./messages
 COPY --from=build --chown=node:node /app/prisma ./prisma
-COPY --from=build --chown=node:node /app/scripts/ops.mjs /app/scripts/make-admin.js /app/scripts/seed-demo-assets.mjs /app/scripts/demo-assets-lib.mjs /app/scripts/demo-assets.manifest.json ./scripts/
+COPY --from=build --chown=node:node /app/scripts/ops.mjs /app/scripts/make-admin.js /app/scripts/seed-demo-assets.mjs /app/scripts/demo-assets-lib.mjs /app/scripts/demo-assets.manifest.json /app/scripts/generate-demo-models.mjs ./scripts/
 COPY --chmod=755 docker/entrypoint.sh /usr/local/bin/modelshot
 USER node
 EXPOSE 3000

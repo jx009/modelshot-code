@@ -2,22 +2,128 @@
   "version": 1,
   "notice": "Demo fixtures only. Do not use these images to benchmark output quality or as customer content.",
   "models": [
-    { "name": "亚洲女模-01", "nameEn": "Asian Female 01", "gender": "female", "ethnicity": "asian", "bodyType": "standard", "referenceImage": "/presets/models/model-01.png", "sha256": "46de5970fe1861661ea77514a924b12a8d1c0b5306e53242664a51b5c1d5b725" },
-    { "name": "亚洲女模-02", "nameEn": "Asian Female 02", "gender": "female", "ethnicity": "asian", "bodyType": "slim", "referenceImage": "/presets/models/model-02.png", "sha256": "544e6f09a935160d9efe9bb3757d39a1b57065273d4f0e21c11f5bd8e0e42f81" },
-    { "name": "亚洲男模-01", "nameEn": "Asian Male 01", "gender": "male", "ethnicity": "asian", "bodyType": "standard", "referenceImage": "/presets/models/model-03.png", "sha256": "67039c4f58a4dd5c7806d5ff58767589acfa96c3e6adc5d69bb1b215fba7ba4c" },
-    { "name": "欧美女模-01", "nameEn": "Caucasian Female 01", "gender": "female", "ethnicity": "caucasian", "bodyType": "standard", "referenceImage": "/presets/models/model-04.png", "sha256": "ea25d44baff84fcdde877e49ae842d6371558808e7d22ccfa8ac2ba9efa83060" },
-    { "name": "欧美男模-01", "nameEn": "Caucasian Male 01", "gender": "male", "ethnicity": "caucasian", "bodyType": "standard", "referenceImage": "/presets/models/model-05.png", "sha256": "fe208d32c04050dd78d7131d1303420f85346b4950451e4fa774a0cf332d4468" },
-    { "name": "非裔女模-01", "nameEn": "African Female 01", "gender": "female", "ethnicity": "african", "bodyType": "standard", "referenceImage": "/presets/models/model-06.png", "sha256": "bec736d7e7cc2f8a420cc45ae8abac5ba31cd9d666cd2e4e79f32811811ad9c7" },
-    { "name": "拉丁裔女模-01", "nameEn": "Latin Female 01", "gender": "female", "ethnicity": "latin", "bodyType": "standard", "referenceImage": "/presets/models/model-07.png", "sha256": "a803a2dccaf7f5cb1edec272ecb3889a70c68b7b88d6fda932ca83c720b1c5c8" },
-    { "name": "大码女模-01", "nameEn": "Plus-size Female 01", "gender": "female", "ethnicity": "asian", "bodyType": "plus", "referenceImage": "/presets/models/model-08.png", "sha256": "d1ef32bd5e1969670dad3e264e21e707b78e9ceff29392f6eec3062105e6e6ff" }
+    {
+      "name": "亚洲女模-01",
+      "nameEn": "Asian Female 01",
+      "gender": "female",
+      "ethnicity": "asian",
+      "bodyType": "standard",
+      "referenceImage": "/presets/models/model-01.png",
+      "sha256": "0c0bcd464062cc42d21ab64f4416a8f47a9a8c10f7bf39b4c61b063e2042e74d"
+    },
+    {
+      "name": "亚洲女模-02",
+      "nameEn": "Asian Female 02",
+      "gender": "female",
+      "ethnicity": "asian",
+      "bodyType": "slim",
+      "referenceImage": "/presets/models/model-02.png",
+      "sha256": "384eb61686fc9b1b5128a719fff207af73e5172dc4e33a3abcd2225335fc6873"
+    },
+    {
+      "name": "亚洲男模-01",
+      "nameEn": "Asian Male 01",
+      "gender": "male",
+      "ethnicity": "asian",
+      "bodyType": "standard",
+      "referenceImage": "/presets/models/model-03.png",
+      "sha256": "27d896943f9475259d8ab40c9c26833bad1c0fc041e7832a28e0d6e93bceaa64"
+    },
+    {
+      "name": "欧美女模-01",
+      "nameEn": "Caucasian Female 01",
+      "gender": "female",
+      "ethnicity": "caucasian",
+      "bodyType": "standard",
+      "referenceImage": "/presets/models/model-04.png",
+      "sha256": "3a6e3cfbde01936ae7b4d9874fccae9cc56990cf7303b3006f487f6bcd17adfd"
+    },
+    {
+      "name": "欧美男模-01",
+      "nameEn": "Caucasian Male 01",
+      "gender": "male",
+      "ethnicity": "caucasian",
+      "bodyType": "standard",
+      "referenceImage": "/presets/models/model-05.png",
+      "sha256": "4eca68a247ea126a55c73457a1462632893755267f867baf194d13e572560e86"
+    },
+    {
+      "name": "非裔女模-01",
+      "nameEn": "African Female 01",
+      "gender": "female",
+      "ethnicity": "african",
+      "bodyType": "standard",
+      "referenceImage": "/presets/models/model-06.png",
+      "sha256": "f4ed1c8569f2ad4f87c651e65cb947600543f975b7b2832325cd6b454a1ada0f"
+    },
+    {
+      "name": "拉丁裔女模-01",
+      "nameEn": "Latin Female 01",
+      "gender": "female",
+      "ethnicity": "latin",
+      "bodyType": "standard",
+      "referenceImage": "/presets/models/model-07.png",
+      "sha256": "ab457fdb7b2faf4214866bdd7d14cdbbcb1bcb3d1088777f67da5775a8d3b129"
+    },
+    {
+      "name": "大码女模-01",
+      "nameEn": "Plus-size Female 01",
+      "gender": "female",
+      "ethnicity": "asian",
+      "bodyType": "plus",
+      "referenceImage": "/presets/models/model-08.png",
+      "sha256": "7ede24d1916628dffac26da44ca5a443dc6d67ba1ccd52f7f88477e9f3010daf"
+    }
   ],
   "scenes": [
-    { "name": "纯白背景", "nameEn": "Pure White", "category": "white", "referenceImage": "/presets/scenes/scene-01.png", "promptSnippet": "Clean white studio background, professional even lighting.", "sha256": "9200f049e97d3d75d5a27159dc04496f11fc9a18c2cd348ad3c86b8805af97ce" },
-    { "name": "灰色影棚", "nameEn": "Gray Studio", "category": "studio", "referenceImage": "/presets/scenes/scene-02.png", "promptSnippet": "Professional gray studio backdrop, three-point lighting.", "sha256": "17615257ebed8c938a64c9d603dfb407c7602f9f94f189e4b75209ad6dd20f9a" },
-    { "name": "街拍-城市", "nameEn": "Urban Street", "category": "street", "referenceImage": "/presets/scenes/scene-03.jpg", "promptSnippet": "Urban street setting, natural daylight, modern city background.", "sha256": "570fbb2c7aee4fbccf711935ea267eaa9b79aa33d07963fe7b76916b10ed8fc1" },
-    { "name": "室内-极简", "nameEn": "Minimalist Indoor", "category": "indoor", "referenceImage": "/presets/scenes/scene-04.jpg", "promptSnippet": "Minimalist modern interior, warm ambient lighting.", "sha256": "8a5006ac5e5e0aca053f43eef1bbe08eeeafd939cc343801bd9340bbb2e3405e" },
-    { "name": "户外-公园", "nameEn": "Outdoor Park", "category": "outdoor", "referenceImage": "/presets/scenes/scene-05.jpg", "promptSnippet": "Park setting with trees, natural golden hour lighting.", "sha256": "e1251bc53730a085e588918dbe188b494a1fc54563eff351c9ae4ea6dd99fdff" },
-    { "name": "海滩", "nameEn": "Beach", "category": "outdoor", "referenceImage": "/presets/scenes/scene-06.jpg", "promptSnippet": "Sandy beach setting, bright sunlight, blue sky and ocean.", "sha256": "7b3c4f24643ff86dc933d15e6d24c76626696edfaf0b79648c1c8135b51823b3" }
+    {
+      "name": "纯白背景",
+      "nameEn": "Pure White",
+      "category": "white",
+      "referenceImage": "/presets/scenes/scene-01.png",
+      "promptSnippet": "Clean white studio background, professional even lighting.",
+      "sha256": "9200f049e97d3d75d5a27159dc04496f11fc9a18c2cd348ad3c86b8805af97ce"
+    },
+    {
+      "name": "灰色影棚",
+      "nameEn": "Gray Studio",
+      "category": "studio",
+      "referenceImage": "/presets/scenes/scene-02.png",
+      "promptSnippet": "Professional gray studio backdrop, three-point lighting.",
+      "sha256": "17615257ebed8c938a64c9d603dfb407c7602f9f94f189e4b75209ad6dd20f9a"
+    },
+    {
+      "name": "街拍-城市",
+      "nameEn": "Urban Street",
+      "category": "street",
+      "referenceImage": "/presets/scenes/scene-03.jpg",
+      "promptSnippet": "Urban street setting, natural daylight, modern city background.",
+      "sha256": "570fbb2c7aee4fbccf711935ea267eaa9b79aa33d07963fe7b76916b10ed8fc1"
+    },
+    {
+      "name": "室内-极简",
+      "nameEn": "Minimalist Indoor",
+      "category": "indoor",
+      "referenceImage": "/presets/scenes/scene-04.jpg",
+      "promptSnippet": "Minimalist modern interior, warm ambient lighting.",
+      "sha256": "8a5006ac5e5e0aca053f43eef1bbe08eeeafd939cc343801bd9340bbb2e3405e"
+    },
+    {
+      "name": "户外-公园",
+      "nameEn": "Outdoor Park",
+      "category": "outdoor",
+      "referenceImage": "/presets/scenes/scene-05.jpg",
+      "promptSnippet": "Park setting with trees, natural golden hour lighting.",
+      "sha256": "e1251bc53730a085e588918dbe188b494a1fc54563eff351c9ae4ea6dd99fdff"
+    },
+    {
+      "name": "海滩",
+      "nameEn": "Beach",
+      "category": "outdoor",
+      "referenceImage": "/presets/scenes/scene-06.jpg",
+      "promptSnippet": "Sandy beach setting, bright sunlight, blue sky and ocean.",
+      "sha256": "7b3c4f24643ff86dc933d15e6d24c76626696edfaf0b79648c1c8135b51823b3"
+    }
   ],
   "garments": [
     {
@@ -82,10 +188,67 @@
     }
   ],
   "presetSources": [
-    { "files": ["public/presets/models/model-01.png", "public/presets/models/model-02.png", "public/presets/models/model-03.png", "public/presets/models/model-04.png", "public/presets/models/model-05.png", "public/presets/models/model-06.png", "public/presets/models/model-07.png", "public/presets/models/model-08.png", "public/presets/scenes/scene-01.png", "public/presets/scenes/scene-02.png"], "source": "ModelShot deterministic synthetic fixtures", "creator": "ModelShot contributors", "license": "CC0 1.0", "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/" },
-    { "files": ["public/presets/scenes/scene-03.jpg"], "sourcePage": "https://commons.wikimedia.org/wiki/File:2013.04_-_%27View_in_rainy_Spring%27,_with_still_empty_trees_in_Amsterdam_West,_urban_photo_in_Amsterdam,_The_Netherlands_by_Fons_Heijnsbroek_(12084191045).jpg", "creator": "Fons Heijnsbroek", "license": "CC0 1.0", "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/" },
-    { "files": ["public/presets/scenes/scene-04.jpg"], "sourcePage": "https://commons.wikimedia.org/wiki/File:Minimal_creative_interior_(Unsplash).jpg", "creator": "Breather", "license": "CC0 1.0", "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/" },
-    { "files": ["public/presets/scenes/scene-05.jpg"], "sourcePage": "https://commons.wikimedia.org/wiki/File:Autumn_park_path_(Unsplash).jpg", "creator": "Toni Lluch", "license": "CC0 1.0", "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/" },
-    { "files": ["public/presets/scenes/scene-06.jpg"], "sourcePage": "https://commons.wikimedia.org/wiki/File:Beach_by_the_pier_(Unsplash).jpg", "creator": "Dakota Corbin", "license": "CC0 1.0", "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/" }
+    {
+      "files": [
+        "public/presets/models/model-01.png",
+        "public/presets/models/model-02.png",
+        "public/presets/models/model-03.png",
+        "public/presets/models/model-04.png",
+        "public/presets/models/model-05.png",
+        "public/presets/models/model-06.png",
+        "public/presets/models/model-07.png",
+        "public/presets/models/model-08.png"
+      ],
+      "source": "Letaicode image generation API (gpt-image-2)",
+      "creator": "ModelShot contributors",
+      "license": "Provider terms apply; verify before redistribution",
+      "sourcePage": "https://api.letaicode.cn/codex/images/generations"
+    },
+    {
+      "files": [
+        "public/presets/scenes/scene-01.png",
+        "public/presets/scenes/scene-02.png"
+      ],
+      "source": "ModelShot deterministic synthetic fixtures",
+      "creator": "ModelShot contributors",
+      "license": "CC0 1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/"
+    },
+    {
+      "files": [
+        "public/presets/scenes/scene-03.jpg"
+      ],
+      "sourcePage": "https://commons.wikimedia.org/wiki/File:2013.04_-_%27View_in_rainy_Spring%27,_with_still_empty_trees_in_Amsterdam_West,_urban_photo_in_Amsterdam,_The_Netherlands_by_Fons_Heijnsbroek_(12084191045).jpg",
+      "creator": "Fons Heijnsbroek",
+      "license": "CC0 1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/"
+    },
+    {
+      "files": [
+        "public/presets/scenes/scene-04.jpg"
+      ],
+      "sourcePage": "https://commons.wikimedia.org/wiki/File:Minimal_creative_interior_(Unsplash).jpg",
+      "creator": "Breather",
+      "license": "CC0 1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/"
+    },
+    {
+      "files": [
+        "public/presets/scenes/scene-05.jpg"
+      ],
+      "sourcePage": "https://commons.wikimedia.org/wiki/File:Autumn_park_path_(Unsplash).jpg",
+      "creator": "Toni Lluch",
+      "license": "CC0 1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/"
+    },
+    {
+      "files": [
+        "public/presets/scenes/scene-06.jpg"
+      ],
+      "sourcePage": "https://commons.wikimedia.org/wiki/File:Beach_by_the_pier_(Unsplash).jpg",
+      "creator": "Dakota Corbin",
+      "license": "CC0 1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/"
+    }
   ]
 }

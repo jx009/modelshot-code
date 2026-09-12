@@ -64,7 +64,7 @@ async function main() {
     }
   }
 
-  console.log("✅ Seed data created (providers: 3, models: 8, scenes: 6, promptTemplates: 5)");
+  console.log("✅ Seed data created (providers: 3, models: 16, scenes: 6, promptTemplates: 5)");
 }
 
 main()

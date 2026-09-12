@@ -323,7 +323,6 @@
 
 /* ModelShot workspace */
 * { box-sizing: border-box; }
-button, input, select, textarea { font: inherit; color: inherit; }
 button, summary, select { cursor: pointer; }
 button:disabled, select:disabled, textarea:disabled { cursor: not-allowed; opacity: .52; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }

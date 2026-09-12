@@ -73,6 +73,78 @@
       "bodyType": "plus",
       "referenceImage": "/presets/models/model-08.png",
       "sha256": "7ede24d1916628dffac26da44ca5a443dc6d67ba1ccd52f7f88477e9f3010daf"
+    },
+    {
+      "name": "亚洲纤细男模-01",
+      "nameEn": "Asian Slim Male 01",
+      "gender": "male",
+      "ethnicity": "asian",
+      "bodyType": "slim",
+      "referenceImage": "/presets/models/model-09.png",
+      "sha256": "296f69914bf00d1aeeb83d5c2f04bf82a69b5f30b62ed081e94acf3f505fe80d"
+    },
+    {
+      "name": "亚洲大码男模-01",
+      "nameEn": "Asian Plus-size Male 01",
+      "gender": "male",
+      "ethnicity": "asian",
+      "bodyType": "plus",
+      "referenceImage": "/presets/models/model-10.png",
+      "sha256": "6256bb09430495c4e5eaa14347c73c6125b845e88399f12833636a8bf828dd2a"
+    },
+    {
+      "name": "欧美纤细女模-01",
+      "nameEn": "Caucasian Slim Female 01",
+      "gender": "female",
+      "ethnicity": "caucasian",
+      "bodyType": "slim",
+      "referenceImage": "/presets/models/model-11.png",
+      "sha256": "2a65774ed02293dd299d1e32c3b0f3c3c330900556fa6dd16159f06b9df8e85c"
+    },
+    {
+      "name": "欧美大码女模-01",
+      "nameEn": "Caucasian Plus-size Female 01",
+      "gender": "female",
+      "ethnicity": "caucasian",
+      "bodyType": "plus",
+      "referenceImage": "/presets/models/model-12.png",
+      "sha256": "beee1d0d2c390cf6d16107d6232e9843b34383fa374d45c03b0d4ad114d1bd3d"
+    },
+    {
+      "name": "非裔男模-01",
+      "nameEn": "Black Male 01",
+      "gender": "male",
+      "ethnicity": "african",
+      "bodyType": "standard",
+      "referenceImage": "/presets/models/model-13.png",
+      "sha256": "fc3382a13772a88faa062fdf0e392690294ab5358b8762a52c682105e1d17fc8"
+    },
+    {
+      "name": "非裔大码女模-01",
+      "nameEn": "Black Plus-size Female 01",
+      "gender": "female",
+      "ethnicity": "african",
+      "bodyType": "plus",
+      "referenceImage": "/presets/models/model-14.png",
+      "sha256": "c1c65a497f9a4b270776ab16c8f8343ba5f01809469d10915284fce302cdec94"
+    },
+    {
+      "name": "拉丁裔男模-01",
+      "nameEn": "Latino Male 01",
+      "gender": "male",
+      "ethnicity": "latin",
+      "bodyType": "standard",
+      "referenceImage": "/presets/models/model-15.png",
+      "sha256": "dac6a6dba716f6db921130bfa37c0d37ecd23175137110145a1c3100f8586ffd"
+    },
+    {
+      "name": "亚洲成熟女模-01",
+      "nameEn": "Mature Asian Female 01",
+      "gender": "female",
+      "ethnicity": "asian",
+      "bodyType": "standard",
+      "referenceImage": "/presets/models/model-16.png",
+      "sha256": "032db86d0868bba9b45cd987ad2a9c5e9055534d8f1d48c128159aebc7a7155b"
     }
   ],
   "scenes": [
@@ -197,7 +269,15 @@
         "public/presets/models/model-05.png",
         "public/presets/models/model-06.png",
         "public/presets/models/model-07.png",
-        "public/presets/models/model-08.png"
+        "public/presets/models/model-08.png",
+        "public/presets/models/model-09.png",
+        "public/presets/models/model-10.png",
+        "public/presets/models/model-11.png",
+        "public/presets/models/model-12.png",
+        "public/presets/models/model-13.png",
+        "public/presets/models/model-14.png",
+        "public/presets/models/model-15.png",
+        "public/presets/models/model-16.png"
       ],
       "source": "Letaicode image generation API (gpt-image-2)",
       "creator": "ModelShot contributors",

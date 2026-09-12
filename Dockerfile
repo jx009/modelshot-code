@@ -21,7 +21,7 @@ COPY --from=build --chown=node:node /app/public ./public
 COPY --from=build --chown=node:node /app/src ./src
 COPY --from=build --chown=node:node /app/messages ./messages
 COPY --from=build --chown=node:node /app/prisma ./prisma
-COPY --from=build --chown=node:node /app/scripts/ops.mjs ./scripts/ops.mjs
+COPY --from=build --chown=node:node /app/scripts/ops.mjs /app/scripts/make-admin.js ./scripts/
 COPY --chmod=755 docker/entrypoint.sh /usr/local/bin/modelshot
 USER node
 EXPOSE 3000

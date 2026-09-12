@@ -1,7 +1,7 @@
 "use client";
 import AssetImage from "@/components/ui/AssetImage";
 
-import { useTranslations, useLocale } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { Check, ChevronDown, Upload, SlidersHorizontal, PersonStanding, Camera, Sun, X } from "lucide-react";
 
 const poses = { standing: "poseStanding", walking: "poseWalking", three_quarter: "poseThreeQuarter", sitting: "poseSitting", leaning: "poseLeaning", closeup: "poseCloseup" };
@@ -18,7 +18,7 @@ export default function ParamsPanel({ config, onChange, models, scenes, provider
   const select = (key, options) => <select id={`shot-${key}`} value={config[key]} onChange={e => onChange(key, e.target.value)}>{options.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>;
   return <aside className="params-panel"><div className="panel-heading"><span>{tw("settings")}</span><SlidersHorizontal size={15} /></div>
     <fieldset disabled={disabled} className="params-fields">
-      <section className="parameter-section"><label htmlFor="shot-provider">{f("provider")}</label>{select("provider", providers.length ? providers.map(row => [row.id, row.label]) : [["", f("noProvider")]])}{provider?.credentialId && <label className="credential-toggle"><input type="checkbox" checked={!!config.credentialId} disabled={!provider.platformConfigured} onChange={event => onChange("credentialId", event.target.checked ? provider.credentialId : "")} />{f("ownCredential")}</label>}<a className="account-shortcut" href={`/${locale}/account`}>{f("credentials")}</a></section>
+      <section className="parameter-section"><label htmlFor="shot-provider">{f("provider")}</label>{select("provider", providers.length ? providers.map(row => [row.id, row.label]) : [["", f("noProvider")]])}</section>
       <section className="parameter-section">
         <div className="section-heading"><span className="step-number">01</span><h2>{t("selectModel")}</h2></div>
         <div className="mode-switch w-full mb-4">{["preset", "custom"].map(mode => <button type="button" key={mode} aria-pressed={config.modelSource === mode} onClick={() => onChange("modelSource", mode)}>{t(mode === "preset" ? "presets" : "custom")}</button>)}</div>

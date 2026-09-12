@@ -7,7 +7,7 @@ import { useAdminReason } from "@/hooks/useAdminReason";
 
 /**
  * 模型通道管理 — 每通道一张卡：开关/默认/优先级/API Key（加密存储脱敏显示）/Base URL（中转站）/模型名/测试连接
- * 配置读取三级降级：用户自带 key > DB 配置（本页）> env 兜底
+ * 配置读取优先级：DB 配置（本页）> env 兜底
  */
 export default function AdminProviders() {
   const reasonPrompt = useAdminReason();

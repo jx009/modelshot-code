@@ -35,7 +35,7 @@ export default function DetailDrawer({ tryon, onClose, onDownload, onDelete, del
     setWorking(true);
     try { await api(url, { method, body }); onChanged?.(); } catch (err) { setError(f.has(`errors.${err.code}`) ? f(`errors.${err.code}`) : f("requestFailed")); } finally { setWorking(false); }
   }
-  const billing = { credits: "billingCredits", subscription: "billingSubscription", custom_key: "billingCustomKey" }[tryon.billingType];
+  const billing = { credits: "billingCredits", subscription: "billingSubscription" }[tryon.billingType];
   return <dialog ref={ref} className="detail-dialog" aria-labelledby="detail-title" onCancel={onClose} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
     <div className="detail-header"><h2 id="detail-title">{t("details")}</h2><span className={`shot-status ${statusKey}`}>{t(statusKey)}</span><button className="icon-button ml-auto" aria-label={t("close")} title={t("close")} onClick={onClose}><X size={19} /></button></div>
     <div className="detail-content"><div className={`detail-preview ${compare ? "comparison" : ""}`}>{compare && <AssetImage src={tryon.clothesImage} alt={t("preview")} />}<AssetImage src={tryon.resultImage || tryon.clothesImage} alt={t(tryon.resultImage ? "result" : "preview")} /><div className="detail-image-tools"><button className="icon-button" aria-label={t("compare")} title={t("compare")} aria-pressed={compare} disabled={!tryon.resultImage} onClick={() => setCompare(!compare)}><Columns2 size={18} /></button><button className="icon-button" aria-label={t("zoom")} title={t("zoom")} onClick={() => setViewer(true)}><Maximize2 size={18} /></button></div></div>

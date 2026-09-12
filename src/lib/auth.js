@@ -63,7 +63,7 @@ export async function buildAuthOptions() {
   ],
   callbacks: {
     async jwt({ token, user }) {
-      // Provider credentials are never identity claims or client session fields.
+      // Discard obsolete claims from sessions issued before user-managed provider keys were removed.
       delete token.customApiKey;
       delete token.isApiKeyUser;
       if (user) {

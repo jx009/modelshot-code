@@ -59,6 +59,7 @@ test("unsafe legacy entry points are unavailable", async ({ request }) => {
   const providers = await (await request.get("/api/auth/providers")).json();
   expect(providers).not.toHaveProperty("credentials");
   expect((await request.post("/api/checkout", { data: { planId: "basic" } })).status()).toBe(503);
-  expect((await request.post("/api/user/apikey", { data: { apiKey: "same-suffix" } })).status()).toBe(503);
+  expect((await request.post("/api/user/apikey", { data: { apiKey: "same-suffix" } })).status()).toBe(404);
+  expect((await request.post("/api/user/credentials", { data: { provider: "openai", secret: "unused" } })).status()).toBe(404);
   expect((await request.get("/uploads/legacy.png")).status()).toBe(404);
 });

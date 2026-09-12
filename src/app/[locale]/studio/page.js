@@ -14,11 +14,11 @@ import Modal from "@/components/ui/Modal";
 import { downloadImage } from "@/lib/image-download";
 import { api, requestKey, terminalStatus } from "@/lib/client-api";
 
-const defaults = { modelSource: "preset", modelPresetId: "", personImage: "", scenePresetId: "", garmentType: "top", platformSpec: "", aspectRatio: "3:4", prompt: "", pose: "standing", camera: "eye_level", lighting: "soft", variants: 1, provider: "", credentialId: "", projectId: "", sku: "", name: "" };
+const defaults = { modelSource: "preset", modelPresetId: "", personImage: "", scenePresetId: "", garmentType: "top", platformSpec: "", aspectRatio: "3:4", prompt: "", pose: "standing", camera: "eye_level", lighting: "soft", variants: 1, provider: "", projectId: "", sku: "", name: "" };
 
 function sanitizeConfig(config, provider) {
   if (!provider) return config;
-  const next = { ...config, provider: provider.id, credentialId: config.credentialId || (!provider.platformConfigured ? provider.credentialId : "") };
+  const next = { ...config, provider: provider.id };
   for (const control of ["pose", "camera", "lighting", "prompt"]) if (!provider.controls.includes(control)) next[control] = "";
   if (!provider.controls.includes("scene")) next.scenePresetId = "";
   if (!provider.garments.includes(next.garmentType)) next.garmentType = provider.garments[0];
@@ -140,7 +140,6 @@ function StudioContent() {
       const next = { ...current, [key]: value };
       if (key === "provider") {
         const provider = providers.find(row => row.id === value);
-        next.credentialId = "";
         return sanitizeConfig(next, provider);
       }
       return next;
@@ -149,7 +148,7 @@ function StudioContent() {
   function payload() {
     const { modelSource, ...data } = config;
     return { ...data, images: batchMode ? images : images.slice(0, 1), modelPresetId: modelSource === "preset" ? config.modelPresetId : null,
-      personImage: modelSource === "custom" ? config.personImage : null, provider: config.provider || undefined, projectId: config.projectId || null, credentialId: config.credentialId || null };
+      personImage: modelSource === "custom" ? config.personImage : null, provider: config.provider || undefined, projectId: config.projectId || null };
   }
   const login = () => router.push(`/login?callbackUrl=${encodeURIComponent(window.location.pathname)}`);
   async function uploadFiles(files, model = false) {
@@ -203,8 +202,8 @@ function StudioContent() {
     try { const result = await api(`/api/jobs/${selectedId}/cancel`, { method: "POST" }); if (!result.cancelled) setError(f("cancelPending")); } catch (err) { fail(err); }
   }
   const count = (batchMode ? images.length : 1) * config.variants;
-  const quota = config.credentialId ? 0 : Math.min(count, usage?.remaining || 0);
-  const creditCost = config.credentialId ? 0 : (count - quota) * 18;
+  const quota = Math.min(count, usage?.remaining || 0);
+  const creditCost = (count - quota) * 18;
   const done = variants.filter(row => terminalStatus(row.status)).length;
   const selected = variants.find(row => row.id === selectedId);
 
@@ -219,8 +218,8 @@ function StudioContent() {
       <ParamsPanel config={config} onChange={change} models={models} scenes={scenes} providers={providers} loading={presetsLoading} error={presetsError} onRetry={loadPresets} batchMode={batchMode} disabled={busy} onModelFile={file => uploadFiles([file], true)} />
     </div>
     {error && <div className="workspace-error" role="alert"><span>{error}</span><button className="icon-button" title={t("close")} aria-label={t("close")} onClick={() => setError("")}><X size={15} /></button></div>}
-    <footer className="generation-bar"><div className="cost-summary"><span>{f("outputCount", { count })}</span><strong>{config.credentialId ? f("ownCredential") : `${quota} ${f("quota")} + ${creditCost} ${f("credits")}`}</strong>{usage && <small>{f("available")}: {usage.remaining} / {usage.credits} {f("credits")}</small>}</div><button className="button primary generate-button" disabled={busy || status === "loading" || !!userId && (!providers.length || !images.length || count > 100)} onClick={getQuote}>{busy ? <LoaderCircle size={17} className="animate-spin" /> : <Sparkles size={17} />}<span>{job ? t("generating", { done, total: variants.length || count }) : uploading ? ts("uploading") : !userId ? t("loginGenerate") : f("quoteAction")}</span></button></footer>
-    {quote && <Modal label={f("quote")} onClose={() => { if (!submitting) setQuote(null); }}><h2>{f("quote")}</h2><dl className="quote-details"><div><dt>{f("outputCount", { count: quote.pricing.count })}</dt><dd>{quote.snapshot.model}</dd></div><div><dt>{f("quota")}</dt><dd>{quote.pricing.quotaCount}</dd></div><div><dt>{f("credits")}</dt><dd>{quote.pricing.credits}</dd></div><div><dt>{f("outputSize")}</dt><dd>{quote.snapshot.delivery.width} × {quote.snapshot.delivery.height}</dd></div></dl><p>{f(quote.pricing.channel === "custom_key" ? "byokPolicy" : "deliveryPolicy")}</p><p>{f("quoteExpiry", { time: new Date(quote.expiresAt).toLocaleTimeString() })}</p><div className="dialog-actions"><button className="button" disabled={submitting} onClick={() => setQuote(null)}>{f("cancel")}</button><button className="button primary" disabled={submitting} onClick={confirmQuote}>{submitting && <LoaderCircle size={16} className="animate-spin" />}{f("confirm")}</button></div></Modal>}
+    <footer className="generation-bar"><div className="cost-summary"><span>{f("outputCount", { count })}</span><strong>{`${quota} ${f("quota")} + ${creditCost} ${f("credits")}`}</strong>{usage && <small>{f("available")}: {usage.remaining} / {usage.credits} {f("credits")}</small>}</div><button className="button primary generate-button" disabled={busy || status === "loading" || !!userId && (!providers.length || !images.length || count > 100)} onClick={getQuote}>{busy ? <LoaderCircle size={17} className="animate-spin" /> : <Sparkles size={17} />}<span>{job ? t("generating", { done, total: variants.length || count }) : uploading ? ts("uploading") : !userId ? t("loginGenerate") : f("quoteAction")}</span></button></footer>
+    {quote && <Modal label={f("quote")} onClose={() => { if (!submitting) setQuote(null); }}><h2>{f("quote")}</h2><dl className="quote-details"><div><dt>{f("outputCount", { count: quote.pricing.count })}</dt><dd>{quote.snapshot.model}</dd></div><div><dt>{f("quota")}</dt><dd>{quote.pricing.quotaCount}</dd></div><div><dt>{f("credits")}</dt><dd>{quote.pricing.credits}</dd></div><div><dt>{f("outputSize")}</dt><dd>{quote.snapshot.delivery.width} × {quote.snapshot.delivery.height}</dd></div></dl><p>{f("deliveryPolicy")}</p><p>{f("quoteExpiry", { time: new Date(quote.expiresAt).toLocaleTimeString() })}</p><div className="dialog-actions"><button className="button" disabled={submitting} onClick={() => setQuote(null)}>{f("cancel")}</button><button className="button primary" disabled={submitting} onClick={confirmQuote}>{submitting && <LoaderCircle size={16} className="animate-spin" />}{f("confirm")}</button></div></Modal>}
     {projectDialog && <Modal label={f("newProject")} onClose={() => setProjectDialog(false)}><form onSubmit={createProject}><h2>{f("newProject")}</h2><label htmlFor="project-name">{f("projectName")}</label><input id="project-name" required maxLength={100} value={projectName} onChange={e => setProjectName(e.target.value)} /><div className="dialog-actions"><button type="button" className="button" onClick={() => setProjectDialog(false)}>{f("cancel")}</button><button className="button primary">{f("save")}</button></div></form></Modal>}
   </div>;
 }

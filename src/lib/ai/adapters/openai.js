@@ -18,7 +18,7 @@ function normalizeBaseURL(value) {
 export class OpenAIAdapter extends BaseAdapter {
   constructor(config = {}) {
     super("openai", config);
-    // 三级降级：config.apiKey（用户自带/DB 配置）> env；baseURL 支持 OpenAI 兼容中转站
+    // 管理端数据库配置优先，环境变量作为部署兜底；baseURL 支持 OpenAI 兼容中转站。
     this.client = new OpenAI({
       maxRetries: 0,
       timeout: 120_000,

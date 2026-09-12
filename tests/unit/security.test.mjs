@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import sharp from "sharp";
-import { sealCredential, openCredential } from "../../src/lib/domain/identity/credentials.js";
+import { decryptSecret, encryptSecret } from "../../src/lib/crypto.js";
 import { normalizeImage, assetId } from "../../src/lib/domain/assets/service.js";
 import { isPublicAddress, downloadProviderImage } from "../../src/lib/infra/storage/download.js";
 import { toFileObject, toInlineData } from "../../src/lib/ai/adapters/base.js";
@@ -10,22 +10,18 @@ import { z } from "zod";
 
 afterEach(() => vi.unstubAllEnvs());
 
-describe("credential encryption", () => {
-  it("binds ciphertext to owner, supplier, record and key version", () => {
+describe("platform secret encryption", () => {
+  it("encrypts provider configuration and supports key rotation", () => {
     vi.stubEnv("ENCRYPTION_KEY", "ab".repeat(32));
-    const identity = { id: "credential-1", userId: "user-1", provider: "openai", status: "active" };
-    const sealed = { ...identity, ...sealCredential("provider-secret-1234", identity) };
-    expect(openCredential(sealed)).toBe("provider-secret-1234");
-    for (const changed of [{ userId: "user-2" }, { provider: "gemini" }, { id: "credential-2" }, { status: "revoked" }]) {
-      expect(() => openCredential({ ...sealed, ...changed })).toThrow();
-    }
+    const sealed = encryptSecret("provider-secret-1234");
+    expect(decryptSecret(sealed)).toBe("provider-secret-1234");
     vi.stubEnv("ENCRYPTION_KEY_VERSION", "2");
     vi.stubEnv("ENCRYPTION_KEY_1", "ab".repeat(32));
     vi.stubEnv("ENCRYPTION_KEY", "cd".repeat(32));
-    expect(openCredential(sealed)).toBe("provider-secret-1234");
-    const rotated = { ...identity, ...sealCredential(openCredential(sealed), identity) };
-    expect(rotated.keyVersion).toBe("2");
-    expect(openCredential(rotated)).toBe("provider-secret-1234");
+    expect(decryptSecret(sealed)).toBe("provider-secret-1234");
+    const rotated = encryptSecret(decryptSecret(sealed));
+    expect(rotated.startsWith("vault:2:")).toBe(true);
+    expect(decryptSecret(rotated)).toBe("provider-secret-1234");
   });
 });
 

@@ -162,14 +162,6 @@ test("privileged updates revoke the affected browser session and persist an audi
     const user = await db.user.create({ data: { email, passwordHash: await bcrypt.hash(E2E_PASSWORD, 10), emailVerified: new Date() } });
     await login(page, email);
     const adminPage = await context.newPage();
-    const secret = "fixture-provider-key-same-suffix";
-    const credentialResponse = await page.request.post("/api/user/credentials", { data: { provider: "gemini", secret } });
-    expect(credentialResponse.ok()).toBeTruthy();
-    const credential = await credentialResponse.json();
-    expect(JSON.stringify(credential)).not.toContain(secret);
-    const mismatch = await page.request.post("/api/quotes", { data: { images: ["unused-owned-asset"], provider: "openai", credentialId: credential.id } });
-    expect(mismatch.status()).toBe(404);
-    expect((await mismatch.json()).code).toBe("CREDENTIAL_NOT_FOUND");
     await login(adminPage, "m0-admin@modelshot.test");
     const key = crypto.randomUUID(), data = { id: user.id, status: "banned", reason: "Browser session revocation test" };
     const response = await adminPage.request.patch("/api/admin/users", { headers: { "Idempotency-Key": key }, data });

@@ -43,7 +43,6 @@ model User {
   image         String?
   credits       Int       @default(0)
   sessionVersion Int     @default(0)
-  credentials ProviderCredential[]
   assets Asset[]
   role          String    @default("user")       // user | agent | admin | root（四级，层级校验见 lib/admin-auth）
   status        String    @default("active")     // active | banned（封禁：登录拒绝+session失效，数据保留可解封）
@@ -252,20 +251,6 @@ model RateLimit {
   @@index([expiresAt])
 }
 
-model ProviderCredential {
-  id String @id @default(cuid())
-  userId String
-  provider String
-  ciphertext String @db.Text
-  keyVersion String
-  mask String
-  status String @default("active")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  @@unique([userId, provider])
-}
-
 model Asset {
   id String @id @default(cuid())
   userId String
@@ -436,7 +421,7 @@ model CreditTransaction {
   id        String   @id @default(cuid())
   userId    String
   type      String   // consume | refund | purchase | grant
-  channel   String   // credits | subscription | custom_key
+  channel   String   // credits | subscription
   amount    Int      // 正数入账，负数出账
   tryOnId   String?  // 关联生成记录（充值/赠送为空）
   reason    String?
@@ -481,7 +466,7 @@ model TryOn {
   requestId     String    @unique
   status        String    @default("queued")
   creditCost    Int       @default(18)
-  billingType   String?                            // credits | subscription | custom_key（计费方式）
+  billingType   String?                            // credits | subscription（计费方式）
   modelPresetId String?
   scenePresetId String?
   provider      String?

@@ -20,7 +20,6 @@ export const configurationSchema = z.object({
   garmentType: z.enum(["top", "bottom", "dress", "outerwear", "swimwear"]).default("top"),
   aspectRatio: z.enum(["auto", "1:1", "3:4", "4:3", "9:16", "16:9"]).default("3:4"),
   provider: z.enum(["openai", "gemini", "fashn"]).optional(),
-  credentialId: optionalText,
   variants: z.union([z.literal(1), z.literal(2), z.literal(4)]).default(1),
   prompt: z.string().max(4000).default(""),
   pose: z.enum(["", "standing", "walking", "three_quarter", "sitting", "leaning", "closeup"]).default(""),

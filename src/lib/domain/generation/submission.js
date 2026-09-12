@@ -23,19 +23,19 @@ export async function quoteGeneration(userId, input, db = prisma, dependencies =
   const prompt = await (dependencies.buildPrompt || buildPrompt)({ ...config, modelPreset: model, scenePreset: scene, userPrompt: config.prompt });
   const snapshot = {
     version: 1, config, provider: provider.id, model: provider.model, capabilityVersion: provider.version,
-    credentialId: config.credentialId || null, fallback: [], templateVersion: digestJson(prompt), prompt,
+    fallback: [], templateVersion: digestJson(prompt), prompt,
     garments: garments.map(asset => ({ id: asset.id, checksum: asset.checksum })),
     person: person ? { id: person.id, checksum: person.checksum } : null,
     modelPreset: model ? JSON.parse(JSON.stringify(model)) : null, scenePreset: scene ? JSON.parse(JSON.stringify(scene)) : null,
     nativeSize: provider.nativeSizes?.length ? aspectRatioToSize(config.aspectRatio) : null,
     delivery: { ...PROFILES[config.aspectRatio], fit: "contain", format: "png", version: PROFILE_VERSION },
-    qaPolicy: config.credentialId ? "skip" : "optional",
+    qaPolicy: "optional",
   };
   const count = garments.length * config.variants;
   const usage = await usageSummary(userId, db);
-  const quotaCount = config.credentialId ? 0 : Math.min(count, usage.remaining);
-  const creditCount = config.credentialId ? 0 : count - quotaCount;
-  const pricing = { version: PRICE_VERSION, count, quotaCount, creditCount, credits: creditCount * CREDIT_PRICE, unitPrice: CREDIT_PRICE, channel: config.credentialId ? "custom_key" : "platform", cycleId: usage.cycleId };
+  const quotaCount = Math.min(count, usage.remaining);
+  const creditCount = count - quotaCount;
+  const pricing = { version: PRICE_VERSION, count, quotaCount, creditCount, credits: creditCount * CREDIT_PRICE, unitPrice: CREDIT_PRICE, channel: "platform", cycleId: usage.cycleId };
   const quote = await db.generationQuote.create({ data: { userId, digest: digestJson(snapshot), snapshot, pricing, expiresAt: new Date(Date.now() + 300_000) } });
   return { quoteId: quote.id, digest: quote.digest, expiresAt: quote.expiresAt, pricing, snapshot };
 }
@@ -62,7 +62,6 @@ export async function submitGeneration(userId, quoteId, digest, idempotencyKey, 
     if (await tx.tryOn.count({ where: { userId, status: { in: ACTIVE } } }) + pricing.count > LIMITS.activePerUser) throw new AppError("USER_QUEUE_FULL", 429, true);
     for (const garment of snapshot.garments) await ownedAsset(userId, garment.id, tx);
     if (snapshot.person) await ownedAsset(userId, snapshot.person.id, tx);
-    if (snapshot.credentialId && !await tx.providerCredential.findFirst({ where: { id: snapshot.credentialId, userId, provider: snapshot.provider, status: "active" } })) throw new AppError("CREDENTIAL_REVOKED", 409);
     const cycle = await activeCycle(tx, userId, new Date(), true);
     const held = await tx.creditReservation.aggregate({ where: { userId, state: "held", channel: "credits" }, _sum: { amount: true } });
     if (pricing.quotaCount && (cycle.id !== pricing.cycleId || cycle.quota - cycle.used - cycle.reserved < pricing.quotaCount)) throw new AppError("QUOTE_STALE", 409, true);
@@ -71,8 +70,8 @@ export async function submitGeneration(userId, quoteId, digest, idempotencyKey, 
     const ids = [];
     for (let i = 0; i < pricing.count; i++) {
       const garment = snapshot.garments[Math.floor(i / config.variants)];
-      const channel = pricing.channel === "custom_key" ? "custom_key" : i < pricing.quotaCount ? "subscription" : "credits";
-      const amount = channel === "custom_key" ? 0 : channel === "subscription" ? 1 : CREDIT_PRICE;
+      const channel = i < pricing.quotaCount ? "subscription" : "credits";
+      const amount = channel === "subscription" ? 1 : CREDIT_PRICE;
       const output = await tx.tryOn.create({ data: {
         id: randomUUID(), userId, batchJobId: batch.id, requestId: randomUUID(), status: "queued", snapshot: { ...snapshot, garment, variant: i % config.variants },
         projectId: config.projectId || null, sku: config.sku,

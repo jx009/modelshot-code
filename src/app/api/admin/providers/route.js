@@ -28,6 +28,19 @@ function safeConfig(configStr) {
   };
 }
 
+function normalizeBaseURL(value) {
+  if (!value) return value;
+  try {
+    const url = new URL(value);
+    // Accept a pasted full endpoint such as /images/generations, then store
+    // the prefix expected by the OpenAI SDK (which appends /images/edits).
+    url.pathname = url.pathname.replace(/\/images\/(?:generations|edits)\/?$/, "");
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    return value.replace(/\/$/, "");
+  }
+}
+
 export async function GET(req) {
   const auth = await requireAdmin(req);
   if (auth.response) return auth.response;
@@ -64,7 +77,7 @@ export async function PATCH(req) {
       if (!existing) throw new AppError("PROVIDER_NOT_FOUND", 404);
       const cfg = JSON.parse(existing.config || "{}");
       if (input.apiKey?.trim()) cfg.apiKeyEnc = encryptSecret(input.apiKey.trim());
-      if (input.baseURL !== undefined) cfg.baseURL = input.baseURL;
+      if (input.baseURL !== undefined) cfg.baseURL = normalizeBaseURL(input.baseURL);
       if (input.model !== undefined) cfg.model = input.model;
       if (input.isDefault) await tx.modelProvider.updateMany({ data: { isDefault: false } });
       await tx.modelProvider.update({ where: { id: input.id }, data: { isActive: input.isActive, isDefault: input.isDefault, priority: input.priority, displayName: input.displayName, config: JSON.stringify(cfg) } });

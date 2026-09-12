@@ -8,6 +8,22 @@ import { settleReservation } from "../billing/ledger.js";
 import { providerAdapter } from "./providers.js";
 import { ACTIVE, TERMINAL, LIMITS, batchState } from "./contracts.js";
 
+function safeProviderError(error, fallback) {
+  if (error instanceof AppError) return error.code;
+  const status = error?.status || error?.statusCode || error?.response?.status;
+  const providerCode = error?.code || error?.error?.code;
+  const message = error?.error?.message || error?.message;
+  const detail = [status && `HTTP ${status}`, providerCode && providerCode !== "Error" && providerCode, message]
+    .filter(Boolean)
+    .join(": ")
+    .replace(/Bearer\s+[^\s]+/gi, "Bearer [redacted]")
+    .replace(/sk-[A-Za-z0-9_-]+/g, "[redacted]")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 220);
+  return detail ? `${fallback}: ${detail}` : fallback;
+}
+
 async function lockOutput(tx, id) {
   const row = await tx.tryOn.findUnique({ where: { id }, select: { userId: true } });
   if (!row) return null;
@@ -156,7 +172,9 @@ export async function executeOutput(id, { db = prisma, store = objectStorage(), 
       });
       if (!authorized) { await finishOutput(id, output.fence, { cancelled: true }, db); return; }
       result = await bounded(adapter.generateTryOn({ garmentImage, modelRef, sceneRef, prompt: snapshot.prompt, signal: controller.signal,
-        size: snapshot.nativeSize || undefined, quality: "high", category: { top: "tops", outerwear: "tops", bottom: "bottoms", dress: "one-pieces" }[snapshot.config.garmentType],
+        // Keep the gateway-compatible default used by the documented curl
+        // request. Providers can still return a higher-resolution image.
+        size: snapshot.nativeSize || undefined, quality: process.env.OPENAI_IMAGE_QUALITY || "medium", category: { top: "tops", outerwear: "tops", bottom: "bottoms", dress: "one-pieces" }[snapshot.config.garmentType],
         idempotencyKey: output.requestId,
         onSubmitted: async requestId => {
           if (typeof requestId !== "string" || requestId.length > 256) throw new Error("Invalid supplier request ID");
@@ -173,11 +191,11 @@ export async function executeOutput(id, { db = prisma, store = objectStorage(), 
     const status = error.status || error.statusCode;
     const notSubmitted = storedAttempt?.state === "claimed";
     if (notSubmitted || [400, 401, 403, 404, 413, 415, 422].includes(status) || error.code === "INVALID_IMAGE") {
-      await finishOutput(id, output.fence, { errorCode: error instanceof AppError ? error.code : "PROVIDER_REJECTED" }, db);
+      await finishOutput(id, output.fence, { errorCode: safeProviderError(error, "PROVIDER_REJECTED") }, db);
     } else if (status === 429 && output.fence < 4 && !attempt.requestId) {
       await deferOutput(claim, "PROVIDER_RATE_LIMITED", true, db);
     } else {
-      await deferOutput(claim, "PROVIDER_RESULT_UNKNOWN", false, db);
+      await deferOutput(claim, safeProviderError(error, "PROVIDER_RESULT_UNKNOWN"), false, db);
     }
   } finally { clearInterval(heartbeat); }
 }

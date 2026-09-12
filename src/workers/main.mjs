@@ -22,7 +22,14 @@ const worker = new Worker(QUEUE_NAME, async job => {
   if (job.data.version !== 1 || typeof job.data.id !== "string" || !handlers[job.name]) throw new Error("Unsupported queue payload");
   await handlers[job.name](job.data.id);
 }, { connection, concurrency: Math.min(8, Math.max(1, Number(process.env.WORKER_CONCURRENCY) || 2)), limiter: { max: 30, duration: 60_000 } });
-worker.on("failed", (job) => console.error(JSON.stringify({ code: "WORK_FAILED", kind: job?.name, entityId: job?.data?.id })));
+worker.on("failed", (job, error) => {
+  const message = String(error?.message || "unknown worker error")
+    .replace(/Bearer\s+[^\s]+/gi, "Bearer [redacted]")
+    .replace(/sk-[A-Za-z0-9_-]+/g, "[redacted]")
+    .replace(/\s+/g, " ")
+    .slice(0, 220);
+  console.error(JSON.stringify({ code: "WORK_FAILED", kind: job?.name, entityId: job?.data?.id, errorCode: error?.code || null, status: error?.status || error?.statusCode || null, message }));
+});
 worker.on("error", () => console.error(JSON.stringify({ code: "WORKER_CONNECTION_ERROR" })));
 connection.on("error", () => console.error(JSON.stringify({ code: "REDIS_UNAVAILABLE" })));
 let stopping = false;

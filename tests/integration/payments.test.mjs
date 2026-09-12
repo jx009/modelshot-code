@@ -164,7 +164,26 @@ it("audits and deduplicates admin credit adjustments and blocks peers or elevati
 
   await expect(administerUser(admin.id, { id: target.id, creditsDelta: -61, reason: "Reject excessive debit" }, randomUUID(), f.db)).rejects.toThrow("INSUFFICIENT_CREDITS");
   expect((await f.db.user.findUnique({ where: { id: target.id } })).credits).toBe(60);
+  await expect(administerUser(admin.id, { id: admin.id, creditsDelta: 10, reason: "Reject admin self grant" }, randomUUID(), f.db)).rejects.toThrow("ADMIN_SCOPE_DENIED");
   await expect(administerUser(admin.id, { ...input, id: peer.id }, randomUUID(), f.db)).rejects.toThrow("ADMIN_SCOPE_DENIED");
   await expect(administerUser(admin.id, { id: target.id, role: "root", reason: "Invalid role change" }, randomUUID(), f.db)).rejects.toThrow("ADMIN_ROLE_DENIED");
   expect(proportionalMinor(50, 125, 500)).toBe(13);
+});
+
+it("allows a root user to adjust only their own credits", async () => {
+  const root = await f.user(0);
+  await f.db.user.update({ where: { id: root.id }, data: { role: "root" } });
+  const input = { id: root.id, creditsDelta: 80, reason: "Root test credits" };
+  const key = randomUUID();
+
+  await administerUser(root.id, input, key, f.db);
+  await administerUser(root.id, input, key, f.db);
+
+  expect((await f.db.user.findUnique({ where: { id: root.id } })).credits).toBe(80);
+  expect(await f.db.creditTransaction.count({ where: { userId: root.id, amount: 80, businessKey: `admin:${root.id}:${key}` } })).toBe(1);
+  expect((await f.db.creditLot.aggregate({ where: { userId: root.id }, _sum: { remaining: true } }))._sum.remaining).toBe(80);
+  expect(await f.db.adminAuditLog.count({ where: { adminId: root.id, targetUserId: root.id, businessKey: `admin:${root.id}:${key}` } })).toBe(1);
+
+  await expect(administerUser(root.id, { id: root.id, status: "banned", reason: "Reject self ban" }, randomUUID(), f.db)).rejects.toThrow("ADMIN_SCOPE_DENIED");
+  await expect(administerUser(root.id, { id: root.id, role: "user", reason: "Reject self demotion" }, randomUUID(), f.db)).rejects.toThrow("ADMIN_SCOPE_DENIED");
 });

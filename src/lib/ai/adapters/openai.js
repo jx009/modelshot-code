@@ -2,6 +2,19 @@ import OpenAI from "openai";
 import { BaseAdapter, toFileObject } from "./base.js";
 import { getModel } from "../model-registry.js";
 
+function normalizeBaseURL(value) {
+  if (!value) return undefined;
+  try {
+    const url = new URL(value);
+    // Admins often paste the complete generations URL from a gateway's docs.
+    // The SDK appends /images/edits itself, so keep only the API prefix.
+    url.pathname = url.pathname.replace(/\/images\/(?:generations|edits)\/?$/, "");
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    return value.replace(/\/$/, "");
+  }
+}
+
 export class OpenAIAdapter extends BaseAdapter {
   constructor(config = {}) {
     super("openai", config);
@@ -10,7 +23,7 @@ export class OpenAIAdapter extends BaseAdapter {
       maxRetries: 0,
       timeout: 120_000,
       apiKey: config.apiKey || process.env.OPENAI_API_KEY,
-      ...(config.baseURL ? { baseURL: config.baseURL } : {}),
+      ...(config.baseURL ? { baseURL: normalizeBaseURL(config.baseURL) } : {}),
     });
     this.modelOverride = config.model || null; // 中转站自定义模型名（如 gpt-4o-image-vip）
     this.costMap = getModel("openai").costPerImage;

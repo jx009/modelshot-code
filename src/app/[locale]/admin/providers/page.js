@@ -160,7 +160,7 @@ function ProviderCard({ provider: p, saving, testing, testResult, onPatch, onTes
           />
         </div>
         <div className="space-y-1">
-          <label className="block text-xs text-secondary-text">Base URL（中转站）</label>
+          <label className="block text-xs text-secondary-text">Base URL（中转站）<span className="block text-[10px] text-secondary-text/60 mt-0.5">填 API 前缀，需支持 /images/edits；粘贴完整 generations 地址也会自动规范化</span></label>
           <input
             type="url"
             value={baseURL}

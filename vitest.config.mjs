@@ -1,8 +1,18 @@
 import { defineConfig } from "vitest/config";
 import { fileURLToPath } from "node:url";
+import { transformWithOxc } from "vite";
 
 export default defineConfig({
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
+  plugins: [{
+    name: "jsx-in-source-js",
+    enforce: "pre",
+    async transform(code, id) {
+      if (!/[/\\]src[/\\].*\.js$/.test(id)) return null;
+      const result = await transformWithOxc(code, id, { lang: "jsx", jsx: { runtime: "automatic" } });
+      return { code: result.code, map: result.map };
+    },
+  }],
   test: {
     projects: [
       {

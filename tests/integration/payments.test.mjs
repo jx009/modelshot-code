@@ -151,6 +151,19 @@ it("audits and deduplicates admin credit adjustments and blocks peers or elevati
   const key = randomUUID();
   await Promise.all(Array.from({ length: 4 }, () => administerUser(admin.id, input, key, f.db)));
   expect((await f.db.user.findUnique({ where: { id: target.id } })).credits).toBe(100);
+  expect(await f.db.creditTransaction.count({ where: { userId: target.id, type: "adjustment", amount: 100 } })).toBe(1);
+  expect((await f.db.creditLot.aggregate({ where: { userId: target.id }, _sum: { remaining: true } }))._sum.remaining).toBe(100);
+
+  const debit = { id: target.id, creditsDelta: -40, reason: "Correct duplicate compensation" };
+  const debitKey = randomUUID();
+  await administerUser(admin.id, debit, debitKey, f.db);
+  await administerUser(admin.id, debit, debitKey, f.db);
+  expect((await f.db.user.findUnique({ where: { id: target.id } })).credits).toBe(60);
+  expect(await f.db.creditTransaction.count({ where: { userId: target.id, type: "adjustment", amount: -40 } })).toBe(1);
+  expect((await f.db.creditLot.aggregate({ where: { userId: target.id }, _sum: { remaining: true, reserved: true } }))._sum).toEqual({ remaining: 60, reserved: 0 });
+
+  await expect(administerUser(admin.id, { id: target.id, creditsDelta: -61, reason: "Reject excessive debit" }, randomUUID(), f.db)).rejects.toThrow("INSUFFICIENT_CREDITS");
+  expect((await f.db.user.findUnique({ where: { id: target.id } })).credits).toBe(60);
   await expect(administerUser(admin.id, { ...input, id: peer.id }, randomUUID(), f.db)).rejects.toThrow("ADMIN_SCOPE_DENIED");
   await expect(administerUser(admin.id, { id: target.id, role: "root", reason: "Invalid role change" }, randomUUID(), f.db)).rejects.toThrow("ADMIN_ROLE_DENIED");
   expect(proportionalMinor(50, 125, 500)).toBe(13);

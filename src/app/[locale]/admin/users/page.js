@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRemoteResource } from "@/hooks/useRemoteResource";
-import { Ban, Check, LoaderCircle, RotateCcw, Search, ShieldCheck, User } from "lucide-react";
+import { ArrowRight, Ban, Check, LoaderCircle, RotateCcw, Search, ShieldCheck, User } from "lucide-react";
 import toast from "react-hot-toast";
 import Modal from "@/components/ui/Modal";
 import { requestKey } from "@/lib/client-api";
@@ -22,6 +22,16 @@ const roleCls = {
   root: "text-danger bg-danger/10 border-danger/30",
 };
 
+const operationErrors = {
+  ADMIN_SCOPE_DENIED: "当前账号无权操作该用户",
+  ADMIN_ROLE_DENIED: "只有 ROOT 可以变更管理角色",
+  CROSS_ORIGIN_REQUEST: "站点地址配置不一致，请检查 NEXTAUTH_URL",
+  IDEMPOTENCY_CONFLICT: "操作请求冲突，请关闭弹窗后重试",
+  IDEMPOTENCY_KEY_REQUIRED: "无法创建操作标识，请刷新页面后重试",
+  INSUFFICIENT_CREDITS: "用户可用积分不足，无法完成扣减",
+  INVALID_INPUT: "提交内容不合法，请检查积分和操作原因",
+};
+
 /**
  * 用户管理 — 搜索/筛选/排序/分页 + 行内操作（调积分/角色/封禁，全走后端审计）
  */
@@ -33,8 +43,7 @@ export default function AdminUsers() {
   const [sort, setSort] = useState("newest");
   const [page, setPage] = useState(1);
   const [acting, setActing] = useState(null);
-  const [creditDelta, setCreditDelta] = useState("");
-  const [editing, setEditing] = useState(null);
+  const [creditDeltas, setCreditDeltas] = useState({});
   const [operation, setOperation] = useState(null);
   const [reason, setReason] = useState("");
 
@@ -43,10 +52,18 @@ export default function AdminUsers() {
 
   const search = e => { e.preventDefault(); setPage(1); setQuery(q.trim()); load(); };
 
-  const patch = (id, body, note) => { setOperation({ id, body, note, key: requestKey() }); setReason(""); };
+  const patch = (id, body, note, options = {}) => {
+    try {
+      setOperation({ id, body, note, key: requestKey(), ...options });
+      setReason("");
+    } catch {
+      toast.error("无法创建操作请求，请刷新页面后重试");
+    }
+  };
   const confirm = async event => {
     event.preventDefault();
-    const { id, body, note, key } = operation;
+    const currentOperation = operation;
+    const { id, body, note, key } = currentOperation;
     setActing(id);
     try {
       const res = await fetch("/api/admin/users", {
@@ -54,26 +71,37 @@ export default function AdminUsers() {
         headers: { "Content-Type": "application/json", "Idempotency-Key": key },
         body: JSON.stringify({ id, ...body, reason }),
       });
-      const text = await res.text();
+      const payload = await res.json().catch(() => null);
       if (!res.ok) {
-        toast.error(text || "Failed");
+        const code = payload?.code || payload?.error;
+        const trace = payload?.traceId ? `（追踪号 ${payload.traceId}）` : "";
+        toast.error(`${operationErrors[code] || "操作失败，请稍后重试"}${trace}`);
         return;
       }
       toast.success(note);
+      if (currentOperation.clearCreditInput) {
+        setCreditDeltas(values => {
+          const next = { ...values };
+          delete next[id];
+          return next;
+        });
+      }
       setOperation(null);
-      await load();
-    } catch {
-      toast.error("Failed");
+      load();
+    } catch (error) {
+      toast.error(error instanceof TypeError ? "网络连接失败，请检查服务状态" : "操作失败，请稍后重试");
     } finally {
       setActing(null);
     }
   };
 
-  const grantCredits = async (u) => {
-    const n = parseInt(creditDelta, 10);
-    if (!n || n === 0) { toast.error("输入积分增减值（如 100 或 -50）"); return; }
-    await patch(u.id, { creditsDelta: n }, `Credits ${n > 0 ? "+" : ""}${n}`);
-    setCreditDelta("");
+  const grantCredits = (u) => {
+    const n = Number(creditDeltas[u.id]);
+    if (!Number.isInteger(n) || n === 0 || Math.abs(n) > 100000) {
+      toast.error("请输入 -100000 到 100000 之间的非零整数");
+      return;
+    }
+    patch(u.id, { creditsDelta: n }, `积分 ${n > 0 ? "+" : ""}${n}`, { clearCreditInput: true });
   };
 
   return (
@@ -154,27 +182,34 @@ export default function AdminUsers() {
                     <td className="px-4 py-2.5 text-right text-secondary-text tabular-nums">{u.monthUsage}</td>
                     <td className="px-4 py-2.5 text-right text-secondary-text tabular-nums">{u.tryonCount}</td>
                     <td className="px-4 py-2.5">
-                      <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+                      <form className="flex items-center gap-1.5" onSubmit={event => { event.preventDefault(); grantCredits(u); }} onClick={e => e.stopPropagation()}>
                         <input
                           type="number"
+                          step="1"
+                          min="-100000"
+                          max="100000"
                           placeholder="±积分"
-                          value={editing === u.id ? creditDelta : ""}
-                          onChange={e => setCreditDelta(e.target.value)}
-                          onFocus={() => { setEditing(u.id); setCreditDelta(""); }}
+                          aria-label={`调整 ${u.name || u.email} 的积分`}
+                          value={creditDeltas[u.id] ?? ""}
+                          onChange={e => setCreditDeltas(values => ({ ...values, [u.id]: e.target.value }))}
                           className="w-16 bg-bg-page border border-divider rounded px-1.5 py-1 text-xs tabular-nums"
                         />
                         <button
-                          onClick={() => grantCredits(u)}
+                          type="submit"
                           disabled={acting === u.id}
+                          aria-label={`提交 ${u.name || u.email} 的积分调整`}
+                          title="提交积分调整"
                           className="px-2 py-1 rounded border border-primary/40 text-primary text-xs hover:bg-primary-muted cursor-pointer disabled:opacity-40"
-                        >→</button>
+                        >{acting === u.id ? <LoaderCircle size={12} className="animate-spin" /> : <ArrowRight size={12} />}</button>
                         <button
+                          type="button"
                           onClick={() => patch(u.id, { role: u.role === "user" ? "agent" : "user" }, u.role === "user" ? "已升为流量手" : "已降为普通用户")}
                           disabled={acting === u.id}
                           title="user ↔ agent 切换（admin/root 变更仅 ROOT）"
                           className="px-2 py-1 rounded border border-divider text-secondary-text hover:text-primary-text text-xs cursor-pointer disabled:opacity-40"
                         ><ShieldCheck size={12} /></button>
                         <button
+                          type="button"
                           onClick={() => patch(u.id, { status: u.status === "banned" ? "active" : "banned" }, u.status === "banned" ? "已解封" : "已封禁")}
                           disabled={acting === u.id}
                           title={u.status === "banned" ? "解封" : "封禁"}
@@ -184,7 +219,7 @@ export default function AdminUsers() {
                               : "border-danger/40 text-danger hover:bg-danger/10"
                           }`}
                         >{u.status === "banned" ? <RotateCcw size={12} /> : <Ban size={12} />}</button>
-                      </div>
+                      </form>
                     </td>
                   </tr>
                 ))}
@@ -201,7 +236,7 @@ export default function AdminUsers() {
           </div>
         </>
       )}
-      {operation && <Modal label="确认用户变更" onClose={() => { if (!acting) setOperation(null); }}><form onSubmit={confirm}><h2>确认用户变更</h2><p>{operation.note}</p><label htmlFor="admin-reason">操作原因</label><input id="admin-reason" required minLength={3} maxLength={500} value={reason} onChange={e => setReason(e.target.value)} /><div className="dialog-actions"><button type="button" className="button" disabled={!!acting} onClick={() => setOperation(null)}>取消</button><button className="button primary" disabled={!!acting}>确认</button></div></form></Modal>}
+      {operation && <Modal label="确认用户变更" onClose={() => { if (!acting) setOperation(null); }}><form onSubmit={confirm}><h2>确认用户变更</h2><p>{operation.note}</p><label htmlFor="admin-reason">操作原因</label><input id="admin-reason" required minLength={3} maxLength={500} autoFocus value={reason} onChange={e => setReason(e.target.value)} /><div className="dialog-actions"><button type="button" className="button" disabled={!!acting} onClick={() => setOperation(null)}>取消</button><button type="submit" className="button primary" disabled={!!acting}>{acting && <LoaderCircle size={14} className="animate-spin" />}确认</button></div></form></Modal>}
     </div>
   );
 }

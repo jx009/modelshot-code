@@ -61,7 +61,7 @@ export class OpenAIAdapter extends BaseAdapter {
     this.costMap = getModel("openai").costPerImage;
   }
 
-  async generateTryOn({ garmentImage, modelRef, sceneRef, prompt, size = "1024x1536", quality = "high", signal }) {
+  async generateTryOn({ garmentImage, modelRef, sceneRef, referenceImages = [], prompt, size = "1024x1536", quality = "high", signal }) {
     if (!garmentImage) throw new Error("garmentImage is required");
     if (!prompt) throw new Error("prompt is required");
 
@@ -69,6 +69,9 @@ export class OpenAIAdapter extends BaseAdapter {
     const images = [await toFileObject(garmentImage, "garment")];
     if (modelRef) images.push(await toFileObject(modelRef, "model"));
     if (sceneRef) images.push(await toFileObject(sceneRef, "scene"));
+    for (const [index, reference] of referenceImages.entries()) {
+      images.push(await toFileObject(reference.image, `${reference.role || "reference"}-${index + 1}`));
+    }
 
     const input = {
       model: this.modelOverride || "gpt-image-2",

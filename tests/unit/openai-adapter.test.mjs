@@ -31,13 +31,17 @@ describe("OpenAI-compatible image edits", () => {
   it("routes real generation through the gateway-compatible multipart request", async () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = vi.fn(async (_url, options) => {
-      expect(options.body.getAll("image")).toHaveLength(2);
+      expect(options.body.getAll("image")).toHaveLength(4);
       expect(options.body.getAll("image[]")).toHaveLength(0);
+      expect(options.body.getAll("image").map(file => file.name)).toEqual(["garment.png", "model.png", "detail-1.png", "style-2.png"]);
       return new Response(JSON.stringify({ data: [{ b64_json: "result" }] }), { status: 200 });
     });
     try {
       const adapter = new OpenAIAdapter({ apiKey: "platform-key", baseURL: "https://gateway.example/v1", model: "gpt-image-2" });
-      const result = await adapter.generateTryOn({ garmentImage: pixel, modelRef: pixel, prompt: "Fashion photo", size: "1024x1024", quality: "medium" });
+      const result = await adapter.generateTryOn({ garmentImage: pixel, modelRef: pixel, referenceImages: [
+        { role: "detail", image: pixel },
+        { role: "style", image: pixel },
+      ], prompt: "Fashion photo", size: "1024x1024", quality: "medium" });
       expect(result.imageBase64).toBe("result");
     } finally {
       globalThis.fetch = originalFetch;

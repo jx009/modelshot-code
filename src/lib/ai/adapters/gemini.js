@@ -9,7 +9,7 @@ export class GeminiAdapter extends BaseAdapter {
     this.genAI = new GoogleGenerativeAI(config.apiKey || process.env.GOOGLE_GEMINI_API_KEY);
   }
 
-  async generateTryOn({ garmentImage, modelRef, sceneRef, prompt }) {
+  async generateTryOn({ garmentImage, modelRef, sceneRef, referenceImages = [], prompt }) {
     if (!garmentImage) throw new Error("garmentImage is required");
     if (!prompt) throw new Error("prompt is required");
 
@@ -20,10 +20,14 @@ export class GeminiAdapter extends BaseAdapter {
 
     const parts = [{ text: prompt }];
 
+    parts.push({ text: "PRIMARY PRODUCT REFERENCE:" });
     const garment = await toInlineData(garmentImage);
     parts.push({ inlineData: garment });
-    if (modelRef) parts.push({ inlineData: await toInlineData(modelRef) });
-    if (sceneRef) parts.push({ inlineData: await toInlineData(sceneRef) });
+    if (modelRef) parts.push({ text: "MODEL IDENTITY REFERENCE:" }, { inlineData: await toInlineData(modelRef) });
+    if (sceneRef) parts.push({ text: "SCENE REFERENCE:" }, { inlineData: await toInlineData(sceneRef) });
+    for (const reference of referenceImages) {
+      parts.push({ text: `${String(reference.role || "additional").toUpperCase()} REFERENCE:` }, { inlineData: await toInlineData(reference.image) });
+    }
 
     const result = await model.generateContent(parts);
     const imagePart = result.response.candidates?.[0]?.content?.parts?.find(

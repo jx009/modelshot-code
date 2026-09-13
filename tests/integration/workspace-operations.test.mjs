@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { domainFixture } from "../support/domain-fixture.mjs";
 import { saveDraft } from "../../src/lib/domain/generation/drafts.js";
+import { createImage } from "../../src/lib/domain/assets/service.js";
 import { deleteAsset, cleanupStorage } from "../../src/lib/domain/assets/lifecycle.js";
 import { executeOutput } from "../../src/lib/domain/generation/execution.js";
 import { recoverWork } from "../../src/lib/domain/generation/recovery.js";
@@ -29,8 +30,10 @@ afterAll(async () => {
 
 it("rejects cross-owner drafts and assets, and preserves the newer draft on conflict", async () => {
   const user = await f.user(), stranger = await f.user();
-  const data = { name: "SKU draft", config: { images: [user.asset.id] } };
+  const reference = await createImage(user.id, f.image, {}, f.db, f.store);
+  const data = { name: "SKU draft", config: { images: [user.asset.id], referenceImages: [{ id: reference.id, role: "style" }] } };
   const draft = await saveDraft(user.id, data, f.db);
+  expect(await f.db.assetReference.count({ where: { assetId: reference.id, entityId: draft.id, kind: "draft" } })).toBe(1);
   await expect(saveDraft(stranger.id, { ...data, id: draft.id, version: 1, config: { images: [] } }, f.db)).rejects.toMatchObject({ code: "DRAFT_NOT_FOUND" });
   await expect(saveDraft(stranger.id, data, f.db)).rejects.toMatchObject({ code: "ASSET_NOT_FOUND" });
   await expect(deleteAsset(stranger.id, user.asset.id, f.db)).rejects.toMatchObject({ code: "ASSET_NOT_FOUND" });

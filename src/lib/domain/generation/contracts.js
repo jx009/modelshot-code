@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import { workflowOutputCount } from "./workflow-catalog.js";
 
 export const LIMITS = Object.freeze({ garments: 50, outputs: 100, activePerUser: 100, queue: 2000, leaseMs: 90_000, reconcileMs: 15 * 60_000 });
 export const TERMINAL = ["succeeded", "failed", "cancelled"];
@@ -16,6 +17,17 @@ export const PROFILES = {
 const optionalText = z.string().max(128).optional().nullable();
 export const configurationSchema = z.object({
   images: z.array(z.string().max(128)).min(1).max(LIMITS.garments),
+  workflowId: z.enum(["commerce-suite", "main-gallery", "detail-page", "campaign-pack", "reference-remix", "product-polish", "single-shot", "model-set", "sku-kit"]).default("commerce-suite"),
+  productName: z.string().max(160).default(""),
+  productFacts: z.object({ material: z.string().max(1000).optional(), feature: z.string().max(1000).optional() }).strict().optional().default({}),
+  productCategory: z.enum(["fashion", "beauty", "electronics", "food", "home", "jewelry", "sports", "other"]).default("other"),
+  targetAudience: z.string().max(1000).default(""),
+  brandStyle: z.string().max(1000).default(""),
+  copyLanguage: z.enum(["zh", "en"]).default("zh"),
+  headline: z.string().max(160).default(""),
+  subheadline: z.string().max(300).default(""),
+  referenceImages: z.array(z.object({ id: z.string().max(128), role: z.enum(["detail", "style", "layout", "scene"]) }).strict()).max(15).default([]),
+  briefHistory: z.array(z.object({ text: z.string().trim().min(1).max(4000), workflowId: z.enum(["commerce-suite", "main-gallery", "detail-page", "campaign-pack", "reference-remix", "product-polish", "single-shot", "model-set", "sku-kit"]) }).strict()).max(12).default([]),
   personImage: optionalText, modelPresetId: optionalText, scenePresetId: optionalText,
   garmentType: z.enum(["top", "bottom", "dress", "outerwear", "swimwear"]).default("top"),
   aspectRatio: z.enum(["auto", "1:1", "3:4", "4:3", "9:16", "16:9"]).default("3:4"),
@@ -30,7 +42,7 @@ export const configurationSchema = z.object({
   sku: z.string().max(80).default(""),
   projectId: optionalText,
   retryOfId: optionalText,
-}).strict().refine(value => value.images.length * value.variants <= LIMITS.outputs);
+}).strict().refine(value => workflowOutputCount(value.workflowId, value.images.length, value.variants) <= LIMITS.outputs, { message: "OUTPUT_LIMIT_EXCEEDED" });
 
 export function digestJson(value) {
   const canonical = item => Array.isArray(item) ? item.map(canonical) : item && typeof item === "object" ? Object.fromEntries(Object.keys(item).sort().map(key => [key, canonical(item[key])])) : item;

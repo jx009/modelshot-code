@@ -17,7 +17,7 @@ async function login(page, email) {
   await expect.poll(async () => (await (await page.request.get("/api/auth/session")).json()).user?.email).toBe(email);
 }
 
-test("private upload, draft, quote, durable worker, review and ZIP delivery", async ({ page }, info) => {
+test("product brief, private references, agent plan, durable worker and ZIP delivery", async ({ page }, info) => {
   const errors = [];
   page.on("pageerror", error => errors.push(error.message));
   const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: getTestEnvironment().databaseUrl }) });
@@ -26,20 +26,27 @@ test("private upload, draft, quote, durable worker, review and ZIP delivery", as
     await db.user.create({ data: { email, passwordHash: await bcrypt.hash(E2E_PASSWORD, 10), credits: 100, emailVerified: new Date() } });
     await login(page, email);
     const image = await sharp({ create: { width: 120, height: 160, channels: 3, background: "#df586c" } }).png().toBuffer();
-    await page.locator('.asset-panel input[type="file"]').setInputFiles({ name: "garment.png", mimeType: "image/png", buffer: image });
+    await page.locator('.asset-panel input[type="file"]').first().setInputFiles({ name: "product.png", mimeType: "image/png", buffer: image });
     await expect(page.locator(".asset-list img").first()).toBeVisible();
+    await page.locator('.asset-panel input[type="file"]').nth(1).setInputFiles({ name: "detail.png", mimeType: "image/png", buffer: image });
+    await expect(page.locator(".reference-item img")).toBeVisible();
     if (info.project.name === "mobile") await page.locator('.mobile-workspace-tabs button').nth(1).click();
-    await page.locator('.params-panel .mode-switch button').filter({ hasText: "Custom" }).click();
-    await page.locator('.custom-model input[type="file"]').setInputFiles({ name: "model.png", mimeType: "image/png", buffer: image });
-    await expect(page.locator(".custom-model img")).toBeVisible();
+    await page.locator('.workflow-picker summary').click();
+    await page.locator('.workflow-options button').filter({ hasText: "Product polish" }).click();
+    await expect(page.locator('.custom-model')).toHaveCount(0);
+    await page.getByLabel("Creative brief", { exact: true }).fill("Clean the background and preserve every product detail.");
     await page.getByLabel("SKU", { exact: true }).fill("SKU-BROWSER");
     await page.getByRole("button", { name: "Save draft", exact: true }).click();
     await expect(page.getByRole("button", { name: "Saved", exact: true })).toBeVisible();
     await page.reload();
     await page.getByLabel("Open draft", { exact: true }).selectOption({ index: 1 });
     await expect(page.getByLabel("SKU", { exact: true })).toHaveValue("SKU-BROWSER");
+    if (info.project.name === "mobile") await page.locator('.mobile-workspace-tabs button').first().click();
+    await expect(page.locator(".reference-item img")).toBeVisible();
+    if (info.project.name === "mobile") await page.locator('.mobile-workspace-tabs button').nth(1).click();
     await page.locator(".generate-button").click();
     await expect(page.locator(".workflow-dialog")).toBeVisible();
+    await expect(page.locator(".workflow-dialog")).toContainText("Product polish");
     const submitted = page.waitForResponse(response => response.url().endsWith("/api/tryon") && response.request().method() === "POST");
     await page.locator(".workflow-dialog .primary").click();
     const result = await (await submitted).json();
@@ -90,13 +97,13 @@ test("batch failure, queued cancellation, ownership and configuration reuse", as
     const uploaded = await page.request.post("/api/upload", { multipart: { file: { name: "fixture.png", mimeType: "image/png", buffer: png } } });
     expect(uploaded.ok(), await uploaded.text()).toBeTruthy();
     const asset = await uploaded.json();
-    const quote = await (await page.request.post("/api/quotes", { data: { images: [asset.assetId, asset.assetId], personImage: asset.assetId, provider: "openai", prompt: "FIXTURE_REJECT", variants: 1 } })).json();
+    const quote = await (await page.request.post("/api/quotes", { data: { images: [asset.assetId, asset.assetId], personImage: asset.assetId, workflowId: "single-shot", provider: "openai", prompt: "FIXTURE_REJECT", variants: 1 } })).json();
     const submitted = await (await page.request.post("/api/tryon", { headers: { "Idempotency-Key": crypto.randomUUID() }, data: { quoteId: quote.quoteId, digest: quote.digest } })).json();
     expect(submitted.batchJobId, JSON.stringify(submitted)).toBeTruthy();
     await expect.poll(async () => (await (await page.request.get(`/api/batch?id=${submitted.batchJobId}`)).json()).status, { timeout: 45000 }).toBe("failed");
     await page.goto(`/en/studio?id=${submitted.tryonId}&retry=1`);
     await expect(page.locator('.asset-list img').first()).toHaveAttribute("src", /api\/assets/);
-    const nextQuote = await (await page.request.post("/api/quotes", { data: { images: [asset.assetId], personImage: asset.assetId, provider: "openai", retryOfId: submitted.tryonId } })).json();
+    const nextQuote = await (await page.request.post("/api/quotes", { data: { images: [asset.assetId], personImage: asset.assetId, workflowId: "single-shot", provider: "openai", retryOfId: submitted.tryonId } })).json();
     const retried = await (await page.request.post("/api/tryon", { headers: { "Idempotency-Key": crypto.randomUUID() }, data: { quoteId: nextQuote.quoteId, digest: nextQuote.digest } })).json();
     const cancelled = await page.request.post(`/api/jobs/${retried.tryonId}/cancel`);
     expect(cancelled.ok()).toBeTruthy();
@@ -123,7 +130,7 @@ test("worker restart delivers a persisted job once and gallery selection survive
     expect(uploaded.ok()).toBeTruthy();
     const asset = await uploaded.json();
     expect((await page.request.post("http://127.0.0.1:3199/worker/stop")).ok()).toBeTruthy();
-    const quote = await (await page.request.post("/api/quotes", { data: { images: [asset.assetId], personImage: asset.assetId, provider: "openai" } })).json();
+    const quote = await (await page.request.post("/api/quotes", { data: { images: [asset.assetId], personImage: asset.assetId, workflowId: "single-shot", provider: "openai" } })).json();
     const submitted = await (await page.request.post("/api/tryon", { headers: { "Idempotency-Key": crypto.randomUUID() }, data: { quoteId: quote.quoteId, digest: quote.digest } })).json();
     expect(submitted.tryonId).toBeTruthy();
     expect((await db.tryOn.findUnique({ where: { id: submitted.tryonId } })).status).toBe("queued");

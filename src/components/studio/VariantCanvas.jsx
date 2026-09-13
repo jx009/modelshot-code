@@ -8,12 +8,22 @@ import ImageViewer from "@/components/ui/ImageViewer";
 
 export default function VariantCanvas({ variants, selectedId, onSelect, onDownload, garmentImage, busy }) {
   const t = useTranslations("workspace");
+  const ts = useTranslations("studio");
   const [compare, setCompare] = useState(false);
   const [grid, setGrid] = useState(false);
   const [viewer, setViewer] = useState("");
   const selected = variants.find(v => v.id === selectedId) || variants[0];
   const result = selected?.resultImage;
   const original = selected?.clothesImage || garmentImage;
+  const taskLabel = variant => {
+    const task = variant?.snapshot?.task;
+    return task && ts.has(`shots.${task.id}`) ? ts(`shots.${task.id}`) : task?.title || t(variant?.resultImage ? "result" : "preview");
+  };
+  const groups = Object.entries(variants.reduce((result, variant) => {
+    const group = variant.snapshot?.task?.group || "main";
+    (result[group] ||= []).push(variant);
+    return result;
+  }, {}));
   let qaKey = "unchecked";
   if (selected?.qaStatus === "needs_review") qaKey = "review";
   else if (selected?.qaStatus === "passed") qaKey = "passed";
@@ -27,9 +37,9 @@ export default function VariantCanvas({ variants, selectedId, onSelect, onDownlo
       </div>
     </div>
     <div className={`canvas-stage ${grid ? "canvas-grid" : ""}`}>
-      {grid && variants.length > 0 ? variants.map(v => <button key={v.id} className={`variant-tile ${v.id === selectedId ? "selected" : ""}`} onClick={() => { onSelect(v.id); setGrid(false); }}><AssetImage src={v.resultImage || v.clothesImage} alt={t(v.resultImage ? "result" : "preview")} /><span className="image-caption">{t(v.status === "failed" ? "failed" : v.resultImage ? "ready" : "processing")}</span></button>) : (result || original) ? <div className={`canvas-images ${compare && result ? "comparing" : ""}`}>
+      {grid && variants.length > 0 ? <div className="variant-groups">{groups.map(([group, items]) => <section key={group} className="variant-group"><header><span>{ts(`groups.${group}`)}</span><small>{items.length}</small></header><div>{items.map(variant => <button key={variant.id} className={`variant-tile ${variant.id === selectedId ? "selected" : ""}`} onClick={() => { onSelect(variant.id); setGrid(false); }}><AssetImage src={variant.resultImage || variant.clothesImage} alt={t(variant.resultImage ? "result" : "preview")} /><span className="image-caption"><strong>{taskLabel(variant)}</strong><small>{variant.aspectRatio || variant.snapshot?.task?.aspectRatio}</small></span></button>)}</div></section>)}</div> : (result || original) ? <div className={`canvas-images ${compare && result ? "comparing" : ""}`}>
         {compare && result && <figure><AssetImage src={original} alt={t("preview")} /><figcaption>{t("preview")}</figcaption></figure>}
-        <figure><AssetImage src={result || original} alt={t(result ? "result" : "preview")} /><figcaption>{t(result ? "result" : "preview")}{selected?.aspectRatio && <span>{selected.aspectRatio}</span>}</figcaption>
+        <figure><AssetImage src={result || original} alt={t(result ? "result" : "preview")} /><figcaption>{taskLabel(selected)}{selected?.aspectRatio && <span>{selected.aspectRatio}</span>}</figcaption>
           {busy && !result && <span className="canvas-progress"><LoaderCircle size={17} className="animate-spin" />{t("processing")}</span>}
           {selected?.status === "failed" && <span className="canvas-progress text-danger"><TriangleAlert size={17} />{t("failed")}</span>}
           {result && <span className={`canvas-quality ${qaKey}`}>{qaKey === "review" && <TriangleAlert size={14} />}{t(qaKey)}</span>}

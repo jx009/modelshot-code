@@ -14,7 +14,7 @@ export async function saveDraft(userId, input, db = prisma) {
   return db.$transaction(async tx => {
     await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
     if (data.projectId && !await tx.project.findFirst({ where: { id: data.projectId, userId, archivedAt: null } })) throw new AppError("PROJECT_NOT_FOUND", 404);
-    const refs = [...new Set([...data.config.images, data.config.personImage].filter(Boolean))];
+    const refs = [...new Set([...data.config.images, data.config.personImage, ...(data.config.referenceImages || []).map(row => row?.id)].filter(Boolean))];
     const assets = [];
     for (const reference of refs) assets.push(await ownedAsset(userId, reference, tx));
     let draft;

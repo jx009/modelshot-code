@@ -36,7 +36,7 @@ export async function domainFixture() {
       return { ...user, asset };
     },
     async quote(user, overrides = {}) {
-      return quoteGeneration(user.id, { images: [user.asset.id], personImage: user.asset.id, ...overrides }, db, dependencies);
+      return quoteGeneration(user.id, { images: [user.asset.id], personImage: user.asset.id, workflowId: "single-shot", ...overrides }, db, dependencies);
     },
     async submit(user, overrides = {}) {
       const quote = await this.quote(user, overrides);

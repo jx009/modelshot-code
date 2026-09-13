@@ -4,7 +4,7 @@ import { readFile, writeFile } from "node:fs/promises";
 
 export async function injectMetadataBuffer(buffer, meta = {}) {
   const disclosed = await sharp(buffer).withExif({
-    IFD0: { Software: "ModelShot AI", ImageDescription: "AI-generated fashion product image" },
+    IFD0: { Software: "ModelShot AI", ImageDescription: "AI-generated commerce product image" },
   }).png().toBuffer();
   if (process.env.C2PA_ENABLED !== "1" || process.env.C2PA_DISABLED === "1") return { buffer: disclosed, status: "unsigned" };
   if (!process.env.C2PA_CERT_PATH || !process.env.C2PA_KEY_PATH) throw new Error("C2PA signing requires configured credentials");
@@ -12,7 +12,7 @@ export async function injectMetadataBuffer(buffer, meta = {}) {
   const [certificate, privateKey] = await Promise.all([readFile(process.env.C2PA_CERT_PATH), readFile(process.env.C2PA_KEY_PATH)]);
   const c2pa = createC2pa({ signer: { type: "local", certificate, privateKey } });
   const manifest = new ManifestBuilder({
-    claim_generator: `ModelShot/1 (${meta.provider || "ai"})`, format: "image/png", title: "AI-generated fashion image", vendor: "modelshot",
+    claim_generator: `ModelShot/1 (${meta.provider || "ai"})`, format: "image/png", title: "AI-generated commerce image", vendor: "modelshot",
     assertions: [{ label: "c2pa.actions", data: { actions: [{ action: "c2pa.created", softwareAgent: "ModelShot", when: new Date().toISOString(), digitalSourceType: "http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia" }] } }],
   });
   const { signedAsset } = await c2pa.sign({ manifest, asset: { buffer: disclosed, mimeType: "image/png" } });

@@ -45,6 +45,64 @@ it("deduplicates simultaneous identical submission keys and rejects changed inte
   await expect(submitGeneration(user.id, quote.quoteId, "0".repeat(64), key, f.db)).rejects.toThrow("IDEMPOTENCY_CONFLICT");
 });
 
+it("persists a distinct task and prompt for every SKU-kit deliverable", async () => {
+  const user = await f.user(108);
+  const quote = await f.quote(user, { workflowId: "sku-kit", productName: "Test jacket" });
+  expect(quote.pricing.count).toBe(6);
+  expect(new Set(quote.snapshot.tasks.map(task => task.prompt)).size).toBe(6);
+  const batch = await submitGeneration(user.id, quote.quoteId, quote.digest, randomUUID(), f.db);
+  const outputs = await f.db.tryOn.findMany({ where: { id: { in: batch.tryonIds } }, orderBy: { createTime: "asc" } });
+  expect(outputs).toHaveLength(6);
+  expect(new Set(outputs.map(output => output.snapshot.task.role)).size).toBe(6);
+  expect(outputs.every(output => output.prompt === output.snapshot.task.prompt)).toBe(true);
+});
+
+it("plans a commerce suite without a model and retains owned role references", async () => {
+  const user = await f.user(0, 11);
+  const reference = await createImage(user.id, f.image, {}, f.db, f.store);
+  const quote = await f.quote(user, {
+    workflowId: "commerce-suite",
+    personImage: null,
+    productName: "Desk lamp",
+    referenceImages: [{ id: reference.id, role: "style" }],
+  });
+
+  expect(quote.pricing).toMatchObject({ count: 11, quotaCount: 11, creditCount: 0 });
+  expect(quote.snapshot.person).toBeNull();
+  expect(quote.snapshot.references).toEqual([{ id: reference.id, checksum: reference.checksum, role: "style" }]);
+  expect(new Set(quote.snapshot.tasks.map(task => task.aspectRatio))).toEqual(new Set(["1:1", "4:3", "3:4"]));
+
+  const batch = await submitGeneration(user.id, quote.quoteId, quote.digest, randomUUID(), f.db);
+  const outputs = await f.db.tryOn.findMany({ where: { id: { in: batch.tryonIds } } });
+  expect(outputs).toHaveLength(11);
+  expect(outputs.find(output => output.snapshot.task.id === "lifestyle").aspectRatio).toBe("4:3");
+  expect(await f.db.assetReference.count({ where: { assetId: reference.id, kind: "generation_input" } })).toBeGreaterThan(0);
+});
+
+it("rejects a reference image owned by another account", async () => {
+  const user = await f.user();
+  const stranger = await f.user();
+  await expect(f.quote(user, {
+    workflowId: "reference-remix",
+    personImage: null,
+    referenceImages: [{ id: stranger.asset.id, role: "style" }],
+  })).rejects.toMatchObject({ code: "ASSET_NOT_FOUND" });
+});
+
+it("retries only the failed SKU-kit deliverable with its original production contract", async () => {
+  const user = await f.user(126);
+  const quote = await f.quote(user, { workflowId: "sku-kit", productName: "Test jacket" });
+  const batch = await submitGeneration(user.id, quote.quoteId, quote.digest, randomUUID(), f.db);
+  const failed = await f.db.tryOn.findFirst({ where: { id: { in: batch.tryonIds }, snapshot: { path: ["task", "id"], equals: "detail" } } });
+  await f.db.tryOn.update({ where: { id: failed.id }, data: { status: "failed" } });
+
+  const retry = await f.quote(user, { workflowId: "single-shot", retryOfId: failed.id });
+
+  expect(retry.pricing.count).toBe(1);
+  expect(retry.snapshot.workflow.id).toBe("sku-kit");
+  expect(retry.snapshot.tasks).toEqual([failed.snapshot.task]);
+});
+
 it("captures only the delivered output in a partially failed batch, once", async () => {
   const user = await f.user(36);
   const batch = await f.submit(user, { variants: 2 });

@@ -44,8 +44,8 @@ export async function processQuality(id, { db = prisma, store = objectStorage(),
   const step = await claimStep(id, "qa", db);
   if (!step) return;
   try {
-    const [original, garment] = await Promise.all([readOwnedImage(output.userId, output.originalAssetId, db, store), readOwnedImage(output.userId, output.snapshot.garment.id, db, store)]);
-    const report = await review(original, garment, { skip: output.snapshot.qaPolicy === "skip" });
+    const [original, product] = await Promise.all([readOwnedImage(output.userId, output.originalAssetId, db, store), readOwnedImage(output.userId, output.snapshot.garment.id, db, store)]);
+    const report = await review(original, product, { skip: output.snapshot.qaPolicy === "skip" });
     await completeStep(step, { state: report.status === "error" ? "error" : "done", report, errorCode: report.errorCode || null }, tx => tx.tryOn.update({ where: { id }, data: { qaStatus: report.status, qaScore: report.score, qaFlags: JSON.stringify(report.flags) } }), db);
     if (report.status === "error") throw new Error("QA_ERROR");
   } catch (error) {

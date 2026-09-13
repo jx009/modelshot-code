@@ -8,7 +8,7 @@
     "npm": ">=10.9.2 <11"
   },
   "packageManager": "npm@10.9.2",
-  "description": "AI fashion model photography studio for e-commerce sellers",
+  "description": "AI commerce visual production studio for product galleries, detail pages and campaigns",
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",

@@ -53,7 +53,8 @@ it("exports a fixed owned selection with exact pixels, descriptive filenames and
   expect(done.status).toBe("succeeded");
   const zip = await JSZip.loadAsync(await f.store.get(done.objectKey));
   const manifest = JSON.parse(await zip.file("manifest.json").async("string"));
-  expect(manifest.images[0].filename).toMatch(/^sku-123_.*\.png$/);
+  expect(manifest.images[0].filename).toMatch(/^main\/01_sku-123_.*\.png$/);
+  expect(manifest.images[0]).toMatchObject({ workflow: "single-shot", group: "main", sequence: 1, aspectRatio: "9:16", role: "single", task: "Single modeled shot" });
   expect(zip.file("manifest.csv")).not.toBeNull();
   const meta = await sharp(await zip.file(manifest.images[0].filename).async("nodebuffer")).metadata();
   expect([meta.width, meta.height]).toEqual([1080, 1920]);

@@ -161,8 +161,12 @@ export async function executeOutput(id, { db = prisma, store = objectStorage(), 
     } else {
       const snapshot = output.snapshot;
       const garmentImage = await readOwnedImage(output.userId, snapshot.garment.id, db, store);
-      const modelRef = snapshot.person ? await readOwnedImage(output.userId, snapshot.person.id, db, store) : await readPreset(snapshot.modelPreset.referenceImage);
-      const sceneRef = snapshot.scenePreset?.referenceImage ? await readPreset(snapshot.scenePreset.referenceImage) : null;
+      const references = snapshot.task?.references || ["product", "model", "scene"];
+      const modelRef = !references.includes("model") ? null : snapshot.person ? await readOwnedImage(output.userId, snapshot.person.id, db, store) : await readPreset(snapshot.modelPreset.referenceImage);
+      const sceneRef = references.includes("scene") && snapshot.scenePreset?.referenceImage ? await readPreset(snapshot.scenePreset.referenceImage) : null;
+      const referenceImages = await Promise.all((snapshot.references || [])
+        .filter(reference => references.includes(reference.role))
+        .map(async reference => ({ role: reference.role, image: await readOwnedImage(output.userId, reference.id, db, store) })));
       const authorized = await db.$transaction(async tx => {
         const current = await lockOutput(tx, id);
         if (!current || current.fence !== output.fence || TERMINAL.includes(current.status)) return false;
@@ -171,7 +175,7 @@ export async function executeOutput(id, { db = prisma, store = objectStorage(), 
         return true;
       });
       if (!authorized) { await finishOutput(id, output.fence, { cancelled: true }, db); return; }
-      result = await bounded(adapter.generateTryOn({ garmentImage, modelRef, sceneRef, prompt: snapshot.prompt, signal: controller.signal,
+      result = await bounded(adapter.generateTryOn({ garmentImage, modelRef, sceneRef, referenceImages, prompt: snapshot.task?.prompt || snapshot.prompt, signal: controller.signal,
         // Keep the gateway-compatible default used by the documented curl
         // request. Providers can still return a higher-resolution image.
         size: snapshot.nativeSize || undefined, quality: process.env.OPENAI_IMAGE_QUALITY || "medium", category: { top: "tops", outerwear: "tops", bottom: "bottoms", dress: "one-pieces" }[snapshot.config.garmentType],

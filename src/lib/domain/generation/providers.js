@@ -1,11 +1,12 @@
 import { prisma } from "../../prisma.js";
 import { AppError } from "../../http.js";
 import { decryptSecret } from "../../crypto.js";
+import { workflowNeedsModel } from "./workflow-catalog.js";
 
 export const CAPABILITIES = Object.freeze({
-  openai: { version: "1", model: "gpt-image-2", controls: ["pose", "camera", "lighting", "scene", "prompt"], garments: ["top", "bottom", "dress", "outerwear", "swimwear"], nativeSizes: ["1024x1024", "1024x1536", "1536x1024"], query: false, cancel: false },
-  gemini: { version: "1", model: "gemini-2.0-flash-preview-image-generation", controls: ["pose", "camera", "lighting", "scene", "prompt"], garments: ["top", "bottom", "dress", "outerwear", "swimwear"], nativeSizes: [], query: false, cancel: false },
-  fashn: { version: "1", model: "tryon-v1.6", controls: [], garments: ["top", "bottom", "dress", "outerwear"], nativeSizes: [], query: true, cancel: false },
+  openai: { version: "2", model: "gpt-image-2", controls: ["pose", "camera", "lighting", "scene", "prompt", "references", "copy"], garments: ["top", "bottom", "dress", "outerwear", "swimwear"], productCategories: ["fashion", "beauty", "electronics", "food", "home", "jewelry", "sports", "other"], workflows: "all", nativeSizes: ["1024x1024", "1024x1536", "1536x1024"], query: false, cancel: false },
+  gemini: { version: "2", model: "gemini-2.0-flash-preview-image-generation", controls: ["pose", "camera", "lighting", "scene", "prompt", "references", "copy"], garments: ["top", "bottom", "dress", "outerwear", "swimwear"], productCategories: ["fashion", "beauty", "electronics", "food", "home", "jewelry", "sports", "other"], workflows: "all", nativeSizes: [], query: false, cancel: false },
+  fashn: { version: "1", model: "tryon-v1.6", controls: [], garments: ["top", "bottom", "dress", "outerwear"], productCategories: ["fashion"], workflows: ["single-shot"], nativeSizes: [], query: true, cancel: false },
 });
 const ENV_KEYS = { openai: "OPENAI_API_KEY", gemini: "GOOGLE_GEMINI_API_KEY", fashn: "FASHN_API_KEY" };
 
@@ -22,7 +23,9 @@ export async function resolveProvider(userId, config, db = prisma) {
   const available = await availableProviders(userId, db);
   const selected = config.provider ? available.find(row => row.id === config.provider) : available.find(row => row.platformConfigured);
   if (!selected) throw new AppError("PROVIDER_UNAVAILABLE", 503);
-  if (!selected.garments.includes(config.garmentType)) throw new AppError("UNSUPPORTED_GARMENT");
+  if (selected.workflows !== "all" && !selected.workflows.includes(config.workflowId)) throw new AppError("UNSUPPORTED_WORKFLOW");
+  if (!selected.productCategories.includes(config.productCategory)) throw new AppError("UNSUPPORTED_PRODUCT_CATEGORY");
+  if (workflowNeedsModel(config.workflowId) && !selected.garments.includes(config.garmentType)) throw new AppError("UNSUPPORTED_GARMENT");
   for (const control of ["pose", "camera", "lighting", "prompt"]) {
     if (config[control] && !selected.controls.includes(control)) throw new AppError("UNSUPPORTED_CONTROL");
   }

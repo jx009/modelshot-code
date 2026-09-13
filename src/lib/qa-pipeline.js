@@ -4,7 +4,7 @@ import { toDataUri } from "./ai/adapters/base.js";
 
 export const qualityReportSchema = z.object({
   score: z.number().min(0).max(1),
-  flags: z.array(z.enum(["BODY_DISTORTION", "GARMENT_MISMATCH", "LOGO_MISSING", "COLOR_SHIFT", "FACE_DISTORTION"])).max(5),
+  flags: z.array(z.enum(["PRODUCT_MISMATCH", "SHAPE_DISTORTION", "DETAIL_MISSING", "TEXT_ERROR", "BODY_DISTORTION", "GARMENT_MISMATCH", "LOGO_MISSING", "COLOR_SHIFT", "FACE_DISTORTION"])).max(8),
   evidence: z.string().min(1).max(2000),
 }).strict();
 
@@ -16,9 +16,9 @@ export async function runQA(generatedImage, referenceImage, { skip = false, clie
     const response = await api.chat.completions.create({
       model: "gpt-4o-mini", max_tokens: 800, response_format: { type: "json_object" },
       messages: [{ role: "user", content: [
-        { type: "text", text: 'Compare the generated fashion image with the reference garment. Check anatomy, garment silhouette, logos, patterns and color. Return only JSON: {"score": number from 0 to 1, "flags": array containing only BODY_DISTORTION, GARMENT_MISMATCH, LOGO_MISSING, COLOR_SHIFT, FACE_DISTORTION as applicable, "evidence": specific visual reasons}. Do not assume details which are not visible.' },
+        { type: "text", text: 'Compare the generated commerce image with the primary product reference. Check product identity, shape, proportions, colors, labels, logos, visible construction and rendered text. If a person is present, also check anatomy and face integrity. Return only JSON: {"score": number from 0 to 1, "flags": array containing only PRODUCT_MISMATCH, SHAPE_DISTORTION, DETAIL_MISSING, TEXT_ERROR, BODY_DISTORTION, GARMENT_MISMATCH, LOGO_MISSING, COLOR_SHIFT, FACE_DISTORTION as applicable, "evidence": specific visual reasons}. Do not assume details which are not visible.' },
         { type: "image_url", image_url: { url: toDataUri(generatedImage), detail: "high" } },
-        { type: "text", text: "Reference garment:" },
+        { type: "text", text: "Primary product reference:" },
         { type: "image_url", image_url: { url: toDataUri(referenceImage), detail: "high" } },
       ] }],
     });

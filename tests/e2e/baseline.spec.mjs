@@ -17,7 +17,7 @@ for (const locale of ["en", "zh"]) {
     page.on("pageerror", error => errors.push(error.message));
     const response = await page.goto(`/${locale}/studio`);
     expect(response.status()).toBe(200);
-    await expect(page.locator("h1")).toContainText(locale === "en" ? "Photo studio" : "拍摄工作台");
+    await expect(page.locator("h1")).toContainText(locale === "en" ? "Commerce visual studio" : "电商视觉工作台");
     await expect(page.locator("html")).toHaveAttribute("lang", locale);
     // Language names in the navigation remain in their native language.
     if (locale === "en") expect(await page.locator(".studio-shell").innerText()).not.toMatch(/\p{Script=Han}/u);

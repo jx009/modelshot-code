@@ -24,7 +24,9 @@ export async function createExport(userId, outputIds, mode, idempotencyKey, db =
     const outputs = await tx.tryOn.findMany({ where: { id: { in: ids }, userId, status: "succeeded" } });
     if (outputs.length !== ids.length) throw new AppError("OUTPUT_NOT_FOUND", 404);
     const selection = outputs.map(output => ({ id: output.id, assetId: mode === "original" ? output.originalAssetId : output.deliveryAssetId,
-      sku: output.snapshot.config.sku, model: output.snapshot.modelPreset?.nameEn || "custom", scene: output.snapshot.scenePreset?.nameEn || "studio", variant: output.snapshot.variant, profile: mode === "delivery" ? output.snapshot.delivery : null }));
+      sku: output.snapshot.config.sku, productName: output.snapshot.config.productName, workflow: output.snapshot.workflow?.id || "single-shot", role: output.snapshot.task?.role || "hero", task: output.snapshot.task?.title || "Hero image",
+      group: output.snapshot.task?.group || "main", sequence: output.snapshot.task?.sequence || 1, aspectRatio: output.aspectRatio,
+      model: output.snapshot.modelPreset?.nameEn || (output.snapshot.person ? "custom" : "none"), scene: output.snapshot.scenePreset?.nameEn || "generated", variant: output.snapshot.variant, profile: mode === "delivery" ? output.snapshot.delivery : null }));
     if (selection.some(row => !row.assetId)) throw new AppError("DELIVERY_NOT_READY", 409, true);
     const assets = await tx.asset.findMany({ where: { id: { in: selection.map(row => row.assetId) }, userId, status: "active" } });
     if (assets.length !== new Set(selection.map(row => row.assetId)).size) throw new AppError("ASSET_NOT_FOUND", 404);
@@ -66,7 +68,7 @@ export async function processExport(id, { db = prisma, store = objectStorage() }
         const image = await readOwnedImage(job.userId, row.assetId, db, store);
         bytes += image.length;
         if (bytes > EXPORT_LIMITS.bytes) throw new AppError("EXPORT_TOO_LARGE", 413);
-        const filename = `${segment(row.sku)}_${segment(row.model)}_${segment(row.scene)}_v${row.variant + 1}_${row.id.slice(-12)}.png`;
+        const filename = `${segment(row.group)}/${String(row.sequence).padStart(2, "0")}_${segment(row.sku || row.productName || "product")}_${segment(row.role)}_v${row.variant + 1}_${row.id.slice(-12)}.png`;
         zip.file(filename, image);
         manifest.push({ ...row, filename });
       } catch (error) {
@@ -80,7 +82,7 @@ export async function processExport(id, { db = prisma, store = objectStorage() }
     }
     if (!manifest.length) throw new AppError("EXPORT_NO_FILES", 409);
     zip.file("manifest.json", JSON.stringify({ version: 1, exportId: id, images: manifest, failures }, null, 2));
-    zip.file("manifest.csv", ["outputId,filename,sku,model,scene,variant", ...manifest.map(row => [row.id, row.filename, row.sku, row.model, row.scene, row.variant + 1].map(csv).join(","))].join("\r\n"));
+    zip.file("manifest.csv", ["outputId,filename,sku,productName,workflow,group,sequence,role,task,aspectRatio,model,scene,variant", ...manifest.map(row => [row.id, row.filename, row.sku, row.productName, row.workflow, row.group, row.sequence, row.role, row.task, row.aspectRatio, row.model, row.scene, row.variant + 1].map(csv).join(","))].join("\r\n"));
     const buffer = await zip.generateAsync({ type: "nodebuffer", compression: "STORE" });
     const objectKey = `${job.userId}/exports/${id}_${step.fence}.zip`;
     await store.put(objectKey, buffer, "application/zip");

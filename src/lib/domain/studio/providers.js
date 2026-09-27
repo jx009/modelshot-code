@@ -25,7 +25,6 @@ export async function studioConfig(db = prisma, channelName) {
     visionBaseURL: process.env.STUDIO_BASE_URL || plannerConfig.baseURL,
     chatModel: process.env.STUDIO_CHAT_MODEL || plannerConfig.chatModel,
     plannerDisplayName: planner?.displayName || null,
-    mask: process.env.STUDIO_MASK_ENABLED === "1" || (!process.env.STUDIO_BASE_URL && !config.baseURL),
     videoKey: process.env.ARK_API_KEY, videoModel: process.env.ARK_VIDEO_MODEL,
     videoURL: process.env.ARK_BASE_URL || "https://ark.cn-beijing.volces.com/api/v3",
     toolsURL: process.env.STUDIO_TOOLS_URL, toolsKey: process.env.STUDIO_TOOLS_KEY,
@@ -46,13 +45,15 @@ export async function capabilities(db = prisma, config) {
     } catch { /* An unavailable tool service must not advertise ready tools. */ }
   }
   const ready = { local: true, image: Boolean(c.apiKey), vision: Boolean((c.visionApiKey || c.apiKey) && c.chatModel), video: Boolean(c.videoKey && c.videoModel),
-    segment: external.includes("segment"), "remove-bg": external.includes("remove-bg"), upscale: external.includes("upscale"), ocr: external.includes("ocr"), split: external.includes("remove-bg") && Boolean(c.apiKey && c.mask) };
+    segment: external.includes("segment"), "remove-bg": external.includes("remove-bg"), upscale: external.includes("upscale"), ocr: external.includes("ocr"), split: external.includes("remove-bg") && Boolean(c.apiKey) };
   return { imageModel: c.imageDisplayName || c.imageModel, imageProvider: c.imageProvider, imageModels, chatModel: c.plannerDisplayName || c.chatModel || null, videoModel: c.videoModel || null,
     tools: TOOLS.map(tool => {
       const configured = pricing.get(tool.id), enabled = configured?.isEnabled !== false;
       const cost = ["generate", "edit"].includes(tool.id) ? c.imageCreditCost ?? 18 : configured?.creditCost ?? tool.cost;
-      const dependencyReady = ready[tool.dependency], previewReady = !tool.preview || ready[tool.preview], maskReady = !(tool.mask || tool.id === "expand") || c.mask;
-      return { ...tool, cost, enabled, available: Boolean(enabled && dependencyReady && previewReady && maskReady), reason: !enabled ? "TOOL_DISABLED" : !dependencyReady ? "SERVICE_NOT_CONFIGURED" : !previewReady ? "SEGMENTATION_NOT_CONFIGURED" : !maskReady ? "MASK_NOT_ENABLED" : null };
+      // A custom API origin does not imply a lack of mask support. Send the
+      // same multipart edit contract and surface an actual provider rejection.
+      const dependencyReady = ready[tool.dependency], previewReady = !tool.preview || ready[tool.preview];
+      return { ...tool, cost, enabled, available: Boolean(enabled && dependencyReady && previewReady), reason: !enabled ? "TOOL_DISABLED" : !dependencyReady ? "SERVICE_NOT_CONFIGURED" : !previewReady ? "SEGMENTATION_NOT_CONFIGURED" : null };
     }) };
 }
 

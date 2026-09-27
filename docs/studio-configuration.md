@@ -22,13 +22,14 @@ Read `jiaotu-development-plan.md` for the implementation and acceptance plan.
 | STUDIO_BASE_URL | OpenAI-compatible base API URL |
 | STUDIO_IMAGE_MODEL | Image model; defaults to existing provider config |
 | STUDIO_CHAT_MODEL | Vision-capable chat model for planning and reverse prompting |
-| STUDIO_MASK_ENABLED=1 | Confirm this gateway supports the real multipart mask contract; required for custom base URLs |
 | ARK_API_KEY | Volcengine Ark API key |
 | ARK_VIDEO_MODEL | Your deployed Seedance endpoint/model ID; no invented alias |
 | ARK_BASE_URL | Defaults to official Beijing v3 API |
 | STUDIO_TOOLS_URL / STUDIO_TOOLS_KEY | Private image-tool service. Production Compose supplies this automatically; object movement requires its `segment` capability. |
 
-Local deterministic crop and canvas/text/export work without AI credentials. Generation/editing requires the image API. Mask edits additionally require verified mask support. Describe/plan needs a vision model. Remove background, OCR and super resolution need the private service. Split combines foreground extraction with masked background reconstruction.
+Local deterministic crop and canvas/text/export work without AI credentials. Generation/editing requires the image API. Official and custom Base URLs use the same multipart mask-edit contract; custom gateways do not require an extra enable flag. The former `STUDIO_MASK_ENABLED` setting is no longer read. Masked tools send the real mask to the configured provider and report its actual rejection when a request fails. Describe/plan needs a vision model. Remove background, OCR and super resolution need the private service. Split combines foreground extraction with masked background reconstruction.
+
+物体移动同时需要可用的图像通道与 `segment` 能力；图层拆分需要图像通道与 `remove-bg` 能力。`tools` 容器运行不代表所有引擎都已加载：发布的 `tools-latest` 默认内置分割和抠图，OCR、超分仍需安装对应引擎。自定义 Base URL 不会禁用扩图、消除、局部修改、物体移动或图层拆分。
 
 No real billable provider requests are part of automated tests. The fake test supplier is only used by the isolated test runtime. Environment values and local `.env` files must not be committed.
 

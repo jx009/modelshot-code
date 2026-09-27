@@ -8,7 +8,7 @@ import { settleReservation } from "../billing/ledger.js";
 import { providerAdapter } from "./providers.js";
 import { ACTIVE, TERMINAL, LIMITS, batchState } from "./contracts.js";
 
-function safeProviderError(error, fallback) {
+export function safeProviderError(error, fallback) {
   if (error instanceof AppError) return error.code;
   const status = error?.status || error?.statusCode || error?.response?.status;
   const providerCode = error?.code || error?.error?.code;

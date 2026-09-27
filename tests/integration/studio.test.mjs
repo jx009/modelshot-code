@@ -59,6 +59,37 @@ describe("studio documents and task ledger", () => {
     expect(calls).toBe(0); expect((await usageSummary(user.id, f.db)).credits).toBe(100);
     expect((await f.db.creditReservation.findUnique({ where: { tryOnId: job.id } })).state).toBe("released");
   });
+  it("admits and executes a masked job with a custom gateway without an enable flag", async () => {
+    const { user, input } = await setup();
+    const mask = await createImage(user.id, await sharp({ create: { width: user.asset.width, height: user.asset.height, channels: 3, background: "white" } }).png().toBuffer(), {}, f.db, f.store);
+    const gateway = { ...config, apiKey: "fixture-key", baseURL: "http://127.0.0.1:3199/codex" };
+    // Use real capabilities here so the old custom-URL gate cannot be hidden by the fixture.
+    const job = await submitStudioJob(user.id, { ...input, tool: "inpaint", maskId: mask.id }, randomUUID(), f.db, { config: gateway });
+    expect((await usageSummary(user.id, f.db)).reservedCredits).toBe(18);
+    let calls = 0;
+    await executeStudio(job.id, { db: f.db, store: f.store, config: gateway, adapters: { generate: async (actual, request) => {
+      calls++;
+      expect(actual.baseURL).toBe(gateway.baseURL);
+      expect(Buffer.isBuffer(request.mask)).toBe(true);
+      return f.image;
+    } } });
+    expect(calls).toBe(1);
+    expect((await f.db.tryOn.findUnique({ where: { id: job.id } })).status).toBe("succeeded");
+    expect((await usageSummary(user.id, f.db)).credits).toBe(82);
+  });
+  it("reports a real gateway rejection and releases credits without exposing credentials", async () => {
+    const { user, input } = await setup();
+    const job = await submitStudioJob(user.id, input, randomUUID(), f.db, deps);
+    await executeStudio(job.id, { db: f.db, store: f.store, config, adapters: { generate: async () => {
+      throw Object.assign(new Error("mask is not supported; Bearer fixture-secret sk-fixture-secret"), { status: 400 });
+    } } });
+    const row = await f.db.tryOn.findUnique({ where: { id: job.id } });
+    expect(row.status).toBe("failed");
+    expect(row.errorCode).toContain("PROVIDER_REJECTED: HTTP 400: mask is not supported");
+    expect(row.errorCode).not.toContain("fixture-secret");
+    expect((await usageSummary(user.id, f.db)).credits).toBe(100);
+    expect((await f.db.creditReservation.findUnique({ where: { tryOnId: job.id } })).state).toBe("released");
+  });
   it("reconciles an unknown response without reissuing a paid image request", async () => {
     const { user, input } = await setup();
     const job = await submitStudioJob(user.id, input, randomUUID(), f.db, deps);

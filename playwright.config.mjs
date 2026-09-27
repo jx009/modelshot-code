@@ -50,7 +50,6 @@ export default defineConfig({
       STUDIO_BASE_URL: "",
       STUDIO_IMAGE_MODEL: "fixture-image",
       STUDIO_CHAT_MODEL: "",
-      STUDIO_MASK_ENABLED: "1",
       STUDIO_TOOLS_URL: "http://127.0.0.1:3199",
       STUDIO_TOOLS_KEY: "isolated-e2e-tools-key-32-characters",
       ARK_API_KEY: "",

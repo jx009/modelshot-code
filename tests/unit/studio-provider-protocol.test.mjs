@@ -13,7 +13,7 @@ beforeAll(async () => {
     const chunks = []; for await (const c of req) chunks.push(c);
     const body = Buffer.concat(chunks);
     calls.push({ path: req.url, method: req.method, contentType: req.headers["content-type"], body, authorization: req.headers.authorization });
-    if (req.url === "/capabilities") { res.setHeader("Content-Type", "application/json"); return res.end(JSON.stringify({ tools: ["segment"] })); }
+    if (req.url === "/capabilities") { res.setHeader("Content-Type", "application/json"); return res.end(JSON.stringify({ tools: ["segment", "remove-bg"] })); }
     if (req.url === "/tools/segment") { res.setHeader("Content-Type", "image/png"); return res.end(png); }
     res.setHeader("Content-Type", "application/json");
     if (req.url.endsWith("/tasks/remote-id")) return res.end(JSON.stringify({ status: "succeeded", content: { video_url: "https://example.com/result.mp4" } }));
@@ -49,9 +49,41 @@ describe("studio real HTTP protocol against isolated fixture", () => {
     expect(request.body.toString()).toContain('name="mask"; filename="mask.png"');
     expect(request.body.toString()).toContain('name="image"; filename="image.png"');
   });
+  it.each(["database", "environment"])("allows mask tools through a custom Base URL from %s without an extra enable flag", async source => {
+    vi.stubEnv("STUDIO_API_KEY", "fixture-key");
+    vi.stubEnv("STUDIO_BASE_URL", source === "environment" ? `${base}/codex` : "");
+    vi.stubEnv("STUDIO_MASK_ENABLED", undefined);
+    vi.stubEnv("STUDIO_TOOLS_URL", base);
+    vi.stubEnv("STUDIO_TOOLS_KEY", "fixture-tools-key");
+    const db = { modelProvider: { findMany: vi.fn().mockResolvedValue([
+      { name: "gateway", kind: "openai", displayName: "Custom gateway", creditCost: 18, config: JSON.stringify({ model: "image-model", ...(source === "database" ? { baseURL: `${base}/codex` } : {}) }) },
+    ]) }, studioToolConfig: { findMany: vi.fn().mockResolvedValue([]) } };
+    const config = await studioConfig(db, "gateway");
+    const caps = await capabilities(db, config);
+    for (const id of ["expand", "erase", "inpaint", "move", "split"]) {
+      expect(caps.tools.find(tool => tool.id === id), id).toMatchObject({ available: true, reason: null });
+    }
+    await generateImage(config, { image: png, mask: png, prompt: "repair background", size: "1024x1024" });
+    const request = calls.at(-1);
+    expect(request.path).toBe("/codex/images/edits");
+    expect(request.authorization).toBe("Bearer fixture-key");
+    expect(request.body.toString()).toContain('name="mask"; filename="mask.png"');
+  });
+  it("still requires a key, real segmentation, and administrator approval for tools", async () => {
+    const pricing = vi.fn().mockResolvedValue([]);
+    const db = { modelProvider: { findMany: vi.fn().mockResolvedValue([]) }, studioToolConfig: { findMany: pricing } };
+    const config = { apiKey: "fixture", baseURL: `${base}/codex`, toolsURL: base, toolsKey: "fixture-tools-key" };
+    const withoutKey = await capabilities(db, { ...config, apiKey: undefined });
+    expect(withoutKey.tools.find(tool => tool.id === "inpaint")).toMatchObject({ available: false, reason: "SERVICE_NOT_CONFIGURED" });
+    const withoutSegment = await capabilities(db, { ...config, toolsURL: undefined });
+    expect(withoutSegment.tools.find(tool => tool.id === "move")).toMatchObject({ available: false, reason: "SEGMENTATION_NOT_CONFIGURED" });
+    pricing.mockResolvedValue([{ toolId: "move", isEnabled: false }]);
+    const disabled = await capabilities(db, config);
+    expect(disabled.tools.find(tool => tool.id === "move")).toMatchObject({ available: false, reason: "TOOL_DISABLED" });
+  });
   it("requires semantic segmentation for move previews and forwards the selection mask", async () => {
     const db = { modelProvider: { findMany: vi.fn().mockResolvedValue([]) }, studioToolConfig: { findMany: vi.fn().mockResolvedValue([]) } };
-    const config = { apiKey: "fixture", mask: true, toolsURL: base, toolsKey: "fixture-tools-key" };
+    const config = { apiKey: "fixture", toolsURL: base, toolsKey: "fixture-tools-key" };
     const caps = await capabilities(db, config);
     expect(caps.tools.find(tool => tool.id === "move")).toMatchObject({ available: true, preview: "segment" });
     expect(await toolService(config, "segment", png, {}, undefined, { selection: png })).toEqual(png);

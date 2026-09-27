@@ -57,7 +57,6 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
       INSUFFICIENT_CREDITS: t("可用积分不足，请补充积分后重试。", "Not enough available credits."),
       UNAUTHORIZED: t("请先登录，素材和作品会保存到你的账户。", "Sign in to save assets and projects."),
       SERVICE_NOT_CONFIGURED: t("这个工具还没有连接模型服务，请在部署配置中启用。", "This tool needs a configured provider."),
-      MASK_NOT_ENABLED: t("当前图像通道尚未启用遮罩编辑。", "Mask editing is not enabled for this provider."),
       SEGMENTATION_NOT_CONFIGURED: t("物体移动需要对象分割服务。请部署图像工具容器并启用分割引擎。", "Move object requires the segmentation service."),
       SEGMENTATION_FAILED: t("没有识别出可移动对象，请缩小选区并重新圈选。", "No movable object was detected. Draw a tighter selection and try again."),
       TOOL_SERVICE_UNAVAILABLE: t("图像工具服务不可用，请检查 tools 容器。", "The image tool service is unavailable."),

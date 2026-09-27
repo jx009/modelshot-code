@@ -5,7 +5,7 @@ import { AppError } from "../../http.js";
 import { objectStorage } from "../../infra/storage/s3.js";
 import { downloadProviderVideo } from "../../infra/storage/download.js";
 import { createImage, readOwnedImage } from "../assets/service.js";
-import { claimOutput, finishOutput, deferOutput } from "../generation/execution.js";
+import { claimOutput, finishOutput, deferOutput, safeProviderError } from "../generation/execution.js";
 import { studioConfig, generateImage, vision, toolService, videoRequest } from "./providers.js";
 import { alphaMask, compositeSelection, cropImage, expandInput, moveSelection } from "./pixels.js";
 
@@ -104,7 +104,7 @@ export async function executeStudio(id, { db = prisma, store = objectStorage(), 
     const stored = await db.generationAttempt.findUnique({ where: { id: attempt.id } });
     const status = error.status || error.statusCode;
     if (stored?.state === "claimed" || [400, 401, 403, 404, 413, 415, 422, 429].includes(status) || error instanceof AppError && ![502, 504].includes(status)) {
-      await finishOutput(id, output.fence, { errorCode: error instanceof AppError ? error.code : "PROVIDER_REJECTED" }, db);
+      await finishOutput(id, output.fence, { errorCode: safeProviderError(error, "PROVIDER_REJECTED") }, db);
     } else await deferOutput(claim, "PROVIDER_RESULT_UNKNOWN", false, db);
   } finally { clearTimeout(timer); clearInterval(heartbeat); }
 }

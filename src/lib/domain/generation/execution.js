@@ -57,28 +57,31 @@ export async function claimOutput(id, db = prisma, now = new Date()) {
   });
 }
 
-export async function finishOutput(id, fence, { asset, errorCode, cancelled = false, costUsd, durationMs }, db = prisma) {
+export async function finishOutput(id, fence, { asset, resultData, errorCode, cancelled = false, costUsd, durationMs }, db = prisma) {
   return db.$transaction(async tx => {
     const output = await lockOutput(tx, id);
     if (!output || output.fence !== fence || TERMINAL.includes(output.status)) {
       if (asset && output && TERMINAL.includes(output.status) && output.originalAssetId !== asset.id) await tx.asset.updateMany({ where: { id: asset.id }, data: { status: "quarantined" } });
       return false;
     }
-    const status = asset ? "succeeded" : cancelled ? "cancelled" : "failed";
+    const studio = output.snapshot?.kind === "studio";
+    const success = Boolean(asset || studio && resultData);
+    const status = success ? "succeeded" : cancelled ? "cancelled" : "failed";
     if (asset) {
       const stored = await tx.asset.findFirst({ where: { id: asset.id, userId: output.userId, status: "active" } });
       if (!stored) throw new Error("Deliverable asset unavailable");
       await tx.assetReference.upsert({ where: { assetId_entityId_kind: { assetId: asset.id, entityId: id, kind: "generation_output" } }, create: { assetId: asset.id, entityId: id, kind: "generation_output" }, update: {} });
     }
-    await settleReservation(tx, output, asset ? "capture" : "release");
+    await settleReservation(tx, output, success ? "capture" : "release");
     await tx.tryOn.update({ where: { id }, data: {
       status, leaseUntil: null, errorCode: errorCode || null,
+      ...(resultData ? { resultData } : {}),
       ...(Number.isFinite(costUsd) && costUsd >= 0 ? { costUsd } : {}),
       ...(Number.isSafeInteger(durationMs) ? { durationMs } : {}),
-      ...(asset ? { originalAssetId: asset.id, resultImage: assetUrl(asset.id), qaStatus: "pending", exportStatus: "pending" } : { qaStatus: "skipped", exportStatus: "skipped" }),
+      ...(asset ? { originalAssetId: asset.id, resultImage: assetUrl(asset.id), qaStatus: studio ? "skipped" : "pending", exportStatus: studio ? "skipped" : "pending" } : { qaStatus: "skipped", exportStatus: "skipped" }),
     } });
     await tx.generationAttempt.updateMany({ where: { tryOnId: id, fence }, data: { state: status, errorCode, endedAt: new Date() } });
-    if (asset) {
+    if (asset && !studio) {
       for (const kind of ["delivery", "qa"]) await tx.outboxEvent.upsert({ where: { businessKey: `${kind}:${id}:initial` }, create: { businessKey: `${kind}:${id}:initial`, kind, entityId: id }, update: {} });
     }
     await aggregateBatch(tx, output.batchJobId);
@@ -86,7 +89,7 @@ export async function finishOutput(id, fence, { asset, errorCode, cancelled = fa
   });
 }
 
-async function deferOutput(claim, errorCode, retry, db) {
+export async function deferOutput(claim, errorCode, retry, db) {
   return db.$transaction(async tx => {
     const output = await lockOutput(tx, claim.output.id);
     if (!output || output.fence !== claim.output.fence || TERMINAL.includes(output.status)) return;
@@ -121,6 +124,11 @@ export async function cancelOutput(userId, id, db = prisma) {
 }
 
 export async function executeOutput(id, { db = prisma, store = objectStorage(), adapterFactory = providerAdapter, timeoutMs = 150_000 } = {}) {
+  const kind = await db.tryOn.findUnique({ where: { id }, select: { snapshot: true } });
+  if (kind?.snapshot?.kind === "studio") {
+    const { executeStudio } = await import("../studio/execution.js");
+    return executeStudio(id, { db, store, timeoutMs });
+  }
   const claim = await claimOutput(id, db);
   if (!claim) return;
   const { output, attempt, reconcile } = claim;

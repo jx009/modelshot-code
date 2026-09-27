@@ -13,6 +13,17 @@
 
 /* ══════════ 第一层 · 原始色板（深色 = 品牌默认 — 避免深色用户加载瞬间白闪）══════════ */
 :root {
+  /* Fixed artboard colors belong to the artwork, independent of UI theme. */
+  --art-paper: #ece9e0;
+  --art-ink: #353a30;
+  --art-cream: #f6eedb;
+  --art-white: #fff8ed;
+  --art-red: #a51122;
+  --art-blue: #d9e5e9;
+  --art-gray: #e9e9e7;
+  --art-orange: #d88421;
+  --art-black: #121415;
+  --art-shade: #17150c70;
   /* 表面（深炭黑系）*/
   --bg-page: #0A0A0B;
   --bg-card: #141416;

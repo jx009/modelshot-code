@@ -1,0 +1,23 @@
+import "dotenv/config";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import sharp from "sharp";
+import { toolService } from "../src/lib/domain/studio/providers.js";
+
+const base = new URL(process.env.STUDIO_TOOLS_URL);
+if (!["localhost", "127.0.0.1", "[::1]"].includes(base.hostname)) throw new Error("This smoke test requires the local tool service");
+const config = { toolsURL: base.href.replace(/\/$/, ""), toolsKey: process.env.STUDIO_TOOLS_KEY };
+const capabilities = await fetch(`${config.toolsURL}/capabilities`, { headers: { Authorization: `Bearer ${config.toolsKey}` } });
+if (!capabilities.ok || !(await capabilities.json()).tools.includes("remove-bg")) throw new Error("rembg service is not ready");
+const source = await sharp(await readFile("public/presets/models/model-01.png")).resize({ width: 512, height: 512, fit: "inside" }).png().toBuffer();
+const start = Date.now();
+const output = await toolService(config, "remove-bg", source, {}, AbortSignal.timeout(180000));
+const original = await sharp(source).metadata(), result = await sharp(output).metadata();
+if (original.width !== result.width || original.height !== result.height || !result.hasAlpha) throw new Error("Invalid cutout dimensions/alpha");
+const alpha = await sharp(output).ensureAlpha().extractChannel("alpha").raw().toBuffer();
+const transparentPixels = alpha.filter(value => value < 32).length;
+const opaquePixels = alpha.filter(value => value > 223).length;
+if (!transparentPixels || !opaquePixels) throw new Error("Cutout did not distinguish foreground and background");
+await mkdir(".local/studio-smoke", { recursive: true });
+await writeFile(".local/studio-smoke/source.png", source);
+await writeFile(".local/studio-smoke/cutout.png", output);
+console.log(JSON.stringify({ width: result.width, height: result.height, transparentPixels, opaquePixels, durationMs: Date.now() - start, output: ".local/studio-smoke/cutout.png" }));

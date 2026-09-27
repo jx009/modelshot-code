@@ -9,6 +9,14 @@ export function isPublicAddress(address) {
 }
 
 export async function downloadProviderImage(value, resolver = lookup) {
+  return downloadMedia(value, resolver, IMAGE_LIMITS.bytes, 20_000);
+}
+
+export async function downloadProviderVideo(value, resolver = lookup) {
+  return downloadMedia(value, resolver, 100 * 1024 * 1024, 90_000);
+}
+
+async function downloadMedia(value, resolver, limit, timeout) {
   let url;
   try { url = new URL(value); } catch { throw new AppError("UNSAFE_IMAGE_URL"); }
   if (url.protocol !== "https:" || url.username || url.password || (url.port && url.port !== "443")) throw new AppError("UNSAFE_IMAGE_URL");
@@ -19,11 +27,11 @@ export async function downloadProviderImage(value, resolver = lookup) {
   return new Promise((resolve, reject) => {
     const request = https.get(url, {
       agent: false,
-      signal: AbortSignal.timeout(20_000),
+      signal: AbortSignal.timeout(timeout),
       // Pin the validated address for this connection, eliminating DNS rebinding.
       lookup: (_host, options, callback) => options.all ? callback(null, [target]) : callback(null, target.address, target.family),
     }, response => {
-      if (response.statusCode !== 200 || Number(response.headers["content-length"]) > IMAGE_LIMITS.bytes) {
+      if (response.statusCode !== 200 || Number(response.headers["content-length"]) > limit) {
         response.destroy();
         reject(new AppError("IMAGE_DOWNLOAD_REJECTED"));
         return;
@@ -32,7 +40,7 @@ export async function downloadProviderImage(value, resolver = lookup) {
       const chunks = [];
       response.on("data", chunk => {
         size += chunk.length;
-        if (size > IMAGE_LIMITS.bytes) response.destroy(new AppError("INVALID_IMAGE_SIZE", 413));
+        if (size > limit) response.destroy(new AppError("INVALID_IMAGE_SIZE", 413));
         else chunks.push(chunk);
       });
       response.on("end", () => resolve(Buffer.concat(chunks)));

@@ -23,6 +23,7 @@ export async function createExport(userId, outputIds, mode, idempotencyKey, db =
     if (await tx.exportJob.count({ where: { userId, status: { in: ["queued", "running"] } } }) >= 3) throw new AppError("EXPORT_QUEUE_FULL", 429);
     const outputs = await tx.tryOn.findMany({ where: { id: { in: ids }, userId, status: "succeeded" } });
     if (outputs.length !== ids.length) throw new AppError("OUTPUT_NOT_FOUND", 404);
+    if (outputs.some(output => output.snapshot?.kind === "studio")) throw new AppError("USE_STUDIO_EXPORT", 409);
     const selection = outputs.map(output => ({ id: output.id, assetId: mode === "original" ? output.originalAssetId : output.deliveryAssetId,
       sku: output.snapshot.config.sku, productName: output.snapshot.config.productName, workflow: output.snapshot.workflow?.id || "single-shot", role: output.snapshot.task?.role || "hero", task: output.snapshot.task?.title || "Hero image",
       group: output.snapshot.task?.group || "main", sequence: output.snapshot.task?.sequence || 1, aspectRatio: output.aspectRatio,

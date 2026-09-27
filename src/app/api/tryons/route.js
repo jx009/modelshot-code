@@ -22,6 +22,8 @@ export async function GET(request) {
     const limit = Math.max(1, Math.min(50, Number(params.get("limit")) || 24));
     const search = params.get("q")?.trim().slice(0, 100);
     const base = { userId: user.id, archivedAt: null,
+      // Canvas has its own image/text/video manifest and export surface.
+      AND: [{ OR: [{ provider: null }, { provider: { notIn: ["studio", "ark"] } }] }],
       ...(params.get("projectId") ? { projectId: params.get("projectId") } : {}),
       ...(params.get("batchId") ? { batchJobId: params.get("batchId") } : {}),
       ...(search ? { OR: [{ sku: { contains: search, mode: "insensitive" } }, { id: { contains: search } }, { prompt: { contains: search, mode: "insensitive" } }] } : {}),

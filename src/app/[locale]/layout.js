@@ -44,7 +44,7 @@ export async function generateMetadata({ params }) {
     description: meta.description,
     alternates: {
       languages: Object.fromEntries(
-        routing.locales.map((l) => [l, `/${l}/studio`])
+        routing.locales.map((l) => [l, `/${l}`])
       ),
     },
   };

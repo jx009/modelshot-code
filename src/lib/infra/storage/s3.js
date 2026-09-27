@@ -21,6 +21,10 @@ export function objectStorage() {
       const response = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }), { abortSignal: AbortSignal.timeout(30_000) });
       return Buffer.from(await response.Body.transformToByteArray());
     },
+    async stream(key, range, signal) {
+      const response = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key, ...(range ? { Range: range } : {}) }), { abortSignal: signal });
+      return response.Body.transformToWebStream();
+    },
     async delete(key) { await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key })); },
   };
   return storage;

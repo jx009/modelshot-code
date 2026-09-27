@@ -16,6 +16,7 @@ export default function Navbar() {
   const f = useTranslations("flow");
   const path = usePathname();
   const [open, setOpen] = useState(false);
+  if (path === "/" || path === "/projects" || path === "/commerce" || path === "/explore" || path.startsWith("/explore/") || path === "/studio-v2") return null;
   const links = [
     { href: "/studio", label: tn("studio"), icon: Camera },
     { href: "/gallery", label: t("gallery"), icon: Images },
@@ -24,7 +25,7 @@ export default function Navbar() {
   ];
   return (
     <header className="site-nav">
-      <Link href="/studio" className="brand"><Aperture size={25} className="text-primary" /><span>ModelShot<span className="brand-dot">.</span></span></Link>
+      <Link href="/" className="brand"><Aperture size={25} className="text-primary" /><span>ModelShot<span className="brand-dot">.</span></span></Link>
       <nav className="desktop-nav" aria-label={t("menu")}>
         {links.map(({ href, label, icon: Icon }) => <Link key={href} href={href} aria-current={path === href ? "page" : undefined}><Icon size={16} />{label}</Link>)}
       </nav>

@@ -1,0 +1,49 @@
+import sharp from "sharp";
+import { AppError } from "../../http.js";
+
+export async function maskPixels(mask, width, height) {
+  const meta = await sharp(mask).metadata();
+  if (meta.width !== width || meta.height !== height) throw new AppError("MASK_SIZE_MISMATCH");
+  const data = await sharp(mask).flatten({ background: "black" }).greyscale().raw().toBuffer();
+  if (!data.some(value => value > 0)) throw new AppError("EMPTY_MASK");
+  return data;
+}
+export async function alphaMask(mask, width, height) {
+  const selection = await maskPixels(mask, width, height);
+  const data = Buffer.alloc(width * height * 4, 255);
+  for (let i = 0; i < selection.length; i++) data[i * 4 + 3] = 255 - selection[i];
+  return sharp(data, { raw: { width, height, channels: 4 } }).png().toBuffer();
+}
+export async function compositeSelection(original, generated, mask) {
+  const { width, height } = await sharp(original).metadata();
+  const selection = await maskPixels(mask, width, height);
+  const a = await sharp(original).ensureAlpha().raw().toBuffer();
+  const b = await sharp(generated).resize(width, height, { fit: "fill" }).ensureAlpha().raw().toBuffer();
+  for (let i = 0; i < selection.length; i++) for (let channel = 0; channel < 4; channel++) {
+    const offset = i * 4 + channel;
+    a[offset] = Math.round(a[offset] * (1 - selection[i] / 255) + b[offset] * selection[i] / 255);
+  }
+  return sharp(a, { raw: { width, height, channels: 4 } }).png().toBuffer();
+}
+export async function cropImage(image, rect) {
+  const { width, height } = await sharp(image).metadata();
+  if (!rect || rect.left + rect.width > width || rect.top + rect.height > height) throw new AppError("CROP_OUT_OF_BOUNDS");
+  return sharp(image).extract(rect).png().toBuffer();
+}
+export async function expandInput(image, padding) {
+  const { width, height } = await sharp(image).metadata();
+  const w = width + padding * 2, h = height + padding * 2;
+  if (w > 8192 || h > 8192 || w * h > 40000000) throw new AppError("IMAGE_TOO_LARGE", 413);
+  const expanded = await sharp(image).extend({ left: padding, right: padding, top: padding, bottom: padding, background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toBuffer();
+  const mask = await sharp({ create: { width: w, height: h, channels: 3, background: "white" } }).composite([{ input: await sharp({ create: { width, height, channels: 3, background: "black" } }).png().toBuffer(), left: padding, top: padding }]).png().toBuffer();
+  return { image: expanded, mask };
+}
+export async function moveSelection(original, repaired, mask, dx, dy) {
+  const { width, height } = await sharp(original).metadata();
+  if (Math.abs(dx) >= width || Math.abs(dy) >= height) throw new AppError("MOVE_OUT_OF_BOUNDS");
+  const alpha = await maskPixels(mask, width, height);
+  const raw = await sharp(original).ensureAlpha().raw().toBuffer();
+  for (let i = 0; i < alpha.length; i++) raw[i * 4 + 3] = Math.round(raw[i * 4 + 3] * alpha[i] / 255);
+  const foreground = await sharp(raw, { raw: { width, height, channels: 4 } }).extract({ left: Math.max(0, -dx), top: Math.max(0, -dy), width: width - Math.abs(dx), height: height - Math.abs(dy) }).png().toBuffer();
+  return sharp(repaired).composite([{ input: foreground, left: Math.max(0, dx), top: Math.max(0, dy) }]).png().toBuffer();
+}

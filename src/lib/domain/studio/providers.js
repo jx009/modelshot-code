@@ -46,15 +46,21 @@ export async function capabilities(db = prisma, config) {
     } catch { /* An unavailable tool service must not advertise ready tools. */ }
   }
   const ready = { local: true, image: Boolean(c.apiKey), vision: Boolean((c.visionApiKey || c.apiKey) && c.chatModel), video: Boolean(c.videoKey && c.videoModel),
-    "remove-bg": external.includes("remove-bg"), upscale: external.includes("upscale"), ocr: external.includes("ocr"), split: external.includes("remove-bg") && Boolean(c.apiKey && c.mask) };
+    segment: external.includes("segment"), "remove-bg": external.includes("remove-bg"), upscale: external.includes("upscale"), ocr: external.includes("ocr"), split: external.includes("remove-bg") && Boolean(c.apiKey && c.mask) };
   return { imageModel: c.imageDisplayName || c.imageModel, imageProvider: c.imageProvider, imageModels, chatModel: c.plannerDisplayName || c.chatModel || null, videoModel: c.videoModel || null,
-    tools: TOOLS.map(tool => { const configured = pricing.get(tool.id); const enabled = configured?.isEnabled !== false; const cost = ["generate", "edit"].includes(tool.id) ? c.imageCreditCost ?? 18 : configured?.creditCost ?? tool.cost; return { ...tool, cost, enabled, available: Boolean(enabled && ready[tool.dependency] && (!(tool.mask || tool.id === "expand") || c.mask)), reason: !enabled ? "TOOL_DISABLED" : ready[tool.dependency] ? (tool.mask || tool.id === "expand") && !c.mask ? "MASK_NOT_ENABLED" : null : "SERVICE_NOT_CONFIGURED" }; }) };
+    tools: TOOLS.map(tool => {
+      const configured = pricing.get(tool.id), enabled = configured?.isEnabled !== false;
+      const cost = ["generate", "edit"].includes(tool.id) ? c.imageCreditCost ?? 18 : configured?.creditCost ?? tool.cost;
+      const dependencyReady = ready[tool.dependency], previewReady = !tool.preview || ready[tool.preview], maskReady = !(tool.mask || tool.id === "expand") || c.mask;
+      return { ...tool, cost, enabled, available: Boolean(enabled && dependencyReady && previewReady && maskReady), reason: !enabled ? "TOOL_DISABLED" : !dependencyReady ? "SERVICE_NOT_CONFIGURED" : !previewReady ? "SEGMENTATION_NOT_CONFIGURED" : !maskReady ? "MASK_NOT_ENABLED" : null };
+    }) };
 }
 
-export async function toolService(config, tool, image, params = {}, signal) {
+export async function toolService(config, tool, image, params = {}, signal, files = {}) {
   if (!config.toolsURL || !config.toolsKey) throw new AppError("TOOL_SERVICE_UNAVAILABLE", 503);
   const form = new FormData();
   form.append("image", new Blob([image], { type: "image/png" }), "image.png");
+  for (const [name, bytes] of Object.entries(files)) if (bytes) form.append(name, new Blob([bytes], { type: "image/png" }), `${name}.png`);
   form.append("params", JSON.stringify(params));
   const response = await fetch(`${config.toolsURL}/tools/${tool}`, { method: "POST", headers: { Authorization: `Bearer ${config.toolsKey}` }, body: form, signal: signal || AbortSignal.timeout(120000) });
   if (!response.ok) throw new AppError("TOOL_SERVICE_FAILED", response.status);

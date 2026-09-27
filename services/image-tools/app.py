@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Depends, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import Response
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageChops, UnidentifiedImageError
 
 Image.MAX_IMAGE_PIXELS = 40_000_000
 MAX_BYTES = 10 * 1024 * 1024
@@ -25,7 +25,9 @@ async def lifespan(_app):
         raise RuntimeError("STUDIO_TOOLS_KEY must contain at least 24 characters")
     if os.environ.get("REMBG_ENABLED") == "1":
         from rembg import new_session, remove
-        ENGINES["remove-bg"] = (remove, new_session(os.environ.get("REMBG_MODEL", "u2net")))
+        engine = (remove, new_session(os.environ.get("REMBG_MODEL", "u2net")))
+        ENGINES["remove-bg"] = engine
+        ENGINES["segment"] = engine
     if os.environ.get("OCR_ENABLED") == "1":
         from paddleocr import PaddleOCR
         ENGINES["ocr"] = PaddleOCR(use_angle_cls=True, lang=os.environ.get("OCR_LANGUAGE", "ch"), show_log=False)
@@ -66,11 +68,22 @@ def decode(data):
         raise HTTPException(422, "Invalid image") from exc
 
 
-def process(tool, data, params):
+def process(tool, data, params, selection_data=None):
     source = decode(data)
-    if tool == "remove-bg":
+    if tool in ("remove-bg", "segment"):
         remove, session = ENGINES[tool]
-        result = remove(source, session=session)
+        result = remove(source, session=session).convert("RGBA")
+        if tool == "segment":
+            if not selection_data:
+                raise HTTPException(422, "Selection is required")
+            selection = decode(selection_data)
+            if selection.size != source.size:
+                raise HTTPException(422, "Selection dimensions do not match")
+            selection_mask = selection.convert("L")
+            alpha = ImageChops.multiply(result.getchannel("A"), selection_mask)
+            if alpha.getbbox() is None:
+                raise HTTPException(422, "No object detected")
+            result.putalpha(alpha)
     elif tool == "upscale":
         scale = params.get("scale", 2)
         if scale not in (2, 4) or max(source.size) * scale > 8192 or source.width * source.height * scale * scale > 40_000_000:
@@ -112,13 +125,19 @@ def process(tool, data, params):
 
 
 @app.post("/tools/{tool}", dependencies=[Depends(authorize)])
-async def execute(tool: str, image: UploadFile = File(...), params: str = Form("{}")):
+async def execute(tool: str, image: UploadFile = File(...), selection: UploadFile | None = File(None), params: str = Form("{}")):
     if tool not in ENGINES:
         raise HTTPException(503, "Tool is not configured")
     data = await image.read(MAX_BYTES + 1)
     await image.close()
+    selection_data = None
+    if selection is not None:
+        selection_data = await selection.read(MAX_BYTES + 1)
+        await selection.close()
     if len(data) > MAX_BYTES or len(params) > 8192:
         raise HTTPException(413, "Payload too large")
+    if selection_data is not None and len(selection_data) > MAX_BYTES:
+        raise HTTPException(413, "Selection too large")
     try:
         options = json.loads(params)
         if not isinstance(options, dict):
@@ -126,5 +145,5 @@ async def execute(tool: str, image: UploadFile = File(...), params: str = Form("
     except (ValueError, TypeError) as exc:
         raise HTTPException(422, "Invalid parameters") from exc
     async with LOCK:
-        result = await asyncio.to_thread(process, tool, data, options)
+        result = await asyncio.to_thread(process, tool, data, options, selection_data)
     return result if isinstance(result, dict) else Response(result, media_type="image/png")

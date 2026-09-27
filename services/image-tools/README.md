@@ -4,7 +4,7 @@ Independent implementation; no ai-picture-editor source is included. This servic
 
 Use Python 3.11 in a separate virtual environment. Install `requirements.txt`, then the engines you need:
 
-- Background removal: `pip install "rembg[cpu]==2.0.67"`; set `REMBG_ENABLED=1`. `REMBG_MODEL` defaults to u2net. Provision weights under the rembg cache before offline deployment; rembg may download weights on first startup.
+- Background removal and selection-aware object segmentation: `pip install "rembg[cpu]==2.0.67"`; set `REMBG_ENABLED=1`. The same engine exposes `remove-bg` and `segment`. `REMBG_MODEL` defaults to u2net. Provision weights under the rembg cache before offline deployment; rembg may download weights on first startup.
 - OCR: `pip install "paddleocr==2.10.0" "paddlepaddle==2.6.2"`; set `OCR_ENABLED=1`. The v2 API is deliberately pinned. Set `OCR_LANGUAGE=ch` for Chinese/English mixed text. Windows installations may require a separately supported Paddle wheel; Linux is recommended for deployment.
 - Super resolution: install the official [Real-ESRGAN ncnn Vulkan](https://github.com/xinntao/Real-ESRGAN-ncnn-vulkan) distribution. Set `REALESRGAN_BIN` to the executable and `REALESRGAN_MODELS` to its models directory. The default `realesr-animevideov3` package contains x2/x4 models; it is aimed at illustrated content. Validate a photo-appropriate model before enabling for photographic products. Model file existence is checked at startup, actual GPU execution must also be smoke-tested. No weight files or binaries are bundled.
 

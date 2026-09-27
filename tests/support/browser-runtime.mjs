@@ -7,8 +7,27 @@ const png = await sharp({ create: { width: 320, height: 480, channels: 3, backgr
 const supplier = http.createServer(async (req, res) => {
   const chunks = [];
   for await (const chunk of req) chunks.push(chunk);
-  const body = Buffer.concat(chunks).toString();
+  const payload = Buffer.concat(chunks), body = payload.toString();
   if (req.url === "/health") { res.end("ok"); return; }
+  if (req.method === "GET" && req.url === "/capabilities") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ version: 1, tools: ["segment"] })); return;
+  }
+  if (req.method === "POST" && req.url === "/tools/segment") {
+    const form = await new Response(payload, { headers: { "content-type": req.headers["content-type"] || "" } }).formData();
+    const source = Buffer.from(await form.get("image").arrayBuffer());
+    const selection = Buffer.from(await form.get("selection").arrayBuffer());
+    const { data, info } = await sharp(source).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    const mask = await sharp(selection).greyscale().raw().toBuffer();
+    const background = [data[0], data[1], data[2]];
+    for (let pixel = 0; pixel < info.width * info.height; pixel++) {
+      const offset = pixel * 4;
+      const distance = Math.hypot(data[offset] - background[0], data[offset + 1] - background[1], data[offset + 2] - background[2]);
+      data[offset + 3] = mask[pixel] > 127 && distance > 24 ? 255 : 0;
+    }
+    const result = await sharp(data, { raw: info }).png().toBuffer();
+    res.writeHead(200, { "Content-Type": "image/png" }); res.end(result); return;
+  }
   if (req.method === "POST" && req.url === "/worker/stop") {
     if (worker.exitCode === null) await new Promise(resolve => { worker.once("exit", resolve); worker.kill("SIGKILL"); });
     res.end("stopped"); return;

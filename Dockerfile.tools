@@ -1,0 +1,26 @@
+FROM python:3.11-slim-bookworm
+
+WORKDIR /app
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    U2NET_HOME=/opt/modelshot-models
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY services/image-tools/requirements.txt services/image-tools/requirements-rembg.txt ./
+RUN pip install --no-cache-dir -r requirements-rembg.txt
+
+ARG REMBG_MODEL=u2net
+RUN mkdir -p "$U2NET_HOME" \
+    && REMBG_MODEL="$REMBG_MODEL" python -c "import os; from rembg import new_session; new_session(os.environ['REMBG_MODEL'])"
+
+COPY services/image-tools/app.py ./app.py
+RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin modelshot \
+    && chown -R modelshot:modelshot /app "$U2NET_HOME"
+
+USER modelshot
+EXPOSE 8090
+CMD ["python", "-m", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8090", "--workers", "1"]

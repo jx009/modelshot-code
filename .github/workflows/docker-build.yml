@@ -128,9 +128,56 @@ jobs:
           DIGEST: ${{ steps.build.outputs.digest }}
         run: cosign sign --yes "$IMAGE@$DIGEST"
 
+  build_tools_single_arch:
+    name: Build image tools (${{ matrix.arch }})
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.sha }}
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+      - name: Log in to Docker Hub
+        uses: docker/login-action@c99871dec2022cc055c062a10cc1a1310835ceb4 # v4.3.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Build and push tools architecture image
+        id: build
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: ./Dockerfile.tools
+          platforms: ${{ matrix.platform }}
+          push: true
+          tags: ${{ env.IMAGE }}:tools-${{ env.BUILD_TAG }}-${{ matrix.arch }}
+          cache-from: type=gha,scope=modelshot-tools-${{ matrix.arch }}
+          cache-to: type=gha,scope=modelshot-tools-${{ matrix.arch }},mode=max
+          provenance: mode=max
+          sbom: true
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - name: Sign tools architecture digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: cosign sign --yes "$IMAGE@$DIGEST"
+
   create_manifests:
     name: Publish multi-arch tags
-    needs: [prepare, build_single_arch]
+    needs: [prepare, build_single_arch, build_tools_single_arch]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -153,6 +200,16 @@ jobs:
             type=ref,event=branch
             type=ref,event=tag
             type=sha,format=long
+      - name: Resolve tools tags
+        id: tools-meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.IMAGE }}
+          flavor: latest=false
+          tags: |
+            type=raw,value=tools-latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=tools-${{ github.ref_name }}
+            type=sha,format=long,prefix=tools-sha-
       - name: Merge, sign and summarize
         env:
           TAGS: ${{ steps.meta.outputs.tags }}
@@ -165,6 +222,23 @@ jobs:
           done <<< "$TAGS"
           docker buildx imagetools create "${args[@]}" \
             "$IMAGE:$BUILD_TAG-amd64" "$IMAGE:$BUILD_TAG-arm64"
+          while IFS= read -r tag; do
+            [[ -z "$tag" ]] && continue
+            cosign sign --yes "$tag"
+            docker buildx imagetools inspect "$tag" >> "$GITHUB_STEP_SUMMARY"
+          done <<< "$TAGS"
+      - name: Merge, sign and summarize tools image
+        env:
+          TAGS: ${{ steps.tools-meta.outputs.tags }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=()
+          while IFS= read -r tag; do
+            [[ -z "$tag" ]] || args+=(--tag "$tag")
+          done <<< "$TAGS"
+          docker buildx imagetools create "${args[@]}" \
+            "$IMAGE:tools-$BUILD_TAG-amd64" "$IMAGE:tools-$BUILD_TAG-arm64"
           while IFS= read -r tag; do
             [[ -z "$tag" ]] && continue
             cosign sign --yes "$tag"

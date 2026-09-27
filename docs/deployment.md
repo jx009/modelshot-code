@@ -6,9 +6,10 @@
 
 | 文件 | 作用 |
 | --- | --- |
-| `compose.prod.yaml` | 生产编排：PostgreSQL、Redis、MinIO、一次性迁移、Web、Worker 和运维工具 |
+| `compose.prod.yaml` | 生产编排：PostgreSQL、Redis、MinIO、对象分割工具、一次性迁移、Web、Worker 和运维工具 |
 | `.env.production.example` | 变量模板，复制成 `.env.production` 后填写，不进版本库 |
 | `docker/create-bucket.mjs` | 创建私有 bucket 的一次性脚本，用镜像里已有的 `@aws-sdk` |
+| `Dockerfile.tools` | 构建私有图像工具镜像，内置物体分割与抠图模型 |
 
 ## 前置
 
@@ -20,16 +21,17 @@
 git clone <仓库地址> modelshot && cd modelshot
 cp .env.production.example .env.production
 
-# 四个密码各自独立生成，只用 hex，因为会被拼进连接串
+# 五个密码各自独立生成；数据库和存储密码只用 hex，因为会被拼进连接串
 openssl rand -hex 24   # POSTGRES_PASSWORD
 openssl rand -hex 24   # STORAGE_ROOT_PASSWORD
 openssl rand -hex 32   # NEXTAUTH_SECRET
 openssl rand -hex 32   # ENCRYPTION_KEY
+openssl rand -hex 32   # STUDIO_TOOLS_KEY
 ```
 
 `ENCRYPTION_KEY` 必须是 64 位小写 hex，长度不对 `/api/ready` 会一直 503。
 
-模板里**必须改**的只有下面四项，其余留空不影响启动：
+模板里**必须改**的包括下面项目：
 
 | 变量 | 不改会怎样 |
 | --- | --- |
@@ -37,6 +39,7 @@ openssl rand -hex 32   # ENCRYPTION_KEY
 | `SMTP_HOST` + `SMTP_FROM` | 注册强制要求 6 位邮箱验证码，验证码只能走 SMTP 发送。不配就无法注册账号 → 无法创建 root → 后台进不去。`SMTP_PORT=587` 表示 STARTTLS，用 465 才是隐式 TLS（`secure` 由端口自动判断）。内网 relay 允许匿名投递时可留空 `SMTP_USER` / `SMTP_PASS`。 |
 | `BIND_ADDR` | 默认 `127.0.0.1` 只允许宿主机访问，必须在前面挂 Nginx/Caddy。不打算装反代就改 `0.0.0.0`。 |
 | `TRUST_PROXY` | 只有前面确实挂着会覆盖 `X-Forwarded-For` 的反代时才留 `true`。否则客户端可以伪造这个头，`clientAddress()` 会采信，限流和审计记录里的 IP 全是假的。裸跑公网请改 `false`。 |
+| `STUDIO_TOOLS_KEY` | Web、Worker 与私有图像工具容器之间的认证密钥。缺失时 Compose 会拒绝启动，物体移动也不会再退化为复制矩形像素。 |
 
 `DATABASE_URL`、`REDIS_URL`、`S3_*` 不在模板里：它们由 `POSTGRES_*` / `STORAGE_*` 在编排文件里推导，避免同一份密码写两处导致对不上。
 
@@ -85,7 +88,16 @@ export COMPOSE_FILE=compose.prod.yaml COMPOSE_ENV_FILES=.env.production
 
 本文档后续命令都省略了 `-f compose.prod.yaml --env-file .env.production`；没导出上面两个变量的话请自行补上，漏了 `--env-file` 会拿不到数据库和存储密码。
 
-启动顺序由依赖条件保证：`postgres` / `redis` / `storage` 健康 → `storage-init` 建 bucket → `migrate` 应用迁移并成功退出 → `web` 和 `worker` 启动。`migrate` 是独立一次性服务，不会在每个 Web 副本里自动跑迁移，也不会用 `db push` 顶替正式迁移。包含多模型通道和 Studio 工具计费的版本会自动执行 `202609270001_provider_channels` 与 `202609270002_studio_pricing`，无需手工改表。
+启动顺序由依赖条件保证：`postgres` / `redis` / `storage` 健康 → `storage-init` 建 bucket → `tools` 加载对象分割模型 → `migrate` 应用迁移并成功退出 → `web` 和 `worker` 启动。`migrate` 是独立一次性服务，不会在每个 Web 副本里自动跑迁移，也不会用 `db push` 顶替正式迁移。包含多模型通道和 Studio 工具计费的版本会自动执行 `202609270001_provider_channels` 与 `202609270002_studio_pricing`，无需手工改表。
+
+GitHub Action 会在同一个 Docker Hub 仓库发布两组标签：应用镜像使用 `latest`，图像工具镜像使用 `tools-latest`。例如：
+
+```ini
+MODELSHOT_IMAGE=jx009/modelshot:latest
+MODELSHOT_TOOLS_IMAGE=jx009/modelshot:tools-latest
+```
+
+`tools` 只在 Compose 私有网络监听 8090，不应映射到公网。第一次自行构建会下载并写入 U2Net 权重，因此耗时和镜像体积会明显大于普通 Web 镜像。
 
 ## 3. 首次初始化
 
@@ -129,6 +141,7 @@ Web 默认只绑 `127.0.0.1:3000`，由宿主机 Nginx/Caddy 终止 TLS 再转�
 ```bash
 curl -s http://127.0.0.1:3000/api/health    # Web 存活
 curl -s http://127.0.0.1:3000/api/ready     # 配置、数据库、Redis、私有存储、Worker 心跳
+docker compose exec -T tools python -c "import json,os,urllib.request; r=urllib.request.Request('http://127.0.0.1:8090/capabilities',headers={'Authorization':'Bearer '+os.environ['STUDIO_TOOLS_KEY']}); print(json.load(urllib.request.urlopen(r)))"
 ```
 
 `/api/ready` 会检查 60 秒内的 Worker 心跳，只启动 Web 不启动 Worker 时它会返回 503，这是预期行为。就绪失败不会返回内部连接信息。

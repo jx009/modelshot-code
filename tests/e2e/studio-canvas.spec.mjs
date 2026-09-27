@@ -57,7 +57,7 @@ test("canvas upload, crop through durable worker, layers, export and cloud resto
     await page.mouse.down();
     await page.mouse.move(moveAnchor.x + 35, moveAnchor.y + 45, { steps: 8 });
     await page.mouse.up();
-    await expect(page.getByText("Drag the highlighted object", { exact: false })).toBeVisible();
+    await expect(page.getByText("Drag the detected object", { exact: false })).toBeVisible();
     await page.mouse.move(moveAnchor.x, moveAnchor.y);
     await page.mouse.down();
     await page.mouse.move(moveAnchor.x + 60, moveAnchor.y + 20, { steps: 8 });

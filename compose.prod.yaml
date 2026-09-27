@@ -40,6 +40,8 @@ x-app-environment: &app-environment
   S3_BUCKET: ${STORAGE_BUCKET:-modelshot-assets}
   NEXTAUTH_URL: ${PUBLIC_URL:?PUBLIC_URL is required, e.g. https://modelshot.example.com}
   TRUST_PROXY: ${TRUST_PROXY:-false}
+  STUDIO_TOOLS_URL: http://tools:8090
+  STUDIO_TOOLS_KEY: ${STUDIO_TOOLS_KEY:?STUDIO_TOOLS_KEY is required}
 
 x-modelshot-service: &modelshot-service
   <<: *modelshot-image
@@ -138,6 +140,34 @@ services:
     networks:
       - app
 
+  # 私有图像工具：为物体移动提供语义分割，同时提供抠图能力。
+  # 不暴露宿主机端口，只允许 Web / Worker 通过内部网络访问。
+  tools:
+    build:
+      context: .
+      dockerfile: Dockerfile.tools
+      args:
+        REMBG_MODEL: ${REMBG_MODEL:-u2net}
+    image: ${MODELSHOT_TOOLS_IMAGE:-modelshot-tools:prod}
+    restart: unless-stopped
+    environment:
+      STUDIO_TOOLS_KEY: ${STUDIO_TOOLS_KEY:?STUDIO_TOOLS_KEY is required}
+      REMBG_ENABLED: "1"
+      REMBG_MODEL: ${REMBG_MODEL:-u2net}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import json,os,urllib.request; r=urllib.request.Request('http://127.0.0.1:8090/capabilities',headers={'Authorization':'Bearer '+os.environ['STUDIO_TOOLS_KEY']}); d=json.load(urllib.request.urlopen(r,timeout=5)); raise SystemExit(0 if 'segment' in d.get('tools',[]) else 1)"]
+      interval: 15s
+      timeout: 8s
+      retries: 10
+      start_period: 90s
+    networks:
+      - app
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   # 一次性：应用正式迁移。禁止用 db push 代替。
   # 需要专用迁移账号时：docker compose ... run --rm -e DATABASE_URL=postgresql://migrator:...@postgres:5432/modelshot migrate
   migrate:
@@ -163,6 +193,8 @@ services:
         condition: service_healthy
       storage-init:
         condition: service_completed_successfully
+      tools:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 15s
@@ -184,6 +216,8 @@ services:
         condition: service_healthy
       storage-init:
         condition: service_completed_successfully
+      tools:
+        condition: service_healthy
     stop_grace_period: 180s
     networks:
       - app

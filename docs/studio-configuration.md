@@ -26,7 +26,7 @@ Read `jiaotu-development-plan.md` for the implementation and acceptance plan.
 | ARK_API_KEY | Volcengine Ark API key |
 | ARK_VIDEO_MODEL | Your deployed Seedance endpoint/model ID; no invented alias |
 | ARK_BASE_URL | Defaults to official Beijing v3 API |
-| STUDIO_TOOLS_URL / STUDIO_TOOLS_KEY | Private optional tool service (see services/image-tools/README.md) |
+| STUDIO_TOOLS_URL / STUDIO_TOOLS_KEY | Private image-tool service. Production Compose supplies this automatically; object movement requires its `segment` capability. |
 
 Local deterministic crop and canvas/text/export work without AI credentials. Generation/editing requires the image API. Mask edits additionally require verified mask support. Describe/plan needs a vision model. Remove background, OCR and super resolution need the private service. Split combines foreground extraction with masked background reconstruction.
 
@@ -36,7 +36,7 @@ No real billable provider requests are part of automated tests. The fake test su
 
 画布工具按职责分成四类：本地几何处理（裁剪、文字图层）、模型生成/局部编辑（扩图、消除、局部修改、移动后的背景修复）、视觉理解（反推提示词、OCR）和可选图像工具服务（抠图、超分、图层拆分）。前端只负责选区、拖拽、参数与预览，最终任务仍由服务端创建、校验、计费和执行。
 
-“物体移动”采用 Lovart 式画布内交互：用户用矩形或套索直接圈选对象，松手后浏览器立即生成透明前景，随后在原图上直接拖动；提交后服务端修复原位置并按最终偏移合成前景。当前矩形和套索选区是无需额外 GPU 服务的可用实现；后续接入 SAM 类交互式分割时只需增强选区生成步骤，不需要改动拖拽、计费和服务端合成合同。裁剪通过画布裁剪框和角点完成，扩图通过图片外侧边界完成，消除与局部修改继续直接在图片上涂抹。
+“物体移动”采用 Lovart 式画布内交互：用户用矩形或套索提示目标范围，私有图像工具服务提取透明主体并与选区求交，识别完成后用户在原图上直接拖动主体；提交后服务端修复原位置并按最终偏移合成前景。分割服务不可用时工具保持禁用，不会退化成复制整块矩形像素。裁剪通过画布裁剪框和角点完成，扩图通过图片外侧边界完成，消除与局部修改继续直接在图片上涂抹。
 
 ## Prices and recovery
 
@@ -47,7 +47,7 @@ Creation, reservation and Outbox commit together. Provider results are stored as
 ## Known product boundaries
 
 - Frontend follows Lovart-style canvas-first interaction with ModelShot branding; it is not a claim that every private Lovart behavior or model capability is replicated.
-- Split produces a transparent foreground and repaired background, not a fully reconstructed PSD. Move selection supports rectangle and lasso; automatic semantic edge refinement still requires a separately deployed segmentation service.
+- Split produces a transparent foreground and repaired background, not a fully reconstructed PSD. Move selection supports rectangle and lasso guidance and uses the bundled U2Net service for semantic edges; SAM-class point/box prompting can later replace this engine without changing the canvas contract.
 - OCR replacement creates a movable text layer after background repair; original font matching, perspective and complex typography require manual adjustments.
 - Video currently implements one explicit Ark content-generation contract; other providers require separate adapters and real credentials.
 - Cloud document saves use version checks. Local draft recovery also retains an in-progress plan. Results append as new layers instead of overwriting current work.

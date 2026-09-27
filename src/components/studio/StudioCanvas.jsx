@@ -12,25 +12,34 @@ function loadImage(src) {
   });
 }
 
+async function alphaMaskBlob(image, width, height) {
+  const canvas = document.createElement("canvas"); canvas.width = width; canvas.height = height;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  context.drawImage(image, 0, 0, width, height);
+  const pixels = context.getImageData(0, 0, width, height);
+  for (let offset = 0; offset < pixels.data.length; offset += 4) {
+    const selected = pixels.data[offset + 3] > 16 ? 255 : 0;
+    pixels.data[offset] = selected; pixels.data[offset + 1] = selected; pixels.data[offset + 2] = selected; pixels.data[offset + 3] = 255;
+  }
+  context.putImageData(pixels, 0, 0);
+  return new Promise(resolve => canvas.toBlob(resolve, "image/png"));
+}
+
 async function createCutout(assetId, maskBlob, width, height) {
-  const sourceUrl = `/api/assets/${assetId}`;
-  const maskUrl = URL.createObjectURL(maskBlob);
+  const form = new FormData();
+  form.append("assetId", assetId);
+  form.append("selection", maskBlob, "selection.png");
+  const response = await fetch("/api/studio/segment", { method: "POST", body: form });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.code || "SEGMENTATION_FAILED");
+  }
+  const url = URL.createObjectURL(await response.blob());
   try {
-    const [source, mask] = await Promise.all([loadImage(sourceUrl), loadImage(maskUrl)]);
-    const canvas = document.createElement("canvas");
-    canvas.width = width; canvas.height = height;
-    const context = canvas.getContext("2d", { willReadFrequently: true });
-    context.drawImage(source, 0, 0, width, height);
-    const pixels = context.getImageData(0, 0, width, height);
-    const maskCanvas = document.createElement("canvas");
-    maskCanvas.width = width; maskCanvas.height = height;
-    const maskContext = maskCanvas.getContext("2d", { willReadFrequently: true });
-    maskContext.drawImage(mask, 0, 0, width, height);
-    const maskPixels = maskContext.getImageData(0, 0, width, height).data;
-    for (let offset = 0; offset < pixels.data.length; offset += 4) pixels.data[offset + 3] = Math.round(pixels.data[offset + 3] * maskPixels[offset] / 255);
-    context.putImageData(pixels, 0, 0);
-    return loadImage(canvas.toDataURL("image/png"));
-  } finally { URL.revokeObjectURL(maskUrl); }
+    const image = await loadImage(url);
+    return { image, mask: await alphaMaskBlob(image, width, height) };
+  }
+  finally { URL.revokeObjectURL(url); }
 }
 
 function Picture({ item, selected, onSelect, onChange, interactive, accent, onError }) {
@@ -93,7 +102,7 @@ function ExpansionBox({ value, width, height, accent, onChange }) {
       enabledAnchors={["top-left", "top-center", "top-right", "middle-left", "middle-right", "bottom-left", "bottom-center", "bottom-right"]} /></>;
 }
 
-const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSelect, onChange, mode, brushSize = 35, moveOffset = { dx: 0, dy: 0 }, onMoveOffset, onMoveReady, onCrop, expandPadding = 256, onExpandPadding, onZoom, onUpload, onError, label }, ref) {
+const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSelect, onChange, mode, brushSize = 35, moveOffset = { dx: 0, dy: 0 }, onMoveOffset, onMovePreparing, onMoveReady, onMoveFailed, onCrop, expandPadding = 256, onExpandPadding, onZoom, onUpload, onError, label }, ref) {
   const container = useRef(null), stage = useRef(null), artwork = useRef(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
   const [camera, setCamera] = useState({ x: 30, y: 20, scale: 1 });
@@ -158,6 +167,7 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
       ctx.fillStyle = "black"; ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.strokeStyle = "white"; ctx.fillStyle = "white"; ctx.lineCap = "round"; ctx.lineJoin = "round";
       const direct = rectangle || polygon ? { rectangle, polygon } : moveMaskRef.current;
+      if (direct?.blob) return direct.blob;
       if (direct?.rectangle) ctx.fillRect(direct.rectangle.left, direct.rectangle.top, direct.rectangle.width, direct.rectangle.height);
       else if (direct?.polygon?.length >= 6) {
         ctx.beginPath(); ctx.moveTo(direct.polygon[0], direct.polygon[1]);
@@ -176,10 +186,11 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
   }
   async function prepareMoveFrom(shape) {
     if (!selection?.assetId || !selection.pixelWidth || !selection.pixelHeight) throw new Error("Select an image");
-    moveMaskRef.current = shape; setMoveMask(shape);
     const mask = await maskBlob(shape.rectangle, shape.polygon);
-    const image = await createCutout(selection.assetId, mask, selection.pixelWidth, selection.pixelHeight);
-    setMovePreview({ target: selectedId, image }); onMoveReady?.();
+    const cutout = await createCutout(selection.assetId, mask, selection.pixelWidth, selection.pixelHeight);
+    const refined = { blob: cutout.mask };
+    moveMaskRef.current = refined; setMoveMask(refined);
+    setMovePreview({ target: selectedId, image: cutout.image }); onMoveReady?.();
   }
   useImperativeHandle(ref, () => ({ zoom, fit, fitExpansion,
     clearMask: () => { setStrokes([]); setCrop(null); setMovePreview(null); setMoveSelection(null); setMoveMask(null); moveMaskRef.current = null; },
@@ -188,8 +199,9 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
     async prepareMove() {
       if (!selection?.assetId || !selection.pixelWidth || !selection.pixelHeight) throw new Error("Select an image");
       const mask = await maskBlob();
-      const image = await createCutout(selection.assetId, mask, selection.pixelWidth, selection.pixelHeight);
-      setMoveMask({ strokes: true }); moveMaskRef.current = { strokes: true }; setMovePreview({ target: selectedId, image });
+      const cutout = await createCutout(selection.assetId, mask, selection.pixelWidth, selection.pixelHeight);
+      const refined = { blob: cutout.mask };
+      setMoveMask(refined); moveMaskRef.current = refined; setMovePreview({ target: selectedId, image: cutout.image });
       return true;
     },
     async exportPNG() {
@@ -246,10 +258,11 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
     cropStart.current = null;
     const valid = shape.rectangle ? shape.rectangle.width >= 3 && shape.rectangle.height >= 3 : shape.polygon?.length >= 8;
     if (!valid) return;
-    try { await prepareMoveFrom(shape); } catch (error) { onError(error); }
+    onMovePreparing?.();
+    try { await prepareMoveFrom(shape); } catch (error) { onMoveFailed?.(); onError(error); }
   }
-  const editing = selection?.type === "image" && ["mask", "crop", "move", "move-select-rect", "move-select-lasso", "expand"].includes(mode);
-  return <div ref={container} className={`ms-stage ${mode === "hand" ? "is-hand" : mode === "move" ? "is-move-object" : editing ? "is-brush" : ""}`} data-mode={mode} data-camera-scale={camera.scale} aria-label={label} onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); onUpload(e.dataTransfer.files); }}>
+  const editing = selection?.type === "image" && ["mask", "crop", "move", "move-preparing", "move-select-rect", "move-select-lasso", "expand"].includes(mode);
+  return <div ref={container} className={`ms-stage ${mode === "hand" ? "is-hand" : mode === "move" ? "is-move-object" : mode === "move-preparing" ? "is-processing" : editing ? "is-brush" : ""}`} data-mode={mode} data-camera-scale={camera.scale} aria-label={label} onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); onUpload(e.dataTransfer.files); }}>
     <Stage ref={stage} {...dimensions} x={camera.x} y={camera.y} scaleX={camera.scale} scaleY={camera.scale} draggable={mode === "hand"} onDragEnd={e => { if (e.target === stage.current) updateCamera({ x: e.target.x(), y: e.target.y() }); }}
       onWheel={e => { e.evt.preventDefault(); const pointer = stage.current.getPointerPosition(); const next = Math.max(0.08, Math.min(4, camera.scale * (e.evt.deltaY > 0 ? 0.93 : 1.07))); setCamera({ scale: next, x: pointer.x - (pointer.x - camera.x) / camera.scale * next, y: pointer.y - (pointer.y - camera.y) / camera.scale * next }); }}
       onMouseDown={down} onTouchStart={down} onMouseMove={move} onTouchMove={move} onMouseUp={finishDrawing} onTouchEnd={finishDrawing} onMouseLeave={finishDrawing}>

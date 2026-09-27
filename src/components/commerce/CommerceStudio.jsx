@@ -59,9 +59,19 @@ export default function CommerceStudio({ caseId = "", description = "", document
   useEffect(() => {
     if (!draft.id || status !== "authenticated") return;
     const controller = new AbortController(); let timer;
-    const poll = async () => { try { const rows = await api(`/api/studio/jobs?documentId=${draft.id}`, { signal: controller.signal }); if (!controller.signal.aborted) setJobs(rows); } catch (e) { if (!controller.signal.aborted) notify(e); } if (!controller.signal.aborted) timer = setTimeout(poll, 3500); };
+    const poll = async () => {
+      try {
+        const rows = await api(`/api/studio/jobs?documentId=${draft.id}`, { signal: controller.signal });
+        if (controller.signal.aborted) return;
+        setJobs(rows);
+        if (!rows.some(row => !terminal(row.status))) return;
+      } catch (e) {
+        if (!controller.signal.aborted) notify(e);
+      }
+      if (!controller.signal.aborted) timer = setTimeout(poll, 3500);
+    };
     poll(); return () => { controller.abort(); clearTimeout(timer); };
-  }, [draft.id, status, notify]);
+  }, [draft.id, draft.version, jobs.length, status, notify]);
   async function action(fn) { if (lock.current) return; lock.current = true; setBusy(true); setNotice(""); try { await fn(); } catch (e) { notify(e); } finally { lock.current = false; setBusy(false); } }
   function changeBrief(key, value) { update(d => ({ ...d, ...(step === 1 && d.sections.length ? { id: null, version: null, sections: [] } : {}), brief: { ...d.brief, [key]: value } })); if (step === 1) setJobs([]); }
   async function upload(kind, file) { if (!file) return; await action(async () => { if (!session?.user) throw new Error("UNAUTHORIZED"); const uploaded = await uploadFile(file); update(d => ({ ...d, [kind]: uploaded, id: null, version: null, sections: [] })); setJobs([]); }); }

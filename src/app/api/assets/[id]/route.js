@@ -15,11 +15,16 @@ export async function GET(request, context) {
     const headers = {
       "Content-Type": asset.contentType,
       "Content-Length": String(asset.bytes),
-      "Cache-Control": "private, no-store",
+      // Asset ids are immutable. Let the browser reuse previews instead of
+      // re-authenticating, querying Postgres, and downloading MinIO on every render.
+      "Cache-Control": "private, max-age=31536000, immutable",
+      "ETag": `"${asset.checksum}"`,
+      ...(asset.createdAt ? { "Last-Modified": new Date(asset.createdAt).toUTCString() } : {}),
       "X-Content-Type-Options": "nosniff",
       "Content-Disposition": `inline; filename="${asset.id}.${video ? "mp4" : "png"}"`,
       ...(video ? { "Accept-Ranges": "bytes" } : {}),
     };
+    if (request.headers.get("if-none-match") === headers.ETag) return new Response(null, { status: 304, headers });
     if (video && range) {
       let slice;
       try { slice = byteRange(range, asset.bytes); }
@@ -27,7 +32,7 @@ export async function GET(request, context) {
       const { start, end } = slice;
       return new Response(await objectStorage().stream(asset.objectKey, `bytes=${start}-${end}`, request.signal), { status: 206, headers: { ...headers, "Content-Length": String(end - start + 1), "Content-Range": `bytes ${start}-${end}/${asset.bytes}` } });
     }
-    return new Response(video ? await objectStorage().stream(asset.objectKey, undefined, request.signal) : await objectStorage().get(asset.objectKey), { headers });
+    return new Response(await objectStorage().stream(asset.objectKey, undefined, request.signal), { headers });
   } catch (error) { return errorResponse(error); }
 }
 

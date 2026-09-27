@@ -135,11 +135,14 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
           const value = await api("/api/usage", { signal: abort.signal });
           if (!abort.signal.aborted) setUsage(value);
         }
+        // Once every job is terminal there is nothing useful to poll. The
+        // submit path changes draft.jobs, which restarts this effect for a new job.
+        if (!rows.some(row => !TERMINAL.includes(row.status))) return;
       } catch (e) { if (!abort.signal.aborted) notify(e); }
       if (!abort.signal.aborted) timer = setTimeout(poll, 4000);
     }
     poll(); return () => { abort.abort(); clearTimeout(timer); };
-  }, [draft.id, status, collectResult, notify]);
+  }, [draft.id, draft.version, draft.jobs?.length, status, collectResult, notify]);
 
   function save(copy = false) {
     const task = async () => {

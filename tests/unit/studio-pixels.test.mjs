@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import sharp from "sharp";
 import { alphaMask, compositeSelection, cropImage, expandInput, moveSelection } from "../../src/lib/domain/studio/pixels.js";
 import { runImageTool } from "../../src/lib/domain/studio/execution.js";
+import { runObjectEdit } from "../../src/lib/domain/studio/object-edit.js";
 import { jobSchema, planSchema, contentSchema, validatePlan } from "../../src/lib/studio/tools.js";
 import { appendResult } from "../../src/lib/studio/canvas-utils.js";
 import { byteRange } from "../../src/lib/domain/assets/range.js";
@@ -55,6 +56,27 @@ describe("studio pixel contracts", () => {
     const raw = await sharp(image).raw().toBuffer();
     expect([...raw.slice((3 * 8 + 5) * 4, (3 * 8 + 5) * 4 + 4)]).toEqual([255, 0, 0, 255]);
     await expect(runImageTool({}, { tool: "upscale", params: { scale: 2 } }, await solid("red"), null, undefined, { service: () => solid("blue") })).rejects.toThrow("UPSCALE_SIZE_MISMATCH");
+  });
+  it("gives local object edits room to extend beyond the old silhouette", async () => {
+    const image = await solid("red", 20, 12), mask = await sharp({ create: { width: 20, height: 12, channels: 3, background: "black" } })
+      .composite([{ input: await sharp({ create: { width: 5, height: 4, channels: 3, background: "white" } }).png().toBuffer(), left: 5, top: 4 }]).png().toBuffer();
+    let called;
+    const result = await runObjectEdit({}, { tool: "inpaint", params: { prompt: "raise the paw", editPadding: 0.25 } }, image, mask, undefined, async (_config, args) => { called = args; return solid("blue", 2, 2); });
+    const input = await sharp(called.image).metadata(), generatedMask = await sharp(called.mask).metadata();
+    expect(generatedMask).toMatchObject({ width: input.width, height: input.height });
+    const raw = await sharp(result.images[0]).raw().toBuffer();
+    expect([...raw.slice((2 * 20 + 3) * 4, (2 * 20 + 3) * 4 + 3)]).toEqual([0, 0, 255]);
+    expect([...raw.slice((2 * 20 + 2) * 4, (2 * 20 + 2) * 4 + 3)]).toEqual([255, 0, 0]);
+  });
+  it("repairs the old location before moving the isolated object", async () => {
+    const image = await sharp({ create: { width: 20, height: 12, channels: 4, background: "green" } })
+      .composite([{ input: await solid("red", 5, 4), left: 5, top: 4 }]).png().toBuffer(), mask = await sharp({ create: { width: 20, height: 12, channels: 3, background: "black" } })
+      .composite([{ input: await sharp({ create: { width: 5, height: 4, channels: 3, background: "white" } }).png().toBuffer(), left: 5, top: 4 }]).png().toBuffer();
+    const result = await runObjectEdit({}, { tool: "move", params: { dx: 4, dy: 0 } }, image, mask, undefined, async () => solid("blue", 2, 2));
+    const raw = await sharp(result.images[0]).raw().toBuffer();
+    const repaired = raw.slice((5 * 20 + 6) * 4, (5 * 20 + 6) * 4 + 3), moved = raw.slice((5 * 20 + 10) * 4, (5 * 20 + 10) * 4 + 3);
+    expect(repaired[2]).toBeGreaterThan(repaired[0]);
+    expect([...moved]).toEqual([255, 0, 0]);
   });
 });
 describe("studio validation and late results", () => {

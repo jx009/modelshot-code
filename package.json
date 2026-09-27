@@ -43,6 +43,7 @@
     "@aws-sdk/client-s3": "3.1129.0",
     "@google/generative-ai": "^0.24.1",
     "@next-auth/prisma-adapter": "^1.0.7",
+    "@noble/hashes": "2.4.0",
     "@prisma/adapter-pg": "7.10.0",
     "@prisma/client": "7.10.0",
     "axios": "1.20.0",

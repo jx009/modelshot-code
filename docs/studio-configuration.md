@@ -48,7 +48,7 @@ Creation, reservation and Outbox commit together. Provider results are stored as
 ## Known product boundaries
 
 - Frontend follows Lovart-style canvas-first interaction with ModelShot branding; it is not a claim that every private Lovart behavior or model capability is replicated.
-- Split produces a transparent foreground and repaired background, not a fully reconstructed PSD. Move selection supports rectangle and lasso guidance and uses the bundled U2Net service for semantic edges; SAM-class point/box prompting can later replace this engine without changing the canvas contract.
+- Split produces a transparent foreground and repaired background, not a fully reconstructed PSD. Move and local object edits use one on-demand rectangle/lasso selection, refined by the bundled CPU SlimSAM service; the image is never scanned to enumerate every object before the user chooses one.
 - OCR replacement creates a movable text layer after background repair; original font matching, perspective and complex typography require manual adjustments.
 - Video currently implements one explicit Ark content-generation contract; other providers require separate adapters and real credentials.
 - Cloud document saves use version checks. Local draft recovery also retains an in-progress plan. Results append as new layers instead of overwriting current work.

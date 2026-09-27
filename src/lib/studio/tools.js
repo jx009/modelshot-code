@@ -8,7 +8,7 @@ export const TOOLS = [
   { id: "upscale", zh: "AI 超清放大", en: "AI upscale", dependency: "upscale", cost: 4, source: true },
   { id: "describe", zh: "反推提示词", en: "Reverse prompt", dependency: "vision", cost: 1, source: true },
   { id: "erase", zh: "AI 智能消除", en: "AI erase", dependency: "image", cost: 18, source: true, mask: true },
-  { id: "inpaint", zh: "局部修改", en: "Local edit", dependency: "image", cost: 18, source: true, mask: true },
+  { id: "inpaint", zh: "局部修改", en: "Local edit", dependency: "image", preview: "segment", cost: 18, source: true, mask: true },
   { id: "split", zh: "图层拆分", en: "Split layers", dependency: "split", cost: 20, source: true },
   { id: "move", zh: "物体移动", en: "Move object", dependency: "image", preview: "segment", cost: 18, source: true, mask: true },
   { id: "ocr", zh: "文字识别", en: "Recognize text", dependency: "ocr", cost: 1, source: true },
@@ -32,6 +32,8 @@ export const paramsSchema = z.object({
   ]).default(256),
   dx: z.number().int().min(-8192).max(8192).default(100),
   dy: z.number().int().min(-8192).max(8192).default(0),
+  selectionMode: z.enum(["mask", "object"]).default("mask"),
+  editPadding: z.number().min(0.05).max(0.5).default(0.25),
   duration: z.union([z.literal(5), z.literal(10)]).default(5),
 }).strict();
 export const jobSchema = z.object({ tool: z.enum(TOOLS.map(tool => tool.id)), provider: id.optional(), documentId: id, documentVersion: z.number().int().positive(), targetId: id.optional(), assetId: id.optional(), maskId: id.optional(), referenceAssetIds: z.array(id).max(2).optional(), sectionId: id.optional(), sectionAttempt: z.number().int().min(0).max(50).optional(), params: paramsSchema.prefault({}) }).strict().superRefine((data, ctx) => {

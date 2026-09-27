@@ -10,6 +10,7 @@ import { Aperture, ArrowUp, ArrowDown, ArrowUpRight, Plus, X, FolderOpen, Downlo
 import { api, requestKey } from "@/lib/client-api";
 import { TOOLS, getTool } from "@/lib/studio/tools";
 import { appendResult, scaleToFit } from "@/lib/studio/canvas-utils";
+import { maskHash as hashMask } from "@/lib/studio/mask-hash";
 import "./studio.css";
 
 const Canvas = dynamic(() => import("./StudioCanvas"), { ssr: false, loading: () => <div className="ms-loading"><LoaderCircle className="ms-spin" size={22} /></div> });
@@ -24,9 +25,10 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
   const t = useCallback((cn, en) => zh ? cn : en, [zh]);
   const [draft, setDraft] = useState(blank), draftRef = useRef(draft);
   const [selectedId, setSelected] = useState(null), [tab, setTab] = useState(initialMode), [mode, setMode] = useState("select");
-  const [toolId, setTool] = useState(null), [prompt, setPrompt] = useState(initialPrompt), [params, setParams] = useState({ size: "1024x1024", scale: 2, padding: 256, dx: 100, dy: 0, duration: 5 });
+  const [toolId, setTool] = useState(null), [prompt, setPrompt] = useState(initialPrompt), [params, setParams] = useState({ size: "1024x1024", scale: 2, padding: 256, dx: 100, dy: 0, duration: 5, editPadding: 0.25 });
   const [brush, setBrush] = useState(40), [zoom, setZoom] = useState(1), [capabilities, setCapabilities] = useState(null), [usage, setUsage] = useState(null);
   const [modelProvider, setModelProvider] = useState("");
+  const [objectSelection, setObjectSelection] = useState(null);
   const [projects, setProjects] = useState(null), [jobs, setJobs] = useState([]), [showLayers, setShowLayers] = useState(false), [mobileChat, setMobileChat] = useState(true);
   const [busy, setBusy] = useState(false), [saveState, setSaveState] = useState("local"), [notice, setNotice] = useState(null), [preview, setPreview] = useState(null), [ocr, setOcr] = useState(null);
   const [historyCount, setHistoryCount] = useState({ past: 0, future: 0 });
@@ -57,8 +59,8 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
       INSUFFICIENT_CREDITS: t("可用积分不足，请补充积分后重试。", "Not enough available credits."),
       UNAUTHORIZED: t("请先登录，素材和作品会保存到你的账户。", "Sign in to save assets and projects."),
       SERVICE_NOT_CONFIGURED: t("这个工具还没有连接模型服务，请在部署配置中启用。", "This tool needs a configured provider."),
-      SEGMENTATION_NOT_CONFIGURED: t("物体移动需要对象分割服务。请部署图像工具容器并启用分割引擎。", "Move object requires the segmentation service."),
-      SEGMENTATION_FAILED: t("没有识别出可移动对象，请缩小选区并重新圈选。", "No movable object was detected. Draw a tighter selection and try again."),
+      SEGMENTATION_NOT_CONFIGURED: t("请先启用物体分割服务，再选择需要移动或修改的物体。", "Object editing requires the segmentation service."),
+      SEGMENTATION_FAILED: t("没有识别出物体，请用框选或套索贴近目标重新选择。", "No object was detected. Draw a tighter selection and try again."),
       TOOL_SERVICE_UNAVAILABLE: t("图像工具服务不可用，请检查 tools 容器。", "The image tool service is unavailable."),
       TOOL_DISABLED: t("管理员已停用这个工具。", "This tool has been disabled by an administrator."),
       TARGET_CHANGED: t("目标图片已变化，请重新选择图片。", "The target changed. Select the image again."),
@@ -174,8 +176,8 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
   }
   function chooseTool(id) {
     clearTimeout(fitTimer.current);
-    setTool(id); canvas.current?.clearMask();
-    setMode(id === "move" ? "move-select-rect" : id === "expand" ? "expand" : getTool(id)?.mask ? "mask" : id === "crop" ? "crop" : "select");
+    setTool(id); canvas.current?.clearMask(); setObjectSelection(null);
+    setMode(["move", "inpaint"].includes(id) ? "object-select-rect" : id === "expand" ? "expand" : getTool(id)?.mask ? "mask" : id === "crop" ? "crop" : "select");
     if (id === "crop" && selected) setParams(p => ({ ...p, rect: { left: 0, top: 0, width: selected.pixelWidth, height: selected.pixelHeight } }));
     if (id === "move") setParams(p => ({ ...p, dx: 0, dy: 0 }));
     if (id === "expand") {
@@ -185,7 +187,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
   }
   async function submit(id, target, text, options = {}, maskBlob, key = requestKey()) {
     const saved = await save();
-    const maskHash = maskBlob ? Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", await maskBlob.arrayBuffer()))).map(b => b.toString(16).padStart(2, "0")).join("") : null;
+    const maskHash = maskBlob ? await hashMask(maskBlob) : null;
     const signature = JSON.stringify({ id, target: target?.id, asset: target?.assetId, text, options, maskHash, documentId: saved.id });
     const pending = draftRef.current.pendingSubmit;
     let body;
@@ -203,14 +205,15 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
     setJobs(current => [job, ...current.filter(j => j.id !== job.id)]); return job;
   }
   async function runTool() {
-    if (submission.current) return;
+    if (submission.current || (["move", "inpaint"].includes(toolId) && !objectSelection)) return;
+    if (toolId === "move" && !params.dx && !params.dy) return;
     submission.current = true; setBusy(true);
     try {
       const mask = tool?.mask ? await canvas.current.maskBlob() : null;
       const target = selected;
-      await submit(toolId, target, prompt, params, mask);
+      await submit(toolId, target, prompt, { ...params, selectionMode: ["move", "inpaint"].includes(toolId) ? "object" : "mask" }, mask);
       message("user", prompt || (zh ? tool.zh : tool.en), target?.assetId);
-      setTool(null); setMode("select"); setPrompt("");
+      setTool(null); setMode("select"); setPrompt(""); setObjectSelection(null); canvas.current?.clearMask();
     } catch (e) { notify(e); } finally { submission.current = false; setBusy(false); }
   }
   async function send() {
@@ -285,7 +288,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
   }
   const closeTool = () => {
     const restoreView = toolId === "expand";
-    setTool(null); setMode("select"); canvas.current?.clearMask();
+    setTool(null); setMode("select"); setObjectSelection(null); canvas.current?.clearMask();
     if (restoreView) scheduleFit();
   };
   return <div className="ms-studio" data-history={historyCount.past}>
@@ -327,7 +330,8 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
       </aside>
       <main className="ms-canvas-space">
         <Canvas ref={canvas} layers={draft.layers} selectedId={selectedId} onSelect={id => { setSelected(id); if (id !== selectedId) closeTool(); }} onChange={commitLayers} mode={mode} brushSize={brush}
-          moveOffset={{ dx: params.dx, dy: params.dy }} onMoveOffset={offset => setParams(p => ({ ...p, ...offset }))} onMovePreparing={() => setMode("move-preparing")} onMoveReady={() => setMode("move")} onMoveFailed={() => setMode("move-select-rect")}
+          editPadding={params.editPadding}
+          moveOffset={{ dx: params.dx, dy: params.dy }} onMoveOffset={offset => setParams(p => ({ ...p, ...offset }))} onMovePreparing={() => { setObjectSelection(null); setMode("object-preparing"); }} onMoveReady={value => { setObjectSelection(value); setParams(p => ({ ...p, dx: 0, dy: 0 })); setMode(toolId === "inpaint" ? "object-edit" : "move"); }} onMoveFailed={() => { setObjectSelection(null); setMode("object-select-rect"); }}
           onCrop={rect => setParams(p => ({ ...p, rect }))} expandPadding={params.padding} onExpandPadding={padding => setParams(p => ({ ...p, padding }))}
           onZoom={setZoom} onUpload={upload} onError={notify} label={t("图片编辑画布", "Image editing canvas")} />
         <div className="ms-canvas-label"><span className="ms-status-dot" />{t("自由画布", "FREE CANVAS")}<span> / </span>{draft.layers.length} {t("个图层", "layers")}</div>
@@ -340,19 +344,41 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
             <a title={t("下载原图", "Download image")} href={imageUrl(selected.assetId)} download={`${selected.name}.png`}><Download size={16} /><span>{t("下载", "Download")}</span></a>
           </div>
         </div>}
-        {toolId && <div className="ms-tool-panel ms-direct-dock"><div className="ms-direct-title"><span>{zh ? tool.zh : tool.en}</span><button className="ms-icon" onClick={closeTool} title={t("关闭工具", "Close tool")}><X size={16} /></button></div>
+        {toolId && <div className={`ms-tool-panel ms-direct-dock ${["move", "inpaint"].includes(toolId) ? "ms-object-dock" : ""}`}><div className="ms-direct-title"><span>{zh ? tool.zh : tool.en}</span><button className="ms-icon" onClick={closeTool} title={t("关闭工具", "Close tool")}><X size={16} /></button></div>
           <div className="ms-direct-controls">
-            {tool.mask && toolId !== "move" && <><span className="ms-direct-hint">{t("直接在图片上涂抹", "Paint directly on the image")}</span><label>{t("画笔", "Brush")}<input type="range" min="5" max="200" value={brush} onChange={e => setBrush(Number(e.target.value))} /><span>{brush}px</span></label><button className="ms-text-button" onClick={() => canvas.current.clearMask()}>{t("清除", "Clear")}</button></>}
-            {toolId === "move" && <>{mode === "move" ? <><span className="ms-direct-hint">{t("直接拖动识别出的对象", "Drag the detected object")}</span><div className="ms-move-offset"><span>ΔX {params.dx}px</span><span>ΔY {params.dy}px</span></div><button className="ms-text-button" onClick={() => { canvas.current.clearMovePreview(); setMode("move-select-rect"); setParams(p => ({ ...p, dx: 0, dy: 0 })); }}>{t("重新圈选", "Select again")}</button></> : mode === "move-preparing" ? <span className="ms-direct-hint">{t("正在识别对象边缘…", "Detecting object edges…")}</span> : <><span className="ms-direct-hint">{t("框选或套索对象，系统会自动贴合主体边缘", "Box or lasso an object; its edges will be detected automatically")}</span><div className="ms-segment-modes"><button className={`ms-button ${mode === "move-select-rect" ? "active" : ""}`} onClick={() => { canvas.current.clearMovePreview(); setMode("move-select-rect"); }}><Crop size={14} />{t("矩形", "Rectangle")}</button><button className={`ms-button ${mode === "move-select-lasso" ? "active" : ""}`} onClick={() => { canvas.current.clearMovePreview(); setMode("move-select-lasso"); }}><Scissors size={14} />{t("套索", "Lasso")}</button></div></>}</>}
+            {tool.mask && !["move", "inpaint"].includes(toolId) && <><span className="ms-direct-hint">{t("直接在图片上涂抹", "Paint directly on the image")}</span><label>{t("画笔", "Brush")}<input type="range" min="5" max="200" value={brush} onChange={e => setBrush(Number(e.target.value))} /><span>{brush}px</span></label><button className="ms-text-button" onClick={() => canvas.current.clearMask()}>{t("清除", "Clear")}</button></>}
+            {["move", "inpaint"].includes(toolId) && <div className="ms-object-controls">
+              <div className="ms-object-steps"><span className={!objectSelection ? "active" : "done"}>1 · {t("选择物体", "Select object")}</span><span className={objectSelection ? "active" : ""}>2 · {t("移动或修改", "Move or edit")}</span></div>
+              {objectSelection ? <>
+                <div className="ms-selected-object">
+                  <Image unoptimized src={objectSelection.thumbnail} width={56} height={56} alt={t("已选中的物体", "Selected object")} />
+                  <span><strong>{t("物体已选中", "Object selected")}</strong><small>{toolId === "move" ? t("拖动发光的物体，预览新位置", "Drag the detected object to preview its position") : t("描述这个物体要变成什么样", "Describe how this object should change")}</small></span>
+                  <button className="ms-button ms-reselect" disabled={busy} onClick={() => { canvas.current.clearMovePreview(); setObjectSelection(null); setMode("object-select-rect"); setParams(p => ({ ...p, dx: 0, dy: 0 })); }}><MousePointer2 size={15} />{t("重新圈选", "Select again")}</button>
+                </div>
+                <div className="ms-object-actions" role="group" aria-label={t("物体操作", "Object action")}>
+                  <button className={`ms-button ${toolId === "move" ? "active" : ""}`} disabled={busy || !capabilities?.tools.find(item => item.id === "move")?.available} onClick={() => { setTool("move"); setMode("move"); }}><Move size={16} />{t("移动物体", "Move object")}</button>
+                  <button className={`ms-button ${toolId === "inpaint" ? "active" : ""}`} disabled={busy || !capabilities?.tools.find(item => item.id === "inpaint")?.available} onClick={() => { setTool("inpaint"); setMode("object-edit"); setParams(p => ({ ...p, dx: 0, dy: 0 })); }}><WandSparkles size={16} />{t("修改物体 / 动作", "Edit object / pose")}</button>
+                </div>
+                {toolId === "move" ? <div className="ms-object-tip"><span>{t("确认后补全原位置的背景", "Apply to reconstruct the original background")}</span><div className="ms-move-offset"><span>ΔX {params.dx}px</span><span>ΔY {params.dy}px</span></div></div> : <>
+                  <textarea className="ms-object-prompt" aria-label={t("物体修改描述", "Object edit instruction")} placeholder={t("例如：让猫抬起前爪；把这把椅子换成香蕉造型，保留坐着的人", "For example: raise the cat’s front paw; replace this chair with a banana-shaped chair, keeping the person seated")} value={prompt} onChange={e => setPrompt(e.target.value)} maxLength={4000} disabled={busy} />
+                  <label className="ms-edit-room">{t("动作空间", "Room for new pose")}<input aria-label={t("动作空间", "Room for new pose")} type="range" min="0.05" max="0.5" step="0.05" value={params.editPadding} disabled={busy} onChange={e => setParams(p => ({ ...p, editPadding: Number(e.target.value) }))} /><span>{Math.round(params.editPadding * 100)}%</span></label>
+                  <span className="ms-object-tip">{t("白色虚线内可生成新动作；框外保持原图", "New poses can extend within the white boundary; outside it stays unchanged")}</span>
+                </>}
+              </> : <>
+                <span className="ms-direct-hint" role="status" aria-live="polite">{mode === "object-preparing" ? <><LoaderCircle size={16} className="ms-spin" />{t("正在提取所选物体…", "Extracting your selected object…")}</> : t("在图片上框住或圈出一个物体，松手后贴合边缘", "Draw a box or lasso around one object; release to refine its edges")}</span>
+                <div className="ms-segment-modes">{[["rect", Crop, t("框选", "Rectangle")], ["lasso", Scissors, t("套索", "Lasso")]].map(([shape, Icon, title]) => <button key={shape} className={`ms-button ${mode === `object-select-${shape}` ? "active" : ""}`} onClick={() => { canvas.current.clearMovePreview(); setObjectSelection(null); setMode(`object-select-${shape}`); }}><Icon size={15} />{title}</button>)}</div>
+                {mode === "object-preparing" && <button className="ms-button ms-reselect" onClick={() => { canvas.current.clearMovePreview(); setMode("object-select-rect"); }}>{t("取消识别，重新选择", "Cancel and select again")}</button>}
+              </>}
+            </div>}
             {toolId === "crop" && <span className="ms-direct-hint">{t(`拖动裁剪框和角点 · ${params.rect?.width || selected.pixelWidth} × ${params.rect?.height || selected.pixelHeight}`, `Drag the crop box and handles · ${params.rect?.width || selected.pixelWidth} × ${params.rect?.height || selected.pixelHeight}`)}</span>}
             {toolId === "expand" && <><span className="ms-direct-hint">{t("拖动图片外侧边界扩展画布", "Drag the outer handles to expand the canvas")}</span><div className="ms-edge-readout">{Object.entries(typeof params.padding === "number" ? { left: params.padding, right: params.padding, top: params.padding, bottom: params.padding } : params.padding).map(([key, value]) => <span key={key}>{key[0].toUpperCase()} {value}</span>)}</div><button className="ms-text-button" onClick={() => setParams(p => ({ ...p, padding: { left: 256, right: 256, top: 256, bottom: 256 } }))}>{t("重置边界", "Reset edges")}</button></>}
             {toolId === "upscale" && <label>{t("放大", "Scale")}<select value={params.scale} onChange={e => setParams(p => ({ ...p, scale: Number(e.target.value) }))}><option value="2">2×</option><option value="4">4×</option></select></label>}
             {toolId === "video" && <label>{t("时长", "Duration")}<select value={params.duration} onChange={e => setParams(p => ({ ...p, duration: Number(e.target.value) }))}><option value="5">5s</option><option value="10">10s</option></select></label>}
-            {["erase", "inpaint", "expand", "video"].includes(toolId) && <input className="ms-direct-prompt" aria-label={t("工具提示词", "Tool prompt")} placeholder={toolId === "inpaint" || toolId === "video" ? t("描述希望生成的效果…", "Describe the result…") : t("可选补充说明…", "Optional instruction…")} value={prompt} onChange={e => setPrompt(e.target.value)} maxLength={4000} />}
+            {["erase", "expand", "video"].includes(toolId) && <input className="ms-direct-prompt" aria-label={t("工具提示词", "Tool prompt")} placeholder={toolId === "inpaint" || toolId === "video" ? t("描述希望生成的效果…", "Describe the result…") : t("可选补充说明…", "Optional instruction…")} value={prompt} onChange={e => setPrompt(e.target.value)} maxLength={4000} />}
             {toolId === "split" && <span className="ms-direct-hint">{t("完成后前景和修复背景会成为两个可编辑图层", "The foreground and repaired background become editable layers")}</span>}
             {!toolStatus?.available && toolId !== "crop" && <span className="ms-unavailable">{toolStatus?.reason === "TOOL_DISABLED" ? t("管理员已停用", "Disabled by admin") : t("尚未配置服务", "Service not configured")}</span>}
           </div>
-          {(toolId !== "move" || mode === "move") && <button className="ms-button ms-primary ms-direct-apply" disabled={busy || (!toolStatus?.available && toolId !== "crop") || ["inpaint", "video"].includes(toolId) && !prompt.trim()} onClick={runTool}>{busy ? <LoaderCircle size={16} className="ms-spin" /> : <Sparkles size={15} />}{t("生成", "Apply")}<span>{toolCost ? `${toolCost} ${t("积分", "credits")}` : t("免费", "Free")}</span></button>}
+          {(!["move", "inpaint"].includes(toolId) || objectSelection) && <button className="ms-button ms-primary ms-direct-apply" disabled={busy || (toolId === "move" && !params.dx && !params.dy) || (!toolStatus?.available && toolId !== "crop") || ["inpaint", "video"].includes(toolId) && !prompt.trim()} onClick={runTool}>{busy ? <LoaderCircle size={16} className="ms-spin" /> : <Sparkles size={15} />}{toolId === "move" ? t("确认移动", "Apply move") : toolId === "inpaint" ? t("生成修改", "Apply edit") : t("生成", "Apply")}<span>{toolCost ? `${toolCost} ${t("积分", "credits")}` : t("免费", "Free")}</span></button>}
         </div>}
         {selected?.type === "text" && <div className="ms-tool-panel"><div className="ms-panel-title">{t("文字编辑", "Edit text")}<Type size={16} /></div><textarea aria-label={t("图层文字", "Layer text")} value={selected.text} onChange={e => commitLayers(draft.layers.map(l => l.id === selectedId ? { ...l, text: e.target.value } : l))} /><label>{t("字号", "Font size")}<input type="number" min="8" max="512" value={selected.fontSize} onChange={e => commitLayers(draft.layers.map(l => l.id === selectedId ? { ...l, fontSize: Number(e.target.value) || 8 } : l))} /></label><label>{t("颜色", "Color")}<input type="color" value={selected.fill} onChange={e => commitLayers(draft.layers.map(l => l.id === selectedId ? { ...l, fill: e.target.value } : l))} /></label></div>}
         {selected?.type === "video" && <div className="ms-tool-panel"><div className="ms-panel-title">{t("视频作品", "Video result")}</div><button className="ms-button ms-primary" onClick={() => setPreview(selected.assetId)}><Play size={15} />{t("播放视频", "Play video")}</button><a className="ms-button" href={imageUrl(selected.assetId)} download="modelshot-video.mp4"><Download size={15} />{t("下载 MP4", "Download MP4")}</a></div>}

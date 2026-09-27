@@ -54,12 +54,15 @@ console.log(JSON.stringify({ code: "WORKER_READY", queue: QUEUE_NAME }));
 async function shutdown() {
   if (stopping) return;
   stopping = true;
+  const started = Date.now();
+  console.log(JSON.stringify({ code: "WORKER_STOPPING", stage: "drain_active_jobs" }));
   clearInterval(timer);
   await worker.close();
   while (dispatching) await new Promise(resolve => setTimeout(resolve, 100));
   await queue.close();
   await connection.quit();
   await prisma.$disconnect();
+  console.log(JSON.stringify({ code: "WORKER_STOPPED", durationMs: Date.now() - started }));
 }
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);

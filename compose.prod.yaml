@@ -154,9 +154,14 @@ services:
       STUDIO_TOOLS_KEY: ${STUDIO_TOOLS_KEY:?STUDIO_TOOLS_KEY is required}
       REMBG_ENABLED: "1"
       REMBG_MODEL: ${REMBG_MODEL:-u2net}
+      SEGMENT_ANYTHING_ENABLED: "1"
+      SEGMENT_MODEL_DIR: /opt/modelshot-models/slimsam
+      TOOLS_CONCURRENCY: ${TOOLS_CONCURRENCY:-2}
+      OMP_NUM_THREADS: ${TOOLS_INFERENCE_THREADS:-2}
+      OPENBLAS_NUM_THREADS: "1"
     healthcheck:
       test: ["CMD", "python", "-c", "import json,os,urllib.request; r=urllib.request.Request('http://127.0.0.1:8090/capabilities',headers={'Authorization':'Bearer '+os.environ['STUDIO_TOOLS_KEY']}); d=json.load(urllib.request.urlopen(r,timeout=5)); raise SystemExit(0 if 'segment' in d.get('tools',[]) else 1)"]
-      interval: 15s
+      interval: 5s
       timeout: 8s
       retries: 10
       start_period: 90s

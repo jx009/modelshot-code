@@ -97,7 +97,9 @@ MODELSHOT_IMAGE=jx009/modelshot:latest
 MODELSHOT_TOOLS_IMAGE=jx009/modelshot:tools-latest
 ```
 
-`tools` 只在 Compose 私有网络监听 8090，不应映射到公网。第一次自行构建会下载并写入 U2Net 权重，因此耗时和镜像体积会明显大于普通 Web 镜像。
+`tools` 只在 Compose 私有网络监听 8090，不应映射到公网。第一次自行构建会下载并写入 U2Net 与 SlimSAM 权重，因此耗时和镜像体积会明显大于普通 Web 镜像；运行时不下载模型，用户圈选后才按需执行一次分割。
+
+图像工具默认同时处理 2 个请求（`TOOLS_CONCURRENCY=2`，上限 4），每个 SlimSAM 推理默认使用 2 个 CPU 线程。8 核单机先保持默认值，压测 CPU、内存和圈选 P95 耗时后再逐步调到 3 或 4；超过并发槽的请求最多等待 20 秒，之后返回 429。调高此值不能增加外部图像生成供应商的额度。
 
 ## 3. 首次初始化
 

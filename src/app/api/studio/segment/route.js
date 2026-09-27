@@ -25,7 +25,7 @@ export async function POST(request) {
     const config = await studioConfig();
     if (!config.toolsURL || !config.toolsKey) throw new AppError("SEGMENTATION_NOT_CONFIGURED", 503);
     let result;
-    try { result = await toolService(config, "segment", source, {}, AbortSignal.timeout(120000), { selection: selectionBytes }); }
+    try { result = await toolService(config, "segment", source, {}, AbortSignal.any([request.signal, AbortSignal.timeout(45000)]), { selection: selectionBytes }); }
     catch (error) {
       if (error instanceof AppError && error.code === "TOOL_SERVICE_FAILED" && error.status === 422) throw new AppError("SEGMENTATION_FAILED", 422);
       if (error instanceof AppError) throw error;

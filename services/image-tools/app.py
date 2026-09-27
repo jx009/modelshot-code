@@ -1,5 +1,7 @@
 """Private CPU/GPU tool service. Models are optional; capabilities reflect loaded engines."""
 import asyncio
+from collections import OrderedDict
+import hashlib
 import hmac
 import io
 import json
@@ -7,6 +9,7 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
+import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Depends, File, Form, Header, HTTPException, UploadFile
@@ -16,7 +19,9 @@ from PIL import Image, ImageChops, UnidentifiedImageError
 Image.MAX_IMAGE_PIXELS = 40_000_000
 MAX_BYTES = 10 * 1024 * 1024
 ENGINES = {}
-LOCK = asyncio.Semaphore(1)
+TOOL_CONCURRENCY = min(4, max(1, int(os.environ.get("TOOLS_CONCURRENCY", "2"))))
+LOCK = asyncio.Semaphore(TOOL_CONCURRENCY)
+FOREGROUNDS = OrderedDict()
 
 
 @asynccontextmanager
@@ -28,6 +33,10 @@ async def lifespan(_app):
         engine = (remove, new_session(os.environ.get("REMBG_MODEL", "u2net")))
         ENGINES["remove-bg"] = engine
         ENGINES["segment"] = engine
+    if os.environ.get("SEGMENT_ANYTHING_ENABLED") == "1":
+        from segmentation import Segmenter
+        segmenter = Segmenter(os.environ.get("SEGMENT_MODEL_DIR", "/opt/modelshot-models/slimsam"), threads=int(os.environ.get("OMP_NUM_THREADS", "2")))
+        ENGINES["segment"] = segmenter
     if os.environ.get("OCR_ENABLED") == "1":
         from paddleocr import PaddleOCR
         ENGINES["ocr"] = PaddleOCR(use_angle_cls=True, lang=os.environ.get("OCR_LANGUAGE", "ch"), show_log=False)
@@ -41,6 +50,7 @@ async def lifespan(_app):
         ENGINES["upscale"] = (str(executable), str(directory), model_name)
     yield
     ENGINES.clear()
+    FOREGROUNDS.clear()
 
 
 app = FastAPI(title="ModelShot private image tools", lifespan=lifespan)
@@ -71,14 +81,33 @@ def decode(data):
 def process(tool, data, params, selection_data=None):
     source = decode(data)
     if tool in ("remove-bg", "segment"):
-        remove, session = ENGINES[tool]
-        result = remove(source, session=session).convert("RGBA")
+        selection = None
         if tool == "segment":
             if not selection_data:
                 raise HTTPException(422, "Selection is required")
             selection = decode(selection_data)
             if selection.size != source.size:
                 raise HTTPException(422, "Selection dimensions do not match")
+        if tool == "segment" and hasattr(ENGINES["segment"], "select"):
+            try:
+                result = ENGINES["segment"].select(source, data, selection)
+            except ValueError as exc:
+                raise HTTPException(422, "No object detected") from exc
+        else:
+            # Legacy foreground removal remains available; repeat selections reuse it.
+            key = hashlib.sha256(data).hexdigest()
+            cached = FOREGROUNDS.get(key)
+            if cached and time.monotonic() - cached[0] < 600:
+                result = cached[1].copy()
+                FOREGROUNDS.move_to_end(key)
+            else:
+                remove, session = ENGINES[tool]
+                result = remove(source, session=session).convert("RGBA")
+                if source.width * source.height <= 4_000_000:
+                    FOREGROUNDS[key] = (time.monotonic(), result.copy())
+                    while len(FOREGROUNDS) > 2:
+                        FOREGROUNDS.popitem(last=False)
+        if tool == "segment" and not hasattr(ENGINES["segment"], "select"):
             selection_mask = selection.convert("L")
             alpha = ImageChops.multiply(result.getchannel("A"), selection_mask)
             if alpha.getbbox() is None:
@@ -144,6 +173,12 @@ async def execute(tool: str, image: UploadFile = File(...), selection: UploadFil
             raise ValueError()
     except (ValueError, TypeError) as exc:
         raise HTTPException(422, "Invalid parameters") from exc
-    async with LOCK:
+    try:
+        await asyncio.wait_for(LOCK.acquire(), timeout=20)
+    except asyncio.TimeoutError as exc:
+        raise HTTPException(429, "Tool busy; try again shortly") from exc
+    try:
         result = await asyncio.to_thread(process, tool, data, options, selection_data)
+    finally:
+        LOCK.release()
     return result if isinstance(result, dict) else Response(result, media_type="image/png")

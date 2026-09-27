@@ -75,6 +75,8 @@ docker compose --env-file .env.production -f compose.prod.yaml up -d --build
 docker compose --env-file .env.production -f compose.prod.yaml ps
 ```
 
+MinIO 使用固定 manifest digest，并通过 `STORAGE_IMAGE` 允许切换 registry 镜像源。默认使用可匿名拉取的 GHCR 备份源；如部署环境使用公司镜像代理，可以在 `.env.production` 中覆盖该变量，但应继续固定同一个 digest。
+
 想省参数可以在服务器 shell 里导出：
 
 ```bash
@@ -83,7 +85,7 @@ export COMPOSE_FILE=compose.prod.yaml COMPOSE_ENV_FILES=.env.production
 
 本文档后续命令都省略了 `-f compose.prod.yaml --env-file .env.production`；没导出上面两个变量的话请自行补上，漏了 `--env-file` 会拿不到数据库和存储密码。
 
-启动顺序由依赖条件保证：`postgres` / `redis` / `storage` 健康 → `storage-init` 建 bucket → `migrate` 应用迁移并成功退出 → `web` 和 `worker` 启动。`migrate` 是独立一次性服务，不会在每个 Web 副本里自动跑迁移，也不会用 `db push` 顶替正式迁移。
+启动顺序由依赖条件保证：`postgres` / `redis` / `storage` 健康 → `storage-init` 建 bucket → `migrate` 应用迁移并成功退出 → `web` 和 `worker` 启动。`migrate` 是独立一次性服务，不会在每个 Web 副本里自动跑迁移，也不会用 `db push` 顶替正式迁移。包含多模型通道和 Studio 工具计费的版本会自动执行 `202609270001_provider_channels` 与 `202609270002_studio_pricing`，无需手工改表。
 
 ## 3. 首次初始化
 

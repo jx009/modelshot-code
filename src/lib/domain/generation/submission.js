@@ -6,7 +6,7 @@ import { ownedAsset, assetUrl, readPreset } from "../assets/service.js";
 import { resolveProvider } from "./providers.js";
 import { ACTIVE, configurationSchema, digestJson, LIMITS, PROFILES, PROFILE_VERSION } from "./contracts.js";
 import { buildWorkflowTasks, getWorkflow, workflowNeedsModel } from "./workflow-catalog.js";
-import { activeCycle, CREDIT_PRICE, lockUser, PRICE_VERSION, usageSummary, reserveCreditLots } from "../billing/ledger.js";
+import { activeCycle, lockUser, PRICE_VERSION, usageSummary, reserveCreditLots } from "../billing/ledger.js";
 
 export async function quoteGeneration(userId, input, db = prisma, dependencies = {}) {
   const config = configurationSchema.parse(input);
@@ -38,7 +38,7 @@ export async function quoteGeneration(userId, input, db = prisma, dependencies =
   const snapshotWorkflow = retryOutput?.snapshot?.workflow || { id: workflow.id, title: workflow.title };
   const deliveryFor = task => ({ ...PROFILES[task.aspectRatio || config.aspectRatio], fit: "contain", format: "png", version: PROFILE_VERSION });
   const snapshot = {
-    version: 2, config, workflow: snapshotWorkflow, tasks, provider: provider.id, model: provider.model, capabilityVersion: provider.version,
+    version: 2, config, workflow: snapshotWorkflow, tasks, provider: provider.id, model: provider.model, modelLabel: provider.label, capabilityVersion: provider.version,
     fallback: [], templateVersion: digestJson(tasks.map(task => task.prompt)), prompt,
     garments: products.map(asset => ({ id: asset.id, checksum: asset.checksum })),
     references: referenceAssets.map(({ role, asset }) => ({ id: asset.id, checksum: asset.checksum, role })),
@@ -52,7 +52,8 @@ export async function quoteGeneration(userId, input, db = prisma, dependencies =
   const usage = await usageSummary(userId, db);
   const quotaCount = Math.min(count, usage.remaining);
   const creditCount = count - quotaCount;
-  const pricing = { version: PRICE_VERSION, count, quotaCount, creditCount, credits: creditCount * CREDIT_PRICE, unitPrice: CREDIT_PRICE, channel: "platform", cycleId: usage.cycleId };
+  const unitPrice = provider.creditCost ?? 18;
+  const pricing = { version: PRICE_VERSION, count, quotaCount, creditCount, credits: creditCount * unitPrice, unitPrice, channel: "platform", cycleId: usage.cycleId };
   const quote = await db.generationQuote.create({ data: { userId, digest: digestJson(snapshot), snapshot, pricing, expiresAt: new Date(Date.now() + 300_000) } });
   return { quoteId: quote.id, digest: quote.digest, expiresAt: quote.expiresAt, pricing, snapshot };
 }
@@ -93,7 +94,7 @@ export async function submitGeneration(userId, quoteId, digest, idempotencyKey, 
       const garment = plannedOutput.garment;
       const task = plannedOutput.task;
       const channel = i < pricing.quotaCount ? "subscription" : "credits";
-      const amount = channel === "subscription" ? 1 : CREDIT_PRICE;
+      const amount = channel === "subscription" ? 1 : pricing.unitPrice;
       const aspectRatio = task.aspectRatio || config.aspectRatio;
       const outputSnapshot = {
         ...snapshot,

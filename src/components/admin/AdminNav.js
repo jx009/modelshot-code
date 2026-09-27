@@ -6,6 +6,7 @@ const LINKS = [
   { href: "/admin", label: "数据看板" },
   { href: "/admin/operations", label: "运行与账务" },
   { href: "/admin/providers", label: "模型通道" },
+  { href: "/admin/studio-tools", label: "工具与计费" },
   { href: "/admin/users", label: "用户管理" },
   { href: "/admin/tryons", label: "生成审计" },
   { href: "/admin/orders", label: "订单管理" },

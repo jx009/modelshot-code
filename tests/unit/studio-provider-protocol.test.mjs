@@ -1,7 +1,9 @@
-import { beforeAll, afterAll, describe, expect, it } from "vitest";
+import { beforeAll, afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import http from "node:http";
 import sharp from "sharp";
-import { generateImage, videoRequest, vision } from "../../src/lib/domain/studio/providers.js";
+import { capabilities, generateImage, studioConfig, videoRequest, vision } from "../../src/lib/domain/studio/providers.js";
+
+afterEach(() => vi.unstubAllEnvs());
 
 let server, base, png;
 const calls = [];
@@ -23,6 +25,20 @@ beforeAll(async () => {
 afterAll(async () => { await new Promise(resolve => server.close(resolve)); });
 
 describe("studio real HTTP protocol against isolated fixture", () => {
+  it("separates image model aliases from the selected planning model", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "fixture-key");
+    const db = { modelProvider: { findMany: vi.fn().mockResolvedValue([
+      { name: "image-pro", kind: "openai", displayName: "ModelShot Pro", creditCost: 7, isDefault: true, isPlanner: false, priority: 1, config: JSON.stringify({ model: "gpt-image-2" }) },
+      { name: "planner", kind: "openai", displayName: "Visual Director", creditCost: 3, isDefault: false, isPlanner: true, priority: 2, config: JSON.stringify({ model: "unused-image", chatModel: "gpt-4.1-mini" }) },
+    ]), }, studioToolConfig: { findMany: vi.fn().mockResolvedValue([{ toolId: "upscale", creditCost: 9, isEnabled: true }]) } };
+    const config = await studioConfig(db);
+    expect(config).toMatchObject({ imageProvider: "image-pro", imageModel: "gpt-image-2", imageDisplayName: "ModelShot Pro", chatModel: "gpt-4.1-mini", plannerDisplayName: "Visual Director" });
+    const caps = await capabilities(db, config);
+    expect(caps.imageModels).toEqual([{ id: "image-pro", label: "ModelShot Pro", creditCost: 7 }, { id: "planner", label: "Visual Director", creditCost: 3 }]);
+    expect(caps.chatModel).toBe("Visual Director");
+    expect(caps.tools.find(tool => tool.id === "generate").cost).toBe(7);
+    expect(caps.tools.find(tool => tool.id === "upscale").cost).toBe(9);
+  });
   it("sends image and mask as multipart files to compatible gateway", async () => {
     expect(await generateImage({ apiKey: "fixture", baseURL: `${base}/v1`, imageModel: "image-model" }, { image: png, mask: png, prompt: "change", size: "1024x1024" })).toEqual(png);
     const request = calls.at(-1);

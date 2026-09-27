@@ -26,13 +26,17 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
   const [selectedId, setSelected] = useState(null), [tab, setTab] = useState(initialMode), [mode, setMode] = useState("select");
   const [toolId, setTool] = useState(null), [prompt, setPrompt] = useState(initialPrompt), [params, setParams] = useState({ size: "1024x1024", scale: 2, padding: 256, dx: 100, dy: 0, duration: 5 });
   const [brush, setBrush] = useState(40), [zoom, setZoom] = useState(1), [capabilities, setCapabilities] = useState(null), [usage, setUsage] = useState(null);
+  const [modelProvider, setModelProvider] = useState("");
   const [projects, setProjects] = useState(null), [jobs, setJobs] = useState([]), [showLayers, setShowLayers] = useState(false), [mobileChat, setMobileChat] = useState(true);
   const [busy, setBusy] = useState(false), [saveState, setSaveState] = useState("local"), [notice, setNotice] = useState(null), [preview, setPreview] = useState(null), [ocr, setOcr] = useState(null);
   const [historyCount, setHistoryCount] = useState({ past: 0, future: 0 });
-  const history = useRef({ past: [], future: [] }), canvas = useRef(null), fileInput = useRef(null), saveQueue = useRef(Promise.resolve());
+  const history = useRef({ past: [], future: [] }), canvas = useRef(null), fileInput = useRef(null), saveQueue = useRef(Promise.resolve()), fitTimer = useRef(null);
   const life = useRef(null), submission = useRef(false);
   const selected = draft.layers.find(l => l.id === selectedId);
   const tool = getTool(toolId), toolStatus = capabilities?.tools.find(row => row.id === toolId);
+  const activeModel = capabilities?.imageModels?.find(model => model.id === modelProvider);
+  const quickCost = activeModel?.creditCost ?? capabilities?.tools.find(row => row.id === (selected?.type === "image" ? "edit" : "generate"))?.cost ?? 18;
+  const toolCost = toolStatus?.cost ?? tool?.cost ?? 0;
   const storageKey = session?.user?.id ? `modelshot-studio-v1:${session.user.id}` : null;
 
   const update = useCallback(next => {
@@ -54,8 +58,9 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
       UNAUTHORIZED: t("请先登录，素材和作品会保存到你的账户。", "Sign in to save assets and projects."),
       SERVICE_NOT_CONFIGURED: t("这个工具还没有连接模型服务，请在部署配置中启用。", "This tool needs a configured provider."),
       MASK_NOT_ENABLED: t("当前图像通道尚未启用遮罩编辑。", "Mask editing is not enabled for this provider."),
+      TOOL_DISABLED: t("管理员已停用这个工具。", "This tool has been disabled by an administrator."),
       TARGET_CHANGED: t("目标图片已变化，请重新选择图片。", "The target changed. Select the image again."),
-      VISION_NOT_CONFIGURED: t("对话规划需要配置视觉模型，也可以切换到快速模式。", "Configure a vision model for planning, or use Quick mode."),
+      VISION_NOT_CONFIGURED: t("管理员尚未配置对话规划模型。请在后台“模型通道”填写视觉/对话规划模型并设为规划通道；也可使用“快速生图”直接生成一张图。", "No planning model is configured. Configure one in Admin → Model channels, or use Quick generation for a direct single-image request."),
     };
     setNotice(descriptions[code] || code);
   }, [t]);
@@ -72,18 +77,22 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
   function message(role, text, assetId, id = requestKey()) {
     update(d => d.messages.some(m => m.id === id) ? d : ({ ...d, messages: [...d.messages, { id, role, text, ...(assetId ? { assetId } : {}) }].slice(-100) }));
   }
+  function scheduleFit(delay = 0) {
+    clearTimeout(fitTimer.current);
+    fitTimer.current = setTimeout(() => canvas.current?.fit(), delay);
+  }
   useEffect(() => {
     const abort = new AbortController(); life.current = abort;
     if (status === "authenticated") {
       Promise.resolve().then(async () => {
         if (initialDocument) {
           const doc = await api(`/api/studio/documents/${encodeURIComponent(initialDocument)}`, { signal: abort.signal });
-          if (!abort.signal.aborted) { update({ ...blank(), id: doc.id, version: doc.version, name: doc.name, ...doc.content }); setTimeout(() => canvas.current?.fit(), 200); }
+          if (!abort.signal.aborted) { update({ ...blank(), id: doc.id, version: doc.version, name: doc.name, ...doc.content }); scheduleFit(200); }
         } else { try { const cached = JSON.parse(localStorage.getItem(storageKey)); update(cached?.layers && cached?.messages ? { ...blank(), ...cached } : blank()); } catch { update(blank()); } }
       }).catch(e => { if (!abort.signal.aborted) notify(e); });
-      Promise.all([api("/api/studio/capabilities", { signal: abort.signal }), api("/api/usage", { signal: abort.signal })]).then(([caps, value]) => { setCapabilities(caps); setUsage(value); }).catch(e => { if (!abort.signal.aborted) notify(e); });
+      Promise.all([api("/api/studio/capabilities", { signal: abort.signal }), api("/api/usage", { signal: abort.signal })]).then(([caps, value]) => { setCapabilities(caps); setModelProvider(current => current || caps.imageProvider || caps.imageModels?.[0]?.id || ""); setUsage(value); }).catch(e => { if (!abort.signal.aborted) notify(e); });
     } else if (status === "unauthenticated") Promise.resolve().then(() => update(blank()));
-    return () => abort.abort();
+    return () => { abort.abort(); clearTimeout(fitTimer.current); };
   }, [status, storageKey, update, notify, initialDocument]);
   useEffect(() => {
     const handler = e => {
@@ -158,12 +167,18 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
         commitLayers([...current, { id, assetId: asset.assetId, type: "image", name: file.name.slice(0, 150), x: current.length ? Math.max(...current.map(l => l.x + l.width)) + 48 : 90, y: 100, ...size, pixelWidth: asset.width, pixelHeight: asset.height, rotation: 0, opacity: 1, visible: true }]);
         setSelected(id);
       }
-      setMobileChat(false); setTimeout(() => canvas.current?.fit(), 150);
+      setMobileChat(false); scheduleFit(150);
     } catch (e) { notify(e); } finally { submission.current = false; setBusy(false); if (fileInput.current) fileInput.current.value = ""; }
   }
   function chooseTool(id) {
-    setTool(id); canvas.current?.clearMask(); setMode(getTool(id)?.mask ? "mask" : id === "crop" ? "crop" : "select");
+    clearTimeout(fitTimer.current);
+    setTool(id); canvas.current?.clearMask();
+    setMode(id === "move" ? "move-select-rect" : id === "expand" ? "expand" : getTool(id)?.mask ? "mask" : id === "crop" ? "crop" : "select");
     if (id === "crop" && selected) setParams(p => ({ ...p, rect: { left: 0, top: 0, width: selected.pixelWidth, height: selected.pixelHeight } }));
+    if (id === "move") setParams(p => ({ ...p, dx: 0, dy: 0 }));
+    if (id === "expand") {
+      setParams(p => ({ ...p, padding: typeof p.padding === "number" ? { left: p.padding, right: p.padding, top: p.padding, bottom: p.padding } : p.padding }));
+    }
     setOcr(null);
   }
   async function submit(id, target, text, options = {}, maskBlob, key = requestKey()) {
@@ -176,7 +191,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
     if (pending?.signature === signature) { body = { ...pending.body, documentVersion: saved.version }; key = pending.key; }
     else {
       if (maskBlob) maskId = (await uploadFile(new File([maskBlob], "mask.png", { type: "image/png" }))).assetId;
-      body = { tool: id, documentId: saved.id, documentVersion: saved.version, ...(target ? { targetId: target.id, assetId: target.assetId } : {}), ...(maskId ? { maskId } : {}), params: { ...options, prompt: text } };
+      body = { tool: id, ...(modelProvider ? { provider: modelProvider } : {}), documentId: saved.id, documentVersion: saved.version, ...(target ? { targetId: target.id, assetId: target.assetId } : {}), ...(maskId ? { maskId } : {}), params: { ...options, prompt: text } };
       const next = update(d => ({ ...d, pendingSubmit: { signature, key, body } }));
       // Persist the key before network I/O so a refresh cannot silently submit twice.
       if (storageKey) localStorage.setItem(storageKey, JSON.stringify(next));
@@ -250,7 +265,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
       const data = await api(`/api/studio/documents/${id}`);
       update({ ...blank(), id: data.id, version: data.version, name: data.name, ...data.content });
       history.current = { past: [], future: [] }; setHistoryCount({ past: 0, future: 0 }); setSelected(null); setTool(null); setProjects(null); setJobs([]);
-      setTimeout(() => canvas.current?.fit(), 150);
+      scheduleFit(150);
     } catch (e) { notify(e); }
   }
   async function replaceText(box) {
@@ -266,7 +281,11 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
       setOcr(null);
     } catch (e) { notify(e); } finally { submission.current = false; setBusy(false); }
   }
-  const closeTool = () => { setTool(null); setMode("select"); canvas.current?.clearMask(); };
+  const closeTool = () => {
+    const restoreView = toolId === "expand";
+    setTool(null); setMode("select"); canvas.current?.clearMask();
+    if (restoreView) scheduleFit();
+  };
   return <div className="ms-studio" data-history={historyCount.past}>
     <header className="ms-topbar">
       <Link href="/" className="ms-brand"><Aperture size={26} /><span>ModelShot<span className="ms-brand-mark"> / </span><small>CANVAS</small></span></Link>
@@ -284,7 +303,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
       <aside className="ms-chat">
         <div className="ms-chat-heading"><span><Sparkles size={16} />{t("创意，从一句话开始", "An idea starts a conversation")}</span><button className="ms-icon" title={t("查看画布", "Show canvas")} onClick={() => setMobileChat(false)}><PanelLeftClose size={17} /></button></div>
         <div className="ms-tabs" role="tablist">
-          {[["chat", MessageCircle, t("对话", "Chat")], ["quick", Zap, t("快速", "Quick")]].map(([id, Icon, label]) => <button role="tab" aria-selected={tab === id} key={id} onClick={() => setTab(id)}><Icon size={15} />{label}</button>)}<Link href="/commerce" className="ms-commerce-tab"><ShoppingBag size={15} />{t("电商套图", "Commerce")}</Link>
+          {[["chat", MessageCircle, t("对话规划", "Planned chat")], ["quick", Zap, t("快速生图", "Quick generation")]].map(([id, Icon, label]) => <button role="tab" aria-selected={tab === id} key={id} onClick={() => setTab(id)}><Icon size={15} />{label}</button>)}<Link href="/commerce" className="ms-commerce-tab"><ShoppingBag size={15} />{t("电商套图", "Commerce")}</Link>
         </div>
         <div className="ms-conversation">
           {!draft.messages.length && <div className="ms-welcome">
@@ -300,27 +319,38 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
         <div className="ms-composer">
           {selected?.type === "image" && <div className="ms-reference"><Image unoptimized width={480} height={480} src={imageUrl(selected.assetId)} alt="" /><span>{t("正在引用", "Referencing")} · {selected.name}</span><button className="ms-icon" title={t("取消引用", "Clear reference")} onClick={() => setSelected(null)}><X size={13} /></button></div>}
           <textarea aria-label={t("创作描述", "Creative prompt")} value={prompt} onChange={e => setPrompt(e.target.value)} placeholder={t("描述你想要的画面，或选择图片继续修改…", "Describe an image, or select one to keep editing…")} maxLength={4000} onKeyDown={e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(); } }} />
-          <div className="ms-composer-tools"><button className="ms-icon" title={t("添加参考图", "Add reference")} disabled={busy} onClick={() => fileInput.current.click()}><ImagePlus size={19} /></button><span className="ms-model-pill"><span className="ms-mini-orb" />{capabilities?.imageModel || "Image Studio"}<ChevronDown size={11} /></span><select aria-label={t("图片比例", "Aspect ratio")} value={params.size} onChange={e => setParams(p => ({ ...p, size: e.target.value }))}><option value="1024x1024">1:1</option><option value="1024x1536">2:3</option><option value="1536x1024">3:2</option></select><button className="ms-send" disabled={busy || !prompt.trim()} onClick={send} title={tab === "quick" ? t("生成 · 18 积分", "Generate · 18 credits") : t("生成计划", "Create plan")}>{busy ? <LoaderCircle className="ms-spin" size={18} /> : <ArrowUp size={19} />}</button></div>
-          <small className="ms-composer-hint">{tab === "quick" ? t("单次生成 18 积分 · 成功后扣除", "18 credits per image · charged on success") : t("先查看计划与价格，再开始创作", "Review the plan and price before creating")}</small>
+          <div className="ms-composer-tools"><button className="ms-icon" title={t("添加参考图", "Add reference")} disabled={busy} onClick={() => fileInput.current.click()}><ImagePlus size={19} /></button><label className="ms-model-pill"><span className="ms-mini-orb" /><select aria-label={t("生图模型", "Image model")} value={modelProvider} onChange={e => setModelProvider(e.target.value)}>{(capabilities?.imageModels || []).map(item => <option key={item.id} value={item.id}>{item.label} · {item.creditCost} {t("积分", "credits")}</option>)}</select><ChevronDown size={11} /></label><select aria-label={t("图片比例", "Aspect ratio")} value={params.size} onChange={e => setParams(p => ({ ...p, size: e.target.value }))}><option value="1024x1024">1:1</option><option value="1024x1536">2:3</option><option value="1536x1024">3:2</option></select><button className="ms-send" disabled={busy || !prompt.trim()} onClick={send} title={tab === "quick" ? t(`生成 · ${quickCost} 积分`, `Generate · ${quickCost} credits`) : t("生成计划", "Create plan")}>{busy ? <LoaderCircle className="ms-spin" size={18} /> : <ArrowUp size={19} />}</button></div>
+          <small className="ms-composer-hint">{tab === "quick" ? t(`直接按当前文字生成或编辑一张图，不调用规划模型 · ${quickCost} 积分`, `Generate or edit one image directly without the planning model · ${quickCost} credits`) : capabilities?.chatModel ? t(`由 ${capabilities.chatModel} 先拆解步骤，再由你确认执行`, `Plan steps with ${capabilities.chatModel}, then review before execution`) : t("对话规划模型尚未配置；请联系管理员或切换到快速生图", "Planning model is not configured; contact an admin or use Quick generation")}</small>
         </div>
       </aside>
       <main className="ms-canvas-space">
-        <Canvas ref={canvas} layers={draft.layers} selectedId={selectedId} onSelect={id => { setSelected(id); if (id !== selectedId) closeTool(); }} onChange={commitLayers} mode={mode} brushSize={brush} onCrop={rect => setParams(p => ({ ...p, rect }))} onZoom={setZoom} onUpload={upload} onError={notify} label={t("图片编辑画布", "Image editing canvas")} />
+        <Canvas ref={canvas} layers={draft.layers} selectedId={selectedId} onSelect={id => { setSelected(id); if (id !== selectedId) closeTool(); }} onChange={commitLayers} mode={mode} brushSize={brush}
+          moveOffset={{ dx: params.dx, dy: params.dy }} onMoveOffset={offset => setParams(p => ({ ...p, ...offset }))} onMoveReady={() => setMode("move")}
+          onCrop={rect => setParams(p => ({ ...p, rect }))} expandPadding={params.padding} onExpandPadding={padding => setParams(p => ({ ...p, padding }))}
+          onZoom={setZoom} onUpload={upload} onError={notify} label={t("图片编辑画布", "Image editing canvas")} />
         <div className="ms-canvas-label"><span className="ms-status-dot" />{t("自由画布", "FREE CANVAS")}<span> / </span>{draft.layers.length} {t("个图层", "layers")}</div>
         {!draft.layers.length && <div className="ms-empty-canvas"><div className="ms-empty-art"><div className="ms-art-frame back"><Image unoptimized width={480} height={480} loading="eager" src="/studio/scene-05.webp" alt="" /></div><div className="ms-art-frame front"><Image unoptimized width={480} height={480} loading="eager" src="/studio/scene-03.webp" alt="" /><span><Sparkles size={12} />{t("灵感，正在发生", "A place for possibilities")}</span></div><span className="ms-art-cross one">+</span><span className="ms-art-cross two">+</span></div><h2>{t("你的下一幅作品，从这里开始", "A blank canvas. Endless possibilities.")}</h2><p>{t("拖入图片，或在左侧说出你的想法", "Drop an image here, or start with an idea on the left")}</p><button className="ms-button ms-primary" disabled={busy} onClick={() => fileInput.current.click()}><Plus size={17} />{t("上传第一张图片", "Upload your first image")}</button><small>PNG · JPG · WEBP · 10 MB</small></div>}
         <div className="ms-canvas-top-right"><button className={`ms-icon ${showLayers ? "active" : ""}`} title={t("图层", "Layers")} onClick={() => setShowLayers(!showLayers)}><Layers3 size={18} /></button></div>
-        {selected?.type === "image" && !showLayers && !toolId && !ocr && <div className="ms-image-menu"><div className="ms-menu-caption"><span>{t("图片工具", "IMAGE TOOLS")}</span><span>{selected.pixelWidth} × {selected.pixelHeight}</span></div>{TOOLS.filter(item => !["generate", "edit"].includes(item.id)).map(item => { const Icon = ICONS[item.id], capability = capabilities?.tools.find(row => row.id === item.id); return <button key={item.id} onClick={() => chooseTool(item.id)}><Icon size={16} /><span>{zh ? item.zh : item.en}</span>{!capability?.available && item.id !== "crop" ? <span className="ms-setup-dot" title={t("需要配置服务", "Requires service")} /> : item.id === "split" ? <small>NEW</small> : null}</button>; })}<div className="ms-menu-line" /><button onClick={() => { setMobileChat(true); setPrompt(t("请帮我修改这张图片：", "Edit this image: ")); }}><MessageCircle size={16} /><span>{t("添加到聊天", "Add to chat")}</span></button><a href={imageUrl(selected.assetId)} download={`${selected.name}.png`}><Download size={16} />{t("下载原图", "Download image")}</a></div>}
-        {toolId && <div className="ms-tool-panel"><div className="ms-panel-title"><span>{zh ? tool.zh : tool.en}</span><button className="ms-icon" onClick={closeTool} title={t("关闭工具", "Close tool")}><X size={16} /></button></div>
-          {tool.mask && <><p>{t("在图片上涂抹要修改的区域。原图不会被覆盖。", "Paint the area to edit. Your original is preserved.")}</p><label>{t("画笔", "Brush")}<input type="range" min="5" max="200" value={brush} onChange={e => setBrush(Number(e.target.value))} /><span>{brush}px</span></label><button className="ms-text-button" onClick={() => canvas.current.clearMask()}>{t("清除涂抹", "Clear mask")}</button></>}
-          {toolId === "crop" && <><p>{t("在图上拖出裁剪框，或输入像素范围。", "Drag a crop rectangle or enter pixel bounds.")}</p><div className="ms-field-grid">{["left", "top", "width", "height"].map(key => <label key={key}>{({ left: "X", top: "Y", width: "W", height: "H" })[key]}<input type="number" min={key === "width" || key === "height" ? 1 : 0} value={params.rect?.[key] || 0} onChange={e => setParams(p => ({ ...p, rect: { ...p.rect, [key]: Number(e.target.value) } }))} /></label>)}</div></>}
-          {toolId === "upscale" && <label>{t("放大倍率", "Scale")}<select value={params.scale} onChange={e => setParams(p => ({ ...p, scale: Number(e.target.value) }))}><option value="2">2×</option><option value="4">4×</option></select></label>}
-          {toolId === "expand" && <label>{t("四边扩展像素", "Padding on each side")}<input type="number" min="32" max="1024" value={params.padding} onChange={e => setParams(p => ({ ...p, padding: Number(e.target.value) }))} /></label>}
-          {toolId === "move" && <div className="ms-field-grid">{["dx", "dy"].map(key => <label key={key}>{key}<input type="number" value={params[key]} onChange={e => setParams(p => ({ ...p, [key]: Number(e.target.value) }))} /></label>)}</div>}
-          {toolId === "video" && <label>{t("视频时长", "Duration")}<select value={params.duration} onChange={e => setParams(p => ({ ...p, duration: Number(e.target.value) }))}><option value="5">5s</option><option value="10">10s</option></select></label>}
-          {!["crop", "upscale", "remove-bg", "ocr", "split", "describe"].includes(toolId) && <textarea aria-label={t("工具提示词", "Tool prompt")} placeholder={t("描述你希望的效果…", "Describe the change…")} value={prompt} onChange={e => setPrompt(e.target.value)} maxLength={4000} />}
-          {toolId === "split" && <p>{t("拆分为透明前景和修复后的背景两层。", "Creates a transparent foreground and a repaired background.")}</p>}
-          {!toolStatus?.available && toolId !== "crop" && <p className="ms-unavailable">{t("尚未配置该工具服务。可继续使用画布、裁剪和文字图层。", "This service is not configured. Canvas, crop and text layers remain available.")}</p>}
-          <button className="ms-button ms-primary" disabled={busy || (!toolStatus?.available && toolId !== "crop")} onClick={runTool}>{busy ? <LoaderCircle size={16} className="ms-spin" /> : <Sparkles size={15} />}{t("开始处理", "Apply")}<span>{tool.cost ? `${tool.cost} ${t("积分", "credits")}` : t("免费", "Free")}</span></button>
+        {selected?.type === "image" && !showLayers && !toolId && !ocr && <div className="ms-image-menu ms-context-toolbar">
+          <div className="ms-menu-caption"><span>{selected.name}</span><span>{selected.pixelWidth} × {selected.pixelHeight}</span></div>
+          <div className="ms-context-scroll">{TOOLS.filter(item => !["generate", "edit"].includes(item.id)).map(item => { const Icon = ICONS[item.id], capability = capabilities?.tools.find(row => row.id === item.id); return <button key={item.id} title={`${zh ? item.zh : item.en} · ${capability?.cost ?? item.cost}`} onClick={() => chooseTool(item.id)}><Icon size={16} /><span>{zh ? item.zh : item.en}</span>{!capability?.available && item.id !== "crop" ? <i className="ms-setup-dot" /> : <small>{capability?.cost ?? item.cost}</small>}</button>; })}
+            <button title={t("添加到聊天", "Add to chat")} onClick={() => { setMobileChat(true); setPrompt(t("请帮我修改这张图片：", "Edit this image: ")); }}><MessageCircle size={16} /><span>{t("聊天", "Chat")}</span></button>
+            <a title={t("下载原图", "Download image")} href={imageUrl(selected.assetId)} download={`${selected.name}.png`}><Download size={16} /><span>{t("下载", "Download")}</span></a>
+          </div>
+        </div>}
+        {toolId && <div className="ms-tool-panel ms-direct-dock"><div className="ms-direct-title"><span>{zh ? tool.zh : tool.en}</span><button className="ms-icon" onClick={closeTool} title={t("关闭工具", "Close tool")}><X size={16} /></button></div>
+          <div className="ms-direct-controls">
+            {tool.mask && toolId !== "move" && <><span className="ms-direct-hint">{t("直接在图片上涂抹", "Paint directly on the image")}</span><label>{t("画笔", "Brush")}<input type="range" min="5" max="200" value={brush} onChange={e => setBrush(Number(e.target.value))} /><span>{brush}px</span></label><button className="ms-text-button" onClick={() => canvas.current.clearMask()}>{t("清除", "Clear")}</button></>}
+            {toolId === "move" && <>{mode === "move" ? <><span className="ms-direct-hint">{t("直接拖动高亮对象", "Drag the highlighted object")}</span><div className="ms-move-offset"><span>ΔX {params.dx}px</span><span>ΔY {params.dy}px</span></div><button className="ms-text-button" onClick={() => { canvas.current.clearMovePreview(); setMode("move-select-rect"); setParams(p => ({ ...p, dx: 0, dy: 0 })); }}>{t("重新圈选", "Select again")}</button></> : <><span className="ms-direct-hint">{t("在图片上框选或套索对象，松手后立即拖动", "Box or lasso the object; release to drag it")}</span><div className="ms-segment-modes"><button className={`ms-button ${mode === "move-select-rect" ? "active" : ""}`} onClick={() => { canvas.current.clearMovePreview(); setMode("move-select-rect"); }}><Crop size={14} />{t("矩形", "Rectangle")}</button><button className={`ms-button ${mode === "move-select-lasso" ? "active" : ""}`} onClick={() => { canvas.current.clearMovePreview(); setMode("move-select-lasso"); }}><Scissors size={14} />{t("套索", "Lasso")}</button></div></>}</>}
+            {toolId === "crop" && <span className="ms-direct-hint">{t(`拖动裁剪框和角点 · ${params.rect?.width || selected.pixelWidth} × ${params.rect?.height || selected.pixelHeight}`, `Drag the crop box and handles · ${params.rect?.width || selected.pixelWidth} × ${params.rect?.height || selected.pixelHeight}`)}</span>}
+            {toolId === "expand" && <><span className="ms-direct-hint">{t("拖动图片外侧边界扩展画布", "Drag the outer handles to expand the canvas")}</span><div className="ms-edge-readout">{Object.entries(typeof params.padding === "number" ? { left: params.padding, right: params.padding, top: params.padding, bottom: params.padding } : params.padding).map(([key, value]) => <span key={key}>{key[0].toUpperCase()} {value}</span>)}</div><button className="ms-text-button" onClick={() => setParams(p => ({ ...p, padding: { left: 256, right: 256, top: 256, bottom: 256 } }))}>{t("重置边界", "Reset edges")}</button></>}
+            {toolId === "upscale" && <label>{t("放大", "Scale")}<select value={params.scale} onChange={e => setParams(p => ({ ...p, scale: Number(e.target.value) }))}><option value="2">2×</option><option value="4">4×</option></select></label>}
+            {toolId === "video" && <label>{t("时长", "Duration")}<select value={params.duration} onChange={e => setParams(p => ({ ...p, duration: Number(e.target.value) }))}><option value="5">5s</option><option value="10">10s</option></select></label>}
+            {["erase", "inpaint", "expand", "video"].includes(toolId) && <input className="ms-direct-prompt" aria-label={t("工具提示词", "Tool prompt")} placeholder={toolId === "inpaint" || toolId === "video" ? t("描述希望生成的效果…", "Describe the result…") : t("可选补充说明…", "Optional instruction…")} value={prompt} onChange={e => setPrompt(e.target.value)} maxLength={4000} />}
+            {toolId === "split" && <span className="ms-direct-hint">{t("完成后前景和修复背景会成为两个可编辑图层", "The foreground and repaired background become editable layers")}</span>}
+            {!toolStatus?.available && toolId !== "crop" && <span className="ms-unavailable">{toolStatus?.reason === "TOOL_DISABLED" ? t("管理员已停用", "Disabled by admin") : t("尚未配置服务", "Service not configured")}</span>}
+          </div>
+          {(toolId !== "move" || mode === "move") && <button className="ms-button ms-primary ms-direct-apply" disabled={busy || (!toolStatus?.available && toolId !== "crop") || ["inpaint", "video"].includes(toolId) && !prompt.trim()} onClick={runTool}>{busy ? <LoaderCircle size={16} className="ms-spin" /> : <Sparkles size={15} />}{t("生成", "Apply")}<span>{toolCost ? `${toolCost} ${t("积分", "credits")}` : t("免费", "Free")}</span></button>}
         </div>}
         {selected?.type === "text" && <div className="ms-tool-panel"><div className="ms-panel-title">{t("文字编辑", "Edit text")}<Type size={16} /></div><textarea aria-label={t("图层文字", "Layer text")} value={selected.text} onChange={e => commitLayers(draft.layers.map(l => l.id === selectedId ? { ...l, text: e.target.value } : l))} /><label>{t("字号", "Font size")}<input type="number" min="8" max="512" value={selected.fontSize} onChange={e => commitLayers(draft.layers.map(l => l.id === selectedId ? { ...l, fontSize: Number(e.target.value) || 8 } : l))} /></label><label>{t("颜色", "Color")}<input type="color" value={selected.fill} onChange={e => commitLayers(draft.layers.map(l => l.id === selectedId ? { ...l, fill: e.target.value } : l))} /></label></div>}
         {selected?.type === "video" && <div className="ms-tool-panel"><div className="ms-panel-title">{t("视频作品", "Video result")}</div><button className="ms-button ms-primary" onClick={() => setPreview(selected.assetId)}><Play size={15} />{t("播放视频", "Play video")}</button><a className="ms-button" href={imageUrl(selected.assetId)} download="modelshot-video.mp4"><Download size={15} />{t("下载 MP4", "Download MP4")}</a></div>}

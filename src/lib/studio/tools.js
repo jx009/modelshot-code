@@ -19,17 +19,22 @@ export const TOOLS = [
 export const getTool = id => TOOLS.find(tool => tool.id === id);
 const id = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
 const positive = z.number().int().min(1).max(8192);
+const edgePadding = z.number().int().min(0).max(1024);
 export const paramsSchema = z.object({
   prompt: z.string().trim().max(4000).default(""),
   size: z.enum(["1024x1024", "1024x1536", "1536x1024"]).default("1024x1024"),
   scale: z.union([z.literal(2), z.literal(4)]).default(2),
   rect: z.object({ left: z.number().int().min(0).max(8192), top: z.number().int().min(0).max(8192), width: positive, height: positive }).strict().optional(),
-  padding: z.number().int().min(32).max(1024).default(256),
+  padding: z.union([
+    z.number().int().min(32).max(1024),
+    z.object({ left: edgePadding, right: edgePadding, top: edgePadding, bottom: edgePadding }).strict()
+      .refine(value => value.left + value.right + value.top + value.bottom >= 32, "EXPANSION_REQUIRED"),
+  ]).default(256),
   dx: z.number().int().min(-8192).max(8192).default(100),
   dy: z.number().int().min(-8192).max(8192).default(0),
   duration: z.union([z.literal(5), z.literal(10)]).default(5),
 }).strict();
-export const jobSchema = z.object({ tool: z.enum(TOOLS.map(tool => tool.id)), documentId: id, documentVersion: z.number().int().positive(), targetId: id.optional(), assetId: id.optional(), maskId: id.optional(), referenceAssetIds: z.array(id).max(2).optional(), sectionId: id.optional(), sectionAttempt: z.number().int().min(0).max(50).optional(), params: paramsSchema.prefault({}) }).strict().superRefine((data, ctx) => {
+export const jobSchema = z.object({ tool: z.enum(TOOLS.map(tool => tool.id)), provider: id.optional(), documentId: id, documentVersion: z.number().int().positive(), targetId: id.optional(), assetId: id.optional(), maskId: id.optional(), referenceAssetIds: z.array(id).max(2).optional(), sectionId: id.optional(), sectionAttempt: z.number().int().min(0).max(50).optional(), params: paramsSchema.prefault({}) }).strict().superRefine((data, ctx) => {
   const tool = getTool(data.tool);
   if (tool.source && !data.assetId) ctx.addIssue({ code: "custom", message: "SOURCE_REQUIRED", path: ["assetId"] });
   if (tool.mask && !data.maskId) ctx.addIssue({ code: "custom", message: "MASK_REQUIRED", path: ["maskId"] });
@@ -57,7 +62,7 @@ export const contentSchema = z.object({
 export const documentSchema = z.object({ id: id.optional(), version: z.number().int().positive().optional(), name: z.string().trim().min(1).max(100), content: contentSchema }).strict();
 export const planSchema = z.object({ summary: z.string().max(1000), steps: z.array(z.object({ tool: z.enum(["generate", "edit", "expand", "upscale", "describe", "split", "remove-bg", "ocr", "video"]), params: paramsSchema, explanation: z.string().max(500) }).strict()).min(1).max(4) }).strict();
 
-export function validatePlan(value, available, hasImage) {
+export function validatePlan(value, available, hasImage, costs = {}) {
   const plan = planSchema.parse(value);
   for (const [index, step] of plan.steps.entries()) {
     const tool = getTool(step.tool);
@@ -65,5 +70,5 @@ export function validatePlan(value, available, hasImage) {
     if (["describe", "ocr", "video"].includes(step.tool) && index !== plan.steps.length - 1) throw new Error("INVALID_AGENT_PLAN");
     if (!["describe", "ocr", "video"].includes(step.tool)) hasImage = true;
   }
-  return { ...plan, credits: plan.steps.reduce((sum, step) => sum + getTool(step.tool).cost, 0) };
+  return { ...plan, credits: plan.steps.reduce((sum, step) => sum + (costs[step.tool] ?? getTool(step.tool).cost), 0) };
 }

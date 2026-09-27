@@ -53,7 +53,7 @@ export async function executeStudio(id, { db = prisma, store = objectStorage(), 
   try {
     if (output.cancelRequestedAt) { await finishOutput(id, output.fence, { cancelled: true }, db); return; }
     if (output.resultData) { await finishOutput(id, output.fence, { resultData: output.resultData }, db); return; }
-    const config = { ...(supplied || await studioConfig(db)), imageModel: snapshot.imageModel, chatModel: snapshot.chatModel, videoModel: snapshot.videoModel };
+    const config = { ...(supplied || await studioConfig(db, snapshot.provider)), imageModel: snapshot.imageModel, chatModel: snapshot.chatModel, videoModel: snapshot.videoModel };
     if (reconcile && snapshot.tool !== "crop" && !(snapshot.tool === "video" && attempt.requestId)) {
       if (output.reconcileUntil && output.reconcileUntil <= new Date()) await finishOutput(id, output.fence, { errorCode: "PROVIDER_RESULT_UNKNOWN" }, db);
       else await deferOutput(claim, "PROVIDER_RESULT_UNKNOWN", false, db);

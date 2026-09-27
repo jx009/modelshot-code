@@ -534,15 +534,25 @@ model ScenePreset {
 // 模型提供商配置（管理员后台可编辑）
 model ModelProvider {
   id           String   @id @default(cuid())
-  name         String   @unique  // openai | gemini | fashn
-  displayName  String   // "GPT Image 2" | "Gemini Flash" | "FASHN.ai"
+  name         String   @unique  // 稳定通道标识；允许同一 kind 配置多个模型
+  kind         String   @default("openai") // openai | gemini | fashn
+  displayName  String   // 面向用户展示的映射名称，不暴露内部模型名
+  creditCost   Int      @default(18) // 该模型每次生成/编辑请求消耗的积分
   isActive     Boolean  @default(true)
   isDefault    Boolean  @default(false)
+  isPlanner    Boolean  @default(false) // 对话/视觉规划使用的通道
   priority     Int      @default(0)  // fallback 优先级
   costPerImage Float    // 预估单张成本（美元）
   config       String?  @db.Text     // JSON 格式的模型配置
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+}
+
+model StudioToolConfig {
+  toolId      String   @id
+  creditCost  Int
+  isEnabled   Boolean  @default(true)
+  updatedAt   DateTime @updatedAt
 }
 
 // 批量任务

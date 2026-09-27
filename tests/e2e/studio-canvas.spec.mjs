@@ -32,9 +32,52 @@ test("canvas upload, crop through durable worker, layers, export and cloud resto
     await expect(page.locator(".ms-image-menu")).toBeVisible();
     await expect(page.locator(".ms-stage canvas").first()).toBeVisible();
     await page.screenshot({ path: info.outputPath("canvas-selected.png"), fullPage: true });
-    await page.getByRole("button", { name: "Crop image", exact: true }).click();
-    await page.locator(".ms-tool-panel").getByLabel("W", { exact: true }).fill("200");
-    await page.locator(".ms-tool-panel").getByLabel("H", { exact: true }).fill("300");
+    await page.getByRole("button", { name: /AI expand/ }).click();
+    await expect(page.locator(".ms-edge-readout")).toContainText("R 256");
+    const expandStage = await page.locator(".ms-stage").boundingBox();
+    const expandScale = Math.min(1.5, (expandStage.width - 110) / 912, (expandStage.height - 180) / 1012);
+    const expandRight = {
+      x: expandStage.x + expandStage.width / 2 + 912 * expandScale / 2,
+      y: expandStage.y + expandStage.height / 2,
+    };
+    await page.mouse.move(expandRight.x, expandRight.y);
+    await page.mouse.down();
+    await page.mouse.move(expandRight.x + 35, expandRight.y, { steps: 8 });
+    await page.mouse.up();
+    await expect(page.locator(".ms-edge-readout")).not.toContainText("R 256");
+    await page.getByRole("button", { name: "Close tool", exact: true }).click();
+    await page.getByRole("button", { name: /Move object/ }).click();
+    const stage = await page.locator(".ms-stage").boundingBox();
+    // The mobile tool sheet intentionally overlays the right side of the canvas.
+    // Paint and drag through the visible image strip instead of clicking through it.
+    const moveAnchor = info.project.name === "mobile"
+      ? { x: stage.x + stage.width * 0.22, y: stage.y + stage.height * 0.45 }
+      : { x: stage.x + stage.width / 2, y: stage.y + stage.height / 2 };
+    await page.mouse.move(moveAnchor.x - 35, moveAnchor.y - 45);
+    await page.mouse.down();
+    await page.mouse.move(moveAnchor.x + 35, moveAnchor.y + 45, { steps: 8 });
+    await page.mouse.up();
+    await expect(page.getByText("Drag the highlighted object", { exact: false })).toBeVisible();
+    await page.mouse.move(moveAnchor.x, moveAnchor.y);
+    await page.mouse.down();
+    await page.mouse.move(moveAnchor.x + 60, moveAnchor.y + 20, { steps: 8 });
+    await page.mouse.up();
+    await expect(page.locator(".ms-move-offset")).not.toContainText("ΔX 0px");
+    await page.screenshot({ path: info.outputPath("move-object-drag.png"), fullPage: true });
+    await page.getByRole("button", { name: "Close tool", exact: true }).click();
+    await expect(page.locator(".ms-image-menu")).toBeVisible();
+    await page.getByRole("button", { name: /Crop image/ }).click();
+    const cropStage = await page.locator(".ms-stage").boundingBox();
+    const cropScale = Math.min(1.5, (cropStage.width - 110) / 400, (cropStage.height - 180) / 500);
+    const cropTopLeft = {
+      x: cropStage.x + (cropStage.width - 400 * cropScale) / 2,
+      y: cropStage.y + (cropStage.height - 500 * cropScale) / 2,
+    };
+    await page.mouse.move(cropTopLeft.x, cropTopLeft.y);
+    await page.mouse.down();
+    await page.mouse.move(cropTopLeft.x + 70, cropTopLeft.y + 80, { steps: 8 });
+    await page.mouse.up();
+    await expect(page.locator(".ms-direct-hint")).not.toContainText("400 × 500");
     const submitted = page.waitForResponse(r => r.url().endsWith("/api/studio/jobs") && r.request().method() === "POST");
     await page.getByRole("button", { name: "Apply Free" }).click();
     const response = await submitted;
@@ -66,7 +109,7 @@ test("canvas upload, crop through durable worker, layers, export and cloud resto
     await expect(page.locator(".ms-canvas-label")).toContainText("3 layers");
     await page.screenshot({ path: info.outputPath("canvas-restored.png"), fullPage: true });
     if (info.project.name === "mobile") await page.locator(".ms-mobile-toggle").click();
-    await page.getByRole("tab", { name: "Quick", exact: true }).click();
+    await page.getByRole("tab", { name: "Quick generation", exact: true }).click();
     await page.getByLabel("Creative prompt").fill("A minimal product still life");
     const generated = page.waitForResponse(r => r.url().endsWith("/api/studio/jobs") && r.request().method() === "POST");
     await page.getByRole("button", { name: "Generate · 18 credits", exact: true }).click();

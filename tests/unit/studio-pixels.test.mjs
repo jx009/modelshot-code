@@ -42,6 +42,14 @@ describe("studio pixel contracts", () => {
     const raw = await sharp(expanded.mask).greyscale().raw().toBuffer();
     expect(raw[0]).toBe(255); expect(raw[2 * 12 + 2]).toBe(0);
   });
+  it("supports direct asymmetric edge expansion from canvas handles", async () => {
+    const expanded = await expandInput(await solid("red"), { left: 1, right: 3, top: 2, bottom: 4 });
+    expect(await sharp(expanded.image).metadata()).toMatchObject({ width: 12, height: 12 });
+    const raw = await sharp(expanded.mask).greyscale().raw().toBuffer();
+    expect(raw[2 * 12 + 1]).toBe(0);
+    expect(raw[0]).toBe(255);
+    expect(raw[11 * 12 + 11]).toBe(255);
+  });
   it("moves masked foreground after background repair and rejects fake super resolution", async () => {
     const image = await moveSelection(await solid("red"), await solid("blue"), await selection(), 3, 2);
     const raw = await sharp(image).raw().toBuffer();

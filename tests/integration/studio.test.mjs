@@ -5,6 +5,7 @@ import { domainFixture } from "../support/domain-fixture.mjs";
 import { saveDocument } from "../../src/lib/domain/studio/documents.js";
 import { submitStudioJob } from "../../src/lib/domain/studio/jobs.js";
 import { executeStudio } from "../../src/lib/domain/studio/execution.js";
+import { capabilities } from "../../src/lib/domain/studio/providers.js";
 import { cancelOutput, recoverLeases } from "../../src/lib/domain/generation/execution.js";
 import { usageSummary } from "../../src/lib/domain/billing/ledger.js";
 import { TOOLS } from "../../src/lib/studio/tools.js";
@@ -93,6 +94,36 @@ describe("studio documents and task ledger", () => {
     const asset = await f.db.asset.findUnique({ where: { id: row.resultData.assets[0].id } });
     expect(await sharp(await f.store.get(asset.objectKey)).metadata()).toMatchObject({ width: 16, height: 12 });
     expect(await f.db.creditReservation.count({ where: { tryOnId: job.id } })).toBe(0);
+  });
+  it("uses the administrator configured tool price for reservation and capture", async () => {
+    const { user, input } = await setup();
+    await f.db.studioToolConfig.upsert({
+      where: { toolId: "crop" },
+      create: { toolId: "crop", creditCost: 7, isEnabled: true },
+      update: { creditCost: 7, isEnabled: true },
+    });
+    try {
+      const dynamicCapabilities = await capabilities(f.db, config);
+      const job = await submitStudioJob(user.id, {
+        ...input,
+        tool: "crop",
+        params: { rect: { left: 0, top: 0, width: 16, height: 12 } },
+      }, randomUUID(), f.db, { config, capabilities: dynamicCapabilities });
+      expect(job.cost).toBe(7);
+      expect((await usageSummary(user.id, f.db)).reservedCredits).toBe(7);
+
+      await executeStudio(job.id, { db: f.db, store: f.store, config });
+
+      expect((await f.db.tryOn.findUnique({ where: { id: job.id } })).status).toBe("succeeded");
+      expect((await usageSummary(user.id, f.db)).credits).toBe(93);
+      expect(await f.db.creditTransaction.count({ where: { tryOnId: job.id, type: "consume", amount: -7 } })).toBe(1);
+    } finally {
+      await f.db.studioToolConfig.upsert({
+        where: { toolId: "crop" },
+        create: { toolId: "crop", creditCost: 0, isEnabled: true },
+        update: { creditCost: 0, isEnabled: true },
+      });
+    }
   });
   it("pins each commerce section to original product plus owned style; replay does not spend twice", async () => {
     const { user, doc, input } = await setup(), other = await f.user();

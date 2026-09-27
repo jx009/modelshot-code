@@ -17,14 +17,14 @@ const prisma = new PrismaClient({ adapter });
 async function main() {
   // ===== 模型提供商（按 name upsert）=====
   const providers = [
-    { name: "openai", displayName: "GPT Image 2", isActive: true, isDefault: true, priority: 1, costPerImage: 0.08 },
-    { name: "gemini", displayName: "Gemini Flash Image", isActive: true, isDefault: false, priority: 2, costPerImage: 0.04 },
-    { name: "fashn", displayName: "FASHN.ai", isActive: false, isDefault: false, priority: 3, costPerImage: 0.05 },
+    { name: "openai", kind: "openai", displayName: "GPT Image 2", creditCost: 18, isActive: true, isDefault: true, priority: 1, costPerImage: 0.08 },
+    { name: "gemini", kind: "gemini", displayName: "Gemini Flash Image", creditCost: 18, isActive: true, isDefault: false, priority: 2, costPerImage: 0.04 },
+    { name: "fashn", kind: "fashn", displayName: "FASHN.ai", creditCost: 18, isActive: false, isDefault: false, priority: 3, costPerImage: 0.05 },
   ];
   for (const p of providers) {
     await prisma.modelProvider.upsert({
       where: { name: p.name },
-      update: { displayName: p.displayName, priority: p.priority, costPerImage: p.costPerImage },
+      update: { kind: p.kind, priority: p.priority, costPerImage: p.costPerImage },
       create: p,
     });
   }

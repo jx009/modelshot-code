@@ -12,10 +12,11 @@ const ENV_KEYS = { openai: "OPENAI_API_KEY", gemini: "GOOGLE_GEMINI_API_KEY", fa
 
 export async function availableProviders(_userId, db = prisma) {
   const rows = await db.modelProvider.findMany({ where: { isActive: true }, orderBy: [{ isDefault: "desc" }, { priority: "asc" }] });
-  return rows.filter(row => CAPABILITIES[row.name]).map(row => {
+  return rows.filter(row => CAPABILITIES[row.kind || row.name]).map(row => {
     const config = JSON.parse(row.config || "{}");
-    return { id: row.name, label: row.displayName, ...CAPABILITIES[row.name], model: config.model || CAPABILITIES[row.name].model,
-      platformConfigured: Boolean(config.apiKeyEnc || process.env[ENV_KEYS[row.name]]) };
+    const kind = row.kind || row.name;
+    return { id: row.name, label: row.displayName, providerType: kind, creditCost: row.creditCost ?? 18, ...CAPABILITIES[kind], model: config.model || CAPABILITIES[kind].model,
+      platformConfigured: Boolean(config.apiKeyEnc || process.env[ENV_KEYS[kind]]) };
   }).filter(row => row.platformConfigured);
 }
 
@@ -37,12 +38,14 @@ export async function providerAdapter(output, db = prisma) {
   const snapshot = output.snapshot;
   const row = await db.modelProvider.findUnique({ where: { name: snapshot.provider } });
   if (!row?.isActive) throw new AppError("PROVIDER_DISABLED", 503);
+  const kind = row.kind || row.name || snapshot.provider;
+  if (!CAPABILITIES[kind]) throw new AppError("PROVIDER_UNAVAILABLE", 503);
   const providerConfig = JSON.parse(row.config || "{}");
-  const apiKey = providerConfig.apiKeyEnc ? decryptSecret(providerConfig.apiKeyEnc) : process.env[ENV_KEYS[snapshot.provider]];
+  const apiKey = providerConfig.apiKeyEnc ? decryptSecret(providerConfig.apiKeyEnc) : process.env[ENV_KEYS[kind]];
   if (!apiKey) throw new AppError("PROVIDER_UNAVAILABLE", 503);
-  const config = { apiKey, model: snapshot.model, baseURL: providerConfig.baseURL || undefined };
-  if (snapshot.provider === "openai") { const { OpenAIAdapter } = await import("../../ai/adapters/openai.js"); return new OpenAIAdapter(config); }
-  if (snapshot.provider === "gemini") { const { GeminiAdapter } = await import("../../ai/adapters/gemini.js"); return new GeminiAdapter(config); }
-  if (snapshot.provider === "fashn") { const { FASHNAdapter } = await import("../../ai/adapters/fashn.js"); return new FASHNAdapter(config); }
+  const config = { apiKey, model: snapshot.model || providerConfig.model, baseURL: providerConfig.baseURL || undefined };
+  if (kind === "openai") { const { OpenAIAdapter } = await import("../../ai/adapters/openai.js"); return new OpenAIAdapter(config); }
+  if (kind === "gemini") { const { GeminiAdapter } = await import("../../ai/adapters/gemini.js"); return new GeminiAdapter(config); }
+  if (kind === "fashn") { const { FASHNAdapter } = await import("../../ai/adapters/fashn.js"); return new FASHNAdapter(config); }
   throw new AppError("PROVIDER_UNAVAILABLE", 503);
 }

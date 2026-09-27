@@ -1,5 +1,10 @@
 import { test, expect } from "@playwright/test";
+import { PrismaClient } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
+import bcrypt from "bcryptjs";
+import { randomUUID } from "node:crypto";
 import { E2E_PASSWORD, E2E_USERS } from "../support/e2e-users.mjs";
+import { getTestEnvironment } from "../support/environment.mjs";
 
 async function signIn(page, email, destination = "/en/studio") {
   await page.goto(`/en/login?callbackUrl=${encodeURIComponent(destination)}`);
@@ -53,6 +58,74 @@ test("admin filtering and refresh use the actual protected API", async ({ page }
   await expect(page.getByText("暂无订单", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "刷新", exact: true }).click();
   await expect(page.getByText("暂无订单", { exact: true })).toBeVisible();
+});
+
+test("root can create multiple model channels with public aliases and a planning model", async ({ page }, testInfo) => {
+  const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: getTestEnvironment().databaseUrl }) });
+  const email = `providers-${testInfo.project.name}-${Date.now()}@modelshot.test`;
+  let providerId;
+  try {
+    await db.user.create({ data: { email, passwordHash: await bcrypt.hash(E2E_PASSWORD, 10), role: "root", credits: 0, emailVerified: new Date() } });
+    await signIn(page, email, "/en/admin/providers");
+    await expect(page.getByRole("heading", { name: "模型通道", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "新增模型", exact: true })).toBeVisible();
+
+    const created = await page.request.put("/api/admin/providers", {
+      headers: { "Idempotency-Key": `provider-create-${randomUUID()}` },
+      data: {
+        kind: "openai",
+        displayName: "ModelShot Showcase",
+        model: "gpt-image-2-internal",
+        chatModel: "vision-planner-internal",
+        apiKey: "e2e-provider-key",
+        baseURL: "",
+        costPerImage: 0.123,
+        reason: "verify model channel creation",
+      },
+    });
+    expect(created.status()).toBe(201);
+    providerId = (await created.json()).id;
+
+    const promoted = await page.request.patch("/api/admin/providers", {
+      headers: { "Idempotency-Key": `provider-planner-${randomUUID()}` },
+      data: { id: providerId, isPlanner: true, reason: "verify planning channel selection" },
+    });
+    expect(promoted.ok()).toBe(true);
+
+    const providers = await (await page.request.get("/api/admin/providers")).json();
+    expect(providers).toEqual(expect.arrayContaining([expect.objectContaining({
+      id: providerId,
+      kind: "openai",
+      displayName: "ModelShot Showcase",
+      isPlanner: true,
+      costPerImage: 0.123,
+      config: expect.objectContaining({ model: "gpt-image-2-internal", chatModel: "vision-planner-internal", hasKey: true }),
+    })]));
+
+    await page.reload();
+    await expect(page.getByText("ModelShot Showcase", { exact: true }).first()).toBeVisible();
+    await expect(page.locator('input[value="gpt-image-2-internal"]')).toBeVisible();
+    await expect(page.locator('input[value="vision-planner-internal"]')).toBeVisible();
+    await expect(page.getByText("对话规划", { exact: true }).first()).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("provider-channels.png"), fullPage: true });
+
+    const repriced = await page.request.patch("/api/admin/studio-tools", {
+      headers: { "Idempotency-Key": `tool-price-${randomUUID()}` },
+      data: { toolId: "upscale", creditCost: 9, isEnabled: true, reason: "verify configurable tool pricing" },
+    });
+    expect(repriced.ok()).toBe(true);
+    const tools = await (await page.request.get("/api/admin/studio-tools")).json();
+    expect(tools).toEqual(expect.arrayContaining([expect.objectContaining({ id: "upscale", creditCost: 9, isEnabled: true })]));
+    await page.goto("/en/admin/studio-tools");
+    await expect(page.getByRole("heading", { name: "工具与计费", exact: true })).toBeVisible();
+    await expect(page.getByText("AI 超清放大", { exact: true })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("tool-pricing.png"), fullPage: true });
+  } finally {
+    if (providerId) await db.modelProvider.deleteMany({ where: { id: providerId } });
+    await db.studioToolConfig.updateMany({ where: { toolId: "upscale" }, data: { creditCost: 4, isEnabled: true } });
+    await db.user.deleteMany({ where: { email } });
+    await db.$disconnect();
+  }
 });
 
 test("unsafe legacy entry points are unavailable", async ({ request }) => {

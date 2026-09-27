@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { randomUUID } from "node:crypto";
 import { AppError, readJson, errorResponse } from "../../../../lib/http.js";
 import { auditedOperation } from "../../../../lib/domain/identity/admin-operation.js";
 import { NextResponse } from "next/server";
@@ -6,6 +7,9 @@ import { prisma } from "../../../../lib/prisma";
 import { requireAdmin, auditLog } from "../../../../lib/admin-auth";
 import { invalidateProviderConfig, invokeModel } from "../../../../lib/ai/runner";
 import { encryptSecret, decryptSecret, maskSecret } from "../../../../lib/crypto";
+import { vision } from "../../../../lib/domain/studio/providers";
+
+const kindSchema = z.enum(["openai", "gemini", "fashn"]);
 
 /**
  * 模型提供商管理
@@ -25,6 +29,7 @@ function safeConfig(configStr) {
     hasKey: Boolean(apiKey),
     baseURL: cfg.baseURL || "",
     model: cfg.model || "",
+    chatModel: cfg.chatModel || "",
   };
 }
 
@@ -52,10 +57,13 @@ export async function GET(req) {
   return NextResponse.json(providers.map(p => ({
     id: p.id,
     name: p.name,
+    kind: p.kind || p.name,
     displayName: p.displayName,
     isActive: p.isActive,
     isDefault: p.isDefault,
+    isPlanner: p.isPlanner,
     priority: p.priority,
+    creditCost: p.creditCost,
     costPerImage: p.costPerImage,
     config: safeConfig(p.config),
   })));
@@ -65,7 +73,7 @@ export async function PATCH(req) {
   try {
     const auth = await requireAdmin(req, "root");
     if (auth.response) return auth.response;
-    const input = await readJson(req, z.object({ id: z.string().min(1).max(128), isActive: z.boolean().optional(), isDefault: z.boolean().optional(), priority: z.number().int().min(0).max(1000).optional(), displayName: z.string().min(1).max(100).optional(), apiKey: z.string().max(4096).optional(), baseURL: z.string().max(500).optional(), model: z.string().max(128).optional(), reason: z.string().min(3).max(500) }).strict());
+    const input = await readJson(req, z.object({ id: z.string().min(1).max(128), kind: kindSchema.optional(), isActive: z.boolean().optional(), isDefault: z.boolean().optional(), isPlanner: z.boolean().optional(), priority: z.number().int().min(0).max(1000).optional(), displayName: z.string().min(1).max(100).optional(), creditCost: z.number().int().min(0).max(100000).optional(), costPerImage: z.number().min(0).max(1000).optional(), apiKey: z.string().max(4096).optional(), baseURL: z.string().max(500).optional(), model: z.string().max(128).optional(), chatModel: z.string().max(128).optional(), reason: z.string().min(3).max(500) }).strict());
     if (input.baseURL) {
       const url = new URL(input.baseURL);
       const allowed = (process.env.PROVIDER_PROXY_HOSTS || "").split(",").map(value => value.trim());
@@ -79,12 +87,39 @@ export async function PATCH(req) {
       if (input.apiKey?.trim()) cfg.apiKeyEnc = encryptSecret(input.apiKey.trim());
       if (input.baseURL !== undefined) cfg.baseURL = normalizeBaseURL(input.baseURL);
       if (input.model !== undefined) cfg.model = input.model;
+      if (input.chatModel !== undefined) cfg.chatModel = input.chatModel;
       if (input.isDefault) await tx.modelProvider.updateMany({ data: { isDefault: false } });
-      await tx.modelProvider.update({ where: { id: input.id }, data: { isActive: input.isActive, isDefault: input.isDefault, priority: input.priority, displayName: input.displayName, config: JSON.stringify(cfg) } });
+      if (input.isPlanner) {
+        if ((input.kind || existing.kind || existing.name) !== "openai") throw new AppError("PLANNER_PROVIDER_UNSUPPORTED");
+        if (!cfg.chatModel?.trim()) throw new AppError("VISION_NOT_CONFIGURED", 422);
+        await tx.modelProvider.updateMany({ data: { isPlanner: false } });
+      }
+      await tx.modelProvider.update({ where: { id: input.id }, data: { kind: input.kind, isActive: input.isActive, isDefault: input.isDefault, isPlanner: input.isPlanner, priority: input.priority, displayName: input.displayName, creditCost: input.creditCost, costPerImage: input.costPerImage, config: JSON.stringify(cfg) } });
       return { audit: { provider: existing.name, keyChanged: !!input.apiKey, fields: Object.keys(input).filter(key => !["apiKey", "reason"].includes(key)) } };
     }, prisma, "root");
     invalidateProviderConfig();
     return Response.json(result);
+  } catch (error) { return errorResponse(error); }
+}
+
+export async function PUT(req) {
+  try {
+    const auth = await requireAdmin(req, "root");
+    if (auth.response) return auth.response;
+    const input = await readJson(req, z.object({ kind: kindSchema, displayName: z.string().trim().min(1).max(100), model: z.string().trim().min(1).max(128), chatModel: z.string().trim().max(128).default(""), apiKey: z.string().max(4096).default(""), baseURL: z.string().max(500).default(""), creditCost: z.number().int().min(0).max(100000).default(18), costPerImage: z.number().min(0).max(1000).default(0), reason: z.string().min(3).max(500) }).strict());
+    if (input.baseURL) {
+      const url = new URL(input.baseURL);
+      const allowed = (process.env.PROVIDER_PROXY_HOSTS || "").split(",").map(value => value.trim());
+      if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash || !allowed.includes(url.hostname)) throw new AppError("PROVIDER_PROXY_NOT_ALLOWED");
+    }
+    const result = await auditedOperation(auth.user.id, req.headers.get("idempotency-key"), "CREATE_PROVIDER", input, async tx => {
+      const priority = (await tx.modelProvider.aggregate({ _max: { priority: true } }))._max.priority || 0;
+      const config = { model: input.model, ...(input.chatModel ? { chatModel: input.chatModel } : {}), ...(input.baseURL ? { baseURL: normalizeBaseURL(input.baseURL) } : {}), ...(input.apiKey.trim() ? { apiKeyEnc: encryptSecret(input.apiKey.trim()) } : {}) };
+      const row = await tx.modelProvider.create({ data: { name: `${input.kind}-${randomUUID().slice(0, 12)}`, kind: input.kind, displayName: input.displayName, priority: priority + 1, creditCost: input.creditCost, costPerImage: input.costPerImage, config: JSON.stringify(config) } });
+      return { response: { id: row.id }, audit: { provider: row.name, kind: row.kind, displayName: row.displayName, keyConfigured: Boolean(input.apiKey) } };
+    }, prisma, "root");
+    invalidateProviderConfig();
+    return Response.json(result, { status: 201 });
   } catch (error) { return errorResponse(error); }
 }
 
@@ -94,12 +129,20 @@ export async function POST(req) {
   if (auth.response) return auth.response;
 
   try {
-    const { id } = await req.json();
+    const { id, mode = "image" } = await req.json();
     const provider = await prisma.modelProvider.findUnique({ where: { id } });
     if (!provider) return new NextResponse("Provider not found", { status: 404 });
 
     const started = Date.now();
-    // 最小测试：小尺寸低质量，验证配置真实性
+    if (mode === "planner") {
+      const stored = JSON.parse(provider.config || "{}");
+      const apiKey = process.env.STUDIO_API_KEY || (stored.apiKeyEnc ? decryptSecret(stored.apiKeyEnc) : process.env.OPENAI_API_KEY);
+      const chatModel = process.env.STUDIO_CHAT_MODEL || stored.chatModel;
+      if ((provider.kind || provider.name) !== "openai" || !apiKey || !chatModel) throw new AppError("VISION_NOT_CONFIGURED", 503);
+      await vision({ visionApiKey: apiKey, visionBaseURL: process.env.STUDIO_BASE_URL || stored.baseURL, chatModel }, { instruction: "Return only the word OK.", messages: [{ role: "user", text: "Connection test" }], maxTokens: 8, signal: AbortSignal.timeout(30000) });
+      return NextResponse.json({ ok: true, provider: provider.name, mode, durationMs: Date.now() - started });
+    }
+    // 最小测试：小尺寸低质量，验证 key/baseURL/model 全链路
     const result = await invokeModel({
       provider: provider.name,
       garmentImage: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64"), // 1x1 px
@@ -114,8 +157,5 @@ export async function POST(req) {
       durationMs: Date.now() - started,
       error: result.success ? null : result.error,
     });
-  } catch (error) {
-    console.error("[ADMIN_PROVIDERS_TEST]", error);
-    return new NextResponse("Internal Error", { status: 500 });
-  }
+  } catch (error) { return errorResponse(error); }
 }

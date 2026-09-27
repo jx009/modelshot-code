@@ -10,7 +10,8 @@ describe("platform provider configuration", () => {
     const db = {
       modelProvider: {
         findMany: vi.fn().mockResolvedValue([
-          { name: "openai", displayName: "OpenAI gateway", isDefault: true, priority: 0, config: JSON.stringify({ apiKeyEnc: encryptSecret("platform-key"), model: "gpt-image-2" }) },
+          { name: "openai-pro", kind: "openai", displayName: "ModelShot Pro", isDefault: true, priority: 0, config: JSON.stringify({ apiKeyEnc: encryptSecret("platform-key"), model: "gpt-image-2" }) },
+          { name: "openai-fast", kind: "openai", displayName: "ModelShot Fast", isDefault: false, priority: 1, config: JSON.stringify({ apiKeyEnc: encryptSecret("platform-key"), model: "fast-image" }) },
           { name: "gemini", displayName: "Gemini", isDefault: false, priority: 1, config: "{}" },
         ]),
       },
@@ -18,8 +19,9 @@ describe("platform provider configuration", () => {
 
     const providers = await availableProviders("user-with-no-key", db);
 
-    expect(providers).toHaveLength(1);
-    expect(providers[0]).toMatchObject({ id: "openai", platformConfigured: true, model: "gpt-image-2" });
+    expect(providers).toHaveLength(2);
+    expect(providers[0]).toMatchObject({ id: "openai-pro", label: "ModelShot Pro", providerType: "openai", platformConfigured: true, model: "gpt-image-2" });
+    expect(providers[1]).toMatchObject({ id: "openai-fast", label: "ModelShot Fast", model: "fast-image" });
     expect(db).not.toHaveProperty("providerCredential");
   });
 

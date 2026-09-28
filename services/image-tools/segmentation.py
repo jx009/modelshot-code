@@ -52,29 +52,114 @@ class Segmenter:
     @staticmethod
     def low_mask(logits, entry, source_size=None):
         # The decoder works on the padded 1024 square. Undo that padding before
-        # scaling back to a small, stable mask for the original image.
+        # scaling directly back to the original image; an intermediate 384px
+        # resize loses thin edges and makes small false components more visible.
         width, height = entry["resized"]
         restored = cv2.resize(logits, (1024, 1024), interpolation=cv2.INTER_LINEAR)[:height, :width]
         original_size = entry.get("size") or source_size
         if not original_size:
             raise ValueError("Source size is required to restore a mask")
-        longest = max(original_size)
-        size = tuple(max(1, round(value / longest * 384)) for value in original_size)
-        return cv2.resize(restored, size, interpolation=cv2.INTER_LINEAR)
+        return cv2.resize(restored, original_size, interpolation=cv2.INTER_LINEAR)
 
-    def select(self, source, data, selection):
-        entry, _ = self.embedding(source, data)
+    @staticmethod
+    def _selection_prompt(selection, entry, source_size):
+        """Build box points plus interior points for a free-form lasso."""
+        mask = np.asarray(selection.convert("L"), dtype=np.uint8)
         box = selection.convert("L").getbbox()
         if not box:
             raise ValueError("No selected region")
-        rw, rh = entry["resized"]
         left, top, right, bottom = box
-        points = [[[left * rw / source.width, top * rh / source.height], [right * rw / source.width, bottom * rh / source.height]]]
-        masks, scores = self.predict(entry, points, [[2, 3]])
-        logits = masks[0][int(np.argmax(scores[0]))]
-        low = self.low_mask(logits, {**entry, "resized": (rw, rh)}, source.size)
-        alpha = (cv2.resize(low, source.size, interpolation=cv2.INTER_LINEAR) > 0).astype(np.uint8) * 255
-        alpha = np.minimum(alpha, np.asarray(selection.convert("L")))
+        width, height = source_size
+        resized_width, resized_height = entry["resized"]
+        scale_x, scale_y = resized_width / width, resized_height / height
+        points = [[left * scale_x, top * scale_y], [right * scale_x, bottom * scale_y]]
+        labels = [2, 3]
+
+        # A rectangle is already a complete box prompt. A lasso has useful
+        # shape information that the decoder can consume as positive points.
+        fill = float(np.count_nonzero(mask[top:bottom, left:right])) / max(1, (right - left) * (bottom - top))
+        if fill < 0.985:
+            distance = cv2.distanceTransform((mask > 0).astype(np.uint8), cv2.DIST_L2, 5)
+            min_distance = max(3.0, min(width, height) * 0.008)
+            for _ in range(6):
+                y, x = np.unravel_index(int(np.argmax(distance)), distance.shape)
+                if distance[y, x] < min_distance:
+                    break
+                points.append([x * scale_x, y * scale_y])
+                labels.append(1)
+                cv2.circle(distance, (int(x), int(y)), max(8, round(min(width, height) * 0.08)), 0, -1)
+        return [points], [labels], fill
+
+    @staticmethod
+    def _clean_mask(mask, selection):
+        """Remove decoder specks and fill small holes without erasing thin parts."""
+        binary = (mask > 0).astype(np.uint8)
+        if not np.any(binary):
+            return binary
+        kernel_size = 5 if min(binary.shape) >= 512 else 3
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
+        binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
+        binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
+        count, labels, stats, _ = cv2.connectedComponentsWithStats(binary, 8)
+        if count <= 1:
+            return binary
+
+        selected = np.asarray(selection, dtype=np.uint8) > 0
+        overlap = np.bincount(labels[selected], minlength=count)
+        areas = stats[:, cv2.CC_STAT_AREA].copy()
+        areas[0] = 0
+        primary = int(np.argmax(overlap * 4 + areas))
+        minimum = max(64, int(areas[primary] * 0.06))
+        keep = np.zeros_like(binary)
+        for component in range(1, count):
+            if areas[component] >= minimum and overlap[component] > 0:
+                keep[labels == component] = 1
+        if not np.any(keep):
+            keep[labels == primary] = 1
+
+        # External contours deliberately fill interior pinholes caused by the
+        # low-resolution decoder while preserving the silhouette boundary.
+        contours, _ = cv2.findContours(keep, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        filled = np.zeros_like(keep)
+        cv2.drawContours(filled, contours, -1, 1, thickness=cv2.FILLED)
+        return filled
+
+    @staticmethod
+    def _candidate_score(mask, raw, selection, model_score, lasso):
+        selected = np.asarray(selection, dtype=np.uint8) > 0
+        value = mask > 0
+        overlap = np.count_nonzero(value & selected)
+        union = np.count_nonzero(value | selected)
+        iou = overlap / max(1, union)
+        outside = np.count_nonzero(value & ~selected) / max(1, np.count_nonzero(value))
+        raw_area = max(1, np.count_nonzero(raw))
+        coherence = np.count_nonzero(value) / raw_area
+        if lasso:
+            # For a lasso, staying inside the user's outline is more reliable
+            # than the decoder's generic IoU ranking.
+            return 3.0 * iou + 2.0 * (1.0 - outside) + 0.5 * coherence + 0.1 * float(model_score)
+        return 0.8 * float(model_score) + 1.4 * iou + 0.4 * coherence - 0.3 * outside
+
+    def select(self, source, data, selection):
+        entry, _ = self.embedding(source, data)
+        points, labels, fill = self._selection_prompt(selection, entry, source.size)
+        masks, scores = self.predict(entry, points, labels)
+        selection_mask = np.asarray(selection.convert("L"), dtype=np.uint8)
+        lasso = fill < 0.985
+        candidates = []
+        for index, logits in enumerate(masks[0]):
+            restored = self.low_mask(logits, entry, source.size)
+            raw = (restored > 0).astype(np.uint8)
+            cleaned = self._clean_mask(raw, selection_mask)
+            candidates.append((self._candidate_score(cleaned, raw, selection_mask, scores[0][index], lasso), cleaned))
+        _, selected = max(candidates, key=lambda candidate: candidate[0])
+
+        # Keep the user's outline as a guardrail, with a small dilation so a
+        # hand-drawn contour does not shave pixels off the object.
+        margin = max(2, round(min(source.size) * 0.012))
+        roi_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (margin * 2 + 1, margin * 2 + 1))
+        roi = cv2.dilate(selection_mask, roi_kernel)
+        alpha = (selected * (roi > 0)).astype(np.uint8) * 255
         alpha = np.minimum(alpha, np.asarray(source.getchannel("A")))
         if not np.any(alpha):
             raise ValueError("No object detected")

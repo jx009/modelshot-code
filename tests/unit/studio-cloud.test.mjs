@@ -1,0 +1,151 @@
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import http from "node:http";
+import sharp from "sharp";
+import { generateCloudImage, falRequest, segmentCloudImage, splitCloudImage } from "../../src/lib/domain/studio/cloud.js";
+import { studioConfig, capabilities } from "../../src/lib/domain/studio/providers.js";
+import { encryptSecret } from "../../src/lib/crypto.js";
+import { allowedProviderBaseURL, validChannel } from "../../src/lib/studio/model-channels.js";
+import { extractObject, selectionPrompt } from "../../src/lib/domain/studio/segmentation.js";
+import { beginObjectMove, appendResult } from "../../src/lib/studio/canvas-utils.js";
+import { runImageTool } from "../../src/lib/domain/studio/execution.js";
+
+let server, base, png, mask, foreground;
+const calls = [];
+const url = bytes => `data:image/png;base64,${bytes.toString("base64")}`;
+beforeAll(async () => {
+  png = await sharp({ create: { width: 20, height: 12, channels: 4, background: "red" } }).png().toBuffer();
+  const pixels = Buffer.alloc(20 * 12); pixels.fill(128, 65, 70); pixels.fill(255, 85, 90);
+  mask = await sharp(pixels, { raw: { width: 20, height: 12, channels: 1 } }).png().toBuffer();
+  foreground = (await extractObject(png, mask)).cutout;
+  server = http.createServer(async (req, res) => {
+    const chunks = []; for await (const chunk of req) chunks.push(chunk);
+    const body = chunks.length ? JSON.parse(Buffer.concat(chunks)) : null;
+    calls.push({ method: req.method, path: req.url, auth: req.headers.authorization, body });
+    res.setHeader("Content-Type", "application/json");
+    if (req.url.includes("/queue/") && req.method === "POST") return res.end(JSON.stringify({ request_id: "remote-123" }));
+    if (req.url.endsWith("/status")) return res.end(JSON.stringify({ status: "COMPLETED" }));
+    if (req.url.includes("qwen-image-layered")) return res.end(JSON.stringify({ images: [{ url: url(png) }, { url: url(foreground) }] }));
+    if (req.url.includes("sam-3")) return res.end(JSON.stringify({ masks: [{ url: url(mask) }] }));
+    if (req.url.includes("multimodal-generation")) return res.end(JSON.stringify({ output: { choices: [{ message: { content: [{ image: url(png) }] } }] } }));
+    res.end(JSON.stringify({ data: [{ b64_json: png.toString("base64") }] }));
+  });
+  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  base = `http://127.0.0.1:${server.address().port}`;
+});
+afterAll(async () => new Promise(resolve => server.close(resolve)));
+afterEach(() => vi.unstubAllEnvs());
+
+describe("cloud protocol contracts", () => {
+  it("uses native DashScope multimodal input with explicit region guidance", async () => {
+    const providerMask = await sharp({ create: { width: 20, height: 12, channels: 4, background: { r: 255, g: 255, b: 255, alpha: 0 } } }).png().toBuffer();
+    expect(await generateCloudImage({ imageKind: "dashscope", apiKey: "ali-key", baseURL: base, imageModel: "qwen-image-edit-max" }, { image: png, mask: providerMask, references: [foreground], prompt: "Raise paw", size: "1024x1536" })).toEqual(png);
+    const call = calls.at(-1);
+    expect(call.path).toBe("/api/v1/services/aigc/multimodal-generation/generation");
+    expect(call.auth).toBe("Bearer ali-key");
+    expect(call.body.parameters).toMatchObject({ n: 1, size: "1024*1536", watermark: false });
+    const content = call.body.input.messages[0].content;
+    expect(content).toHaveLength(4); expect(content[0].image).toBe(url(png));
+    expect(content[3].text).toContain("REGION GUIDE ONLY");
+  });
+  it("uses Ark image JSON and the exact configured model or endpoint ID", async () => {
+    expect(await generateCloudImage({ imageKind: "volcengine", apiKey: "ark-key", baseURL: `${base}/api/v3`, imageModel: "ep-test-edit" }, { image: png, references: [foreground], prompt: "Edit", size: "1536x1024" })).toEqual(png);
+    const call = calls.at(-1);
+    expect(call.path).toBe("/api/v3/images/generations"); expect(call.auth).toBe("Bearer ark-key");
+    expect(call.body).toMatchObject({ model: "ep-test-edit", image: [url(png), url(foreground)], response_format: "b64_json", watermark: false });
+    const [w, h] = call.body.size.split("x").map(Number);
+    expect(w * h).toBeGreaterThanOrEqual(3686400); expect(w / h).toBeCloseTo(1.5, 1);
+  });
+  it("passes SAM box/point prompts and overrides the upstream wheel default", async () => {
+    const bytes = await segmentCloudImage({ kind: "fal", apiKey: "fal-key", baseURL: base, model: "fal-ai/sam-3/image" }, png, { box: { left: 3, top: 2, width: 7, height: 5 }, points: [{ x: 6, y: 4, label: 1 }] });
+    const call = calls.at(-1);
+    expect(call.auth).toBe("Key fal-key");
+    expect(call.body).toMatchObject({ prompt: "", apply_mask: false, box_prompts: [{ x_min: 3, y_min: 2, x_max: 10, y_max: 7, object_id: 1 }], point_prompts: [{ x: 6, y: 4, label: 1, object_id: 1 }] });
+    expect((await sharp(bytes).metadata()).width).toBe(20);
+    expect((await sharp(bytes).greyscale().raw().toBuffer())[65]).toBe(128);
+  });
+  it("persists the fal request ID before polling and resumes without a second POST", async () => {
+    const channel = { kind: "fal", apiKey: "fal-key", baseURL: base, model: "fal-ai/qwen-image-layered" };
+    const start = calls.length; let stored;
+    await falRequest(channel, { image_url: url(png) }, { onSubmitted: async id => {
+      stored = id; expect(calls.slice(start).some(call => call.path.endsWith("/status"))).toBe(false);
+    } });
+    await falRequest(channel, {}, { requestId: stored });
+    expect(calls.slice(start).filter(call => call.method === "POST")).toHaveLength(1);
+    expect(calls.at(-1).path).toBe("/queue/fal-ai/qwen-image-layered/requests/remote-123");
+    const result = await splitCloudImage(channel, png, { numLayers: 2 });
+    expect(result).toHaveLength(2); expect((await sharp(result[1]).metadata()).hasAlpha).toBe(true);
+  });
+});
+
+describe("capability-specific configuration", () => {
+  it("isolates credentials, defaults, task modes and explicit invalid selections", async () => {
+    vi.stubEnv("ENCRYPTION_KEY", "ab".repeat(32)); vi.stubEnv("STUDIO_API_KEY", "wrong-legacy-key"); vi.stubEnv("STUDIO_BASE_URL", "https://legacy.test");
+    const rows = [
+      { name: "ali-edit", kind: "dashscope", displayName: "Ali", creditCost: 8, config: JSON.stringify({ apiKeyEnc: encryptSecret("ali-secret"), model: "qwen-image-edit-max", imageMode: "edit", studioDefault: true }) },
+      { name: "ark", kind: "volcengine", displayName: "Ark", creditCost: 9, config: JSON.stringify({ apiKeyEnc: encryptSecret("ark-secret"), model: "ep-fixture", imageMode: "both" }) },
+      { name: "layers", kind: "fal", displayName: "Layers", creditCost: 25, config: JSON.stringify({ apiKeyEnc: encryptSecret("fal-secret"), model: "fal-ai/qwen-image-layered", studioCapability: "split", studioDefault: true }) },
+    ];
+    const db = { modelProvider: { findMany: async () => rows }, studioToolConfig: { findMany: async () => [] } };
+    const ali = await studioConfig(db);
+    expect(ali).toMatchObject({ imageProvider: "ali-edit", apiKey: "ali-secret", imageKind: "dashscope", baseURL: undefined });
+    expect((await studioConfig(db, "ark")).apiKey).toBe("ark-secret");
+    expect((await studioConfig(db, "layers", "split")).splitChannel.apiKey).toBe("fal-secret");
+    await expect(studioConfig(db, "missing")).rejects.toThrow("PROVIDER_CAPABILITY_UNSUPPORTED");
+    await expect(studioConfig(db, "layers")).rejects.toThrow("PROVIDER_CAPABILITY_UNSUPPORTED");
+    const caps = await capabilities(db, ali);
+    expect(caps.tools.find(t => t.id === "generate").available).toBe(false);
+    expect(caps.tools.find(t => t.id === "edit").available).toBe(true);
+    expect(caps.tools.find(t => t.id === "split")).toMatchObject({ available: true, cost: 25 });
+    expect(JSON.stringify(caps)).not.toMatch(/secret|apiKey|apiKeyEnc|legacy/);
+  });
+  it("admits official origins but rejects arbitrary hosts and mismatched capabilities", () => {
+    expect(allowedProviderBaseURL("https://dashscope.aliyuncs.com")).toBe(true);
+    expect(allowedProviderBaseURL("https://ark.cn-beijing.volces.com/api/v3")).toBe(true);
+    for (const value of ["https://evil.test", "http://127.0.0.1", "https://key@fal.run", "https://fal.run:444", "https://fal.run?secret=1"]) expect(allowedProviderBaseURL(value)).toBe(false);
+    expect(validChannel("volcengine", { studioCapability: "split" })).toBe(false);
+    expect(validChannel("fal", { studioCapability: "segment", model: "fal-ai/../bad" })).toBe(false);
+  });
+});
+
+describe("editable layers and late background repair", () => {
+  const target = { id: "source", assetId: "source-asset", name: "Cat", type: "image", x: 10, y: 20, width: 200, height: 120, pixelWidth: 20, pixelHeight: 12, rotation: 90, visible: true, opacity: 1 };
+  const bundle = { objectAssetId: "cat", holeAssetId: "hole", bounds: { left: 5, top: 3, width: 5, height: 2 } };
+  it("preserves soft alpha and extracts a tight object instead of a rectangle", async () => {
+    const result = await extractObject(png, mask);
+    expect(result.bounds).toEqual(bundle.bounds);
+    const rgba = await sharp(result.cutout).raw().toBuffer(), hole = await sharp(result.hole).raw().toBuffer();
+    expect(rgba[65 * 4 + 3]).toBe(128); expect(hole[65 * 4 + 3]).toBe(127);
+    expect(rgba[3]).toBe(0); expect(hole[3]).toBe(255);
+    expect(await selectionPrompt(mask, 20, 12, { x: 2, y: 3 })).toEqual({ points: [{ x: 2, y: 3, label: 1 }] });
+  });
+  it("keeps a moved object independent, rotates offsets and only replaces its pending background", () => {
+    const pending = { id: "job", moveBundle: bundle };
+    const layers = beginObjectMove([target], target, pending, bundle, { dx: 2, dy: 1 });
+    expect(layers[0].visible).toBe(false);
+    expect(layers[2]).toMatchObject({ assetId: "cat", width: 50, height: 20, rotation: 90, layerRole: "object" });
+    expect(layers[2].x).toBeCloseTo(-30); expect(layers[2].y).toBeCloseTo(90);
+    const moved = layers.map(l => l.id === "job-object" ? { ...l, x: 900, y: 100 } : l);
+    const job = { ...pending, resultData: { placement: "repair-background", assets: [{ id: "repaired" }] } };
+    const completed = appendResult(moved, job);
+    expect(completed[1].assetId).toBe("repaired"); expect(completed[2]).toBe(moved[2]);
+    expect(appendResult([target], job)).toEqual([target]);
+    expect(appendResult(completed, job)).toEqual(completed);
+  });
+  it("stacks decomposition in source order and leaves deleted or replaced input alone", () => {
+    const job = { id: "split", assetId: target.assetId, resultData: { placement: "stack", assets: [{ id: "bg", width: 1024, height: 768 }, { id: "fg", width: 1024, height: 768 }] } };
+    const layers = appendResult([target], job, target);
+    expect(layers).toHaveLength(3); expect(layers[0].visible).toBe(false);
+    for (const l of layers.slice(1)) expect(l).toMatchObject({ x: 10, y: 20, width: 200, height: 120, rotation: 90, groupId: "split" });
+    expect(layers.map(l => l.assetId)).toEqual(["source-asset", "bg", "fg"]);
+    expect(appendResult(layers, job, target)).toBe(layers);
+    expect(appendResult([], job)).toEqual([]);
+    const changed = { ...target, assetId: "changed" };
+    expect(appendResult([changed], job, changed)).toEqual([changed]);
+  });
+  it("returns repaired background without baking the moved object into it", async () => {
+    const result = await runImageTool({}, { tool: "move", moveBundle: bundle, params: { dx: 4, dy: 0 } }, png, mask, undefined, { generate: async () => sharp({ create: { width: 20, height: 12, channels: 4, background: "blue" } }).png().toBuffer() });
+    expect(result.placement).toBe("repair-background");
+    const rgba = await sharp(result.images[0]).raw().toBuffer();
+    expect([...rgba.slice(85 * 4, 85 * 4 + 3)]).toEqual([0, 0, 255]);
+  });
+});

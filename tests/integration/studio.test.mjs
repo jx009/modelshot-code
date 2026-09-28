@@ -12,6 +12,7 @@ import { TOOLS } from "../../src/lib/studio/tools.js";
 import { createStoryboard } from "../../src/lib/commerce/planner.js";
 import { briefSchema } from "../../src/lib/commerce/schema.js";
 import { createImage } from "../../src/lib/domain/assets/service.js";
+import { extractObject } from "../../src/lib/domain/studio/segmentation.js";
 
 let f;
 const config = { imageModel: "fixture", chatModel: "fixture-vision", videoModel: "fixture-video" };
@@ -115,6 +116,46 @@ describe("studio documents and task ledger", () => {
     const output = await f.db.tryOn.findUnique({ where: { id: job.id } });
     expect(output.status).toBe("succeeded"); expect(output.resultData.assets[0].contentType).toBe("video/mp4");
     expect((await usageSummary(user.id, f.db)).credits).toBe(40);
+  });
+  it("pins the split channel and resumes its persisted queue ID without a second submission", async () => {
+    const { user, input } = await setup();
+    const splitConfig = { ...config, splitChannel: { name: "fal-layers", kind: "fal", model: "fal-ai/qwen-image-layered", apiKey: "fixture-fal", baseURL: "https://fal.run" } };
+    const job = await submitStudioJob(user.id, { ...input, tool: "split", params: { numLayers: 3 } }, randomUUID(), f.db, { ...deps, config: splitConfig });
+    const snapshot = (await f.db.tryOn.findUnique({ where: { id: job.id } })).snapshot;
+    expect(snapshot).toMatchObject({ provider: "fal-layers", providerKind: "fal", imageModel: "fal-ai/qwen-image-layered", providerBaseURL: "https://fal.run" });
+    expect(JSON.stringify(snapshot)).not.toContain("fixture-fal");
+    let submits = 0;
+    const calls = [];
+    const adapters = { split: async (channel, image, params, context) => {
+      calls.push(context.requestId);
+      expect(channel.model).toBe("fal-ai/qwen-image-layered");
+      if (!context.requestId) { submits++; await context.onSubmitted("fal-request-1"); throw new Error("connection closed while polling"); }
+      return [image, image, image];
+    } };
+    await executeStudio(job.id, { db: f.db, store: f.store, config: splitConfig, adapters });
+    expect((await f.db.tryOn.findUnique({ where: { id: job.id } })).status).toBe("reconciling");
+    await f.db.tryOn.update({ where: { id: job.id }, data: { nextAttemptAt: null } });
+    await executeStudio(job.id, { db: f.db, store: f.store, config: { ...splitConfig, splitChannel: { ...splitConfig.splitChannel, model: "changed-by-admin" } }, adapters });
+    expect(submits).toBe(1); expect(calls).toEqual([null, "fal-request-1"]);
+    const finished = await f.db.tryOn.findUnique({ where: { id: job.id } });
+    expect(finished.status).toBe("succeeded"); expect(finished.resultData.placement).toBe("stack");
+    expect(finished.resultData.assets).toHaveLength(3);
+    expect(await f.db.creditTransaction.count({ where: { tryOnId: job.id, type: "consume" } })).toBe(1);
+  });
+  it("validates owned move assets, preserves references and stores only repaired background", async () => {
+    const { user, input } = await setup(), other = await f.user();
+    const maskBytes = await sharp({ create: { width: user.asset.width, height: user.asset.height, channels: 3, background: "white" } }).png().toBuffer();
+    const mask = await createImage(user.id, maskBytes, {}, f.db, f.store);
+    const extracted = await extractObject(f.image, maskBytes);
+    const object = await createImage(user.id, extracted.object, {}, f.db, f.store), hole = await createImage(user.id, extracted.hole, {}, f.db, f.store);
+    const move = { ...input, tool: "move", maskId: mask.id, moveBundle: { objectAssetId: object.id, holeAssetId: hole.id, bounds: extracted.bounds } };
+    await expect(submitStudioJob(user.id, { ...move, moveBundle: { ...move.moveBundle, objectAssetId: other.asset.id } }, randomUUID(), f.db, deps)).rejects.toThrow("ASSET_NOT_FOUND");
+    const job = await submitStudioJob(user.id, move, randomUUID(), f.db, deps);
+    expect(await f.db.assetReference.count({ where: { entityId: job.id, kind: "generation_input" } })).toBe(4);
+    await executeStudio(job.id, { db: f.db, store: f.store, config, adapters: { generate: async () => f.image } });
+    const output = await f.db.tryOn.findUnique({ where: { id: job.id } });
+    expect(output.status).toBe("succeeded"); expect(output.resultData).toMatchObject({ placement: "repair-background" });
+    expect(output.resultData.assets).toHaveLength(1);
   });
   it("executes a real crop with zero reservation and exact stored dimensions", async () => {
     const { user, input } = await setup();

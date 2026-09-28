@@ -1,8 +1,13 @@
 import { requireUser } from "@/lib/require-user";
 import { errorResponse } from "@/lib/http";
-import { capabilities } from "@/lib/domain/studio/providers";
-export async function GET() {
-  try { await requireUser(); return Response.json(await capabilities()); }
+import { capabilities, studioConfig } from "@/lib/domain/studio/providers";
+export async function GET(request) {
+  try {
+    await requireUser();
+    const query = new URL(request.url).searchParams;
+    const config = await studioConfig(undefined, query.get("imageProvider") || undefined);
+    if (query.get("splitProvider")) config.splitChannel = (await studioConfig(undefined, query.get("splitProvider"), "split")).splitChannel;
+    return Response.json(await capabilities(undefined, config));
+  }
   catch (error) { return errorResponse(error); }
 }
-

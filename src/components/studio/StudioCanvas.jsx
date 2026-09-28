@@ -20,8 +20,8 @@ async function alphaMaskBlob(image, width, height) {
   const pixels = context.getImageData(0, 0, width, height);
   let left = width, top = height, right = 0, bottom = 0;
   for (let offset = 0; offset < pixels.data.length; offset += 4) {
-    const selected = pixels.data[offset + 3] > 16 ? 255 : 0;
-    if (selected) { const x = offset / 4 % width, y = Math.floor(offset / 4 / width); left = Math.min(left, x); top = Math.min(top, y); right = Math.max(right, x + 1); bottom = Math.max(bottom, y + 1); }
+    const selected = pixels.data[offset + 3];
+    if (selected > 16) { const x = offset / 4 % width, y = Math.floor(offset / 4 / width); left = Math.min(left, x); top = Math.min(top, y); right = Math.max(right, x + 1); bottom = Math.max(bottom, y + 1); }
     pixels.data[offset] = selected; pixels.data[offset + 1] = selected; pixels.data[offset + 2] = selected; pixels.data[offset + 3] = 255;
   }
   if (right === 0 || bottom === 0) throw new Error("EMPTY_MASK");
@@ -29,24 +29,23 @@ async function alphaMaskBlob(image, width, height) {
   return { mask: await new Promise(resolve => canvas.toBlob(resolve, "image/png")), bounds: { left, top, width: right - left, height: bottom - top } };
 }
 
-async function createCutout(assetId, maskBlob, width, height, signal) {
+async function createCutout(assetId, maskBlob, width, height, signal, provider, point) {
   const form = new FormData();
   form.append("assetId", assetId);
   form.append("selection", maskBlob, "selection.png");
-  const response = await fetch("/api/studio/segment", { method: "POST", body: form, signal });
+  if (provider) form.append("provider", provider);
+  if (point) form.append("point", JSON.stringify(point));
+  const response = await fetch("/api/studio/segment", { method: "POST", body: form, signal, headers: { Accept: "application/json" } });
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
     throw new Error(body.code || "SEGMENTATION_FAILED");
   }
-  const url = URL.createObjectURL(await response.blob());
-  try {
-    const image = await loadImage(url);
-    return { image, ...await alphaMaskBlob(image, width, height) };
-  }
-  finally { URL.revokeObjectURL(url); }
+  const result = await response.json();
+  const [image, hole] = await Promise.all([loadImage(`/api/assets/${result.cutout}`), loadImage(`/api/assets/${result.hole}`)]);
+  return { image, hole, ...await alphaMaskBlob(image, width, height), maskId: result.mask, objectAssetId: result.object, holeAssetId: result.hole };
 }
 
-function Picture({ item, selected, onSelect, onChange, interactive, accent, onError }) {
+function Picture({ item, selected, onSelect, onChange, interactive, accent, onError, previewImage }) {
   const [image, setImage] = useState(null);
   const shape = useRef(null), transformer = useRef(null);
   useEffect(() => {
@@ -63,7 +62,7 @@ function Picture({ item, selected, onSelect, onChange, interactive, accent, onEr
     onClick: onSelect, onTap: onSelect, onDragEnd: e => onChange({ x: e.target.x(), y: e.target.y() }),
     onTransformEnd: () => { const node = shape.current; const width = Math.max(16, node.width() * node.scaleX()), height = Math.max(16, node.height() * node.scaleY()); node.scaleX(1); node.scaleY(1); onChange({ x: node.x(), y: node.y(), width, height, rotation: node.rotation() }); } };
   return <>
-    {item.type === "image" ? <CanvasImage {...props} image={image} /> : item.type === "text" ? <Text {...props} text={item.text || ""} fontSize={item.fontSize || 36} fill={item.fill || accent} fontFamily="Arial, sans-serif" /> : <Group {...props}><Rect width={item.width} height={item.height} fill={accent} opacity={0.13} cornerRadius={12} /><Text text="▶  VIDEO" width={item.width} align="center" y={item.height / 2 - 10} fill={accent} fontSize={22} /></Group>}
+    {item.type === "image" ? <CanvasImage {...props} image={previewImage || image} /> : item.type === "text" ? <Text {...props} text={item.text || ""} fontSize={item.fontSize || 36} fill={item.fill || accent} fontFamily="Arial, sans-serif" /> : <Group {...props}><Rect width={item.width} height={item.height} fill={accent} opacity={0.13} cornerRadius={12} /><Text text="▶  VIDEO" width={item.width} align="center" y={item.height / 2 - 10} fill={accent} fontSize={22} /></Group>}
     {selected && interactive && <Transformer ref={transformer} flipEnabled={false} borderStroke={accent} anchorStroke={accent} anchorFill={accent} anchorSize={8} anchorCornerRadius={4} padding={3} boundBoxFunc={(old, next) => next.width < 16 || next.height < 16 || next.width > 8192 || next.height > 8192 ? old : next} />}
   </>;
 }
@@ -106,7 +105,7 @@ function ExpansionBox({ value, width, height, accent, onChange }) {
       enabledAnchors={["top-left", "top-center", "top-right", "middle-left", "middle-right", "bottom-left", "bottom-center", "bottom-right"]} /></>;
 }
 
-const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSelect, onChange, mode, editPadding = 0.25, brushSize = 35, moveOffset = { dx: 0, dy: 0 }, onMoveOffset, onMovePreparing, onMoveReady, onMoveFailed, onCrop, expandPadding = 256, onExpandPadding, onZoom, onUpload, onError, label }, ref) {
+const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSelect, onChange, mode, segmentProvider, editPadding = 0.25, brushSize = 35, moveOffset = { dx: 0, dy: 0 }, onMoveOffset, onMovePreparing, onMoveReady, onMoveFailed, onCrop, expandPadding = 256, onExpandPadding, onZoom, onUpload, onError, label }, ref) {
   const container = useRef(null), stage = useRef(null), artwork = useRef(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
   const [camera, setCamera] = useState({ x: 30, y: 20, scale: 1 });
@@ -198,7 +197,7 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
     const mask = await maskBlob(shape.rectangle, shape.polygon);
     if (current !== operation.current) return;
     let cutout;
-    try { cutout = await createCutout(selection.assetId, mask, selection.pixelWidth, selection.pixelHeight, controller.signal); }
+    try { cutout = await createCutout(selection.assetId, mask, selection.pixelWidth, selection.pixelHeight, controller.signal, segmentProvider, shape.point); }
     catch (error) { if (current !== operation.current) return; throw error; }
     if (current !== operation.current) return;
     const refined = { blob: cutout.mask };
@@ -211,8 +210,8 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
     thumb.width = Math.max(1, Math.round(bounds.width * ratio)); thumb.height = Math.max(1, Math.round(bounds.height * ratio));
     thumb.getContext("2d").drawImage(object, 0, 0, thumb.width, thumb.height);
     setMoveSelection(null);
-    setMovePreview({ target: selectedId, image: object, bounds });
-    onMoveReady?.({ bounds, thumbnail: thumb.toDataURL("image/png") });
+    setMovePreview({ target: selectedId, image: object, hole: cutout.hole, bounds });
+    onMoveReady?.({ bounds, thumbnail: thumb.toDataURL("image/png"), maskId: cutout.maskId, objectAssetId: cutout.objectAssetId, holeAssetId: cutout.holeAssetId });
   }
   function clearMove() { drawing.current = false; activeMove.current = null; cropStart.current = null; operation.current++; selectionRequest.current?.abort(); setMovePreview(null); setMoveSelection(null); setMoveMask(null); moveMaskRef.current = null; }
   useImperativeHandle(ref, () => ({ zoom, fit, fitExpansion,
@@ -277,7 +276,8 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
     if (!["object-select-rect", "object-select-lasso"].includes(mode) || !activeMove.current) return;
     const shape = activeMove.current; activeMove.current = null;
     cropStart.current = null;
-    const valid = shape.rectangle ? shape.rectangle.width >= 3 && shape.rectangle.height >= 3 : shape.polygon?.length >= 8;
+    if (shape.rectangle && shape.rectangle.width < 3 && shape.rectangle.height < 3) shape.point = { x: Math.min(selection.pixelWidth - 1, Math.round(shape.rectangle.left)), y: Math.min(selection.pixelHeight - 1, Math.round(shape.rectangle.top)) };
+    const valid = shape.point || (shape.rectangle ? shape.rectangle.width >= 3 && shape.rectangle.height >= 3 : shape.polygon?.length >= 8);
     if (!valid) return;
     onMovePreparing?.();
     try { await prepareMoveFrom(shape); } catch (error) { if (error.name !== "AbortError") { onMoveFailed?.(); onError(error); } }
@@ -288,7 +288,7 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
       onWheel={e => { e.evt.preventDefault(); const pointer = stage.current.getPointerPosition(); const next = Math.max(0.08, Math.min(4, camera.scale * (e.evt.deltaY > 0 ? 0.93 : 1.07))); setCamera({ scale: next, x: pointer.x - (pointer.x - camera.x) / camera.scale * next, y: pointer.y - (pointer.y - camera.y) / camera.scale * next }); }}
       onMouseDown={down} onTouchStart={down} onMouseMove={move} onTouchMove={move} onMouseUp={finishDrawing} onTouchEnd={finishDrawing} onMouseLeave={finishDrawing}>
       <Layer ref={artwork}>
-        {layers.filter(l => l.visible).map(item => <Picture key={item.id} item={item} selected={selectedId === item.id} interactive={mode === "select"} accent={color} onError={onError} onSelect={() => { if (!editing) onSelect(item.id); }} onChange={patch => { try { onChange(layers.map(l => l.id === item.id ? { ...l, ...patch } : l)); } catch (e) { onError(e); } }} />)}
+        {layers.filter(l => l.visible).map(item => <Picture key={item.id} item={item} previewImage={mode === "move" && movePreview?.target === item.id ? movePreview.hole : null} selected={selectedId === item.id} interactive={mode === "select"} accent={color} onError={onError} onSelect={() => { if (!editing) onSelect(item.id); }} onChange={patch => { try { onChange(layers.map(l => l.id === item.id ? { ...l, ...patch } : l)); } catch (e) { onError(e); } }} />)}
       </Layer>
       {editing && !["crop", "expand", "move", "object-edit"].includes(mode) && <Layer listening={false}><Group x={selection.x} y={selection.y} rotation={selection.rotation} scaleX={selection.width / selection.pixelWidth} scaleY={selection.height / selection.pixelHeight} clipWidth={selection.pixelWidth} clipHeight={selection.pixelHeight}>
         {mode === "mask" && strokes.filter(s => s.target === maskKey).map((s, i) => <Line key={i} points={s.points} stroke={color} strokeWidth={s.width} opacity={0.55} lineCap="round" lineJoin="round" />)}

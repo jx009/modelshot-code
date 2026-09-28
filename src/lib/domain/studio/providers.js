@@ -5,36 +5,59 @@ import { AppError } from "../../http.js";
 import { editThroughCompatibleGateway } from "../../ai/adapters/openai.js";
 import { downloadProviderImage } from "../../infra/storage/download.js";
 import { TOOLS } from "../../studio/tools.js";
+import { channelCapability, supportsImageTask } from "../../studio/model-channels.js";
+import { generateCloudImage } from "./cloud.js";
 
-export async function studioConfig(db = prisma, channelName) {
+export async function studioConfig(db = prisma, channelName, capability = "image") {
   const rows = await db.modelProvider.findMany({ where: { isActive: true }, orderBy: [{ isDefault: "desc" }, { priority: "asc" }] });
   const openAI = rows.filter(row => (row.kind || row.name) === "openai");
-  const row = openAI.find(candidate => candidate.name === channelName) || openAI[0];
+  const select = cap => {
+    const candidates = rows.filter(row => channelCapability(row) === cap);
+    if (channelName && capability === cap) {
+      const selected = candidates.find(row => row.name === channelName);
+      if (!selected) throw new AppError("PROVIDER_CAPABILITY_UNSUPPORTED", 422);
+      return selected;
+    }
+    return candidates.find(row => JSON.parse(row.config || "{}").studioDefault) || candidates[0];
+  };
+  const row = select("image");
   const planner = openAI.find(candidate => candidate.isPlanner) || openAI.find(candidate => JSON.parse(candidate.config || "{}").chatModel);
   const config = row ? JSON.parse(row.config || "{}") : {};
   const plannerConfig = planner ? JSON.parse(planner.config || "{}") : {};
-  const secret = (candidate, parsed) => process.env.STUDIO_API_KEY || (parsed.apiKeyEnc ? decryptSecret(parsed.apiKeyEnc) : candidate ? process.env.OPENAI_API_KEY : undefined);
+  const secret = (candidate, parsed) => parsed.apiKeyEnc ? decryptSecret(parsed.apiKeyEnc) : (!candidate || (candidate.kind || candidate.name) === "openai") ? process.env.STUDIO_API_KEY || process.env.OPENAI_API_KEY : undefined;
+  const external = cap => {
+    const candidate = select(cap);
+    if (!candidate) return null;
+    const parsed = JSON.parse(candidate.config || "{}");
+    return { name: candidate.name, kind: candidate.kind, model: parsed.model, baseURL: parsed.baseURL, apiKey: secret(candidate, parsed), creditCost: candidate.creditCost, displayName: candidate.displayName };
+  };
+  // Environment configuration is a fallback only. Explicit channels own their
+  // credentials and protocol; a legacy OpenAI key must never reach another vendor.
+  const envFallback = !row || (row.kind || row.name) === "openai" && !config.apiKeyEnc;
   return {
     apiKey: secret(row, config),
-    baseURL: process.env.STUDIO_BASE_URL || config.baseURL,
-    imageModel: process.env.STUDIO_IMAGE_MODEL || config.model || "gpt-image-2",
+    baseURL: config.baseURL || (envFallback ? process.env.STUDIO_BASE_URL : undefined),
+    imageKind: row?.kind || "openai", imageMode: config.imageMode || "both",
+    imageModel: config.model || (envFallback ? process.env.STUDIO_IMAGE_MODEL : undefined) || "gpt-image-2",
     imageProvider: row?.name || null,
     imageDisplayName: row?.displayName || process.env.STUDIO_IMAGE_MODEL || config.model || "GPT Image",
     imageCreditCost: row?.creditCost ?? 18,
-    visionApiKey: process.env.STUDIO_API_KEY || secret(planner, plannerConfig),
-    visionBaseURL: process.env.STUDIO_BASE_URL || plannerConfig.baseURL,
-    chatModel: process.env.STUDIO_CHAT_MODEL || plannerConfig.chatModel,
+    visionApiKey: secret(planner, plannerConfig),
+    visionBaseURL: plannerConfig.baseURL || (!planner ? process.env.STUDIO_BASE_URL : undefined),
+    chatModel: plannerConfig.chatModel || (!planner ? process.env.STUDIO_CHAT_MODEL : undefined),
     plannerDisplayName: planner?.displayName || null,
     videoKey: process.env.ARK_API_KEY, videoModel: process.env.ARK_VIDEO_MODEL,
     videoURL: process.env.ARK_BASE_URL || "https://ark.cn-beijing.volces.com/api/v3",
     toolsURL: process.env.STUDIO_TOOLS_URL, toolsKey: process.env.STUDIO_TOOLS_KEY,
+    segmentChannel: external("segment"), splitChannel: external("split"),
   };
 }
 
 export async function capabilities(db = prisma, config) {
   const c = config || await studioConfig(db);
   const rows = await db.modelProvider.findMany({ where: { isActive: true }, orderBy: [{ isDefault: "desc" }, { priority: "asc" }] });
-  const imageModels = rows.filter(row => (row.kind || row.name) === "openai").filter(row => { const parsed = JSON.parse(row.config || "{}"); return Boolean(parsed.apiKeyEnc || process.env.OPENAI_API_KEY || process.env.STUDIO_API_KEY); }).map(row => ({ id: row.name, label: row.displayName, creditCost: row.creditCost ?? 18 }));
+  const models = cap => rows.filter(row => channelCapability(row) === cap).filter(row => { const parsed = JSON.parse(row.config || "{}"); return Boolean(parsed.apiKeyEnc || (row.kind || row.name) === "openai" && (process.env.OPENAI_API_KEY || process.env.STUDIO_API_KEY)); }).map(row => ({ id: row.name, label: row.displayName, creditCost: row.creditCost ?? 18, imageMode: JSON.parse(row.config || "{}").imageMode || "both" }));
+  const imageModels = models("image");
   const pricingRows = db.studioToolConfig?.findMany ? await db.studioToolConfig.findMany() : [];
   const pricing = new Map(pricingRows.map(row => [row.toolId, row]));
   let external = [];
@@ -45,14 +68,14 @@ export async function capabilities(db = prisma, config) {
     } catch { /* An unavailable tool service must not advertise ready tools. */ }
   }
   const ready = { local: true, image: Boolean(c.apiKey), vision: Boolean((c.visionApiKey || c.apiKey) && c.chatModel), video: Boolean(c.videoKey && c.videoModel),
-    segment: external.includes("segment"), "remove-bg": external.includes("remove-bg"), upscale: external.includes("upscale"), ocr: external.includes("ocr"), split: external.includes("remove-bg") && Boolean(c.apiKey) };
-  return { imageModel: c.imageDisplayName || c.imageModel, imageProvider: c.imageProvider, imageModels, chatModel: c.plannerDisplayName || c.chatModel || null, videoModel: c.videoModel || null,
+    segment: Boolean(c.segmentChannel?.apiKey) || external.includes("segment"), "remove-bg": external.includes("remove-bg"), upscale: external.includes("upscale"), ocr: external.includes("ocr"), split: Boolean(c.splitChannel?.apiKey) };
+  return { imageModel: c.imageDisplayName || c.imageModel, imageProvider: c.imageProvider, imageModels, segmentModels: models("segment"), splitModels: models("split"), segmentProvider: c.segmentChannel?.name || null, splitProvider: c.splitChannel?.name || null, chatModel: c.plannerDisplayName || c.chatModel || null, videoModel: c.videoModel || null,
     tools: TOOLS.map(tool => {
       const configured = pricing.get(tool.id), enabled = configured?.isEnabled !== false;
-      const cost = ["generate", "edit"].includes(tool.id) ? c.imageCreditCost ?? 18 : configured?.creditCost ?? tool.cost;
+      const cost = tool.id === "split" ? c.splitChannel?.creditCost ?? configured?.creditCost ?? tool.cost : ["generate", "edit"].includes(tool.id) ? c.imageCreditCost ?? 18 : configured?.creditCost ?? tool.cost;
       // A custom API origin does not imply a lack of mask support. Send the
       // same multipart edit contract and surface an actual provider rejection.
-      const dependencyReady = ready[tool.dependency], previewReady = !tool.preview || ready[tool.preview];
+      const dependencyReady = ready[tool.dependency] && (tool.dependency !== "image" || supportsImageTask({ imageMode: c.imageMode }, tool.id === "generate" ? "generate" : "edit")), previewReady = !tool.preview || ready[tool.preview];
       return { ...tool, cost, enabled, available: Boolean(enabled && dependencyReady && previewReady), reason: !enabled ? "TOOL_DISABLED" : !dependencyReady ? "SERVICE_NOT_CONFIGURED" : !previewReady ? "SEGMENTATION_NOT_CONFIGURED" : null };
     }) };
 }
@@ -76,6 +99,8 @@ export function imageClient(config) {
 }
 export async function generateImage(config, { image, references = [], mask, prompt, size, signal }) {
   if (!config.apiKey) throw new AppError("PROVIDER_UNAVAILABLE", 503);
+  if (!supportsImageTask(config, image ? "edit" : "generate")) throw new AppError("PROVIDER_CAPABILITY_UNSUPPORTED", 422);
+  if (["dashscope", "volcengine"].includes(config.imageKind)) return generateCloudImage(config, { image, references, mask, prompt, size, signal });
   const client = imageClient(config);
   let result;
   if (image) {

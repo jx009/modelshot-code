@@ -18,7 +18,10 @@ export async function prepareObjectEdit(image, mask, { remove = false, editPaddi
   let blendMask;
   if (remove) {
     // Include a narrow edge around the old silhouette to avoid a leftover halo.
-    blendMask = await sharp(pixels, { raw: { width, height, channels: 1 } }).blur(2).threshold(16).png().toBuffer();
+    // Sharp may schedule threshold before blur in one pipeline. Materialize the
+    // dilation first so the selected silhouette is removed completely.
+    const expanded = await sharp(pixels, { raw: { width, height, channels: 1 } }).blur(2).png().toBuffer();
+    blendMask = await sharp(expanded).threshold(16).png().toBuffer();
   } else {
     const blend = Buffer.alloc(width * height);
     const feather = Math.max(1, Math.min(8, Math.round(Math.min(region.width, region.height) * 0.025)));
@@ -63,5 +66,6 @@ export async function runObjectEdit(config, snapshot, image, mask, signal, gener
   const crop = await sharp(generated).resize(context.width, context.height, { fit: "fill" }).png().toBuffer();
   const placed = await sharp(image).composite([{ input: crop, left: context.left, top: context.top }]).png().toBuffer();
   const edited = await compositeSelection(image, placed, prepared.blendMask);
-  return { images: [remove ? await moveSelection(image, edited, mask, snapshot.params.dx, snapshot.params.dy) : edited] };
+  if (remove && snapshot.moveBundle) return { images: [edited], placement: "repair-background" };
+  return { images: [remove ? await moveSelection(image, edited, mask, snapshot.params.dx, snapshot.params.dy) : edited], ...(!remove ? { placement: "replace-source" } : {}) };
 }

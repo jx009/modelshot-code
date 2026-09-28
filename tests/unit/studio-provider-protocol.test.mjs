@@ -36,7 +36,7 @@ describe("studio real HTTP protocol against isolated fixture", () => {
     const config = await studioConfig(db);
     expect(config).toMatchObject({ imageProvider: "image-pro", imageModel: "gpt-image-2", imageDisplayName: "ModelShot Pro", chatModel: "gpt-4.1-mini", plannerDisplayName: "Visual Director" });
     const caps = await capabilities(db, config);
-    expect(caps.imageModels).toEqual([{ id: "image-pro", label: "ModelShot Pro", creditCost: 7 }, { id: "planner", label: "Visual Director", creditCost: 3 }]);
+    expect(caps.imageModels).toEqual([{ id: "image-pro", label: "ModelShot Pro", creditCost: 7, imageMode: "both" }, { id: "planner", label: "Visual Director", creditCost: 3, imageMode: "both" }]);
     expect(caps.chatModel).toBe("Visual Director");
     expect(caps.tools.find(tool => tool.id === "generate").cost).toBe(7);
     expect(caps.tools.find(tool => tool.id === "upscale").cost).toBe(9);
@@ -60,9 +60,10 @@ describe("studio real HTTP protocol against isolated fixture", () => {
     ]) }, studioToolConfig: { findMany: vi.fn().mockResolvedValue([]) } };
     const config = await studioConfig(db, "gateway");
     const caps = await capabilities(db, config);
-    for (const id of ["expand", "erase", "inpaint", "move", "split"]) {
+    for (const id of ["expand", "erase", "inpaint", "move"]) {
       expect(caps.tools.find(tool => tool.id === id), id).toMatchObject({ available: true, reason: null });
     }
+    expect(caps.tools.find(tool => tool.id === "split")).toMatchObject({ available: false, reason: "SERVICE_NOT_CONFIGURED" });
     await generateImage(config, { image: png, mask: png, prompt: "repair background", size: "1024x1024" });
     const request = calls.at(-1);
     expect(request.path).toBe("/codex/images/edits");

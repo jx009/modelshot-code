@@ -48,11 +48,8 @@ test("canvas upload, crop through durable worker, layers, export and cloud resto
     await page.getByRole("button", { name: "Close tool", exact: true }).click();
     await page.getByRole("button", { name: /Move object/ }).click();
     const stage = await page.locator(".ms-stage").boundingBox();
-    // The mobile tool sheet intentionally overlays the right side of the canvas.
-    // Paint and drag through the visible image strip instead of clicking through it.
-    const moveAnchor = info.project.name === "mobile"
-      ? { x: stage.x + stage.width * 0.22, y: stage.y + stage.height * 0.45 }
-      : { x: stage.x + stage.width / 2, y: stage.y + stage.height / 2 };
+    // The tool controls are docked below the image on both screen sizes.
+    const moveAnchor = { x: stage.x + stage.width / 2, y: stage.y + stage.height / 2 };
     await page.mouse.move(moveAnchor.x - 35, moveAnchor.y - 45);
     await page.mouse.down();
     await page.mouse.move(moveAnchor.x + 35, moveAnchor.y + 45, { steps: 8 });
@@ -64,7 +61,29 @@ test("canvas upload, crop through durable worker, layers, export and cloud resto
     await page.mouse.up();
     await expect(page.locator(".ms-move-offset")).not.toContainText("ΔX 0px");
     await page.screenshot({ path: info.outputPath("move-object-drag.png"), fullPage: true });
-    await page.getByRole("button", { name: "Close tool", exact: true }).click();
+    const movedResponse = page.waitForResponse(r => r.url().endsWith("/api/studio/jobs") && r.request().method() === "POST");
+    await page.getByRole("button", { name: "Apply move 18 credits", exact: true }).click();
+    const moveJob = await (await movedResponse).json();
+    await expect(page.locator(".ms-canvas-label")).toContainText("3 layers");
+    const readDraft = () => page.evaluate(() => JSON.parse(localStorage.getItem(Object.keys(localStorage).find(k => k.startsWith("modelshot-studio-v1:")))));
+    const extracted = await readDraft();
+    expect(extracted.layers[0].visible).toBe(false);
+    expect(extracted.layers[2].layerRole).toBe("object");
+    await page.mouse.move(moveAnchor.x + 60, moveAnchor.y + 20);
+    await page.mouse.down();
+    await page.mouse.move(moveAnchor.x + 90, moveAnchor.y + 10, { steps: 6 });
+    await page.mouse.up();
+    const dragged = (await readDraft()).layers.find(layer => layer.layerRole === "object");
+    expect(dragged.x).not.toBe(extracted.layers[2].x);
+    await expect.poll(async () => (await (await page.request.get(`/api/studio/jobs/${moveJob.id}`)).json()).status, { timeout: 45000 }).toBe("succeeded");
+    await expect.poll(async () => (await readDraft()).layers.find(layer => layer.layerRole === "background")?.repairJobId).toBeUndefined();
+    const completed = await readDraft();
+    expect(completed.layers.find(layer => layer.layerRole === "object")).toEqual(dragged);
+    await page.screenshot({ path: info.outputPath("move-independent-layers.png"), fullPage: true });
+    await page.getByRole("button", { name: "Undo", exact: true }).click();
+    await page.getByRole("button", { name: "Undo", exact: true }).click();
+    await expect(page.locator(".ms-canvas-label")).toContainText("1 layers");
+    await page.mouse.click(moveAnchor.x, moveAnchor.y);
     await expect(page.locator(".ms-image-menu")).toBeVisible();
     await page.getByRole("button", { name: /Crop image/ }).click();
     const cropStage = await page.locator(".ms-stage").boundingBox();
@@ -117,12 +136,14 @@ test("canvas upload, crop through durable worker, layers, export and cloud resto
     expect(generatedResponse.status()).toBe(202);
     const imageJob = await generatedResponse.json();
     await expect.poll(async () => (await (await page.request.get(`/api/studio/jobs/${imageJob.id}`)).json()).status, { timeout: 45000 }).toBe("succeeded");
-    await expect.poll(async () => (await (await page.request.get("/api/usage")).json()).credits).toBe(82);
+    await expect.poll(async () => (await (await page.request.get("/api/usage")).json()).credits).toBe(64);
     if (info.project.name === "mobile") await page.locator(".ms-mobile-toggle").click();
     await expect(page.locator(".ms-canvas-label")).toContainText("4 layers");
     await page.getByRole("button", { name: "Undo", exact: true }).click();
     await expect(page.locator(".ms-canvas-label")).toContainText("3 layers");
-    await page.waitForResponse(r => r.url().includes("/api/studio/jobs?"));
+    const replayPoll = page.waitForResponse(r => r.url().includes("/api/studio/jobs?"));
+    await page.keyboard.press("Control+s");
+    await replayPoll;
     await expect(page.locator(".ms-canvas-label")).toContainText("3 layers");
     await page.getByRole("button", { name: "Redo", exact: true }).click();
     await expect(page.locator(".ms-canvas-label")).toContainText("4 layers");

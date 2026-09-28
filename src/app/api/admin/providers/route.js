@@ -4,12 +4,16 @@ import { AppError, readJson, errorResponse } from "../../../../lib/http.js";
 import { auditedOperation } from "../../../../lib/domain/identity/admin-operation.js";
 import { NextResponse } from "next/server";
 import { prisma } from "../../../../lib/prisma";
-import { requireAdmin, auditLog } from "../../../../lib/admin-auth";
+import { requireAdmin } from "../../../../lib/admin-auth";
 import { invalidateProviderConfig, invokeModel } from "../../../../lib/ai/runner";
 import { encryptSecret, decryptSecret, maskSecret } from "../../../../lib/crypto";
-import { vision } from "../../../../lib/domain/studio/providers";
+import { vision, studioConfig, generateImage } from "../../../../lib/domain/studio/providers";
+import { segmentCloudImage, splitCloudImage } from "../../../../lib/domain/studio/cloud";
+import { allowedProviderBaseURL, channelCapability, validChannel } from "../../../../lib/studio/model-channels";
+import sharp from "sharp";
 
-const kindSchema = z.enum(["openai", "gemini", "fashn"]);
+const kindSchema = z.enum(["openai", "gemini", "fashn", "dashscope", "volcengine", "fal"]);
+const channelFields = { studioCapability: z.enum(["image", "segment", "split"]).optional(), imageMode: z.enum(["both", "generate", "edit"]).optional(), studioDefault: z.boolean().optional() };
 
 /**
  * 模型提供商管理
@@ -30,6 +34,7 @@ function safeConfig(configStr) {
     baseURL: cfg.baseURL || "",
     model: cfg.model || "",
     chatModel: cfg.chatModel || "",
+    studioCapability: cfg.studioCapability || null, imageMode: cfg.imageMode || "both", studioDefault: Boolean(cfg.studioDefault),
   };
 }
 
@@ -73,12 +78,8 @@ export async function PATCH(req) {
   try {
     const auth = await requireAdmin(req, "root");
     if (auth.response) return auth.response;
-    const input = await readJson(req, z.object({ id: z.string().min(1).max(128), kind: kindSchema.optional(), isActive: z.boolean().optional(), isDefault: z.boolean().optional(), isPlanner: z.boolean().optional(), priority: z.number().int().min(0).max(1000).optional(), displayName: z.string().min(1).max(100).optional(), creditCost: z.number().int().min(0).max(100000).optional(), costPerImage: z.number().min(0).max(1000).optional(), apiKey: z.string().max(4096).optional(), baseURL: z.string().max(500).optional(), model: z.string().max(128).optional(), chatModel: z.string().max(128).optional(), reason: z.string().min(3).max(500) }).strict());
-    if (input.baseURL) {
-      const url = new URL(input.baseURL);
-      const allowed = (process.env.PROVIDER_PROXY_HOSTS || "").split(",").map(value => value.trim());
-      if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash || !allowed.includes(url.hostname)) throw new AppError("PROVIDER_PROXY_NOT_ALLOWED");
-    }
+    const input = await readJson(req, z.object({ ...channelFields, id: z.string().min(1).max(128), kind: kindSchema.optional(), isActive: z.boolean().optional(), isDefault: z.boolean().optional(), isPlanner: z.boolean().optional(), priority: z.number().int().min(0).max(1000).optional(), displayName: z.string().min(1).max(100).optional(), creditCost: z.number().int().min(0).max(100000).optional(), costPerImage: z.number().min(0).max(1000).optional(), apiKey: z.string().max(4096).optional(), baseURL: z.string().max(500).optional(), model: z.string().max(128).optional(), chatModel: z.string().max(128).optional(), reason: z.string().min(3).max(500) }).strict());
+    if (!allowedProviderBaseURL(input.baseURL)) throw new AppError("PROVIDER_PROXY_NOT_ALLOWED");
     const result = await auditedOperation(auth.user.id, req.headers.get("idempotency-key"), "UPDATE_PROVIDER", input, async tx => {
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended('provider-config', 0))::text`;
       const existing = await tx.modelProvider.findUnique({ where: { id: input.id } });
@@ -88,7 +89,20 @@ export async function PATCH(req) {
       if (input.baseURL !== undefined) cfg.baseURL = normalizeBaseURL(input.baseURL);
       if (input.model !== undefined) cfg.model = input.model;
       if (input.chatModel !== undefined) cfg.chatModel = input.chatModel;
-      if (input.isDefault) await tx.modelProvider.updateMany({ data: { isDefault: false } });
+      const kind = input.kind || existing.kind || existing.name;
+      for (const field of Object.keys(channelFields)) if (input[field] !== undefined) cfg[field] = input[field];
+      if (!validChannel(kind, cfg)) throw new AppError("PROVIDER_CAPABILITY_UNSUPPORTED", 422);
+      if (cfg.studioDefault) {
+        const rows = await tx.modelProvider.findMany();
+        for (const row of rows) if (row.id !== existing.id && channelCapability(row) === channelCapability({ kind }, cfg)) {
+          const other = JSON.parse(row.config || "{}");
+          if (other.studioDefault) await tx.modelProvider.update({ where: { id: row.id }, data: { config: JSON.stringify({ ...other, studioDefault: false }) } });
+        }
+      }
+      if (input.isDefault) {
+        if (!["openai", "gemini", "fashn"].includes(kind)) throw new AppError("PROVIDER_CAPABILITY_UNSUPPORTED", 422);
+        await tx.modelProvider.updateMany({ data: { isDefault: false } });
+      }
       if (input.isPlanner) {
         if ((input.kind || existing.kind || existing.name) !== "openai") throw new AppError("PLANNER_PROVIDER_UNSUPPORTED");
         if (!cfg.chatModel?.trim()) throw new AppError("VISION_NOT_CONFIGURED", 422);
@@ -106,15 +120,13 @@ export async function PUT(req) {
   try {
     const auth = await requireAdmin(req, "root");
     if (auth.response) return auth.response;
-    const input = await readJson(req, z.object({ kind: kindSchema, displayName: z.string().trim().min(1).max(100), model: z.string().trim().min(1).max(128), chatModel: z.string().trim().max(128).default(""), apiKey: z.string().max(4096).default(""), baseURL: z.string().max(500).default(""), creditCost: z.number().int().min(0).max(100000).default(18), costPerImage: z.number().min(0).max(1000).default(0), reason: z.string().min(3).max(500) }).strict());
-    if (input.baseURL) {
-      const url = new URL(input.baseURL);
-      const allowed = (process.env.PROVIDER_PROXY_HOSTS || "").split(",").map(value => value.trim());
-      if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash || !allowed.includes(url.hostname)) throw new AppError("PROVIDER_PROXY_NOT_ALLOWED");
-    }
+    const input = await readJson(req, z.object({ ...channelFields, kind: kindSchema, displayName: z.string().trim().min(1).max(100), model: z.string().trim().min(1).max(128), chatModel: z.string().trim().max(128).default(""), apiKey: z.string().max(4096).default(""), baseURL: z.string().max(500).default(""), creditCost: z.number().int().min(0).max(100000).default(18), costPerImage: z.number().min(0).max(1000).default(0), reason: z.string().min(3).max(500) }).strict());
+    if (!allowedProviderBaseURL(input.baseURL)) throw new AppError("PROVIDER_PROXY_NOT_ALLOWED");
     const result = await auditedOperation(auth.user.id, req.headers.get("idempotency-key"), "CREATE_PROVIDER", input, async tx => {
       const priority = (await tx.modelProvider.aggregate({ _max: { priority: true } }))._max.priority || 0;
       const config = { model: input.model, ...(input.chatModel ? { chatModel: input.chatModel } : {}), ...(input.baseURL ? { baseURL: normalizeBaseURL(input.baseURL) } : {}), ...(input.apiKey.trim() ? { apiKeyEnc: encryptSecret(input.apiKey.trim()) } : {}) };
+      for (const field of ["studioCapability", "imageMode"]) if (input[field] !== undefined) config[field] = input[field];
+      if (!validChannel(input.kind, config) || input.studioDefault) throw new AppError("PROVIDER_CAPABILITY_UNSUPPORTED", 422);
       const row = await tx.modelProvider.create({ data: { name: `${input.kind}-${randomUUID().slice(0, 12)}`, kind: input.kind, displayName: input.displayName, priority: priority + 1, creditCost: input.creditCost, costPerImage: input.costPerImage, config: JSON.stringify(config) } });
       return { response: { id: row.id }, audit: { provider: row.name, kind: row.kind, displayName: row.displayName, keyConfigured: Boolean(input.apiKey) } };
     }, prisma, "root");
@@ -141,6 +153,17 @@ export async function POST(req) {
       if ((provider.kind || provider.name) !== "openai" || !apiKey || !chatModel) throw new AppError("VISION_NOT_CONFIGURED", 503);
       await vision({ visionApiKey: apiKey, visionBaseURL: process.env.STUDIO_BASE_URL || stored.baseURL, chatModel }, { instruction: "Return only the word OK.", messages: [{ role: "user", text: "Connection test" }], maxTokens: 8, signal: AbortSignal.timeout(30000) });
       return NextResponse.json({ ok: true, provider: provider.name, mode, durationMs: Date.now() - started });
+    }
+    if (["dashscope", "volcengine", "fal"].includes(provider.kind)) {
+      const capability = channelCapability(provider);
+      const config = await studioConfig(prisma, provider.name, capability);
+      const image = await sharp({ create: { width: 512, height: 512, channels: 4, background: "white" } })
+        .composite([{ input: await sharp({ create: { width: 128, height: 128, channels: 4, background: "red" } }).png().toBuffer(), left: 192, top: 192 }]).png().toBuffer();
+      const signal = AbortSignal.timeout(180000);
+      if (capability === "segment") await segmentCloudImage(config.segmentChannel, image, { box: { left: 190, top: 190, width: 132, height: 132 } }, signal);
+      else if (capability === "split") await splitCloudImage(config.splitChannel, image, { numLayers: 2 }, { signal });
+      else await generateImage(config, { ...(config.imageMode !== "generate" ? { image } : {}), prompt: "A red square on a white background.", size: "1024x1024", signal });
+      return NextResponse.json({ ok: true, provider: provider.name, durationMs: Date.now() - started });
     }
     // 最小测试：小尺寸低质量，验证 key/baseURL/model 全链路
     const result = await invokeModel({

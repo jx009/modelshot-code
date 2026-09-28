@@ -9,7 +9,7 @@ import { Link } from "@/i18n/navigation";
 import { Aperture, ArrowUp, ArrowDown, ArrowUpRight, Plus, X, FolderOpen, Download, Save, Undo2, Redo2, MousePointer2, Hand, ImagePlus, Type, Layers3, Sparkles, WandSparkles, Expand, Crop, Eraser, Move, ScanText, Scissors, Video, MessageCircle, Zap, ShoppingBag, ChevronDown, Check, LoaderCircle, ZoomIn, Minus, Maximize, Trash2, Eye, EyeOff, Copy, Coins, Play, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { api, requestKey } from "@/lib/client-api";
 import { TOOLS, getTool } from "@/lib/studio/tools";
-import { appendResult, scaleToFit } from "@/lib/studio/canvas-utils";
+import { appendResult, beginObjectMove, scaleToFit } from "@/lib/studio/canvas-utils";
 import { maskHash as hashMask } from "@/lib/studio/mask-hash";
 import "./studio.css";
 
@@ -25,9 +25,10 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
   const t = useCallback((cn, en) => zh ? cn : en, [zh]);
   const [draft, setDraft] = useState(blank), draftRef = useRef(draft);
   const [selectedId, setSelected] = useState(null), [tab, setTab] = useState(initialMode), [mode, setMode] = useState("select");
-  const [toolId, setTool] = useState(null), [prompt, setPrompt] = useState(initialPrompt), [params, setParams] = useState({ size: "1024x1024", scale: 2, padding: 256, dx: 100, dy: 0, duration: 5, editPadding: 0.25 });
+  const [toolId, setTool] = useState(null), [prompt, setPrompt] = useState(initialPrompt), [params, setParams] = useState({ size: "1024x1024", scale: 2, padding: 256, dx: 100, dy: 0, duration: 5, editPadding: 0.25, numLayers: 4 });
   const [brush, setBrush] = useState(40), [zoom, setZoom] = useState(1), [capabilities, setCapabilities] = useState(null), [usage, setUsage] = useState(null);
   const [modelProvider, setModelProvider] = useState("");
+  const [segmentProvider, setSegmentProvider] = useState(""), [splitProvider, setSplitProvider] = useState("");
   const [objectSelection, setObjectSelection] = useState(null);
   const [projects, setProjects] = useState(null), [jobs, setJobs] = useState([]), [showLayers, setShowLayers] = useState(false), [mobileChat, setMobileChat] = useState(true);
   const [busy, setBusy] = useState(false), [saveState, setSaveState] = useState("local"), [notice, setNotice] = useState(null), [preview, setPreview] = useState(null), [ocr, setOcr] = useState(null);
@@ -94,10 +95,17 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
           if (!abort.signal.aborted) { update({ ...blank(), id: doc.id, version: doc.version, name: doc.name, ...doc.content }); scheduleFit(200); }
         } else { try { const cached = JSON.parse(localStorage.getItem(storageKey)); update(cached?.layers && cached?.messages ? { ...blank(), ...cached } : blank()); } catch { update(blank()); } }
       }).catch(e => { if (!abort.signal.aborted) notify(e); });
-      Promise.all([api("/api/studio/capabilities", { signal: abort.signal }), api("/api/usage", { signal: abort.signal })]).then(([caps, value]) => { setCapabilities(caps); setModelProvider(current => current || caps.imageProvider || caps.imageModels?.[0]?.id || ""); setUsage(value); }).catch(e => { if (!abort.signal.aborted) notify(e); });
+      Promise.all([api("/api/studio/capabilities", { signal: abort.signal }), api("/api/usage", { signal: abort.signal })]).then(([caps, value]) => { setCapabilities(caps); setModelProvider(current => current || caps.imageProvider || caps.imageModels?.[0]?.id || ""); setSegmentProvider(current => current || caps.segmentProvider || ""); setSplitProvider(current => current || caps.splitProvider || ""); setUsage(value); }).catch(e => { if (!abort.signal.aborted) notify(e); });
     } else if (status === "unauthenticated") Promise.resolve().then(() => update(blank()));
     return () => { abort.abort(); clearTimeout(fitTimer.current); };
   }, [status, storageKey, update, notify, initialDocument]);
+  useEffect(() => {
+    if (status !== "authenticated" || !modelProvider && !splitProvider) return;
+    const abort = new AbortController();
+    const query = new URLSearchParams({ ...(modelProvider ? { imageProvider: modelProvider } : {}), ...(splitProvider ? { splitProvider } : {}) });
+    api(`/api/studio/capabilities?${query}`, { signal: abort.signal }).then(setCapabilities).catch(e => { if (!abort.signal.aborted) notify(e); });
+    return () => abort.abort();
+  }, [modelProvider, splitProvider, status, notify]);
   useEffect(() => {
     const handler = e => {
       if (!["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName) && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); document.querySelector('[data-action="save-studio"]')?.click(); }
@@ -113,7 +121,10 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
     const layers = appendResult(current.layers, job, current.layers.find(l => l.id === job.targetId));
     const messages = [...current.messages];
     if (!messages.some(m => m.id === job.id)) messages.push({ id: job.id, role: "assistant", text: job.resultData?.text || `${zh ? getTool(job.tool)?.zh : getTool(job.tool)?.en} · ${t("已完成", "Complete")}`, ...(job.resultData?.assets?.[0]?.contentType?.startsWith("image/") ? { assetId: job.resultData.assets[0].id } : {}) });
-    if (layers.length !== current.layers.length) {
+    if (job.resultData?.placement === "repair-background") {
+      history.current.past = history.current.past.map(snapshot => appendResult(snapshot, job));
+      history.current.future = history.current.future.map(snapshot => appendResult(snapshot, job));
+    } else if (layers !== current.layers && (layers.length !== current.layers.length || layers.some((layer, index) => layer !== current.layers[index]))) {
       history.current.past = [...history.current.past, current.layers].slice(-40); history.current.future = [];
       setHistoryCount({ past: history.current.past.length, future: 0 });
     }
@@ -188,17 +199,18 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
     }
     setOcr(null);
   }
-  async function submit(id, target, text, options = {}, maskBlob, key = requestKey()) {
+  async function submit(id, target, text, options = {}, maskBlob, key = requestKey(), extracted) {
     const saved = await save();
     const maskHash = maskBlob ? await hashMask(maskBlob) : null;
-    const signature = JSON.stringify({ id, target: target?.id, asset: target?.assetId, text, options, maskHash, documentId: saved.id });
+    const provider = id === "split" ? splitProvider : modelProvider;
+    const signature = JSON.stringify({ id, provider, extracted, target: target?.id, asset: target?.assetId, text, options, maskHash, documentId: saved.id });
     const pending = draftRef.current.pendingSubmit;
     let body;
-    let maskId;
+    let maskId = extracted?.maskId;
     if (pending?.signature === signature) { body = { ...pending.body, documentVersion: saved.version }; key = pending.key; }
     else {
-      if (maskBlob) maskId = (await uploadFile(new File([maskBlob], "mask.png", { type: "image/png" }))).assetId;
-      body = { tool: id, ...(modelProvider ? { provider: modelProvider } : {}), documentId: saved.id, documentVersion: saved.version, ...(target ? { targetId: target.id, assetId: target.assetId } : {}), ...(maskId ? { maskId } : {}), params: { ...options, prompt: text } };
+      if (maskBlob && !maskId) maskId = (await uploadFile(new File([maskBlob], "mask.png", { type: "image/png" }))).assetId;
+      body = { tool: id, ...(provider ? { provider } : {}), ...(id === "move" && extracted ? { moveBundle: { objectAssetId: extracted.objectAssetId, holeAssetId: extracted.holeAssetId, bounds: extracted.bounds } } : {}), documentId: saved.id, documentVersion: saved.version, ...(target ? { targetId: target.id, assetId: target.assetId } : {}), ...(maskId ? { maskId } : {}), params: { ...options, prompt: text } };
       const next = update(d => ({ ...d, pendingSubmit: { signature, key, body } }));
       // Persist the key before network I/O so a refresh cannot silently submit twice.
       if (storageKey) localStorage.setItem(storageKey, JSON.stringify(next));
@@ -214,9 +226,15 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
     try {
       const mask = tool?.mask ? await canvas.current.maskBlob() : null;
       const target = selected;
-      await submit(toolId, target, prompt, { ...params, selectionMode: ["move", "inpaint"].includes(toolId) ? "object" : "mask" }, mask);
+      const job = await submit(toolId, target, prompt, { ...params, selectionMode: ["move", "inpaint"].includes(toolId) ? "object" : "mask" }, mask, requestKey(), objectSelection);
+      if (toolId === "move") {
+        const current = draftRef.current.layers.find(layer => layer.id === target.id && layer.assetId === target.assetId);
+        commitLayers(beginObjectMove(draftRef.current.layers, current, job, objectSelection, params));
+        setSelected(`${job.id}-object`);
+      }
       message("user", prompt || (zh ? tool.zh : tool.en), target?.assetId);
       setTool(null); setMode("select"); setPrompt(""); setObjectSelection(null); canvas.current?.clearMask();
+      await save();
     } catch (e) { notify(e); } finally { submission.current = false; setBusy(false); }
   }
   async function send() {
@@ -333,7 +351,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
       </aside>
       <main className="ms-canvas-space">
         <Canvas ref={canvas} layers={draft.layers} selectedId={selectedId} onSelect={id => { setSelected(id); if (id !== selectedId) closeTool(); }} onChange={commitLayers} mode={mode} brushSize={brush}
-          editPadding={params.editPadding}
+          segmentProvider={segmentProvider} editPadding={params.editPadding}
           moveOffset={{ dx: params.dx, dy: params.dy }} onMoveOffset={offset => setParams(p => ({ ...p, ...offset }))} onMovePreparing={() => { setObjectSelection(null); setMode("object-preparing"); }} onMoveReady={value => { setObjectSelection(value); setParams(p => ({ ...p, dx: 0, dy: 0 })); setMode(toolId === "inpaint" ? "object-edit" : "move"); }} onMoveFailed={() => { setObjectSelection(null); setMode("object-select-rect"); }}
           onCrop={rect => setParams(p => ({ ...p, rect }))} expandPadding={params.padding} onExpandPadding={padding => setParams(p => ({ ...p, padding }))}
           onZoom={setZoom} onUpload={upload} onError={notify} label={t("图片编辑画布", "Image editing canvas")} />
@@ -349,6 +367,9 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
         </div>}
         {toolId && <div className={`ms-tool-panel ms-direct-dock ${["move", "inpaint"].includes(toolId) ? "ms-object-dock" : ""}`}><div className="ms-direct-title"><span>{zh ? tool.zh : tool.en}</span><button className="ms-icon" onClick={closeTool} title={t("关闭工具", "Close tool")}><X size={16} /></button></div>
           <div className="ms-direct-controls">
+            {tool.dependency === "image" && <label>{t("编辑模型", "Edit model")}<select aria-label={t("编辑模型", "Edit model")} value={modelProvider} disabled={busy} onChange={e => setModelProvider(e.target.value)}>{(capabilities?.imageModels || []).map(model => <option key={model.id} value={model.id} disabled={model.imageMode === "generate"}>{model.label}</option>)}</select></label>}
+            {["move", "inpaint"].includes(toolId) && <label>{t("分割模型", "Segmentation model")}<select aria-label={t("分割模型", "Segmentation model")} value={segmentProvider} disabled={busy || mode === "object-preparing"} onChange={e => { setSegmentProvider(e.target.value); canvas.current?.clearMovePreview(); setObjectSelection(null); setMode("object-select-rect"); }}>{!capabilities?.segmentModels?.length && <option value="">{t("本地分割服务", "Local segmentation")}</option>}{(capabilities?.segmentModels || []).map(model => <option key={model.id} value={model.id}>{model.label}</option>)}</select></label>}
+            {toolId === "split" && <label>{t("拆层模型", "Layer model")}<select aria-label={t("拆层模型", "Layer model")} value={splitProvider} disabled={busy} onChange={e => setSplitProvider(e.target.value)}>{(capabilities?.splitModels || []).map(model => <option key={model.id} value={model.id}>{model.label} · {model.creditCost} {t("积分", "credits")}</option>)}</select></label>}
             {tool.mask && !["move", "inpaint"].includes(toolId) && <><span className="ms-direct-hint">{t("直接在图片上涂抹", "Paint directly on the image")}</span><label>{t("画笔", "Brush")}<input type="range" min="5" max="200" value={brush} onChange={e => setBrush(Number(e.target.value))} /><span>{brush}px</span></label><button className="ms-text-button" onClick={() => canvas.current.clearMask()}>{t("清除", "Clear")}</button></>}
             {["move", "inpaint"].includes(toolId) && <div className="ms-object-controls">
               <div className="ms-object-steps"><span className={!objectSelection ? "active" : "done"}>1 · {t("选择物体", "Select object")}</span><span className={objectSelection ? "active" : ""}>2 · {t("移动或修改", "Move or edit")}</span></div>
@@ -362,13 +383,13 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
                   <button className={`ms-button ${toolId === "move" ? "active" : ""}`} disabled={busy || !capabilities?.tools.find(item => item.id === "move")?.available} onClick={() => { setTool("move"); setMode("move"); }}><Move size={16} />{t("移动物体", "Move object")}</button>
                   <button className={`ms-button ${toolId === "inpaint" ? "active" : ""}`} disabled={busy || !capabilities?.tools.find(item => item.id === "inpaint")?.available} onClick={() => { setTool("inpaint"); setMode("object-edit"); setParams(p => ({ ...p, dx: 0, dy: 0 })); }}><WandSparkles size={16} />{t("修改物体 / 动作", "Edit object / pose")}</button>
                 </div>
-                {toolId === "move" ? <div className="ms-object-tip"><span>{t("确认后补全原位置的背景", "Apply to reconstruct the original background")}</span><div className="ms-move-offset"><span>ΔX {params.dx}px</span><span>ΔY {params.dy}px</span></div></div> : <>
+                {toolId === "move" ? <div className="ms-object-tip"><span>{t("确认后可继续拖动物体，背景将在后台修复", "Keep moving the object while its background is repaired")}</span><div className="ms-move-offset"><span>ΔX {params.dx}px</span><span>ΔY {params.dy}px</span></div></div> : <>
                   <textarea className="ms-object-prompt" aria-label={t("物体修改描述", "Object edit instruction")} placeholder={t("例如：让猫抬起前爪；把这把椅子换成香蕉造型，保留坐着的人", "For example: raise the cat’s front paw; replace this chair with a banana-shaped chair, keeping the person seated")} value={prompt} onChange={e => setPrompt(e.target.value)} maxLength={4000} disabled={busy} />
                   <label className="ms-edit-room">{t("动作空间", "Room for new pose")}<input aria-label={t("动作空间", "Room for new pose")} type="range" min="0.05" max="0.5" step="0.05" value={params.editPadding} disabled={busy} onChange={e => setParams(p => ({ ...p, editPadding: Number(e.target.value) }))} /><span>{Math.round(params.editPadding * 100)}%</span></label>
                   <span className="ms-object-tip">{t("白色虚线内可生成新动作；框外保持原图", "New poses can extend within the white boundary; outside it stays unchanged")}</span>
                 </>}
               </> : <>
-                <span className="ms-direct-hint" role="status" aria-live="polite">{mode === "object-preparing" ? <><LoaderCircle size={16} className="ms-spin" />{t("正在提取所选物体…", "Extracting your selected object…")}</> : t("在图片上框住或圈出一个物体，松手后贴合边缘", "Draw a box or lasso around one object; release to refine its edges")}</span>
+                <span className="ms-direct-hint" role="status" aria-live="polite">{mode === "object-preparing" ? <><LoaderCircle size={16} className="ms-spin" />{t("正在提取所选物体…", "Extracting your selected object…")}</> : t("点击物体，或框住/圈出一个物体，松手后识别边缘", "Click an object, or draw a box or lasso to select it")}</span>
                 <div className="ms-segment-modes">{[["rect", Crop, t("框选", "Rectangle")], ["lasso", Scissors, t("套索", "Lasso")]].map(([shape, Icon, title]) => <button key={shape} className={`ms-button ${mode === `object-select-${shape}` ? "active" : ""}`} onClick={() => { canvas.current.clearMovePreview(); setObjectSelection(null); setMode(`object-select-${shape}`); }}><Icon size={15} />{title}</button>)}</div>
                 {mode === "object-preparing" && <button className="ms-button ms-reselect" onClick={() => { canvas.current.clearMovePreview(); setMode("object-select-rect"); }}>{t("取消识别，重新选择", "Cancel and select again")}</button>}
               </>}
@@ -378,7 +399,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
             {toolId === "upscale" && <label>{t("放大", "Scale")}<select value={params.scale} onChange={e => setParams(p => ({ ...p, scale: Number(e.target.value) }))}><option value="2">2×</option><option value="4">4×</option></select></label>}
             {toolId === "video" && <label>{t("时长", "Duration")}<select value={params.duration} onChange={e => setParams(p => ({ ...p, duration: Number(e.target.value) }))}><option value="5">5s</option><option value="10">10s</option></select></label>}
             {["erase", "expand", "video"].includes(toolId) && <input className="ms-direct-prompt" aria-label={t("工具提示词", "Tool prompt")} placeholder={toolId === "inpaint" || toolId === "video" ? t("描述希望生成的效果…", "Describe the result…") : t("可选补充说明…", "Optional instruction…")} value={prompt} onChange={e => setPrompt(e.target.value)} maxLength={4000} />}
-            {toolId === "split" && <span className="ms-direct-hint">{t("完成后前景和修复背景会成为两个可编辑图层", "The foreground and repaired background become editable layers")}</span>}
+            {toolId === "split" && <><span className="ms-direct-hint">{t("主动调用模型拆层，结果按原位置叠放；原图保留为隐藏图层。", "Decompose on demand. Layers stay aligned and the original remains hidden.")}</span><label>{t("拆分层数", "Layers")}<select value={params.numLayers} onChange={e => setParams(p => ({ ...p, numLayers: Number(e.target.value) }))}>{[2, 3, 4, 5, 6, 7, 8].map(n => <option key={n} value={n}>{n}</option>)}</select></label></>}
             {!toolStatus?.available && toolId !== "crop" && <span className="ms-unavailable">{toolStatus?.reason === "TOOL_DISABLED" ? t("管理员已停用", "Disabled by admin") : t("尚未配置服务", "Service not configured")}</span>}
           </div>
           {(!["move", "inpaint"].includes(toolId) || objectSelection) && <button className="ms-button ms-primary ms-direct-apply" disabled={busy || (toolId === "move" && !params.dx && !params.dy) || (!toolStatus?.available && toolId !== "crop") || ["inpaint", "video"].includes(toolId) && !prompt.trim()} onClick={runTool}>{busy ? <LoaderCircle size={16} className="ms-spin" /> : <Sparkles size={15} />}{toolId === "move" ? t("确认移动", "Apply move") : toolId === "inpaint" ? t("生成修改", "Apply edit") : t("生成", "Apply")}<span>{toolCost ? `${toolCost} ${t("积分", "credits")}` : t("免费", "Free")}</span></button>}

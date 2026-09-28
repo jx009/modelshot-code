@@ -20,6 +20,7 @@ export const getTool = id => TOOLS.find(tool => tool.id === id);
 const id = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
 const positive = z.number().int().min(1).max(8192);
 const edgePadding = z.number().int().min(0).max(1024);
+const boundsSchema = z.object({ left: z.number().int().min(0).max(8192), top: z.number().int().min(0).max(8192), width: positive, height: positive }).strict();
 export const paramsSchema = z.object({
   prompt: z.string().trim().max(4000).default(""),
   size: z.enum(["1024x1024", "1024x1536", "1536x1024"]).default("1024x1024"),
@@ -35,9 +36,11 @@ export const paramsSchema = z.object({
   selectionMode: z.enum(["mask", "object"]).default("mask"),
   editPadding: z.number().min(0.05).max(0.5).default(0.25),
   duration: z.union([z.literal(5), z.literal(10)]).default(5),
+  numLayers: z.number().int().min(2).max(8).default(4),
 }).strict();
-export const jobSchema = z.object({ tool: z.enum(TOOLS.map(tool => tool.id)), provider: id.optional(), documentId: id, documentVersion: z.number().int().positive(), targetId: id.optional(), assetId: id.optional(), maskId: id.optional(), referenceAssetIds: z.array(id).max(2).optional(), sectionId: id.optional(), sectionAttempt: z.number().int().min(0).max(50).optional(), params: paramsSchema.prefault({}) }).strict().superRefine((data, ctx) => {
+export const jobSchema = z.object({ tool: z.enum(TOOLS.map(tool => tool.id)), provider: id.optional(), documentId: id, documentVersion: z.number().int().positive(), targetId: id.optional(), assetId: id.optional(), maskId: id.optional(), moveBundle: z.object({ objectAssetId: id, holeAssetId: id, bounds: boundsSchema }).strict().optional(), referenceAssetIds: z.array(id).max(2).optional(), sectionId: id.optional(), sectionAttempt: z.number().int().min(0).max(50).optional(), params: paramsSchema.prefault({}) }).strict().superRefine((data, ctx) => {
   const tool = getTool(data.tool);
+  if (data.moveBundle && data.tool !== "move") ctx.addIssue({ code: "custom", message: "INVALID_MOVE_BUNDLE" });
   if (tool.source && !data.assetId) ctx.addIssue({ code: "custom", message: "SOURCE_REQUIRED", path: ["assetId"] });
   if (tool.mask && !data.maskId) ctx.addIssue({ code: "custom", message: "MASK_REQUIRED", path: ["maskId"] });
   if (data.tool === "crop" && !data.params.rect) ctx.addIssue({ code: "custom", message: "CROP_REQUIRED", path: ["params"] });
@@ -49,6 +52,7 @@ const layer = z.object({
   x: z.number().finite().min(-100000).max(100000), y: z.number().finite().min(-100000).max(100000), width: z.number().min(1).max(8192), height: z.number().min(1).max(8192),
   rotation: z.number().finite().min(-360).max(360).default(0), visible: z.boolean().default(true), opacity: z.number().min(0).max(1).default(1),
   pixelWidth: positive.optional(), pixelHeight: positive.optional(), text: z.string().max(4000).optional(), fontSize: z.number().min(8).max(512).optional(), fill: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(), sourceJobId: id.optional(),
+  groupId: id.optional(), layerRole: z.enum(["background", "object", "decomposed"]).optional(), repairJobId: id.optional(),
 }).strict();
 export const contentSchema = z.object({
   schemaVersion: z.literal(1), layers: z.array(layer).max(150),

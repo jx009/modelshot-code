@@ -1,13 +1,36 @@
 import http from "node:http";
 import { spawn } from "node:child_process";
 import sharp from "sharp";
+import { randomUUID } from "node:crypto";
 
 // Only the isolated test database points to this loopback supplier.
 const png = await sharp({ create: { width: 320, height: 480, channels: 3, background: "#42a79b" } }).png().toBuffer();
+const layerRequests = new Map();
 const supplier = http.createServer(async (req, res) => {
   const chunks = [];
   for await (const chunk of req) chunks.push(chunk);
   const payload = Buffer.concat(chunks), body = payload.toString();
+  const dataURL = bytes => `data:image/png;base64,${bytes.toString("base64")}`;
+  if (req.url.startsWith("/cloud/queue/fal-ai/qwen-image-layered")) {
+    res.setHeader("Content-Type", "application/json");
+    if (req.method === "POST") {
+      const input = JSON.parse(body), id = randomUUID();
+      layerRequests.set(id, input);
+      res.end(JSON.stringify({ request_id: id })); return;
+    }
+    const id = req.url.split("/requests/")[1]?.split("/")[0];
+    if (!layerRequests.has(id)) { res.writeHead(404); res.end("{}"); return; }
+    if (req.url.endsWith("/status")) { res.end(JSON.stringify({ status: "COMPLETED" })); return; }
+    const source = Buffer.from(layerRequests.get(id).image_url.split(",")[1], "base64");
+    const { width, height } = await sharp(source).metadata();
+    const foreground = await sharp({ create: { width, height, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+      .composite([{ input: await sharp({ create: { width: 60, height: 60, channels: 4, background: "red" } }).png().toBuffer(), left: 60, top: 60 }]).png().toBuffer();
+    res.end(JSON.stringify({ images: [{ url: dataURL(source) }, { url: dataURL(foreground) }] })); return;
+  }
+  if (req.url === "/cloud/api/v1/services/aigc/multimodal-generation/generation") {
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify({ output: { choices: [{ message: { content: [{ image: dataURL(png) }] } }] } })); return;
+  }
   if (req.url === "/health") { res.end("ok"); return; }
   if (req.method === "GET" && req.url === "/capabilities") {
     res.writeHead(200, { "Content-Type": "application/json" });
@@ -37,7 +60,7 @@ const supplier = http.createServer(async (req, res) => {
     res.end("started"); return;
   }
   if (body.includes("FIXTURE_REJECT")) { res.writeHead(422, { "Content-Type": "application/json" }); res.end(JSON.stringify({ error: { message: "Fixture rejection" } })); return; }
-  await new Promise(resolve => setTimeout(resolve, body.includes("FIXTURE_DELAY") ? 5000 : 100));
+  await new Promise(resolve => setTimeout(resolve, body.includes("FIXTURE_DELAY") ? 5000 : body.includes("Remove ONLY this object") ? 3500 : 100));
   res.writeHead(200, { "Content-Type": "application/json" });
   res.end(JSON.stringify({ data: [{ b64_json: png.toString("base64") }] }));
 });

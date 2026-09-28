@@ -24,7 +24,7 @@ Read `jiaotu-development-plan.md` for the implementation and acceptance plan.
 
 “工具配置”按工具绑定执行方式：图像工具可沿用用户生图模型或指定专用模型；裁剪是纯代码处理；反推提示词自动使用后台大语言模型。物体移动/局部修改分别绑定物体分割服务和图像修复模型；拆层使用后台绑定的专用模型。用户不能覆盖内部模型。正在执行的任务固定其提交时的供应商、协议和模型。已停用、不存在或能力不匹配的显式选择会报错，不会偷偷回退到其他厂商。模型名可以后续修改；已提交任务仍使用原模型。任务执行前若协议或 Base URL 变化，则中止并释放积分，避免把凭据发送到变更前的地址。
 
-官方 HTTPS 域名直接可配置，代理域名仍需部署级 `PROVIDER_PROXY_HOSTS` 白名单。百炼工作空间地址需与 API Key 地域匹配；后台 Base URL 可以填写工作空间 API Host。阿里、火山、fal 各自使用对应通道的凭据，旧 OpenAI 环境变量不会覆盖它们。
+Base URL 支持官方服务和管理员配置的任意 HTTPS OpenAI 兼容网关，例如企业代理或自建转发地址。百炼工作空间地址需与 API Key 地域匹配；阿里、火山、fal 各自使用对应通道的凭据，旧 OpenAI 环境变量不会覆盖它们。
 
 环境变量作为旧 OpenAI 通道未配置凭据时的回退；Web 和 Worker 应保持一致：
 
@@ -34,7 +34,6 @@ Read `jiaotu-development-plan.md` for the implementation and acceptance plan.
 | STUDIO_CHAT_MODEL | Vision planner fallback when no planner channel is configured |
 | ARK_API_KEY / ARK_VIDEO_MODEL / ARK_BASE_URL | Existing Ark video task configuration; image editing is configured separately in Admin |
 | STUDIO_TOOLS_URL / STUDIO_TOOLS_KEY | Optional private service for segmentation, remove-background, OCR and upscale |
-| PROVIDER_PROXY_HOSTS | Comma-separated exact host allowlist for nonofficial API proxies |
 
 后台“测试功能”会发起真实模型请求并产生供应商费用，自动化测试不使用真实付费 API。分割预览目前不扣用户积分，平台承担上游费用；接口按用户限流并缓存相同原图、选区和模型的成功结果。生产上线需要结合实际用量配置供应商额度。
 

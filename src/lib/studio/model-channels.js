@@ -43,15 +43,13 @@ export function validChannel(kind, config) {
   return capability === "image" && ["both", "generate", "edit"].includes(config.imageMode || "both") && (!config.scope || ["public", "tool"].includes(config.scope)) && (config.scope !== "public" || supportsImageTask(config, "generate"));
 }
 
-// Official origins work without deployment-specific proxy configuration.
-// Custom proxies still require an exact administrator-controlled allowlist.
+// Allow official APIs and administrator-configured HTTPS-compatible gateways.
+// The endpoint is already an admin-only secret-bearing setting, so do not
+// maintain a hostname allowlist that blocks legitimate compatible services.
 export function allowedProviderBaseURL(value) {
   if (!value) return true;
   try {
     const url = new URL(value);
-    const official = ["api.openai.com", "dashscope.aliyuncs.com", "dashscope-intl.aliyuncs.com", "dashscope-us.aliyuncs.com", "ark.cn-beijing.volces.com", "fal.run"];
-    const workspace = /^[a-zA-Z0-9-]+\.(?:cn-beijing|ap-southeast-1)\.maas\.aliyuncs\.com$/.test(url.hostname);
-    const extra = (process.env.PROVIDER_PROXY_HOSTS || "").split(",").map(host => host.trim());
-    return url.protocol === "https:" && !url.username && !url.password && !url.search && !url.hash && (!url.port || url.port === "443") && (official.includes(url.hostname) || workspace || extra.includes(url.hostname));
+    return url.protocol === "https:" && Boolean(url.hostname) && !url.username && !url.password && !url.search && !url.hash;
   } catch { return false; }
 }

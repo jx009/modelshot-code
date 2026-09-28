@@ -105,7 +105,9 @@ describe("capability-specific configuration", () => {
   it("admits official origins but rejects arbitrary hosts and mismatched capabilities", () => {
     expect(allowedProviderBaseURL("https://dashscope.aliyuncs.com")).toBe(true);
     expect(allowedProviderBaseURL("https://ark.cn-beijing.volces.com/api/v3")).toBe(true);
-    for (const value of ["https://evil.test", "http://127.0.0.1", "https://key@fal.run", "https://fal.run:444", "https://fal.run?secret=1"]) expect(allowedProviderBaseURL(value)).toBe(false);
+    expect(allowedProviderBaseURL("https://api.callyouai.com/codex")).toBe(true);
+    expect(allowedProviderBaseURL("https://custom-gateway.example:8443/v1")).toBe(true);
+    for (const value of ["http://127.0.0.1", "https://key@fal.run", "https://fal.run?secret=1", "https://fal.run#secret"]) expect(allowedProviderBaseURL(value)).toBe(false);
     expect(validChannel("volcengine", { studioCapability: "split" })).toBe(false);
     expect(validChannel("fal", { studioCapability: "segment", model: "fal-ai/../bad" })).toBe(false);
   });

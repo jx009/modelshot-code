@@ -33,6 +33,10 @@ async def lifespan(_app):
         engine = (remove, new_session(os.environ.get("REMBG_MODEL", "u2net")))
         ENGINES["remove-bg"] = engine
         ENGINES["segment"] = engine
+    # SlimSAM is retained as an opt-in experiment, not the production local
+    # fallback. Its box masks are materially less reliable than rembg for the
+    # common "box this object" workflow and its CPU session adds a long cold
+    # start. Cloud SAM 3 is selected by the web layer whenever configured.
     if os.environ.get("SEGMENT_ANYTHING_ENABLED") == "1":
         from segmentation import Segmenter
         segmenter = Segmenter(os.environ.get("SEGMENT_MODEL_DIR", "/opt/modelshot-models/slimsam"), threads=int(os.environ.get("OMP_NUM_THREADS", "2")))

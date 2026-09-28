@@ -99,7 +99,7 @@ MODELSHOT_TOOLS_IMAGE=jx009/modelshot:tools-latest
 
 `tools` 只在 Compose 私有网络监听 8090，不应映射到公网。第一次自行构建会下载并写入 U2Net 与 SlimSAM 权重，因此耗时和镜像体积会明显大于普通 Web 镜像；运行时不下载模型，用户圈选后才按需执行一次分割。
 
-CPU 模型冷启动有 180 秒健康检查宽限期，期间继续探测，成功后即可转为 healthy。若启动时短暂 unhealthy，随后日志出现 `Application startup complete`、`/capabilities` 返回 200 且 `docker inspect` 显示 healthy，说明模型已经加载完成。不要反复对整套服务执行 `--force-recreate`，这会重置模型加载。若先前启动被依赖检查中断，在数据库、Redis、存储和迁移已成功的前提下，用以下命令恢复应用容器：
+本地工具服务默认使用 rembg 作为 CPU 回退，SlimSAM 仅在显式设置 `SEGMENT_ANYTHING_ENABLED=1` 时加载。生产环境优先配置云端 SAM 3；云端分割未配置时，rembg 负责框选区域内的前景提取。不要反复对整套服务执行 `--force-recreate`，这会重置模型加载。若先前启动被依赖检查中断，在数据库、Redis、存储和迁移已成功的前提下，用以下命令恢复应用容器：
 
 ```bash
 docker compose --env-file .env.production -f compose.prod.yaml up -d --no-build --no-deps web worker

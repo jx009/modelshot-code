@@ -31,13 +31,14 @@ describe("studio real HTTP protocol against isolated fixture", () => {
     vi.stubEnv("OPENAI_API_KEY", "fixture-key");
     const db = { modelProvider: { findMany: vi.fn().mockResolvedValue([
       { name: "image-pro", kind: "openai", displayName: "ModelShot Pro", creditCost: 7, isDefault: true, isPlanner: false, priority: 1, config: JSON.stringify({ model: "gpt-image-2" }) },
-      { name: "planner", kind: "openai", displayName: "Visual Director", creditCost: 3, isDefault: false, isPlanner: true, priority: 2, config: JSON.stringify({ model: "unused-image", chatModel: "gpt-4.1-mini" }) },
+      { name: "planner", kind: "openai", displayName: "Visual Director", creditCost: 3, isDefault: false, isPlanner: true, priority: 2, config: JSON.stringify({ model: "gpt-4.1-mini", scope: "language", studioCapability: "language" }) },
     ]), }, studioToolConfig: { findMany: vi.fn().mockResolvedValue([{ toolId: "upscale", creditCost: 9, isEnabled: true }]) } };
     const config = await studioConfig(db);
-    expect(config).toMatchObject({ imageProvider: "image-pro", imageModel: "gpt-image-2", imageDisplayName: "ModelShot Pro", chatModel: "gpt-4.1-mini", plannerDisplayName: "Visual Director" });
+    expect(config).toMatchObject({ imageProvider: "image-pro", imageModel: "gpt-image-2", imageDisplayName: "ModelShot Pro", chatModel: "gpt-4.1-mini" });
     const caps = await capabilities(db, config);
-    expect(caps.imageModels).toEqual([{ id: "image-pro", label: "ModelShot Pro", creditCost: 7, imageMode: "both" }, { id: "planner", label: "Visual Director", creditCost: 3, imageMode: "both" }]);
-    expect(caps.chatModel).toBe("Visual Director");
+    expect(caps.imageModels).toEqual([{ id: "image-pro", label: "ModelShot Pro", creditCost: 7 }]);
+    expect(caps.planningCost).toBe(3);
+    expect(caps.tools.find(tool => tool.id === "describe").cost).toBe(3);
     expect(caps.tools.find(tool => tool.id === "generate").cost).toBe(7);
     expect(caps.tools.find(tool => tool.id === "upscale").cost).toBe(9);
   });

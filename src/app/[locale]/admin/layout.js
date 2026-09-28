@@ -23,14 +23,14 @@ export default async function AdminLayout({ children }) {
   if ((ROLE_LEVEL[user?.role] ?? 0) < ROLE_LEVEL.admin) redirect("/");
 
   return (
-    <div className="min-h-dvh bg-bg-page text-primary-text flex">
+    <div data-admin-shell className="h-dvh min-h-0 w-full overflow-hidden bg-bg-page text-primary-text flex">
       {/* 侧边栏 */}
-      <aside className="w-56 border-r border-divider bg-bg-card/50 flex-shrink-0 hidden md:flex flex-col h-screen sticky top-0">
+      <aside className="w-56 min-h-0 border-r border-divider bg-bg-card/50 flex-shrink-0 hidden md:flex flex-col">
         <div className="p-5 border-b border-divider flex-shrink-0">
           <div className="text-sm font-black uppercase tracking-wider text-primary">ModelShot</div>
           <div className="text-[10px] text-secondary-text font-bold mt-0.5">Admin Console</div>
         </div>
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
           <AdminNav />
         </div>
         <div className="p-4 border-t border-divider flex-shrink-0">
@@ -40,8 +40,8 @@ export default async function AdminLayout({ children }) {
         </div>
       </aside>
       {/* 主内容 */}
-      <main className="flex-1 overflow-y-auto">
-        <div className="p-6 max-w-5xl mx-auto">
+      <main data-admin-content className="flex-1 min-w-0 min-h-0 overflow-y-auto overscroll-contain">
+        <div className="p-4 md:p-6 max-w-6xl mx-auto">
           <AdminNav mobile />
           {children}
         </div>

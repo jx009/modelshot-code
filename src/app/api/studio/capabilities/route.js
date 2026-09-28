@@ -6,7 +6,6 @@ export async function GET(request) {
     await requireUser();
     const query = new URL(request.url).searchParams;
     const config = await studioConfig(undefined, query.get("imageProvider") || undefined);
-    if (query.get("splitProvider")) config.splitChannel = (await studioConfig(undefined, query.get("splitProvider"), "split")).splitChannel;
     return Response.json(await capabilities(undefined, config));
   }
   catch (error) { return errorResponse(error); }

@@ -8,14 +8,13 @@ import { useDrawingState } from "./canvas/hooks/useDrawingState";
 import { useSelectionState } from "./canvas/hooks/useSelectionState";
 import { useImageColors } from "./canvas/hooks/useImageColors";
 import { loadImage, alphaMaskBlob, processLargeImage } from "@/lib/studio/image-processor";
-import { throttleRaf } from "@/lib/utils/throttle";
 import { getCursorForMode } from "@/lib/studio/cursor-generator";
 
-async function createCutout(assetId, maskBlob, width, height, signal, provider, point) {
+async function createCutout(assetId, maskBlob, width, height, signal, tool, point) {
   const form = new FormData();
   form.append("assetId", assetId);
   form.append("selection", maskBlob, "selection.png");
-  if (provider) form.append("provider", provider);
+  if (tool) form.append("tool", tool);
   if (point) form.append("point", JSON.stringify(point));
   const response = await fetch("/api/studio/segment", { method: "POST", body: form, signal, headers: { Accept: "application/json" } });
   if (!response.ok) {
@@ -87,21 +86,22 @@ function ExpansionBox({ value, width, height, accent, onChange }) {
       enabledAnchors={["top-left", "top-center", "top-right", "middle-left", "middle-right", "bottom-left", "bottom-center", "bottom-right"]} /></>;
 }
 
-const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSelect, onChange, mode, segmentProvider, editPadding = 0.25, brushSize = 35, moveOffset = { dx: 0, dy: 0 }, onMoveOffset, onMovePreparing, onMoveReady, onMoveFailed, onCrop, expandPadding = 256, onExpandPadding, onZoom, onUpload, onError, label }, ref) {
+const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSelect, onChange, mode, selectionTool, editPadding = 0.25, brushSize = 35, moveOffset = { dx: 0, dy: 0 }, onMoveOffset, onMovePreparing, onMoveReady, onMoveFailed, onCrop, expandPadding = 256, onExpandPadding, onZoom, onUpload, onError, label }, ref) {
   const container = useRef(null), stage = useRef(null), artwork = useRef(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
-  const [color, setColor] = useState("#D9F154");
+  const [themeColor, setColor] = useState("#D9F154");
 
   // Use custom hooks for state management
-  const { camera, updateCamera, zoom, fit, fitExpansion } = useCanvasState(dimensions, layers, selectedId, expandPadding);
-  const { strokes, startStroke, addPoint, endStroke, clearStrokes } = useDrawingState();
+  const { camera, updateCamera, zoom, fit, fitExpansion } = useCanvasState(dimensions, layers);
+  const { strokes, startStroke, addPoint, endStroke, clearAll: clearStrokes } = useDrawingState();
   const {
     crop, movePreview, moveSelection, moveMask,
     startCrop, updateCrop,
-    startMoveRect, startMoveLasso, addLassoPoint,
-    setMovePreview, clearMove, clearAll: clearSelection
+    startMoveRect, updateMoveRect, startMoveLasso, addLassoPoint,
+    setMovePreviewData: setMovePreview, setMoveMaskData, clearMove, clearAll: clearSelection
   } = useSelectionState();
   const { colors, primaryColor, applyColors } = useImageColors(layers, selectedId);
+  const color = primaryColor || themeColor;
 
   const drawing = useRef(false), cropStart = useRef(null);
   const expansionTarget = useRef(null);
@@ -119,7 +119,6 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
   useEffect(() => {
     if (primaryColor) {
       applyColors();
-      setColor(primaryColor);
     }
   }, [primaryColor, applyColors]);
   useEffect(() => { onZoom(camera.scale); }, [camera.scale, onZoom]);
@@ -166,10 +165,10 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
     const mask = await maskBlob(shape.rectangle, shape.polygon);
     if (current !== operation.current) return;
     let cutout;
-    try { cutout = await createCutout(selection.assetId, mask, selection.pixelWidth, selection.pixelHeight, controller.signal, segmentProvider, shape.point); }
+    try { cutout = await createCutout(selection.assetId, mask, selection.pixelWidth, selection.pixelHeight, controller.signal, selectionTool, shape.point); }
     catch (error) { if (current !== operation.current) return; throw error; }
     if (current !== operation.current) return;
-    const refined = { blob: cutout.mask };
+    setMoveMaskData({ blob: cutout.mask });
     const { bounds } = cutout;
     const object = document.createElement("canvas"); object.width = bounds.width; object.height = bounds.height;
     object.getContext("2d").drawImage(cutout.image, bounds.left, bounds.top, bounds.width, bounds.height, 0, 0, bounds.width, bounds.height);
@@ -182,8 +181,8 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
   }
 
   useImperativeHandle(ref, () => ({ zoom, fit, fitExpansion,
-    clearMask: () => { clearStrokes(); clearSelection(); },
-    clearMovePreview: clearMove,
+    clearMask: () => { operation.current++; selectionRequest.current?.abort(); clearStrokes(); clearSelection(); },
+    clearMovePreview: () => { operation.current++; selectionRequest.current?.abort(); clearMove(); },
     maskBlob,
     async exportPNG() {
       const visible = layers.filter(l => l.visible && l.type !== "video");
@@ -209,21 +208,21 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
     return { x: Math.max(0, Math.min(selection.pixelWidth, x)), y: Math.max(0, Math.min(selection.pixelHeight, y)) };
   }
 
-  const handleMouseDown = throttleRaf((e) => {
+  function handleMouseDown(e) {
     if (e.evt?.button && e.evt.button !== 0) return;
     if (mode.startsWith("object-select-")) {
       const imageNode = artwork.current?.findOne(`#${selectedId}`);
       if (e.target !== imageNode) return;
     }
     if (!["mask", "crop", "object-select-rect", "object-select-lasso"].includes(mode)) {
-      if (e.target === e.target.getStage()) onSelect(null);
+      if (mode === "select" && e.target === e.target.getStage()) onSelect(null);
       return;
     }
     const p = point(); if (!p) return;
     drawing.current = true;
     if (mode === "crop") {
       cropStart.current = p;
-      startCrop(null, onCrop);
+      startCrop(p); onCrop(null);
     }
     else if (mode === "object-select-rect") {
       cropStart.current = p;
@@ -233,11 +232,11 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
       startMoveLasso(p);
     }
     else {
-      startStroke(maskKey, brushSize, p);
+      startStroke(p, maskKey, brushSize);
     }
-  });
+  }
 
-  const handleMouseMove = throttleRaf(() => {
+  function handleMouseMove() {
     if (!drawing.current) return;
     const p = point(); if (!p) return;
     if (mode === "crop" || mode === "object-select-rect") {
@@ -250,22 +249,24 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
         height: Math.max(1, Math.floor(Math.abs(p.y - start.y)))
       };
       if (mode === "crop") {
-        updateCrop(rect, onCrop);
+        updateCrop(rect); onCrop(rect);
       }
       else {
-        startMoveRect({ x: rect.left, y: rect.top }, rect);
+        updateMoveRect(rect);
       }
     } else if (mode === "object-select-lasso") {
       addLassoPoint(p);
     } else {
       addPoint(p);
     }
-  });
+  }
 
   async function finishDrawing() {
+    if (!drawing.current) return;
     drawing.current = false;
+    endStroke();
     if (!["object-select-rect", "object-select-lasso"].includes(mode) || !moveSelection) return;
-    const shape = moveSelection;
+    const shape = { ...moveSelection };
     cropStart.current = null;
     if (shape.rectangle && shape.rectangle.width < 3 && shape.rectangle.height < 3) {
       shape.point = {
@@ -322,7 +323,7 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
         </>}
       </Group></Layer>}
       {mode === "crop" && selection && <Layer><Group x={selection.x} y={selection.y} rotation={selection.rotation} scaleX={selection.width / selection.pixelWidth} scaleY={selection.height / selection.pixelHeight} clipWidth={selection.pixelWidth} clipHeight={selection.pixelHeight}>
-        <CropBox value={crop || { left: 0, top: 0, width: selection.pixelWidth, height: selection.pixelHeight }} width={selection.pixelWidth} height={selection.pixelHeight} accent={color} onChange={rect => { setCrop(rect); onCrop(rect); }} />
+        <CropBox value={crop || { left: 0, top: 0, width: selection.pixelWidth, height: selection.pixelHeight }} width={selection.pixelWidth} height={selection.pixelHeight} accent={color} onChange={rect => { updateCrop(rect); onCrop(rect); }} />
       </Group></Layer>}
       {mode === "expand" && selection && <Layer><Group x={selection.x} y={selection.y} rotation={selection.rotation} scaleX={selection.width / selection.pixelWidth} scaleY={selection.height / selection.pixelHeight}>
         <ExpansionBox value={expandPadding} width={selection.pixelWidth} height={selection.pixelHeight} accent={color} onChange={onExpandPadding} />

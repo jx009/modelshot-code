@@ -87,15 +87,19 @@ describe("capability-specific configuration", () => {
     ];
     const db = { modelProvider: { findMany: async () => rows }, studioToolConfig: { findMany: async () => [] } };
     const ali = await studioConfig(db);
-    expect(ali).toMatchObject({ imageProvider: "ali-edit", apiKey: "ali-secret", imageKind: "dashscope", baseURL: undefined });
+    expect(ali).toMatchObject({ imageProvider: "ark", apiKey: "ark-secret", imageKind: "volcengine", baseURL: undefined });
+    await expect(studioConfig(db, "ali-edit")).rejects.toThrow("PROVIDER_CAPABILITY_UNSUPPORTED");
     expect((await studioConfig(db, "ark")).apiKey).toBe("ark-secret");
     expect((await studioConfig(db, "layers", "split")).splitChannel.apiKey).toBe("fal-secret");
     await expect(studioConfig(db, "missing")).rejects.toThrow("PROVIDER_CAPABILITY_UNSUPPORTED");
     await expect(studioConfig(db, "layers")).rejects.toThrow("PROVIDER_CAPABILITY_UNSUPPORTED");
     const caps = await capabilities(db, ali);
-    expect(caps.tools.find(t => t.id === "generate").available).toBe(false);
+    expect(caps.tools.find(t => t.id === "generate").available).toBe(true);
+    expect(caps.imageModels.map(m => m.id)).toEqual(["ark"]);
+    expect(caps.segmentModels).toBeUndefined();
+    expect(caps.splitModels).toBeUndefined();
     expect(caps.tools.find(t => t.id === "edit").available).toBe(true);
-    expect(caps.tools.find(t => t.id === "split")).toMatchObject({ available: true, cost: 25 });
+    expect(caps.tools.find(t => t.id === "split")).toMatchObject({ available: true, cost: 20 });
     expect(JSON.stringify(caps)).not.toMatch(/secret|apiKey|apiKeyEnc|legacy/);
   });
   it("admits official origins but rejects arbitrary hosts and mismatched capabilities", () => {

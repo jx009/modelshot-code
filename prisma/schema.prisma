@@ -553,6 +553,7 @@ model StudioToolConfig {
   creditCost  Int
   isEnabled   Boolean  @default(true)
   channelName String?  // 工具专用通道（如 split/segment 需要指定模型通道）
+  routing     Json?    // execution mode and administrator-only stage channels
   updatedAt   DateTime @updatedAt
 }
 

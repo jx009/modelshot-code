@@ -31,6 +31,12 @@ const supplier = http.createServer(async (req, res) => {
     res.setHeader("Content-Type", "application/json");
     res.end(JSON.stringify({ output: { choices: [{ message: { content: [{ image: dataURL(png) }] } }] } })); return;
   }
+  if (req.url === "/cloud/chat/completions") {
+    const input = JSON.parse(body);
+    if (input.model !== "fixture-language") { res.writeHead(422); res.end("{}"); return; }
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ summary: "Fixture plan", steps: [{ tool: "generate", params: { prompt: "A product on a white background" }, explanation: "Create requested image" }] }) } }] })); return;
+  }
   if (req.url === "/health") { res.end("ok"); return; }
   if (req.method === "GET" && req.url === "/capabilities") {
     res.writeHead(200, { "Content-Type": "application/json" });

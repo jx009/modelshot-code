@@ -1,6 +1,6 @@
 // Shared, credential-free channel metadata for the administrator and workbench.
 export const STUDIO_KINDS = ["openai", "dashscope", "volcengine", "fal"];
-export const CHANNEL_CAPABILITIES = ["image", "segment", "split"];
+export const CHANNEL_CAPABILITIES = ["image", "segment", "split", "language"];
 export const CHANNEL_PRESETS = [
   { label: "阿里百炼 · Qwen 图像编辑", kind: "dashscope", studioCapability: "image", imageMode: "edit", model: "qwen-image-edit-max", baseURL: "https://dashscope.aliyuncs.com" },
   { label: "阿里百炼 · Qwen 生成与编辑", kind: "dashscope", studioCapability: "image", imageMode: "both", model: "qwen-image-2.0-pro", baseURL: "https://dashscope.aliyuncs.com" },
@@ -19,12 +19,28 @@ export function supportsImageTask(config, task) {
   return mode === "both" || mode === task;
 }
 
+export function channelScope(row, config = JSON.parse(row.config || "{}")) {
+  if (channelCapability(row, config) === "language") return "language";
+  return config.scope || (channelCapability(row, config) === "image" && supportsImageTask(config, "generate") ? "public" : "tool");
+}
+
+export function toolRouting(tool, row) {
+  return {
+    mode: tool.dependency === "image" ? "inherit" : tool.dependency === "local" ? "code" : tool.dependency === "vision" ? "language" : tool.dependency === "split" ? "dedicated" : "service",
+    channelName: tool.dependency === "split" ? row?.channelName || null : null,
+    segmentMode: row?.channelName && tool.preview === "segment" ? "dedicated" : "default",
+    segmentChannelName: tool.preview === "segment" ? row?.channelName || null : null,
+    ...row?.routing,
+  };
+}
+
 export function validChannel(kind, config) {
   if (!STUDIO_KINDS.includes(kind)) return !config.studioCapability;
   const capability = channelCapability({ kind }, config);
   if (!CHANNEL_CAPABILITIES.includes(capability)) return false;
   if (kind === "fal") return ["segment", "split"].includes(capability) && /^[a-zA-Z0-9_-]+\/[a-zA-Z0-9_/-]+$/.test(config.model || "") && !config.model.includes("..");
-  return capability === "image" && ["both", "generate", "edit"].includes(config.imageMode || "both");
+  if (capability === "language") return config.scope === "language";
+  return capability === "image" && ["both", "generate", "edit"].includes(config.imageMode || "both") && (!config.scope || ["public", "tool"].includes(config.scope)) && (config.scope !== "public" || supportsImageTask(config, "generate"));
 }
 
 // Official origins work without deployment-specific proxy configuration.

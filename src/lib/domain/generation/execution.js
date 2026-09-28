@@ -64,7 +64,7 @@ export async function finishOutput(id, fence, { asset, resultData, errorCode, ca
       if (asset && output && TERMINAL.includes(output.status) && output.originalAssetId !== asset.id) await tx.asset.updateMany({ where: { id: asset.id }, data: { status: "quarantined" } });
       return false;
     }
-    const studio = output.snapshot?.kind === "studio";
+    const studio = ["studio", "language"].includes(output.snapshot?.kind);
     const success = Boolean(asset || studio && resultData);
     const status = success ? "succeeded" : cancelled ? "cancelled" : "failed";
     if (asset) {
@@ -125,6 +125,10 @@ export async function cancelOutput(userId, id, db = prisma) {
 
 export async function executeOutput(id, { db = prisma, store = objectStorage(), adapterFactory = providerAdapter, timeoutMs = 150_000 } = {}) {
   const kind = await db.tryOn.findUnique({ where: { id }, select: { snapshot: true } });
+  if (kind?.snapshot?.kind === "language") {
+    const { recoverLanguageCall } = await import("../studio/language.js");
+    return recoverLanguageCall(id, db);
+  }
   if (kind?.snapshot?.kind === "studio") {
     const { executeStudio } = await import("../studio/execution.js");
     return executeStudio(id, { db, store, timeoutMs });

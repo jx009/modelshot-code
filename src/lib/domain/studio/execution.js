@@ -9,6 +9,7 @@ import { claimOutput, finishOutput, deferOutput, safeProviderError } from "../ge
 import { studioConfig, generateImage, vision, toolService, videoRequest } from "./providers.js";
 import { alphaMask, compositeSelection, cropImage, expandInput, moveSelection } from "./pixels.js";
 import { runObjectEdit } from "./object-edit.js";
+import { getTool } from "../../studio/tools.js";
 import { splitCloudImage } from "./cloud.js";
 
 export async function runImageTool(config, snapshot, image, mask, signal, adapters = {}, references = [], queue = {}) {
@@ -52,9 +53,12 @@ export async function executeStudio(id, { db = prisma, store = objectStorage(), 
   try {
     if (output.cancelRequestedAt) { await finishOutput(id, output.fence, { cancelled: true }, db); return; }
     if (output.resultData) { await finishOutput(id, output.fence, { resultData: output.resultData }, db); return; }
-    const config = { ...(supplied || await studioConfig(db, snapshot.provider, snapshot.tool === "split" ? "split" : "image", snapshot.tool)), imageModel: snapshot.imageModel, chatModel: snapshot.chatModel, videoModel: snapshot.videoModel };
-    const channel = snapshot.tool === "split" ? config.splitChannel : { kind: config.imageKind || "openai", baseURL: config.baseURL };
-    if (snapshot.providerKind && (snapshot.providerKind !== channel?.kind || snapshot.providerBaseURL !== (channel?.baseURL || null))) throw new AppError("PROVIDER_CONFIGURATION_CHANGED", 422);
+    const dependency = getTool(snapshot.tool)?.dependency;
+    const modelTool = ["image", "vision", "split"].includes(dependency);
+    const selectedConfig = supplied || (dependency === "local" ? {} : await studioConfig(db, modelTool ? snapshot.provider : undefined, snapshot.tool === "split" ? "split" : snapshot.tool === "describe" ? "language" : "image", null, { pinned: modelTool, skipPreview: true }));
+    const config = { ...selectedConfig, imageModel: snapshot.imageModel, chatModel: snapshot.chatModel, videoModel: snapshot.videoModel };
+    const channel = snapshot.tool === "split" ? config.splitChannel : snapshot.tool === "describe" ? { kind: config.plannerKind, baseURL: config.visionBaseURL } : { kind: config.imageKind || "openai", baseURL: config.baseURL };
+    if (modelTool && snapshot.providerKind && (snapshot.providerKind !== channel?.kind || snapshot.providerBaseURL !== (channel?.baseURL || null))) throw new AppError("PROVIDER_CONFIGURATION_CHANGED", 422);
     if (snapshot.tool === "split" && config.splitChannel) config.splitChannel = { ...config.splitChannel, model: snapshot.imageModel };
     const recoverable = ["video", "split"].includes(snapshot.tool) && attempt.requestId;
     if (reconcile && output.reconcileUntil && output.reconcileUntil <= new Date()) { await finishOutput(id, output.fence, { errorCode: "PROVIDER_RESULT_UNKNOWN" }, db); return; }

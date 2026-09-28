@@ -1,3 +1,4 @@
+import { channelScope } from "../../studio/model-channels.js";
 import { prisma } from "../../prisma.js";
 import { AppError } from "../../http.js";
 import { decryptSecret } from "../../crypto.js";
@@ -12,7 +13,7 @@ const ENV_KEYS = { openai: "OPENAI_API_KEY", gemini: "GOOGLE_GEMINI_API_KEY", fa
 
 export async function availableProviders(_userId, db = prisma) {
   const rows = await db.modelProvider.findMany({ where: { isActive: true }, orderBy: [{ isDefault: "desc" }, { priority: "asc" }] });
-  return rows.filter(row => CAPABILITIES[row.kind || row.name]).map(row => {
+  return rows.filter(row => CAPABILITIES[row.kind || row.name] && !["language", "tool"].includes(JSON.parse(row.config || "{}").scope) && (row.kind !== "openai" || channelScope(row) === "public")).map(row => {
     const config = JSON.parse(row.config || "{}");
     const kind = row.kind || row.name;
     return { id: row.name, label: row.displayName, providerType: kind, creditCost: row.creditCost ?? 18, ...CAPABILITIES[kind], model: config.model || CAPABILITIES[kind].model,

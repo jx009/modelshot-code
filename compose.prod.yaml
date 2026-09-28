@@ -161,10 +161,12 @@ services:
       OPENBLAS_NUM_THREADS: "1"
     healthcheck:
       test: ["CMD", "python", "-c", "import json,os,urllib.request; r=urllib.request.Request('http://127.0.0.1:8090/capabilities',headers={'Authorization':'Bearer '+os.environ['STUDIO_TOOLS_KEY']}); d=json.load(urllib.request.urlopen(r,timeout=5)); raise SystemExit(0 if 'segment' in d.get('tools',[]) else 1)"]
-      interval: 3s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
+      # CPU model initialization may exceed 40s during a full-stack restart.
+      # Keep probing readiness, but allow cold loading before counting failures.
+      interval: 10s
+      timeout: 10s
+      retries: 6
+      start_period: 180s
     networks:
       - app
     logging:
@@ -222,7 +224,9 @@ services:
       storage-init:
         condition: service_completed_successfully
       tools:
-        condition: service_healthy
+        # Cloud generation and other jobs do not require local model readiness.
+        # Local tools still advertise their capabilities only after loading.
+        condition: service_started
     stop_grace_period: 180s
     networks:
       - app

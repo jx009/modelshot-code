@@ -25,9 +25,10 @@ export async function POST(request) {
     const selectionBytes = Buffer.from(await selection.arrayBuffer());
     const [sourceMeta, selectionMeta] = await Promise.all([sharp(source).metadata(), sharp(selectionBytes).metadata()]);
     if (!sourceMeta.width || !sourceMeta.height || selectionMeta.width !== sourceMeta.width || selectionMeta.height !== sourceMeta.height) throw new AppError("MASK_SIZE_MISMATCH");
-    const provider = form.get("provider");
-    if (provider && (typeof provider !== "string" || !/^[a-zA-Z0-9_-]{1,128}$/.test(provider))) throw new AppError("INVALID_INPUT");
-    const config = await studioConfig(undefined, provider || undefined, "segment");
+    const tool = form.get("tool") || "move";
+    if (!["move", "inpaint"].includes(tool)) throw new AppError("INVALID_INPUT");
+    const config = await studioConfig(undefined, undefined, "segment", tool);
+    if (!config.toolEnabled) throw new AppError("TOOL_DISABLED", 503);
     if (!config.segmentChannel?.apiKey && (!config.toolsURL || !config.toolsKey)) throw new AppError("SEGMENTATION_NOT_CONFIGURED", 503);
     let point;
     try { if (form.get("point")) point = JSON.parse(form.get("point")); } catch { throw new AppError("INVALID_SELECTION"); }

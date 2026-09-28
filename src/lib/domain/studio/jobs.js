@@ -10,7 +10,7 @@ import { ACTIVE, LIMITS, digestJson } from "../generation/contracts.js";
 export async function submitStudioJob(userId, input, key, db = prisma, deps = {}) {
   const data = jobSchema.parse(input);
   if (!/^[a-zA-Z0-9_-]{16,128}$/.test(key || "")) throw new AppError("IDEMPOTENCY_KEY_REQUIRED");
-  const config = deps.config || await studioConfig(db, data.provider, data.tool === "split" ? "split" : "image", data.tool);
+  const config = deps.config || await studioConfig(db, data.provider, "image", data.tool, { skipPreview: Boolean(data.maskId) });
   const caps = deps.capabilities || await capabilities(db, config);
   const requestId = createHash("sha256").update(`studio:${userId}:${key}`).digest("hex");
   // A replay may follow an unrelated document save; the immutable source and
@@ -57,9 +57,9 @@ export async function submitStudioJob(userId, input, key, db = prisma, deps = {}
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended('queue-admission', 0))::text`;
     if (await tx.tryOn.count({ where: { status: { in: ACTIVE } } }) >= LIMITS.queue) throw new AppError("QUEUE_FULL", 503);
     if (await tx.tryOn.count({ where: { userId, status: { in: ACTIVE } } }) >= 20) throw new AppError("USER_QUEUE_FULL", 429);
-    const channel = data.tool === "split" ? config.splitChannel : null;
+    const channel = data.tool === "split" ? config.splitChannel : data.tool === "describe" ? { name: config.plannerProvider, kind: config.plannerKind, model: config.chatModel, baseURL: config.visionBaseURL } : null;
     const output = await tx.tryOn.create({ data: { id: randomUUID(), userId, requestId, personImage: "", clothesImage: inputAsset ? `/api/assets/${inputAsset.id}` : "", prompt: data.params.prompt, provider: data.tool === "video" ? "ark" : channel?.name || config.imageProvider || "studio", creditCost: tool.cost, billingType: "credits",
-      snapshot: { kind: "studio", ...data, provider: channel?.name || config.imageProvider, providerKind: channel?.kind || config.imageKind || "openai", providerBaseURL: (data.tool === "split" ? channel?.baseURL : config.baseURL) || null, digest, checksum: inputAsset?.checksum || null, price: tool.cost, priceVersion: "studio-2026-09-v1", imageModel: channel?.model || config.imageModel, chatModel: config.chatModel || null, videoModel: config.videoModel || null } } });
+      snapshot: { kind: "studio", ...data, provider: channel?.name || config.imageProvider, providerKind: channel?.kind || config.imageKind || "openai", providerBaseURL: (channel ? channel.baseURL : config.baseURL) || null, digest, checksum: inputAsset?.checksum || null, price: tool.cost, priceVersion: "studio-2026-09-v1", imageModel: channel?.model || config.imageModel, chatModel: config.chatModel || null, videoModel: config.videoModel || null } } });
     if (tool.cost) {
       const allocations = await reserveCreditLots(tx, user, tool.cost);
       await tx.creditReservation.create({ data: { userId, tryOnId: output.id, channel: "credits", amount: tool.cost, allocations } });

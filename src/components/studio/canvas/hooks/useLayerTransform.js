@@ -1,5 +1,4 @@
-import { useRef, useCallback } from "react";
-import { throttleRaf } from "@/lib/utils/throttle";
+import { useRef, useCallback, useState } from "react";
 
 /**
  * Optimized layer transform hook with incremental rendering
@@ -13,6 +12,7 @@ import { throttleRaf } from "@/lib/utils/throttle";
  */
 export function useLayerTransform() {
   const transformingRef = useRef(null);
+  const [isTransforming, setIsTransforming] = useState(false);
   const previewTransformRef = useRef({});
 
   /**
@@ -21,17 +21,18 @@ export function useLayerTransform() {
    */
   const startTransform = useCallback((layerId) => {
     transformingRef.current = layerId;
+    setIsTransforming(true);
     previewTransformRef.current = {};
   }, []);
 
   /**
-   * Update transform preview (throttled for 60fps)
+   * Update the preview ref; Konva batches visual draws per animation frame
    * Only updates the transforming layer, not full canvas
    * @param {string} layerId - ID of layer being transformed
    * @param {{x?: number, y?: number, width?: number, height?: number, rotation?: number}} transform - Transform values
    */
   const updateTransform = useCallback(
-    throttleRaf((layerId, transform) => {
+    (layerId, transform) => {
       if (transformingRef.current !== layerId) return;
 
       // Store preview transform without triggering full state update
@@ -42,7 +43,7 @@ export function useLayerTransform() {
 
       // Konva will handle the visual update through its own layer
       // No need to trigger React re-render during drag
-    }),
+    },
     []
   );
 
@@ -60,6 +61,7 @@ export function useLayerTransform() {
 
     // Clear preview
     transformingRef.current = null;
+    setIsTransforming(false);
     previewTransformRef.current = {};
   }, []);
 
@@ -67,7 +69,7 @@ export function useLayerTransform() {
     startTransform,
     updateTransform,
     endTransform,
-    isTransforming: transformingRef.current !== null,
+    isTransforming,
     getPreviewTransform: (layerId) =>
       transformingRef.current === layerId ? previewTransformRef.current : {}
   };

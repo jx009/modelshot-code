@@ -88,7 +88,7 @@ export COMPOSE_FILE=compose.prod.yaml COMPOSE_ENV_FILES=.env.production
 
 本文档后续命令都省略了 `-f compose.prod.yaml --env-file .env.production`；没导出上面两个变量的话请自行补上，漏了 `--env-file` 会拿不到数据库和存储密码。
 
-启动顺序由依赖条件保证：`postgres` / `redis` / `storage` 健康 → `storage-init` 建 bucket → `tools` 加载对象分割模型 → `migrate` 应用迁移并成功退出 → `web` 和 `worker` 启动。`migrate` 是独立一次性服务，不会在每个 Web 副本里自动跑迁移，也不会用 `db push` 顶替正式迁移。包含多模型通道和 Studio 工具计费的版本会自动执行 `202609270001_provider_channels` 与 `202609270002_studio_pricing`，无需手工改表。
+启动顺序由依赖条件保证：`migrate` 等待 PostgreSQL 健康后应用迁移，`storage-init` 等待存储健康后建 bucket；`web` 和 `worker` 等待这两个一次性任务成功及 Redis 健康后启动。`tools` 只需容器启动，模型加载与 Web/Worker 并行进行；本地工具仍需能力接口就绪后才能使用，云端任务不因本地模型冷启动而被阻塞。`migrate` 不会在每个 Web 副本里自动运行，也不会用 `db push` 顶替正式迁移。包含多模型通道和 Studio 工具计费的版本会自动执行 `202609270001_provider_channels` 与 `202609270002_studio_pricing`，无需手工改表。
 
 GitHub Action 会在同一个 Docker Hub 仓库发布两组标签：应用镜像使用 `latest`，图像工具镜像使用 `tools-latest`。例如：
 
@@ -98,6 +98,15 @@ MODELSHOT_TOOLS_IMAGE=jx009/modelshot:tools-latest
 ```
 
 `tools` 只在 Compose 私有网络监听 8090，不应映射到公网。第一次自行构建会下载并写入 U2Net 与 SlimSAM 权重，因此耗时和镜像体积会明显大于普通 Web 镜像；运行时不下载模型，用户圈选后才按需执行一次分割。
+
+CPU 模型冷启动有 180 秒健康检查宽限期，期间继续探测，成功后即可转为 healthy。若启动时短暂 unhealthy，随后日志出现 `Application startup complete`、`/capabilities` 返回 200 且 `docker inspect` 显示 healthy，说明模型已经加载完成。不要反复对整套服务执行 `--force-recreate`，这会重置模型加载。若先前启动被依赖检查中断，在数据库、Redis、存储和迁移已成功的前提下，用以下命令恢复应用容器：
+
+```bash
+docker compose --env-file .env.production -f compose.prod.yaml up -d --no-build --no-deps web worker
+docker compose --env-file .env.production -f compose.prod.yaml ps
+```
+
+日常应用更新优先用 `sh scripts/deploy-update.sh`；仅在工具镜像也更新时加 `--tools`。修改 Compose 后应同步服务器的 `compose.prod.yaml`，单独 `pull` 镜像不会更新编排文件。持续 unhealthy 时查看 tools 日志和健康检查输出，不应把真实加载失败当成冷启动延迟。
 
 图像工具默认同时处理 2 个请求（`TOOLS_CONCURRENCY=2`，上限 4），每个 SlimSAM 推理默认使用 2 个 CPU 线程。8 核单机先保持默认值，压测 CPU、内存和圈选 P95 耗时后再逐步调到 3 或 4；超过并发槽的请求最多等待 20 秒，之后返回 429。调高此值不能增加外部图像生成供应商的额度。
 

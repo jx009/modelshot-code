@@ -28,7 +28,6 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
   const [toolId, setTool] = useState(null), [prompt, setPrompt] = useState(initialPrompt), [params, setParams] = useState({ size: "1024x1024", scale: 2, padding: 256, dx: 100, dy: 0, duration: 5, editPadding: 0.25, numLayers: 4 });
   const [brush, setBrush] = useState(40), [zoom, setZoom] = useState(1), [capabilities, setCapabilities] = useState(null), [usage, setUsage] = useState(null);
   const [modelProvider, setModelProvider] = useState("");
-  const [segmentProvider, setSegmentProvider] = useState(""), [splitProvider, setSplitProvider] = useState("");
   const [objectSelection, setObjectSelection] = useState(null);
   const [projects, setProjects] = useState(null), [jobs, setJobs] = useState([]), [showLayers, setShowLayers] = useState(false), [mobileChat, setMobileChat] = useState(true);
   const [busy, setBusy] = useState(false), [saveState, setSaveState] = useState("local"), [notice, setNotice] = useState(null), [preview, setPreview] = useState(null), [ocr, setOcr] = useState(null);
@@ -65,7 +64,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
       TOOL_SERVICE_UNAVAILABLE: t("图像工具服务不可用，请检查 tools 容器。", "The image tool service is unavailable."),
       TOOL_DISABLED: t("管理员已停用这个工具。", "This tool has been disabled by an administrator."),
       TARGET_CHANGED: t("目标图片已变化，请重新选择图片。", "The target changed. Select the image again."),
-      VISION_NOT_CONFIGURED: t("管理员尚未配置对话规划模型。请在后台“模型通道”填写视觉/对话规划模型并设为规划通道；也可使用“快速生图”直接生成一张图。", "No planning model is configured. Configure one in Admin → Model channels, or use Quick generation for a direct single-image request."),
+      VISION_NOT_CONFIGURED: t("管理员尚未配置对话规划模型。请在后台“模型配置 → 后台大语言模型”配置；也可使用“快速生图”直接生成一张图。", "No planning model is configured. Configure one in Admin → Models → Backend language model, or use Quick generation for a direct single-image request."),
     };
     setNotice(descriptions[code] || code);
   }, [t]);
@@ -95,17 +94,17 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
           if (!abort.signal.aborted) { update({ ...blank(), id: doc.id, version: doc.version, name: doc.name, ...doc.content }); scheduleFit(200); }
         } else { try { const cached = JSON.parse(localStorage.getItem(storageKey)); update(cached?.layers && cached?.messages ? { ...blank(), ...cached } : blank()); } catch { update(blank()); } }
       }).catch(e => { if (!abort.signal.aborted) notify(e); });
-      Promise.all([api("/api/studio/capabilities", { signal: abort.signal }), api("/api/usage", { signal: abort.signal })]).then(([caps, value]) => { setCapabilities(caps); setModelProvider(current => current || caps.imageProvider || caps.imageModels?.[0]?.id || ""); setSegmentProvider(current => current || caps.segmentProvider || ""); setSplitProvider(current => current || caps.splitProvider || ""); setUsage(value); }).catch(e => { if (!abort.signal.aborted) notify(e); });
+      Promise.all([api("/api/studio/capabilities", { signal: abort.signal }), api("/api/usage", { signal: abort.signal })]).then(([caps, value]) => { setCapabilities(caps); setModelProvider(current => current || caps.imageProvider || caps.imageModels?.[0]?.id || ""); setUsage(value); }).catch(e => { if (!abort.signal.aborted) notify(e); });
     } else if (status === "unauthenticated") Promise.resolve().then(() => update(blank()));
     return () => { abort.abort(); clearTimeout(fitTimer.current); };
   }, [status, storageKey, update, notify, initialDocument]);
   useEffect(() => {
-    if (status !== "authenticated" || !modelProvider && !splitProvider) return;
+    if (status !== "authenticated" || !modelProvider) return;
     const abort = new AbortController();
-    const query = new URLSearchParams({ ...(modelProvider ? { imageProvider: modelProvider } : {}), ...(splitProvider ? { splitProvider } : {}) });
+    const query = new URLSearchParams({ ...(modelProvider ? { imageProvider: modelProvider } : {}) });
     api(`/api/studio/capabilities?${query}`, { signal: abort.signal }).then(setCapabilities).catch(e => { if (!abort.signal.aborted) notify(e); });
     return () => abort.abort();
-  }, [modelProvider, splitProvider, status, notify]);
+  }, [modelProvider, status, notify]);
   useEffect(() => {
     const handler = e => {
       if (!["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName) && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); document.querySelector('[data-action="save-studio"]')?.click(); }
@@ -202,7 +201,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
   async function submit(id, target, text, options = {}, maskBlob, key = requestKey(), extracted) {
     const saved = await save();
     const maskHash = maskBlob ? await hashMask(maskBlob) : null;
-    const provider = id === "split" ? splitProvider : modelProvider;
+    const provider = modelProvider;
     const signature = JSON.stringify({ id, provider, extracted, target: target?.id, asset: target?.assetId, text, options, maskHash, documentId: saved.id });
     const pending = draftRef.current.pendingSubmit;
     let body;
@@ -244,10 +243,11 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
     try {
       if (tab === "quick") await submit(target ? "edit" : "generate", target, text, { size: params.size });
       else {
-        const planned = await api("/api/studio/plan", { method: "POST", body: { prompt: text, ...(target ? { assetId: target.assetId } : {}), messages: draftRef.current.messages.slice(-6).map(m => ({ role: m.role, text: m.text.slice(0, 2000) })) } });
-        update(d => ({ ...d, plan: { ...planned, id: requestKey(), index: 0, targetId: target?.id || null, status: "ready", activeJob: null } }));
+        const planned = await api("/api/studio/plan", { method: "POST", key: requestKey(), body: { ...(modelProvider ? { provider: modelProvider } : {}), prompt: text, ...(target ? { assetId: target.assetId } : {}), messages: draftRef.current.messages.slice(-6).map(m => ({ role: m.role, text: m.text.slice(0, 2000) })) } });
+        update(d => ({ ...d, plan: { summary: planned.summary, steps: planned.steps, credits: planned.credits, id: requestKey(), index: 0, targetId: target?.id || null, status: "ready", activeJob: null } }));
       }
       message("user", text, target?.assetId); setPrompt("");
+      setUsage(await api("/api/usage"));
     } catch (e) { notify(e); } finally { submission.current = false; setBusy(false); }
   }
   async function waitJob(id) {
@@ -345,13 +345,13 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
         <div className="ms-composer">
           {selected?.type === "image" && <div className="ms-reference"><Image unoptimized width={480} height={480} src={imageUrl(selected.assetId)} alt="" /><span>{t("正在引用", "Referencing")} · {selected.name}</span><button className="ms-icon" title={t("取消引用", "Clear reference")} onClick={() => setSelected(null)}><X size={13} /></button></div>}
           <textarea aria-label={t("创作描述", "Creative prompt")} value={prompt} onChange={e => setPrompt(e.target.value)} placeholder={t("描述你想要的画面，或选择图片继续修改…", "Describe an image, or select one to keep editing…")} maxLength={4000} onKeyDown={e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(); } }} />
-          <div className="ms-composer-tools"><button className="ms-icon" title={t("添加参考图", "Add reference")} disabled={busy} onClick={() => fileInput.current.click()}><ImagePlus size={19} /></button><label className="ms-model-pill"><span className="ms-mini-orb" /><select aria-label={t("生图模型", "Image model")} value={modelProvider} onChange={e => setModelProvider(e.target.value)}>{(capabilities?.imageModels || []).map(item => <option key={item.id} value={item.id}>{item.label} · {item.creditCost} {t("积分", "credits")}</option>)}</select><ChevronDown size={11} /></label><select aria-label={t("图片比例", "Aspect ratio")} value={params.size} onChange={e => setParams(p => ({ ...p, size: e.target.value }))}><option value="1024x1024">1:1</option><option value="1024x1536">2:3</option><option value="1536x1024">3:2</option></select><button className="ms-send" disabled={busy || !prompt.trim()} onClick={send} title={tab === "quick" ? t(`生成 · ${quickCost} 积分`, `Generate · ${quickCost} credits`) : t("生成计划", "Create plan")}>{busy ? <LoaderCircle className="ms-spin" size={18} /> : <ArrowUp size={19} />}</button></div>
-          <small className="ms-composer-hint">{tab === "quick" ? t(`直接按当前文字生成或编辑一张图 · ${quickCost} 积分`, `Generate or edit one image directly · ${quickCost} credits`) : capabilities?.chatModel ? t(`AI 先拆解步骤，再由你确认执行`, `AI plans the steps, then you review before execution`) : t("对话规划模型尚未配置；请联系管理员或切换到快速生图", "Planning model is not configured; contact an admin or use Quick generation")}</small>
+          <div className="ms-composer-tools"><button className="ms-icon" title={t("添加参考图", "Add reference")} disabled={busy} onClick={() => fileInput.current.click()}><ImagePlus size={19} /></button><label className="ms-model-pill"><span className="ms-mini-orb" /><select aria-label={t("生图模型", "Image model")} value={modelProvider} onChange={e => setModelProvider(e.target.value)}>{(capabilities?.imageModels || []).map(item => <option key={item.id} value={item.id}>{item.label} · {item.creditCost} {t("积分", "credits")}</option>)}</select><ChevronDown size={11} /></label><select aria-label={t("图片比例", "Aspect ratio")} value={params.size} onChange={e => setParams(p => ({ ...p, size: e.target.value }))}><option value="1024x1024">1:1</option><option value="1024x1536">2:3</option><option value="1536x1024">3:2</option></select><button className="ms-send" disabled={busy || !prompt.trim()} onClick={send} title={tab === "quick" ? t(`生成 · ${quickCost} 积分`, `Generate · ${quickCost} credits`) : t(`生成计划 · ${capabilities?.planningCost ?? 1} 积分`, `Create plan · ${capabilities?.planningCost ?? 1} credits`)}>{busy ? <LoaderCircle className="ms-spin" size={18} /> : <ArrowUp size={19} />}</button></div>
+          <small className="ms-composer-hint">{tab === "quick" ? t(`直接按当前文字生成或编辑一张图 · ${quickCost} 积分`, `Generate or edit one image directly · ${quickCost} credits`) : capabilities?.planningAvailable ? t(`AI 规划成功收取 ${capabilities.planningCost} 积分，执行步骤另行确认`, `Planning costs ${capabilities.planningCost} credits on success; review before executing`) : t("对话规划模型尚未配置；请联系管理员或切换到快速生图", "Planning model is not configured; contact an admin or use Quick generation")}</small>
         </div>
       </aside>
       <main className="ms-canvas-space">
         <Canvas ref={canvas} layers={draft.layers} selectedId={selectedId} onSelect={id => { setSelected(id); if (id !== selectedId) closeTool(); }} onChange={commitLayers} mode={mode} brushSize={brush}
-          segmentProvider={segmentProvider} editPadding={params.editPadding}
+          selectionTool={toolId} editPadding={params.editPadding}
           moveOffset={{ dx: params.dx, dy: params.dy }} onMoveOffset={offset => setParams(p => ({ ...p, ...offset }))} onMovePreparing={() => { setObjectSelection(null); setMode("object-preparing"); }} onMoveReady={value => { setObjectSelection(value); setParams(p => ({ ...p, dx: 0, dy: 0 })); setMode(toolId === "inpaint" ? "object-edit" : "move"); }} onMoveFailed={() => { setObjectSelection(null); setMode("object-select-rect"); }}
           onCrop={rect => setParams(p => ({ ...p, rect }))} expandPadding={params.padding} onExpandPadding={padding => setParams(p => ({ ...p, padding }))}
           onZoom={setZoom} onUpload={upload} onError={notify} label={t("图片编辑画布", "Image editing canvas")} />
@@ -369,9 +369,6 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
         </div>}
         {toolId && <div className={`ms-tool-panel ms-direct-dock ${["move", "inpaint"].includes(toolId) ? "ms-object-dock" : ""}`}><div className="ms-direct-title"><span>{zh ? tool.zh : tool.en}</span><button className="ms-icon" onClick={closeTool} title={t("关闭工具", "Close tool")}><X size={16} /></button></div>
           <div className="ms-direct-controls">
-            {tool.dependency === "image" && <label>{t("编辑模型", "Edit model")}<select aria-label={t("编辑模型", "Edit model")} value={modelProvider} disabled={busy} onChange={e => setModelProvider(e.target.value)}>{(capabilities?.imageModels || []).map(model => <option key={model.id} value={model.id} disabled={model.imageMode === "generate"}>{model.label}</option>)}</select></label>}
-            {["move", "inpaint"].includes(toolId) && <label>{t("分割模型", "Segmentation model")}<select aria-label={t("分割模型", "Segmentation model")} value={segmentProvider} disabled={busy || mode === "object-preparing"} onChange={e => { setSegmentProvider(e.target.value); canvas.current?.clearMovePreview(); setObjectSelection(null); setMode("object-select-rect"); }}>{!capabilities?.segmentModels?.length && <option value="">{t("本地分割服务", "Local segmentation")}</option>}{(capabilities?.segmentModels || []).map(model => <option key={model.id} value={model.id}>{model.label}</option>)}</select></label>}
-            {toolId === "split" && <label>{t("拆层模型", "Layer model")}<select aria-label={t("拆层模型", "Layer model")} value={splitProvider} disabled={busy} onChange={e => setSplitProvider(e.target.value)}>{(capabilities?.splitModels || []).map(model => <option key={model.id} value={model.id}>{model.label} · {model.creditCost} {t("积分", "credits")}</option>)}</select></label>}
             {tool.mask && !["move", "inpaint"].includes(toolId) && <><span className="ms-direct-hint">{t("直接在图片上涂抹", "Paint directly on the image")}</span><label>{t("画笔", "Brush")}<input type="range" min="5" max="200" value={brush} onChange={e => setBrush(Number(e.target.value))} /><span>{brush}px</span></label><button className="ms-text-button" onClick={() => canvas.current.clearMask()}>{t("清除", "Clear")}</button></>}
             {["move", "inpaint"].includes(toolId) && <div className="ms-object-controls">
               <div className="ms-object-steps"><span className={!objectSelection ? "active" : "done"}>1 · {t("选择物体", "Select object")}</span><span className={objectSelection ? "active" : ""}>2 · {t("移动或修改", "Move or edit")}</span></div>
@@ -402,7 +399,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
             {toolId === "video" && <label>{t("时长", "Duration")}<select value={params.duration} onChange={e => setParams(p => ({ ...p, duration: Number(e.target.value) }))}><option value="5">5s</option><option value="10">10s</option></select></label>}
             {["erase", "expand", "video"].includes(toolId) && <input className="ms-direct-prompt" aria-label={t("工具提示词", "Tool prompt")} placeholder={toolId === "inpaint" || toolId === "video" ? t("描述希望生成的效果…", "Describe the result…") : t("可选补充说明…", "Optional instruction…")} value={prompt} onChange={e => setPrompt(e.target.value)} maxLength={4000} />}
             {toolId === "split" && <><span className="ms-direct-hint">{t("主动调用模型拆层，结果按原位置叠放；原图保留为隐藏图层。", "Decompose on demand. Layers stay aligned and the original remains hidden.")}</span><label>{t("拆分层数", "Layers")}<select value={params.numLayers} onChange={e => setParams(p => ({ ...p, numLayers: Number(e.target.value) }))}>{[2, 3, 4, 5, 6, 7, 8].map(n => <option key={n} value={n}>{n}</option>)}</select></label></>}
-            {!toolStatus?.available && toolId !== "crop" && <span className="ms-unavailable">{toolStatus?.reason === "TOOL_DISABLED" ? t("管理员已停用此工具", "This tool has been disabled") : toolStatus?.reason === "SEGMENTATION_NOT_CONFIGURED" ? t("需管理员配置物体分割模型（后台 > 模型通道 > 添加 fal SAM）", "Admin: configure segmentation (Admin → Channels → Add fal SAM)") : tool.dependency === "split" ? t("需管理员配置图层拆分模型（后台 > 模型通道）", "Admin: configure layer split (Admin → Channels)") : tool.dependency === "image" ? t("需管理员配置编辑模型（后台 > 模型通道）", "Admin: configure edit model (Admin → Channels)") : t("需管理员启用此工具", "Admin: enable this tool")}</span>}
+            {!toolStatus?.available && toolId !== "crop" && <span className="ms-unavailable">{toolStatus?.reason === "TOOL_DISABLED" ? t("管理员已停用此工具", "This tool has been disabled") : toolStatus?.reason === "SEGMENTATION_NOT_CONFIGURED" ? t("需管理员配置物体分割模型（后台 > 模型配置 > 工具配置）", "Admin: configure segmentation (Admin → Model configuration → Tool configuration)") : tool.dependency === "split" ? t("需管理员配置图层拆分模型（后台 > 模型配置 > 工具配置）", "Admin: configure layer split (Admin → Model configuration → Tool configuration)") : tool.dependency === "image" ? t("需管理员配置编辑模型（后台 > 模型配置 > 工具配置）", "Admin: configure edit model (Admin → Model configuration → Tool configuration)") : t("需管理员启用此工具", "Admin: enable this tool")}</span>}
           </div>
           {(!["move", "inpaint"].includes(toolId) || objectSelection) && <button className="ms-button ms-primary ms-direct-apply" disabled={busy || (toolId === "move" && !params.dx && !params.dy) || (!toolStatus?.available && toolId !== "crop") || ["inpaint", "video"].includes(toolId) && !prompt.trim()} onClick={runTool}>{busy ? <LoaderCircle size={16} className="ms-spin" /> : <Sparkles size={15} />}{toolId === "move" ? t("确认移动", "Apply move") : toolId === "inpaint" ? t("生成修改", "Apply edit") : t("生成", "Apply")}<span>{toolCost ? `${toolCost} ${t("积分", "credits")}` : t("免费", "Free")}</span></button>}
         </div>}

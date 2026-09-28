@@ -1,8 +1,7 @@
 import { useState, useCallback } from "react";
 
-export function useCanvasState() {
+export function useCanvasState(dimensions, layers) {
   const [camera, setCamera] = useState({ x: 30, y: 20, scale: 1 });
-  const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
 
   const updateCamera = useCallback((next) => {
     setCamera((current) => ({ ...current, ...next }));
@@ -24,7 +23,7 @@ export function useCanvasState() {
   );
 
   const fit = useCallback(
-    (layers) => {
+    () => {
       const visible = layers.filter((l) => l.visible);
       if (!visible.length) {
         setCamera({ x: 30, y: 20, scale: 1 });
@@ -50,7 +49,7 @@ export function useCanvasState() {
         y: (dimensions.height - height * scale) / 2 - top * scale,
       });
     },
-    [dimensions]
+    [dimensions, layers]
   );
 
   const fitExpansion = useCallback(
@@ -87,7 +86,6 @@ export function useCanvasState() {
     camera,
     dimensions,
     setCamera,
-    setDimensions,
     updateCamera,
     zoom,
     fit,

@@ -12,6 +12,9 @@ export function useImageColors(layers, selectedId) {
   const [primaryColor, setPrimaryColor] = useState(null);
 
   useEffect(() => {
+    // Skip on server-side
+    if (typeof window === "undefined") return;
+
     const selectedLayer = layers.find(l => l.id === selectedId);
 
     // Only extract colors from image layers
@@ -21,26 +24,30 @@ export function useImageColors(layers, selectedId) {
 
     let cancelled = false;
 
-    extractDominantColors(`/api/assets/${selectedLayer.assetId}`, 5)
-      .then(extractedColors => {
-        if (cancelled) return;
+    // Delay extraction to avoid blocking initial render
+    const timer = setTimeout(() => {
+      extractDominantColors(`/api/assets/${selectedLayer.assetId}`, 5)
+        .then(extractedColors => {
+          if (cancelled) return;
 
-        // Filter suitable accent colors
-        const suitable = extractedColors.filter(isSuitableAccent);
+          // Filter suitable accent colors
+          const suitable = extractedColors.filter(isSuitableAccent);
 
-        setColors(suitable);
-        setPrimaryColor(suitable[0] || null);
-      })
-      .catch(() => {
-        // Silently fail - color extraction is optional
-        if (!cancelled) {
-          setColors([]);
-          setPrimaryColor(null);
-        }
-      });
+          setColors(suitable);
+          setPrimaryColor(suitable[0] || null);
+        })
+        .catch(() => {
+          // Silently fail - color extraction is optional
+          if (!cancelled) {
+            setColors([]);
+            setPrimaryColor(null);
+          }
+        });
+    }, 300); // Delay 300ms to prioritize initial render
 
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
   }, [layers, selectedId]);
 
@@ -48,7 +55,8 @@ export function useImageColors(layers, selectedId) {
    * Apply extracted colors to CSS custom properties
    */
   const applyColors = () => {
-    if (!primaryColor) return;
+    // Skip on server-side
+    if (typeof window === "undefined" || !primaryColor) return;
 
     const root = document.documentElement;
 

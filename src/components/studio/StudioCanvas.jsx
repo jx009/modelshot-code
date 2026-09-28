@@ -310,8 +310,16 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
       </Layer>
       {editing && !["crop", "expand", "move", "object-edit"].includes(mode) && <Layer listening={false}><Group x={selection.x} y={selection.y} rotation={selection.rotation} scaleX={selection.width / selection.pixelWidth} scaleY={selection.height / selection.pixelHeight} clipWidth={selection.pixelWidth} clipHeight={selection.pixelHeight}>
         {mode === "mask" && strokes.filter(s => s.target === maskKey).map((s, i) => <Line key={i} points={s.points} stroke={color} strokeWidth={s.width} opacity={0.55} lineCap="round" lineJoin="round" />)}
-        {mode === "object-select-rect" && moveSelection?.rectangle && <Rect x={moveSelection.rectangle.left} y={moveSelection.rectangle.top} width={moveSelection.rectangle.width} height={moveSelection.rectangle.height} stroke={color} strokeWidth={1.5 / (camera.scale * selection.width / selection.pixelWidth)} dash={[8, 5]} fill={`${color}20`} />}
-        {mode === "object-select-lasso" && moveSelection?.polygon && <Line points={moveSelection.polygon} stroke={color} strokeWidth={1.5 / (camera.scale * selection.width / selection.pixelWidth)} fill={`${color}20`} closed lineCap="round" lineJoin="round" />}
+        {mode === "object-select-rect" && moveSelection?.rectangle && <>
+          <Rect x={moveSelection.rectangle.left} y={moveSelection.rectangle.top} width={moveSelection.rectangle.width} height={moveSelection.rectangle.height} fill={`${color}35`} />
+          <Rect x={moveSelection.rectangle.left} y={moveSelection.rectangle.top} width={moveSelection.rectangle.width} height={moveSelection.rectangle.height} stroke={color} strokeWidth={3 / (camera.scale * selection.width / selection.pixelWidth)} dash={[10, 8]} />
+          <Rect x={moveSelection.rectangle.left} y={moveSelection.rectangle.top} width={moveSelection.rectangle.width} height={moveSelection.rectangle.height} stroke="#ffffff" strokeWidth={1.5 / (camera.scale * selection.width / selection.pixelWidth)} opacity={0.6} />
+        </>}
+        {mode === "object-select-lasso" && moveSelection?.polygon && <>
+          <Line points={moveSelection.polygon} fill={`${color}35`} closed />
+          <Line points={moveSelection.polygon} stroke={color} strokeWidth={3 / (camera.scale * selection.width / selection.pixelWidth)} closed lineCap="round" lineJoin="round" />
+          <Line points={moveSelection.polygon} stroke="#ffffff" strokeWidth={1.5 / (camera.scale * selection.width / selection.pixelWidth)} opacity={0.6} closed lineCap="round" lineJoin="round" />
+        </>}
       </Group></Layer>}
       {mode === "crop" && selection && <Layer><Group x={selection.x} y={selection.y} rotation={selection.rotation} scaleX={selection.width / selection.pixelWidth} scaleY={selection.height / selection.pixelHeight} clipWidth={selection.pixelWidth} clipHeight={selection.pixelHeight}>
         <CropBox value={crop || { left: 0, top: 0, width: selection.pixelWidth, height: selection.pixelHeight }} width={selection.pixelWidth} height={selection.pixelHeight} accent={color} onChange={rect => { setCrop(rect); onCrop(rect); }} />

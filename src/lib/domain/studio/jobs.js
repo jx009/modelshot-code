@@ -10,7 +10,7 @@ import { ACTIVE, LIMITS, digestJson } from "../generation/contracts.js";
 export async function submitStudioJob(userId, input, key, db = prisma, deps = {}) {
   const data = jobSchema.parse(input);
   if (!/^[a-zA-Z0-9_-]{16,128}$/.test(key || "")) throw new AppError("IDEMPOTENCY_KEY_REQUIRED");
-  const config = deps.config || await studioConfig(db, data.provider, data.tool === "split" ? "split" : "image");
+  const config = deps.config || await studioConfig(db, data.provider, data.tool === "split" ? "split" : "image", data.tool);
   const caps = deps.capabilities || await capabilities(db, config);
   const requestId = createHash("sha256").update(`studio:${userId}:${key}`).digest("hex");
   // A replay may follow an unrelated document save; the immutable source and

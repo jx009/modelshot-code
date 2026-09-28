@@ -161,10 +161,10 @@ services:
       OPENBLAS_NUM_THREADS: "1"
     healthcheck:
       test: ["CMD", "python", "-c", "import json,os,urllib.request; r=urllib.request.Request('http://127.0.0.1:8090/capabilities',headers={'Authorization':'Bearer '+os.environ['STUDIO_TOOLS_KEY']}); d=json.load(urllib.request.urlopen(r,timeout=5)); raise SystemExit(0 if 'segment' in d.get('tools',[]) else 1)"]
-      interval: 5s
-      timeout: 8s
-      retries: 10
-      start_period: 90s
+      interval: 3s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     networks:
       - app
     logging:
@@ -199,7 +199,7 @@ services:
       storage-init:
         condition: service_completed_successfully
       tools:
-        condition: service_healthy
+        condition: service_started
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 15s

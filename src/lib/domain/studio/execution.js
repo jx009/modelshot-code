@@ -52,7 +52,7 @@ export async function executeStudio(id, { db = prisma, store = objectStorage(), 
   try {
     if (output.cancelRequestedAt) { await finishOutput(id, output.fence, { cancelled: true }, db); return; }
     if (output.resultData) { await finishOutput(id, output.fence, { resultData: output.resultData }, db); return; }
-    const config = { ...(supplied || await studioConfig(db, snapshot.provider, snapshot.tool === "split" ? "split" : "image")), imageModel: snapshot.imageModel, chatModel: snapshot.chatModel, videoModel: snapshot.videoModel };
+    const config = { ...(supplied || await studioConfig(db, snapshot.provider, snapshot.tool === "split" ? "split" : "image", snapshot.tool)), imageModel: snapshot.imageModel, chatModel: snapshot.chatModel, videoModel: snapshot.videoModel };
     const channel = snapshot.tool === "split" ? config.splitChannel : { kind: config.imageKind || "openai", baseURL: config.baseURL };
     if (snapshot.providerKind && (snapshot.providerKind !== channel?.kind || snapshot.providerBaseURL !== (channel?.baseURL || null))) throw new AppError("PROVIDER_CONFIGURATION_CHANGED", 422);
     if (snapshot.tool === "split" && config.splitChannel) config.splitChannel = { ...config.splitChannel, model: snapshot.imageModel };

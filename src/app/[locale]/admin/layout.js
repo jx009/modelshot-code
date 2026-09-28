@@ -25,13 +25,15 @@ export default async function AdminLayout({ children }) {
   return (
     <div className="min-h-dvh bg-bg-page text-primary-text flex">
       {/* 侧边栏 */}
-      <aside className="w-56 border-r border-divider bg-bg-card/50 flex-shrink-0 hidden md:flex flex-col">
-        <div className="p-5 border-b border-divider">
+      <aside className="w-56 border-r border-divider bg-bg-card/50 flex-shrink-0 hidden md:flex flex-col h-screen sticky top-0">
+        <div className="p-5 border-b border-divider flex-shrink-0">
           <div className="text-sm font-black uppercase tracking-wider text-primary">ModelShot</div>
           <div className="text-[10px] text-secondary-text font-bold mt-0.5">Admin Console</div>
         </div>
-        <AdminNav />
-        <div className="mt-auto p-4 border-t border-divider">
+        <div className="flex-1 overflow-y-auto">
+          <AdminNav />
+        </div>
+        <div className="p-4 border-t border-divider flex-shrink-0">
           <Link href="/" className="text-[11px] text-secondary-text hover:text-primary-text transition-colors">
             ← Back to App
           </Link>

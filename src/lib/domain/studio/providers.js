@@ -8,15 +8,20 @@ import { TOOLS } from "../../studio/tools.js";
 import { channelCapability, supportsImageTask } from "../../studio/model-channels.js";
 import { generateCloudImage } from "./cloud.js";
 
-export async function studioConfig(db = prisma, channelName, capability = "image") {
+export async function studioConfig(db = prisma, channelName, capability = "image", toolId = null) {
   const rows = await db.modelProvider.findMany({ where: { isActive: true }, orderBy: [{ isDefault: "desc" }, { priority: "asc" }] });
   const openAI = rows.filter(row => (row.kind || row.name) === "openai");
+  const toolConfigs = toolId && db.studioToolConfig?.findUnique ? await db.studioToolConfig.findUnique({ where: { toolId }, select: { channelName: true } }) : null;
   const select = cap => {
     const candidates = rows.filter(row => channelCapability(row) === cap);
     if (channelName && capability === cap) {
       const selected = candidates.find(row => row.name === channelName);
       if (!selected) throw new AppError("PROVIDER_CAPABILITY_UNSUPPORTED", 422);
       return selected;
+    }
+    if (toolConfigs?.channelName && (cap === "segment" || cap === "split")) {
+      const toolChannel = candidates.find(row => row.name === toolConfigs.channelName);
+      if (toolChannel) return toolChannel;
     }
     return candidates.find(row => JSON.parse(row.config || "{}").studioDefault) || candidates[0];
   };

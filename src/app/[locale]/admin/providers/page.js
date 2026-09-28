@@ -80,15 +80,13 @@ export default function AdminProviders() {
       <div className="flex items-center justify-between"><div><h2 className="text-sm font-medium text-primary-text">新增模型通道</h2><p className="text-[11px] text-secondary-text mt-1">API Key、地址和实际模型名只在服务端使用。</p></div><button type="button" className="text-secondary-text" onClick={() => setAdding(false)}><X size={16} /></button></div>
       <Field label="配置预设"><select defaultValue="" onChange={e => { const preset = CHANNEL_PRESETS[Number(e.target.value)]; if (preset) { const { label, ...settings } = preset; setChannel({ ...emptyChannel, ...settings, displayName: label }); } }}><option value="" disabled>选择供应商与功能</option>{CHANNEL_PRESETS.map((preset, index) => <option key={preset.label} value={index}>{preset.label}</option>)}</select></Field>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <Field label="协议类型"><select value={channel.kind} onChange={e => setChannel(value => ({ ...value, kind: e.target.value, studioCapability: e.target.value === "fal" ? "segment" : STUDIO_KINDS.includes(e.target.value) ? "image" : undefined, chatModel: e.target.value === "openai" ? value.chatModel : "" }))}><option value="openai">OpenAI 兼容</option><option value="dashscope">阿里百炼</option><option value="volcengine">火山方舟</option><option value="fal">fal 托管推理</option><option value="gemini">Gemini</option><option value="fashn">FASHN</option></select></Field>
-        <ChannelFields kind={channel.kind} capability={channel.studioCapability} imageMode={channel.imageMode} onChange={patch => setChannel(value => ({ ...value, ...patch }))} />
+        <Field label="协议类型"><select value={channel.kind} onChange={e => setChannel(value => ({ ...value, kind: e.target.value }))}><option value="openai">OpenAI 兼容</option><option value="dashscope">阿里百炼</option><option value="volcengine">火山方舟</option><option value="fal">fal 托管推理</option><option value="gemini">Gemini</option><option value="fashn">FASHN</option></select></Field>
         <Field label="对外展示名称"><input required value={channel.displayName} maxLength={100} onChange={e => setChannel(value => ({ ...value, displayName: e.target.value }))} placeholder="例如：ModelShot Pro" /></Field>
         <Field label="模型名 / 火山 Endpoint ID"><input required value={channel.model} maxLength={128} onChange={e => setChannel(value => ({ ...value, model: e.target.value }))} placeholder="例如：gpt-image-2" /></Field>
-        {channel.kind === "openai" && <Field label="视觉/对话规划模型（可选）"><input value={channel.chatModel} maxLength={128} onChange={e => setChannel(value => ({ ...value, chatModel: e.target.value }))} placeholder="例如：gpt-4.1-mini" /></Field>}
+        {channel.kind === "openai" && <Field label="大语言模型（后台通用）"><input value={channel.chatModel} maxLength={128} onChange={e => setChannel(value => ({ ...value, chatModel: e.target.value }))} placeholder="例如：gpt-4o-mini" /></Field>}
         <Field label="API Key"><input required type="password" value={channel.apiKey} maxLength={4096} onChange={e => setChannel(value => ({ ...value, apiKey: e.target.value }))} placeholder="sk-…" /></Field>
         <Field label="Base URL"><input type="url" value={channel.baseURL} maxLength={500} onChange={e => setChannel(value => ({ ...value, baseURL: e.target.value }))} placeholder="留空使用官方地址" /></Field>
         <Field label="每次模型请求积分"><input type="number" min="0" max="100000" step="1" value={channel.creditCost} onChange={e => setChannel(value => ({ ...value, creditCost: e.target.value }))} /></Field>
-        <Field label="预估成本（美元/张）"><input type="number" min="0" step="0.001" value={channel.costPerImage} onChange={e => setChannel(value => ({ ...value, costPerImage: e.target.value }))} /></Field>
       </div>
       <button disabled={savingId === "new"} className="h-9 px-4 rounded-[10px] bg-primary text-primary-btn-text text-xs font-medium inline-flex items-center gap-1.5">{savingId === "new" && <LoaderCircle size={12} className="animate-spin" />}保存新通道</button>
     </form>}
@@ -107,11 +105,10 @@ function ProviderCard({ provider: p, saving, testingId, testResult, onPatch, onT
   const [baseURL, setBaseURL] = useState(p.config.baseURL || "");
   const [model, setModel] = useState(p.config.model || "");
   const [chatModel, setChatModel] = useState(p.config.chatModel || "");
-  const [settings, setSettings] = useState({ studioCapability: p.config.studioCapability || (STUDIO_KINDS.includes(p.kind) ? "image" : undefined), imageMode: p.config.imageMode || "both" });
   const [creditCost, setCreditCost] = useState(p.creditCost);
   const [costPerImage, setCost] = useState(p.costPerImage);
   const imageTest = testResult[`${p.id}:image`], plannerTest = testResult[`${p.id}:planner`];
-  const save = () => { onPatch(p.id, { displayName: displayName.trim(), creditCost: Number(creditCost), costPerImage: Number(costPerImage), ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}), baseURL, model, chatModel, ...settings }, "模型配置已保存"); setApiKey(""); };
+  const save = () => { onPatch(p.id, { displayName: displayName.trim(), creditCost: Number(creditCost), costPerImage: Number(costPerImage), ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}), baseURL, model, chatModel }, "模型配置已保存"); setApiKey(""); };
 
   return <div className={`rounded-[16px] border p-5 space-y-4 ${(p.config.studioDefault || p.isDefault) ? "border-primary/50 bg-primary-muted/20" : "border-divider bg-bg-card surface-lit"}`}>
     <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -119,10 +116,9 @@ function ProviderCard({ provider: p, saving, testingId, testResult, onPatch, onT
       <div className="flex items-center gap-3 flex-wrap"><label className="flex items-center gap-1.5 text-xs text-secondary-text">优先级<input type="number" min={1} defaultValue={p.priority} onBlur={e => { const value = Number(e.target.value); if (value && value !== p.priority) onPatch(p.id, { priority: value }, "优先级已更新"); }} className="w-14" /></label><button onClick={() => onPatch(p.id, STUDIO_KINDS.includes(p.kind) ? { studioDefault: true } : { isDefault: true }, "已设为该功能默认通道")} disabled={STUDIO_KINDS.includes(p.kind) ? p.config.studioDefault : p.isDefault} className="text-xs text-secondary-text disabled:opacity-40">设为默认</button>{p.kind === "openai" && <button onClick={() => onPatch(p.id, { isPlanner: !p.isPlanner }, p.isPlanner ? "已取消规划通道" : "已设为规划通道")} className="text-xs text-secondary-text">{p.isPlanner ? "取消规划" : "用于对话规划"}</button>}<button onClick={() => onPatch(p.id, { isActive: !p.isActive }, p.isActive ? "已停用" : "已启用")} className={`relative w-10 h-5.5 rounded-full ${p.isActive ? "bg-primary" : "bg-divider-strong"}`} aria-pressed={p.isActive}><span className={`absolute top-0.5 w-4.5 h-4.5 rounded-full bg-bg-page transition-transform ${p.isActive ? "translate-x-[18px]" : "translate-x-0.5"}`} /></button></div>
     </div>
     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-      <ChannelFields kind={p.kind} capability={settings.studioCapability} imageMode={settings.imageMode} onChange={patch => setSettings(value => ({ ...value, ...patch }))} />
       <Field label="对外展示名称（模型映射名）"><input value={displayName} maxLength={100} onChange={e => setDisplayName(e.target.value)} placeholder="用户看到的名称" /></Field>
       <Field label="模型名 / 火山 Endpoint ID"><input value={model} maxLength={128} onChange={e => setModel(e.target.value)} placeholder="例如：gpt-image-2" /></Field>
-      {p.kind === "openai" && <Field label="视觉/对话规划模型"><input value={chatModel} maxLength={128} onChange={e => setChatModel(e.target.value)} placeholder="例如：gpt-4.1-mini" /></Field>}
+      {p.kind === "openai" && <Field label="大语言模型（后台通用）"><input value={chatModel} maxLength={128} onChange={e => setChatModel(e.target.value)} placeholder="例如：gpt-4o-mini" /></Field>}
       <Field label={<>API Key {p.config.hasKey && <span className="text-success">（{p.config.keyMasked}）</span>}</>}><input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder={p.config.hasKey ? "留空不变更" : "sk-…"} /></Field>
       <Field label="Base URL（对应协议地址）"><input type="url" value={baseURL} onChange={e => setBaseURL(e.target.value)} placeholder="留空使用官方地址" /></Field>
       <Field label="每次模型请求积分"><input type="number" min="0" max="100000" step="1" value={creditCost} onChange={e => setCreditCost(e.target.value)} /></Field>
@@ -134,11 +130,3 @@ function ProviderCard({ provider: p, saving, testingId, testResult, onPatch, onT
 
 function Badge({ children }) { return <span className="text-xs font-medium text-primary bg-primary-muted border border-primary/30 rounded-full px-2 py-0.5">{children}</span>; }
 function TestButton({ label, busy, disabled, result, onClick }) { return <><button onClick={onClick} disabled={busy || disabled} className="h-9 px-4 rounded-[10px] border border-divider text-primary-text text-xs font-medium inline-flex items-center gap-1.5 disabled:opacity-50">{busy ? <LoaderCircle size={12} className="animate-spin" /> : <Zap size={12} />}{label}</button>{result && <span className={`text-xs ${result.ok ? "text-success" : "text-danger"}`}>{result.ok ? `✓ ${result.durationMs}ms` : `✗ ${result.error || result.code || "failed"}`}</span>}</>; }
-
-function ChannelFields({ kind, capability, imageMode, onChange }) {
-  if (!STUDIO_KINDS.includes(kind)) return null;
-  return <>
-    <Field label="工作台功能"><select value={capability || "image"} onChange={e => onChange({ studioCapability: e.target.value })}>{kind === "fal" ? <><option value="segment">物体分割</option><option value="split">图层拆分</option></> : <option value="image">图像生成 / 编辑</option>}</select></Field>
-    {kind !== "fal" && <Field label="模型支持的任务"><select value={imageMode || "both"} onChange={e => onChange({ imageMode: e.target.value })}><option value="both">生成与编辑</option><option value="edit">仅图像编辑</option><option value="generate">仅文本生图</option></select></Field>}
-  </>;
-}

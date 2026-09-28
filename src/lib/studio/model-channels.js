@@ -10,8 +10,19 @@ export const CHANNEL_PRESETS = [
   { label: "OpenAI 兼容 · 生成与编辑", kind: "openai", studioCapability: "image", imageMode: "both", model: "", baseURL: "" },
 ];
 
+function inferFalCapability(config = {}) {
+  // Older installations created fal channels before the capability selector
+  // was added. Keep those records usable by deriving the capability from the
+  // official model id until an administrator saves them again.
+  const model = String(config.model || "").toLowerCase();
+  if (model.includes("sam-3") || model.includes("sam3")) return "segment";
+  if (model.includes("qwen-image-layered") || model.includes("image-layered")) return "split";
+  return null;
+}
+
 export function channelCapability(row, config = JSON.parse(row.config || "{}")) {
-  return config.studioCapability || (STUDIO_KINDS.includes(row.kind || row.name) && (row.kind || row.name) !== "fal" ? "image" : null);
+  const kind = row.kind || row.name;
+  return config.studioCapability || (kind === "fal" ? inferFalCapability(config) : STUDIO_KINDS.includes(kind) ? "image" : null);
 }
 
 export function supportsImageTask(config, task) {

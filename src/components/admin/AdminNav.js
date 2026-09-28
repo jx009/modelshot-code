@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useLocale } from "next-intl";
 import { usePathname } from "@/i18n/navigation";
 
@@ -31,10 +30,9 @@ export default function AdminNav({ mobile = false }) {
         {LINKS.map(l => {
           const active = pathname === l.href;
           return (
-            <Link
+            <a
               key={l.href}
               href={hrefFor(l.href)}
-              prefetch={false}
               aria-current={active ? "page" : undefined}
               className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${
                 active
@@ -43,7 +41,7 @@ export default function AdminNav({ mobile = false }) {
               }`}
             >
               {l.label}
-            </Link>
+            </a>
           );
         })}
       </nav>
@@ -55,10 +53,9 @@ export default function AdminNav({ mobile = false }) {
       {LINKS.map(l => {
         const active = pathname === l.href;
         return (
-          <Link
+          <a
             key={l.href}
             href={hrefFor(l.href)}
-            prefetch={false}
             aria-current={active ? "page" : undefined}
             className={`relative z-10 block w-full cursor-pointer select-none px-5 py-2.5 text-xs font-bold transition-colors ${
               active
@@ -67,7 +64,7 @@ export default function AdminNav({ mobile = false }) {
             }`}
           >
             {l.label}
-          </Link>
+          </a>
         );
       })}
     </nav>

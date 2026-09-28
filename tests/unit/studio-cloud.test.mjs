@@ -4,7 +4,7 @@ import sharp from "sharp";
 import { generateCloudImage, falRequest, segmentCloudImage, splitCloudImage } from "../../src/lib/domain/studio/cloud.js";
 import { studioConfig, capabilities } from "../../src/lib/domain/studio/providers.js";
 import { encryptSecret } from "../../src/lib/crypto.js";
-import { allowedProviderBaseURL, validChannel } from "../../src/lib/studio/model-channels.js";
+import { allowedProviderBaseURL, channelCapability, channelScope, validChannel } from "../../src/lib/studio/model-channels.js";
 import { extractObject, selectionPrompt } from "../../src/lib/domain/studio/segmentation.js";
 import { beginObjectMove, appendResult } from "../../src/lib/studio/canvas-utils.js";
 import { runImageTool } from "../../src/lib/domain/studio/execution.js";
@@ -110,6 +110,15 @@ describe("capability-specific configuration", () => {
     for (const value of ["http://127.0.0.1", "https://key@fal.run", "https://fal.run?secret=1", "https://fal.run#secret"]) expect(allowedProviderBaseURL(value)).toBe(false);
     expect(validChannel("volcengine", { studioCapability: "split" })).toBe(false);
     expect(validChannel("fal", { studioCapability: "segment", model: "fal-ai/../bad" })).toBe(false);
+  });
+  it("keeps legacy fal channels discoverable by their model id", () => {
+    const sam = { kind: "fal", config: JSON.stringify({ model: "fal-ai/sam-3/image" }) };
+    const layered = { kind: "fal", config: JSON.stringify({ model: "fal-ai/qwen-image-layered" }) };
+    expect(channelCapability(sam)).toBe("segment");
+    expect(channelScope(sam)).toBe("tool");
+    expect(validChannel("fal", { model: "fal-ai/sam-3/image" })).toBe(true);
+    expect(channelCapability(layered)).toBe("split");
+    expect(validChannel("fal", { model: "fal-ai/qwen-image-layered" })).toBe(true);
   });
 });
 

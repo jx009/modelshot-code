@@ -49,6 +49,20 @@
   --warning: #EF9F27;
   --danger: #F0695A;
 
+  /* 渐变系统 */
+  --gradient-primary: linear-gradient(135deg, #D9F154 0%, #B8D943 100%);
+  --gradient-accent: linear-gradient(180deg, #D9F154 0%, #C8E03F 100%);
+  --gradient-glow: radial-gradient(circle at 30% 30%, rgba(217, 241, 84, 0.18), transparent 70%);
+
+  /* 辅助色（艺术感增强）*/
+  --accent-warm: #EF9F27;     /* 琥珀色 - 用于成功/完成状态 */
+  --accent-cool: #4A9FDC;     /* 深青色 - 用于技术操作 */
+  --accent-coral: #FF8B7B;    /* 珊瑚橙 - 用于创意强调 */
+
+  /* 艺术化阴影 */
+  --shadow-artwork: 0 8px 32px rgba(217, 241, 84, 0.12), 0 2px 8px rgba(0, 0, 0, 0.24);
+  --shadow-elevated: 0 16px 48px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(217, 241, 84, 0.08);
+
   /* 纵深效果参数 */
   --glass-bg: rgba(20, 20, 22, 0.72);
   --glass-border: rgba(255, 255, 255, 0.06);
@@ -57,6 +71,27 @@
   --ambient-glow-color: rgba(217, 241, 84, 0.045);
   --noise-opacity: 0.015;
   --btn-highlight: rgba(255, 255, 255, 0.15);
+
+  /* 交互变量 */
+  --hover-lift: translateY(-1px);
+  --focus-ring: 0 0 0 3px var(--primary-muted);
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-base: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-smooth: 350ms cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* 3D 视觉效果变量 */
+  --depth-1: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24);
+  --depth-2: 0 3px 6px rgba(0, 0, 0, 0.16), 0 3px 6px rgba(0, 0, 0, 0.23);
+  --depth-3: 0 10px 20px rgba(0, 0, 0, 0.19), 0 6px 6px rgba(0, 0, 0, 0.23);
+  --depth-4: 0 14px 28px rgba(0, 0, 0, 0.25), 0 10px 10px rgba(0, 0, 0, 0.22);
+  --depth-5: 0 19px 38px rgba(0, 0, 0, 0.30), 0 15px 12px rgba(0, 0, 0, 0.22);
+
+  /* 3D 变换预设 */
+  --perspective: 1000px;
+  --rotate-subtle: rotateX(2deg) rotateY(-2deg);
+  --rotate-card: rotateX(5deg) rotateY(-5deg);
+  --scale-hover: scale(1.02);
+  --translate-z-hover: translateZ(8px);
 }
 
 /* ══════════ 第一层 · 原始色板（浅色 = 覆盖块）══════════ */
@@ -225,10 +260,76 @@
   }
 }
 
+/* ══════════ 排版系统优化 ══════════ */
+
+/* 字体层级 */
+.text-h1 {
+  font-size: clamp(32px, 4vw, 48px);
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+  font-weight: 400;
+}
+
+.text-h2 {
+  font-size: clamp(24px, 3vw, 36px);
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  font-weight: 500;
+}
+
+.text-h3 {
+  font-size: clamp(18px, 2.5vw, 24px);
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+  font-weight: 500;
+}
+
+.text-body {
+  font-size: 13px;
+  line-height: 1.6;
+  letter-spacing: 0;
+}
+
+.text-body-lg {
+  font-size: 15px;
+  line-height: 1.7;
+  letter-spacing: 0;
+}
+
+.text-caption {
+  font-size: 11px;
+  line-height: 1.5;
+  letter-spacing: 0.01em;
+  color: var(--secondary-text);
+}
+
+.text-mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  letter-spacing: 0;
+}
+
 /* 展示字体工具类 */
 .font-display {
   font-family: var(--font-display);
   letter-spacing: 0;
+}
+
+/* 中英文混排优化 */
+.text-mixed {
+  font-feature-settings: 'palt' 1; /* 日文假名比例优化 */
+  text-spacing: ideograph-alpha ideograph-numeric;
+}
+
+/* 艺术化首字下沉 */
+.drop-cap::first-letter {
+  float: left;
+  font-size: 3.2em;
+  line-height: 0.9;
+  margin: 0.1em 0.15em 0 0;
+  font-family: var(--font-display);
+  color: var(--primary);
 }
 
 /* ══════════ 滚动条 ══════════ */
@@ -273,6 +374,68 @@
   to { opacity: 1; filter: blur(0); }
 }
 .animate-develop {
+  animation: developReveal 600ms var(--ease-out-quick) both;
+}
+
+/* 扫描线穿梭效果 */
+@keyframes scanLine {
+  from { transform: translateY(-100%); }
+  to { transform: translateY(100%); }
+}
+
+/* 光圈打开（镜头感）*/
+@keyframes aperture-open {
+  from {
+    opacity: 0;
+    transform: scale(0.88);
+    filter: brightness(1.35);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+    filter: brightness(1);
+  }
+}
+.animate-aperture {
+  animation: aperture-open 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* 闪光一次（拍摄快门感）*/
+@keyframes flash-once {
+  0%, 100% { opacity: 0; }
+  50% { opacity: 0.22; }
+}
+
+/* 生成中脉冲（处理状态）*/
+@keyframes generating-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 var(--primary);
+    border-color: var(--primary);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(217, 241, 84, 0.15);
+    border-color: rgba(217, 241, 84, 0.6);
+  }
+}
+
+/* 完成辉光（成功状态）*/
+@keyframes completed-glow {
+  0% { box-shadow: 0 0 0 0 var(--accent-warm); }
+  50% { box-shadow: 0 0 20px 8px rgba(239, 159, 39, 0.25); }
+  100% { box-shadow: 0 0 0 0 var(--accent-warm); }
+}
+
+/* ══════════ 状态动画工具类 ══════════ */
+.status-generating {
+  animation: generating-pulse 2s ease-in-out infinite;
+}
+
+.status-completed {
+  animation: completed-glow 1.2s ease-out;
+}
+
+/* ══════════ 旧动画保持 ══════════ */
+.animate-develop-old {
   animation: developReveal 600ms var(--ease-out-quick) both;
 }
 

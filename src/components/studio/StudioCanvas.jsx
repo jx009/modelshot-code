@@ -3,31 +3,13 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { Stage, Layer, Image as CanvasImage, Transformer, Text, Group, Line, Rect } from "react-konva";
 import { editRegion } from "@/lib/studio/selection-geometry";
-
-function loadImage(src) {
-  return new Promise((resolve, reject) => {
-    const image = new window.Image();
-    image.onload = () => resolve(image);
-    image.onerror = reject;
-    image.src = src;
-  });
-}
-
-async function alphaMaskBlob(image, width, height) {
-  const canvas = document.createElement("canvas"); canvas.width = width; canvas.height = height;
-  const context = canvas.getContext("2d", { willReadFrequently: true });
-  context.drawImage(image, 0, 0, width, height);
-  const pixels = context.getImageData(0, 0, width, height);
-  let left = width, top = height, right = 0, bottom = 0;
-  for (let offset = 0; offset < pixels.data.length; offset += 4) {
-    const selected = pixels.data[offset + 3];
-    if (selected > 16) { const x = offset / 4 % width, y = Math.floor(offset / 4 / width); left = Math.min(left, x); top = Math.min(top, y); right = Math.max(right, x + 1); bottom = Math.max(bottom, y + 1); }
-    pixels.data[offset] = selected; pixels.data[offset + 1] = selected; pixels.data[offset + 2] = selected; pixels.data[offset + 3] = 255;
-  }
-  if (right === 0 || bottom === 0) throw new Error("EMPTY_MASK");
-  context.putImageData(pixels, 0, 0);
-  return { mask: await new Promise(resolve => canvas.toBlob(resolve, "image/png")), bounds: { left, top, width: right - left, height: bottom - top } };
-}
+import { useCanvasState } from "./canvas/hooks/useCanvasState";
+import { useDrawingState } from "./canvas/hooks/useDrawingState";
+import { useSelectionState } from "./canvas/hooks/useSelectionState";
+import { useImageColors } from "./canvas/hooks/useImageColors";
+import { loadImage, alphaMaskBlob, processLargeImage } from "@/lib/studio/image-processor";
+import { throttleRaf } from "@/lib/utils/throttle";
+import { getCursorForMode } from "@/lib/studio/cursor-generator";
 
 async function createCutout(assetId, maskBlob, width, height, signal, provider, point) {
   const form = new FormData();
@@ -51,10 +33,10 @@ function Picture({ item, selected, onSelect, onChange, interactive, accent, onEr
   useEffect(() => {
     if (item.type !== "image") return;
     let live = true;
-    const img = new window.Image();
-    img.onload = () => { if (live) setImage(img); };
-    img.onerror = () => { if (live) onError("IMAGE_LOAD_FAILED"); };
-    img.src = `/api/assets/${item.assetId}`;
+    loadImage(`/api/assets/${item.assetId}`)
+      .then(img => processLargeImage(img, 2048))
+      .then(processed => { if (live) setImage(processed); })
+      .catch(() => { if (live) onError("IMAGE_LOAD_FAILED"); });
     return () => { live = false; };
   }, [item.assetId, item.type, onError]);
   useEffect(() => { if (selected && transformer.current && shape.current) { transformer.current.nodes([shape.current]); transformer.current.getLayer().batchDraw(); } }, [selected, interactive]);
@@ -108,10 +90,21 @@ function ExpansionBox({ value, width, height, accent, onChange }) {
 const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSelect, onChange, mode, segmentProvider, editPadding = 0.25, brushSize = 35, moveOffset = { dx: 0, dy: 0 }, onMoveOffset, onMovePreparing, onMoveReady, onMoveFailed, onCrop, expandPadding = 256, onExpandPadding, onZoom, onUpload, onError, label }, ref) {
   const container = useRef(null), stage = useRef(null), artwork = useRef(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
-  const [camera, setCamera] = useState({ x: 30, y: 20, scale: 1 });
-  const [strokes, setStrokes] = useState([]), [crop, setCrop] = useState(null), [movePreview, setMovePreview] = useState(null), [moveSelection, setMoveSelection] = useState(null), [moveMask, setMoveMask] = useState(null);
   const [color, setColor] = useState("#D9F154");
-  const drawing = useRef(false), cropStart = useRef(null), activeStroke = useRef(null), activeMove = useRef(null), moveMaskRef = useRef(null), expansionTarget = useRef(null);
+
+  // Use custom hooks for state management
+  const { camera, updateCamera, zoom, fit, fitExpansion } = useCanvasState(dimensions, layers, selectedId, expandPadding);
+  const { strokes, startStroke, addPoint, endStroke, clearStrokes } = useDrawingState();
+  const {
+    crop, movePreview, moveSelection, moveMask,
+    startCrop, updateCrop,
+    startMoveRect, startMoveLasso, addLassoPoint,
+    setMovePreview, clearMove, clearAll: clearSelection
+  } = useSelectionState();
+  const { colors, primaryColor, applyColors } = useImageColors(layers, selectedId);
+
+  const drawing = useRef(false), cropStart = useRef(null);
+  const expansionTarget = useRef(null);
   const selection = layers.find(l => l.id === selectedId);
   const selectionRequest = useRef(null), operation = useRef(0);
   useEffect(() => () => { operation.current++; selectionRequest.current?.abort(); }, [selectedId]);
@@ -121,49 +114,25 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
     setColor(getComputedStyle(container.current).getPropertyValue("--primary").trim() || "#D9F154");
     return () => observer.disconnect();
   }, []);
+
+  // Auto-apply dynamic colors when primaryColor changes
+  useEffect(() => {
+    if (primaryColor) {
+      applyColors();
+      setColor(primaryColor);
+    }
+  }, [primaryColor, applyColors]);
   useEffect(() => { onZoom(camera.scale); }, [camera.scale, onZoom]);
   const maskKey = `${selectedId}:mask`;
   const toolKey = `${selectedId}:${mode}`;
-  useEffect(() => { activeStroke.current = null; drawing.current = false; }, [toolKey]);
-  useEffect(() => { moveMaskRef.current = moveMask; }, [moveMask]);
-  function updateCamera(next) { setCamera(current => ({ ...current, ...next })); }
-  function zoom(factor) {
-    setCamera(c => {
-      const scale = Math.min(4, Math.max(0.08, c.scale * factor)), center = { x: dimensions.width / 2, y: dimensions.height / 2 };
-      return { scale, x: center.x - (center.x - c.x) / c.scale * scale, y: center.y - (center.y - c.y) / c.scale * scale };
-    });
-  }
-  function fit() {
-    const visible = layers.filter(l => l.visible);
-    if (!visible.length) { setCamera({ x: 30, y: 20, scale: 1 }); return; }
-    const left = Math.min(...visible.map(l => l.x)), top = Math.min(...visible.map(l => l.y));
-    const right = Math.max(...visible.map(l => l.x + l.width)), bottom = Math.max(...visible.map(l => l.y + l.height));
-    const width = right - left, height = bottom - top;
-    const scale = Math.max(0.08, Math.min(1.5, (dimensions.width - 110) / width, (dimensions.height - 180) / height));
-    setCamera({ scale, x: (dimensions.width - width * scale) / 2 - left * scale, y: (dimensions.height - height * scale) / 2 - top * scale });
-  }
-  function fitExpansion() {
-    if (!selection?.pixelWidth || !selection?.pixelHeight) return;
-    const edges = paddingEdges(expandPadding);
-    const scaleX = selection.width / selection.pixelWidth, scaleY = selection.height / selection.pixelHeight;
-    const left = selection.x - edges.left * scaleX, top = selection.y - edges.top * scaleY;
-    const width = selection.width + (edges.left + edges.right) * scaleX;
-    const height = selection.height + (edges.top + edges.bottom) * scaleY;
-    const scale = Math.max(0.08, Math.min(1.5, (dimensions.width - 110) / width, (dimensions.height - 180) / height));
-    setCamera({ scale, x: (dimensions.width - width * scale) / 2 - left * scale, y: (dimensions.height - height * scale) / 2 - top * scale });
-  }
+  useEffect(() => { drawing.current = false; clearStrokes(); }, [toolKey, clearStrokes]);
   useEffect(() => {
     if (mode !== "expand" || !selection?.pixelWidth || !selection?.pixelHeight) { expansionTarget.current = null; return; }
     if (expansionTarget.current === selectedId) return;
     expansionTarget.current = selectedId;
-    const edges = paddingEdges(expandPadding);
-    const scaleX = selection.width / selection.pixelWidth, scaleY = selection.height / selection.pixelHeight;
-    const left = selection.x - edges.left * scaleX, top = selection.y - edges.top * scaleY;
-    const width = selection.width + (edges.left + edges.right) * scaleX;
-    const height = selection.height + (edges.top + edges.bottom) * scaleY;
-    const scale = Math.max(0.08, Math.min(1.5, (dimensions.width - 110) / width, (dimensions.height - 180) / height));
-    setCamera({ scale, x: (dimensions.width - width * scale) / 2 - left * scale, y: (dimensions.height - height * scale) / 2 - top * scale });
-  }, [mode, selectedId, selection, expandPadding, dimensions.width, dimensions.height]);
+    fitExpansion(selection, expandPadding);
+  }, [mode, selectedId, selection, expandPadding, fitExpansion]);
+
   async function maskBlob(rectangle, polygon) {
       if (!selection) throw new Error("Select an image");
       const canvas = document.createElement("canvas");
@@ -171,7 +140,7 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
       const ctx = canvas.getContext("2d");
       ctx.fillStyle = "black"; ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.strokeStyle = "white"; ctx.fillStyle = "white"; ctx.lineCap = "round"; ctx.lineJoin = "round";
-      const direct = rectangle || polygon ? { rectangle, polygon } : moveMaskRef.current;
+      const direct = rectangle || polygon ? { rectangle, polygon } : moveMask;
       if (direct?.blob) return direct.blob;
       if (direct?.rectangle) ctx.fillRect(direct.rectangle.left, direct.rectangle.top, direct.rectangle.width, direct.rectangle.height);
       else if (direct?.polygon?.length >= 6) {
@@ -201,7 +170,6 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
     catch (error) { if (current !== operation.current) return; throw error; }
     if (current !== operation.current) return;
     const refined = { blob: cutout.mask };
-    moveMaskRef.current = refined; setMoveMask(refined);
     const { bounds } = cutout;
     const object = document.createElement("canvas"); object.width = bounds.width; object.height = bounds.height;
     object.getContext("2d").drawImage(cutout.image, bounds.left, bounds.top, bounds.width, bounds.height, 0, 0, bounds.width, bounds.height);
@@ -209,13 +177,12 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
     const ratio = Math.min(1, 160 / Math.max(bounds.width, bounds.height));
     thumb.width = Math.max(1, Math.round(bounds.width * ratio)); thumb.height = Math.max(1, Math.round(bounds.height * ratio));
     thumb.getContext("2d").drawImage(object, 0, 0, thumb.width, thumb.height);
-    setMoveSelection(null);
     setMovePreview({ target: selectedId, image: object, hole: cutout.hole, bounds });
     onMoveReady?.({ bounds, thumbnail: thumb.toDataURL("image/png"), maskId: cutout.maskId, objectAssetId: cutout.objectAssetId, holeAssetId: cutout.holeAssetId });
   }
-  function clearMove() { drawing.current = false; activeMove.current = null; cropStart.current = null; operation.current++; selectionRequest.current?.abort(); setMovePreview(null); setMoveSelection(null); setMoveMask(null); moveMaskRef.current = null; }
+
   useImperativeHandle(ref, () => ({ zoom, fit, fitExpansion,
-    clearMask: () => { setStrokes([]); setCrop(null); clearMove(); },
+    clearMask: () => { clearStrokes(); clearSelection(); },
     clearMovePreview: clearMove,
     maskBlob,
     async exportPNG() {
@@ -241,52 +208,103 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
     const x = p.x / selection.width * selection.pixelWidth, y = p.y / selection.height * selection.pixelHeight;
     return { x: Math.max(0, Math.min(selection.pixelWidth, x)), y: Math.max(0, Math.min(selection.pixelHeight, y)) };
   }
-  function down(e) {
+
+  const handleMouseDown = throttleRaf((e) => {
     if (e.evt?.button && e.evt.button !== 0) return;
     if (mode.startsWith("object-select-")) {
       const imageNode = artwork.current?.findOne(`#${selectedId}`);
       if (e.target !== imageNode) return;
     }
-    if (!["mask", "crop", "object-select-rect", "object-select-lasso"].includes(mode)) { if (e.target === e.target.getStage()) onSelect(null); return; }
+    if (!["mask", "crop", "object-select-rect", "object-select-lasso"].includes(mode)) {
+      if (e.target === e.target.getStage()) onSelect(null);
+      return;
+    }
     const p = point(); if (!p) return;
     drawing.current = true;
-    if (mode === "crop") { cropStart.current = p; setCrop(null); }
-    else if (mode === "object-select-rect") { cropStart.current = p; activeMove.current = { rectangle: { left: p.x, top: p.y, width: 1, height: 1 } }; setMoveSelection(activeMove.current); }
-    else if (mode === "object-select-lasso") { activeMove.current = { polygon: [p.x, p.y, p.x + 0.1, p.y + 0.1] }; setMoveSelection(activeMove.current); }
-    else { const stroke = { target: maskKey, width: brushSize, points: [p.x, p.y, p.x + 0.1, p.y + 0.1] }; activeStroke.current = stroke; setStrokes(current => [...current, stroke]); }
-  }
-  function move() {
+    if (mode === "crop") {
+      cropStart.current = p;
+      startCrop(null, onCrop);
+    }
+    else if (mode === "object-select-rect") {
+      cropStart.current = p;
+      startMoveRect(p);
+    }
+    else if (mode === "object-select-lasso") {
+      startMoveLasso(p);
+    }
+    else {
+      startStroke(maskKey, brushSize, p);
+    }
+  });
+
+  const handleMouseMove = throttleRaf(() => {
     if (!drawing.current) return;
     const p = point(); if (!p) return;
     if (mode === "crop" || mode === "object-select-rect") {
       const start = cropStart.current;
       if (!start) return;
-      const rect = { left: Math.round(Math.min(p.x, start.x)), top: Math.round(Math.min(p.y, start.y)), width: Math.max(1, Math.floor(Math.abs(p.x - start.x))), height: Math.max(1, Math.floor(Math.abs(p.y - start.y))) };
-      if (mode === "crop") { setCrop(rect); onCrop(rect); }
-      else { activeMove.current = { rectangle: rect }; setMoveSelection(activeMove.current); }
-    } else if (mode === "object-select-lasso" && activeMove.current) {
-      activeMove.current = { polygon: [...activeMove.current.polygon, p.x, p.y] }; setMoveSelection(activeMove.current);
-    } else if (activeStroke.current) {
-      activeStroke.current = { ...activeStroke.current, points: [...activeStroke.current.points, p.x, p.y] };
-      setStrokes(current => [...current.slice(0, -1), activeStroke.current]);
+      const rect = {
+        left: Math.round(Math.min(p.x, start.x)),
+        top: Math.round(Math.min(p.y, start.y)),
+        width: Math.max(1, Math.floor(Math.abs(p.x - start.x))),
+        height: Math.max(1, Math.floor(Math.abs(p.y - start.y)))
+      };
+      if (mode === "crop") {
+        updateCrop(rect, onCrop);
+      }
+      else {
+        startMoveRect({ x: rect.left, y: rect.top }, rect);
+      }
+    } else if (mode === "object-select-lasso") {
+      addLassoPoint(p);
+    } else {
+      addPoint(p);
     }
-  }
+  });
+
   async function finishDrawing() {
     drawing.current = false;
-    if (!["object-select-rect", "object-select-lasso"].includes(mode) || !activeMove.current) return;
-    const shape = activeMove.current; activeMove.current = null;
+    if (!["object-select-rect", "object-select-lasso"].includes(mode) || !moveSelection) return;
+    const shape = moveSelection;
     cropStart.current = null;
-    if (shape.rectangle && shape.rectangle.width < 3 && shape.rectangle.height < 3) shape.point = { x: Math.min(selection.pixelWidth - 1, Math.round(shape.rectangle.left)), y: Math.min(selection.pixelHeight - 1, Math.round(shape.rectangle.top)) };
+    if (shape.rectangle && shape.rectangle.width < 3 && shape.rectangle.height < 3) {
+      shape.point = {
+        x: Math.min(selection.pixelWidth - 1, Math.round(shape.rectangle.left)),
+        y: Math.min(selection.pixelHeight - 1, Math.round(shape.rectangle.top))
+      };
+    }
     const valid = shape.point || (shape.rectangle ? shape.rectangle.width >= 3 && shape.rectangle.height >= 3 : shape.polygon?.length >= 8);
     if (!valid) return;
     onMovePreparing?.();
-    try { await prepareMoveFrom(shape); } catch (error) { if (error.name !== "AbortError") { onMoveFailed?.(); onError(error); } }
+    try { await prepareMoveFrom(shape); }
+    catch (error) {
+      if (error.name !== "AbortError") {
+        onMoveFailed?.();
+        onError(error);
+      }
+    }
   }
   const editing = selection?.type === "image" && ["mask", "crop", "move", "object-edit", "object-preparing", "object-select-rect", "object-select-lasso", "expand"].includes(mode);
-  return <div ref={container} className={`ms-stage ${mode === "hand" ? "is-hand" : mode === "move" ? "is-move-object" : mode === "object-preparing" ? "is-processing" : editing ? "is-brush" : ""}`} data-mode={mode} data-camera-scale={camera.scale} aria-label={label} onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); onUpload(e.dataTransfer.files); }}>
-    <Stage ref={stage} {...dimensions} x={camera.x} y={camera.y} scaleX={camera.scale} scaleY={camera.scale} draggable={mode === "hand"} onDragEnd={e => { if (e.target === stage.current) updateCamera({ x: e.target.x(), y: e.target.y() }); }}
-      onWheel={e => { e.evt.preventDefault(); const pointer = stage.current.getPointerPosition(); const next = Math.max(0.08, Math.min(4, camera.scale * (e.evt.deltaY > 0 ? 0.93 : 1.07))); setCamera({ scale: next, x: pointer.x - (pointer.x - camera.x) / camera.scale * next, y: pointer.y - (pointer.y - camera.y) / camera.scale * next }); }}
-      onMouseDown={down} onTouchStart={down} onMouseMove={move} onTouchMove={move} onMouseUp={finishDrawing} onTouchEnd={finishDrawing} onMouseLeave={finishDrawing}>
+  const cursorStyle = getCursorForMode(mode, brushSize);
+
+  return <div ref={container} className="ms-stage" data-mode={mode} data-camera-scale={camera.scale} aria-label={label} style={{ cursor: cursorStyle }}
+    onDragOver={e => e.preventDefault()}
+    onDrop={e => { e.preventDefault(); onUpload(e.dataTransfer.files); }}>
+    <Stage ref={stage} {...dimensions} x={camera.x} y={camera.y} scaleX={camera.scale} scaleY={camera.scale} draggable={mode === "hand"}
+      onDragEnd={e => { if (e.target === stage.current) updateCamera({ x: e.target.x(), y: e.target.y() }); }}
+      onWheel={e => {
+        e.evt.preventDefault();
+        const pointer = stage.current.getPointerPosition();
+        const next = Math.max(0.08, Math.min(4, camera.scale * (e.evt.deltaY > 0 ? 0.93 : 1.07)));
+        updateCamera({
+          scale: next,
+          x: pointer.x - (pointer.x - camera.x) / camera.scale * next,
+          y: pointer.y - (pointer.y - camera.y) / camera.scale * next
+        });
+      }}
+      onMouseDown={handleMouseDown} onTouchStart={handleMouseDown}
+      onMouseMove={handleMouseMove} onTouchMove={handleMouseMove}
+      onMouseUp={finishDrawing} onTouchEnd={finishDrawing} onMouseLeave={finishDrawing}>
       <Layer ref={artwork}>
         {layers.filter(l => l.visible).map(item => <Picture key={item.id} item={item} previewImage={mode === "move" && movePreview?.target === item.id ? movePreview.hole : null} selected={selectedId === item.id} interactive={mode === "select"} accent={color} onError={onError} onSelect={() => { if (!editing) onSelect(item.id); }} onChange={patch => { try { onChange(layers.map(l => l.id === item.id ? { ...l, ...patch } : l)); } catch (e) { onError(e); } }} />)}
       </Layer>

@@ -9,6 +9,11 @@ from fastapi import HTTPException
 import app
 from segmentation import Segmenter
 
+def _png(image):
+    output = io.BytesIO()
+    image.save(output, "PNG")
+    return output.getvalue()
+
 
 class SegmentationTests(unittest.TestCase):
     def test_embedding_is_reused_and_cache_is_bounded(self):
@@ -50,6 +55,20 @@ class SegmentationTests(unittest.TestCase):
                 app.process("segment",source.getvalue(),{},selection.getvalue())
             self.assertEqual(context.exception.status_code,422)
             fake.select.assert_not_called()
+        finally:
+            app.ENGINES.clear()
+
+    def test_local_segment_uses_foreground_engine_inside_selection(self):
+        source = Image.new("RGB", (20, 20), "red")
+        foreground = Image.new("RGBA", source.size, (255, 0, 0, 255))
+        selection = Image.new("L", source.size)
+        selection.paste(255, (5, 4, 15, 16))
+        remove = Mock(return_value=foreground)
+        app.ENGINES["segment"] = (remove, object())
+        try:
+            result = app.process("segment", _png(source), {}, _png(selection))
+            self.assertEqual(Image.open(io.BytesIO(result)).getchannel("A").getbbox(), (5, 4, 15, 16))
+            remove.assert_called_once()
         finally:
             app.ENGINES.clear()
 

@@ -1,6 +1,8 @@
 "use client";
 
-import { Link, usePathname } from "@/i18n/navigation";
+import Link from "next/link";
+import { useLocale } from "next-intl";
+import { usePathname } from "@/i18n/navigation";
 
 const LINKS = [
   { href: "/admin", label: "数据看板" },
@@ -19,7 +21,9 @@ const LINKS = [
 ];
 
 export default function AdminNav({ mobile = false }) {
+  const locale = useLocale();
   const pathname = usePathname();
+  const hrefFor = href => `/${locale}${href}`;
 
   if (mobile) {
     return (
@@ -29,7 +33,9 @@ export default function AdminNav({ mobile = false }) {
           return (
             <Link
               key={l.href}
-              href={l.href}
+              href={hrefFor(l.href)}
+              prefetch={false}
+              aria-current={active ? "page" : undefined}
               className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${
                 active
                   ? "bg-primary/15 border-primary/40 text-primary"
@@ -45,14 +51,16 @@ export default function AdminNav({ mobile = false }) {
   }
 
   return (
-    <nav className="py-3">
+    <nav className="relative z-10 py-3" aria-label="Admin navigation">
       {LINKS.map(l => {
         const active = pathname === l.href;
         return (
           <Link
             key={l.href}
-            href={l.href}
-            className={`block px-5 py-2.5 text-xs font-bold transition-colors ${
+            href={hrefFor(l.href)}
+            prefetch={false}
+            aria-current={active ? "page" : undefined}
+            className={`relative z-10 block w-full cursor-pointer select-none px-5 py-2.5 text-xs font-bold transition-colors ${
               active
                 ? "text-primary bg-primary/10 border-r-2 border-primary"
                 : "text-secondary-text hover:text-primary-text hover:bg-bg-page/50"

@@ -14,7 +14,7 @@
 
 原生依赖安装需能访问 GitHub releases 和 raw.githubusercontent.com。若 Windows 已设置系统代理但 Node 下载出现 ECONNRESET，在当前安装终端设置 HTTP_PROXY、HTTPS_PROXY 为本机已配置的代理，NO_PROXY 包含 localhost/127.0.0.1，并使用 Node 22.23.2 的 NODE_OPTIONS=--use-env-proxy 执行 npm ci。不要关闭所有安装脚本，也不要关闭 TLS 验证。C2PA 上游会下载自己的测试证书，应用不会自动使用这些证书签名；实际签名只接受显式配置的自有证书路径。
 
-`GET /api/health` 只表示 Web 存活。`GET /api/ready` 校验配置、数据库、Redis、私有存储及 60 秒以内的 Worker 心跳。就绪失败返回 503，不返回内部连接信息。停止 Worker 时发送 SIGTERM，等待正在执行的有界操作及队列连接关闭。
+`GET /api/health` 只表示 Web 存活。`GET /api/ready` 校验配置、数据库、Redis、私有存储及 60 秒以内的 Worker 心跳。就绪失败返回 503，不返回内部连接信息。停止 Worker 时发送 SIGTERM，最多等待 20 秒；超过后强制断开 BullMQ 连接，由恢复任务接管未完成作业，避免部署被单个外部模型请求拖住。
 
 ## 账务政策
 

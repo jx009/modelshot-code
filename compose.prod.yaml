@@ -213,7 +213,7 @@ services:
     networks:
       - app
 
-  # 必须独立常驻。SIGTERM 后等待正在执行的供应商调用收尾，故宽限 180 秒。
+  # 必须独立常驻。停止时短暂等待正在执行的任务，超时交给恢复机制。
   worker:
     <<: *modelshot-service
     command: ["worker"]
@@ -228,7 +228,7 @@ services:
         # Cloud generation and other jobs do not require local model readiness.
         # Local tools still advertise their capabilities only after loading.
         condition: service_started
-    stop_grace_period: 180s
+    stop_grace_period: 30s
     networks:
       - app
 

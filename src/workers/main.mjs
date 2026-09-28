@@ -35,6 +35,7 @@ connection.on("error", () => console.error(JSON.stringify({ code: "REDIS_UNAVAIL
 let stopping = false;
 let dispatching = false;
 let iteration = 0;
+const shutdownTimeoutMs = Math.min(30_000, Math.max(5_000, Number(process.env.WORKER_SHUTDOWN_TIMEOUT_MS) || 20_000));
 async function tick() {
   if (stopping || dispatching) return;
   dispatching = true;
@@ -55,14 +56,25 @@ async function shutdown() {
   if (stopping) return;
   stopping = true;
   const started = Date.now();
+  const forceAt = setTimeout(() => {
+    console.error(JSON.stringify({ code: "WORKER_FORCE_CLOSE", timeoutMs: shutdownTimeoutMs }));
+    // BullMQ's forced close releases the Redis connection and lets the queue
+    // recovery loop reclaim a job whose provider call outlived the container.
+    worker.close(true).catch(() => {});
+  }, shutdownTimeoutMs);
+  forceAt.unref();
   console.log(JSON.stringify({ code: "WORKER_STOPPING", stage: "drain_active_jobs" }));
   clearInterval(timer);
-  await worker.close();
-  while (dispatching) await new Promise(resolve => setTimeout(resolve, 100));
-  await queue.close();
-  await connection.quit();
-  await prisma.$disconnect();
-  console.log(JSON.stringify({ code: "WORKER_STOPPED", durationMs: Date.now() - started }));
+  try {
+    await worker.close();
+    while (dispatching) await new Promise(resolve => setTimeout(resolve, 100));
+    await queue.close();
+    await connection.quit();
+    await prisma.$disconnect();
+    console.log(JSON.stringify({ code: "WORKER_STOPPED", durationMs: Date.now() - started }));
+  } finally {
+    clearTimeout(forceAt);
+  }
 }
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);

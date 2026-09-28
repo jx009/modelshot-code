@@ -37,6 +37,7 @@ export default function StudioToolPricingPage() {
   }
 
   const update = (id, patch) => setData(current => ({ ...current, tools: current.tools.map(tool => tool.id === id ? { ...tool, ...patch } : tool) }));
+
   return <div className=”space-y-5”>
     {reasonPrompt.dialog}
     <div>

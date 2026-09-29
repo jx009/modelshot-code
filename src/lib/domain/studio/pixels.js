@@ -1,4 +1,5 @@
 import sharp from "sharp";
+import { CROP_PATHS, cropCells } from "../../studio/crop-geometry.js";
 import { AppError } from "../../http.js";
 
 export async function maskPixels(mask, width, height) {
@@ -29,6 +30,19 @@ export async function cropImage(image, rect) {
   const { width, height } = await sharp(image).metadata();
   if (!rect || rect.left + rect.width > width || rect.top + rect.height > height) throw new AppError("CROP_OUT_OF_BOUNDS");
   return sharp(image).extract(rect).png().toBuffer();
+}
+export async function cropOutputs(image, params) {
+  const { rect, cropShape = "rectangle", cropGrid } = params;
+  const base = await cropImage(image, rect);
+  if (cropShape === "grid") {
+    const cells = cropCells({ ...rect, left: 0, top: 0 }, cropGrid || { x: [.5], y: [.5] });
+    if (cells.some(cell => cell.width < 1 || cell.height < 1)) throw new AppError("CROP_GRID_TOO_SMALL", 422);
+    return Promise.all(cells.map(cell => sharp(base).extract(cell).png().toBuffer()));
+  }
+  const path = CROP_PATHS[cropShape];
+  if (!path) return [base];
+  const svg = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${rect.width}" height="${rect.height}" viewBox="0 0 100 100" preserveAspectRatio="none"><path d="${path}" fill="white"/></svg>`);
+  return [await sharp(base).ensureAlpha().composite([{ input: svg, blend: "dest-in" }]).png().toBuffer()];
 }
 export async function expandInput(image, padding) {
   const { width, height } = await sharp(image).metadata();

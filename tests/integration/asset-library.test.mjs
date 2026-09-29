@@ -1,0 +1,42 @@
+import { beforeAll, afterAll, expect, it } from "vitest";
+import { domainFixture } from "../support/domain-fixture.mjs";
+import { addLibraryItem, updateLibraryItem, batchLibraryItems } from "../../src/lib/domain/assets/library.js";
+import { cleanupStorage } from "../../src/lib/domain/assets/lifecycle.js";
+import { saveDocument } from "../../src/lib/domain/studio/documents.js";
+let f;
+beforeAll(async () => { f = await domainFixture(); });
+afterAll(async () => { await f?.cleanup(); });
+it("isolates categories and assets by owner", async () => {
+  const user = await f.user(), other = await f.user();
+  const category = await f.db.libraryCategory.create({ data: { userId: other.id, name: "Other" } });
+  await expect(addLibraryItem(user.id, { assetId: other.asset.id, name: "stolen" }, f.db)).rejects.toThrow("ASSET_NOT_FOUND");
+  await expect(addLibraryItem(user.id, { assetId: user.asset.id, name: "invalid category", categoryId: category.id }, f.db)).rejects.toThrow("CATEGORY_NOT_FOUND");
+});
+it("rejects an entire batch containing another owner's item or expired restoration", async () => {
+  const user = await f.user(), other = await f.user();
+  const item = await addLibraryItem(user.id, { assetId: user.asset.id, name: "Mine" }, f.db);
+  const foreign = await addLibraryItem(other.id, { assetId: other.asset.id, name: "Other" }, f.db);
+  await expect(batchLibraryItems(user.id, [item.id, foreign.id], "trash", undefined, f.db)).rejects.toThrow("LIBRARY_ITEM_NOT_FOUND");
+  expect((await f.db.libraryItem.findUnique({ where: { id: item.id } })).deletedAt).toBeNull();
+  const category = await f.db.libraryCategory.create({ data: { userId: other.id, name: "Private" } });
+  await expect(batchLibraryItems(user.id, [item.id], "category", category.id, f.db)).rejects.toThrow("CATEGORY_NOT_FOUND");
+  await batchLibraryItems(user.id, [item.id, item.id], "trash", undefined, f.db);
+  await f.db.libraryItem.update({ where: { id: item.id }, data: { deletedAt: new Date(Date.now() - 31 * 86400000) } });
+  await expect(batchLibraryItems(user.id, [item.id], "restore", undefined, f.db)).rejects.toThrow("LIBRARY_ITEM_EXPIRED");
+  expect((await f.db.libraryItem.findUnique({ where: { id: foreign.id } })).deletedAt).toBeNull();
+});
+it("trash and expiry preserve images still used in a project", async () => {
+  const user = await f.user();
+  const item = await addLibraryItem(user.id, { assetId: user.asset.id, name: "Cat" }, f.db);
+  const duplicate = await addLibraryItem(user.id, { assetId: user.asset.id, name: "Cat" }, f.db);
+  expect(duplicate.id).toBe(item.id);
+  await saveDocument(user.id, { name: "Project", content: { schemaVersion: 1, layers: [], jobs: [], messages: [{ id: "message-asset", role: "user", text: "cat", assetId: user.asset.id }] } }, f.db);
+  await updateLibraryItem(user.id, item.id, { trash: true }, f.db);
+  expect((await f.db.asset.findUnique({ where: { id: user.asset.id } })).status).toBe("active");
+  await updateLibraryItem(user.id, item.id, { restore: true }, f.db);
+  expect((await f.db.libraryItem.findUnique({ where: { id: item.id } })).deletedAt).toBeNull();
+  await updateLibraryItem(user.id, item.id, { trash: true }, f.db);
+  await cleanupStorage({ db: f.db, store: f.store, now: new Date(Date.now() + 31 * 86400000) });
+  expect(await f.db.libraryItem.findUnique({ where: { id: item.id } })).toBeNull();
+  expect((await f.db.asset.findUnique({ where: { id: user.asset.id } })).status).toBe("active");
+});

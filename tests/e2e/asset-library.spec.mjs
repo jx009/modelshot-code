@@ -1,0 +1,52 @@
+import { test, expect } from "@playwright/test";
+import { PrismaClient } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
+import bcrypt from "bcryptjs";
+import sharp from "sharp";
+import { getTestEnvironment } from "../support/environment.mjs";
+import { E2E_PASSWORD } from "../support/e2e-users.mjs";
+
+test("library upload, classification, trash recovery and canvas reuse", async ({ page }, info) => {
+  const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: getTestEnvironment().databaseUrl }) });
+  const email = `library-${info.project.name}-${Date.now()}@modelshot.test`;
+  try {
+    await db.user.create({ data: { email, passwordHash: await bcrypt.hash(E2E_PASSWORD, 10), credits: 100, emailVerified: new Date() } });
+    await page.goto("/en/login?callbackUrl=/en/assets");
+    await page.getByRole("button", { name: "Email", exact: true }).click();
+    await page.getByLabel("Email", { exact: true }).fill(email); await page.getByLabel("Password", { exact: true }).fill(E2E_PASSWORD);
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "My assets", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "New category", exact: true }).click();
+    await page.getByLabel("Category name", { exact: true }).fill("Products");
+    await page.getByRole("button", { name: "Confirm", exact: true }).click();
+    await expect(page.getByRole("button", { name: /Products/ })).toHaveClass(/active/);
+    const bytes = await sharp({ create: { width: 300, height: 300, channels: 3, background: "#c89d87" } }).png().toBuffer();
+    await page.getByLabel("Upload asset files").setInputFiles({ name: "cat.png", mimeType: "image/png", buffer: bytes });
+    await expect(page.locator(".ml-grid article")).toHaveCount(1);
+    await expect.poll(() => page.locator(".ml-image img").evaluate(image => image.complete && image.naturalWidth > 0)).toBe(true);
+    await page.screenshot({ path: info.outputPath("library.png"), fullPage: true, animations: "disabled" });
+    await page.getByRole("button", { name: "Move to trash: cat.png", exact: true }).click();
+    await expect(page.locator(".ml-grid article")).toHaveCount(0);
+    await page.getByRole("button", { name: "Trash", exact: true }).click();
+    await page.getByRole("button", { name: "Restore", exact: true }).click();
+    await expect(page.locator(".ml-grid article")).toHaveCount(0);
+    await page.getByRole("button", { name: "All assets", exact: true }).click();
+    await page.getByRole("button", { name: "Select items", exact: true }).click();
+    await page.getByRole("button", { name: "Select this page", exact: true }).click();
+    await page.getByRole("button", { name: "Move selected to trash", exact: true }).click();
+    await expect(page.locator(".ml-grid article")).toHaveCount(0);
+    await page.getByRole("button", { name: "Trash", exact: true }).click();
+    await expect(page.locator(".ml-grid article")).toHaveCount(1);
+    await page.getByRole("button", { name: "Select this page", exact: true }).click();
+    await page.getByRole("button", { name: "Restore selected", exact: true }).click();
+    await expect(page.locator(".ml-grid article")).toHaveCount(0);
+    await page.goto("/en/studio-v2");
+    if (info.project.name === "mobile") await page.getByRole("button", { name: "Canvas", exact: true }).click();
+    await page.getByRole("button", { name: "Asset library", exact: true }).click();
+    await page.getByRole("button", { name: "cat.png", exact: true }).first().click();
+    await page.getByRole("button", { name: "Confirm", exact: true }).click();
+    await expect(page.locator(".ms-canvas-label")).toContainText("1 layers");
+    await expect(page).toHaveURL(/document=/);
+    expect((await (await page.request.get("/api/library")).json()).items).toHaveLength(1);
+  } finally { await db.$disconnect(); }
+});

@@ -1,3 +1,4 @@
+import { readStudioDraft } from "../support/studio-draft.mjs";
 import { test, expect } from "@playwright/test";
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -12,7 +13,7 @@ test("one send generates directly; failed preview preserves input and retries wi
   const posted = [], plans = [], errors = [];
   page.on("pageerror", error => errors.push(error.message));
   page.on("request", request => { if (request.method() === "POST" && request.url().endsWith("/api/studio/jobs")) posted.push(request.postDataJSON()); if (request.url().endsWith("/api/studio/plan")) plans.push(request.url()); });
-  const draft = () => page.evaluate(() => JSON.parse(localStorage.getItem(Object.keys(localStorage).find(key => key.startsWith("modelshot-studio-v1:")))));
+  const draft = () => readStudioDraft(page);
   try {
     await db.user.create({ data: { email, passwordHash: await bcrypt.hash(E2E_PASSWORD, 10), credits: 100, emailVerified: new Date() } });
     await page.goto("/en/login?callbackUrl=" + encodeURIComponent("/en/studio-v2?mode=chat&prompt=A%20cat"));
@@ -20,7 +21,7 @@ test("one send generates directly; failed preview preserves input and retries wi
     await page.getByLabel("Email", { exact: true }).fill(email);
     await page.getByLabel("Password", { exact: true }).fill(E2E_PASSWORD);
     await page.getByRole("button", { name: "Sign in", exact: true }).click();
-    await expect(page.getByRole("tab", { name: "Quick generation" })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("tab", { name: "Chat" })).toHaveAttribute("aria-selected", "true");
     const submitted = page.waitForResponse(r => r.url().endsWith("/api/studio/jobs") && r.request().method() === "POST");
     await page.getByRole("button", { name: "Generate · 18 credits", exact: true }).click();
     const generated = await (await submitted).json();
@@ -33,8 +34,9 @@ test("one send generates directly; failed preview preserves input and retries wi
     expect(preview.headers()["content-type"]).toBe("image/webp");
     expect(await sharp(await preview.body()).metadata()).toMatchObject({ width: 320, height: 320 });
 
-    // Local edit goes through the segmentation API, then the durable worker.
+    // Optional object editing goes through the segmentation API, then the durable worker.
     await page.getByRole("button", { name: /Local edit/ }).click();
+    await page.getByRole("button", { name: "Detect object", exact: true }).click();
     const box = await page.locator(".ms-stage").boundingBox();
     await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
     await expect(page.getByLabel("Object edit instruction")).toBeVisible({ timeout: 20000 });

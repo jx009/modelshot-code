@@ -14,6 +14,14 @@ export async function deleteAsset(userId, id, db = prisma) {
 }
 
 export async function cleanupStorage({ db = prisma, store = objectStorage(), now = new Date() } = {}) {
+  const expiredItems = await db.libraryItem.findMany({ where: { deletedAt: { lt: new Date(+now - 30 * 86400_000) } }, take: 100 });
+  for (const item of expiredItems) await db.$transaction(async tx => {
+    await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${item.userId} FOR UPDATE`;
+    const removed = await tx.libraryItem.deleteMany({ where: { id: item.id, deletedAt: { lt: new Date(+now - 30 * 86400_000) } } });
+    if (!removed.count) return;
+    await tx.assetReference.deleteMany({ where: { entityId: item.id, kind: "library" } });
+    if (!await tx.assetReference.count({ where: { assetId: item.assetId } })) await tx.asset.updateMany({ where: { id: item.assetId, status: "active" }, data: { status: "deleted", deletedAt: now } });
+  });
   const assets = await db.asset.findMany({ where: { status: "deleted", deletedAt: { lt: new Date(+now - 7 * 86400_000) }, references: { none: {} } }, take: 100 });
   for (const asset of assets) { await store.delete(asset.objectKey); await db.asset.update({ where: { id: asset.id }, data: { status: "purged" } }); }
   const exports = await db.exportJob.findMany({ where: { OR: [{ expiresAt: { lt: now }, objectKey: { not: null } }, { status: { in: ["failed", "cancelled"] }, updatedAt: { lt: new Date(+now - 86400_000) } }] }, take: 100 });

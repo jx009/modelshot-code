@@ -45,6 +45,8 @@ model User {
   sessionVersion Int     @default(0)
   assets Asset[]
   studioDocuments StudioDocument[]
+  libraryItems LibraryItem[]
+  libraryCategories LibraryCategory[]
   role          String    @default("user")       // user | agent | admin | root（四级，层级校验见 lib/admin-auth）
   status        String    @default("active")     // active | banned（封禁：登录拒绝+session失效，数据保留可解封）
   plan          String    @default("free")       // free | standard | pro
@@ -267,7 +269,33 @@ model Asset {
   createdAt DateTime @default(now())
   user User @relation(fields: [userId], references: [id], onDelete: Restrict)
   references AssetReference[]
+  libraryItems LibraryItem[]
   @@index([userId, createdAt])
+}
+
+model LibraryCategory {
+  id String @id @default(cuid())
+  userId String
+  name String
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items LibraryItem[]
+  @@unique([userId, name])
+}
+
+model LibraryItem {
+  id String @id @default(cuid())
+  userId String
+  assetId String
+  name String
+  categoryId String?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  category LibraryCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  @@unique([userId, assetId])
+  @@index([userId, deletedAt, categoryId, createdAt, id])
 }
 
 model AssetReference {
@@ -496,12 +524,49 @@ model StudioDocument {
   id String @id @default(cuid())
   userId String
   name String
+  nameSource String @default("manual")
+  createKey String?
+  kind String @default("canvas")
+  coverAssetId String?
+  itemCount Int @default(0)
+  deletedAt DateTime?
   version Int @default(1)
   content Json
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   user User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  messages StudioMessage[]
+  appliedResults StudioAppliedResult[]
+  view StudioDocumentView?
   @@index([userId, updatedAt])
+  @@unique([userId, createKey])
+  @@index([userId, deletedAt, updatedAt, id])
+}
+
+model StudioMessage {
+  documentId String
+  messageId String
+  sequence Int @unique @default(autoincrement())
+  role String
+  text String
+  assetId String?
+  createdAt DateTime @default(now())
+  document StudioDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  @@id([documentId, messageId])
+  @@index([documentId, sequence])
+}
+
+model StudioAppliedResult {
+  documentId String
+  jobId String
+  document StudioDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  @@id([documentId, jobId])
+}
+
+model StudioDocumentView {
+  documentId String @id
+  camera Json
+  document StudioDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
 }
 
 // 预设模特库

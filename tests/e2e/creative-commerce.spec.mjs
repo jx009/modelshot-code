@@ -11,7 +11,7 @@ import { E2E_PASSWORD } from "../support/e2e-users.mjs";
 test("home, gallery, case and editable storyboard lead to real layout exports", async ({ page }, info) => {
   const errors = []; page.on("pageerror", e => errors.push(e.message));
   await page.goto("/zh");
-  await expect(page.getByRole("heading", { name: /让想象，\s*有形。/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "让创意，从这里开始" })).toBeVisible();
   await expect(page.locator(".cr-case")).toHaveCount(8);
   await expect.poll(() => page.locator(".cr-case img").evaluateAll(imgs => imgs.every(img => img.complete && img.naturalWidth > 0))).toBe(true);
   await page.screenshot({ path: info.outputPath("creative-home.png"), fullPage: true });
@@ -75,6 +75,7 @@ test("commerce keeps two image roles, six independent jobs, replay and cloud rec
     await page.goto("/en");
     await page.getByRole("tab", { name: /Commerce Agent/ }).click();
     await page.getByLabel("Product name", { exact: true }).fill("Lounge chair");
+    await expect(page.getByRole("button", { name: "Product image", exact: true })).toBeEnabled();
     await page.getByLabel("Upload product image", { exact: true }).setInputFiles("public/inspiration/chair.webp");
     await expect(page.locator(".cr-home-image img")).toHaveCount(1);
     await page.getByLabel("Upload style reference", { exact: true }).setInputFiles("public/inspiration/skincare.webp");
@@ -102,6 +103,6 @@ test("commerce keeps two image roles, six independent jobs, replay and cloud rec
     await expect(page).toHaveURL(/studio-v2\?document=/, { timeout: 40000 });
     await expect(page.locator(".ms-canvas-label")).toContainText("24 layers");
     await page.goto("/en/projects");
-    await expect(page.locator(".cr-project-card")).toHaveCount(2);
+    await expect(page.locator(".mp-card")).toHaveCount(2);
   } finally { await db.$disconnect(); }
 });

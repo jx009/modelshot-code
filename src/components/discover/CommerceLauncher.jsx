@@ -5,9 +5,10 @@ import { useSession } from "next-auth/react";
 import { useLocale } from "next-intl";
 import { Link, useRouter } from "@/i18n/navigation";
 import { ArrowUp, ImagePlus, LoaderCircle, X } from "lucide-react";
+import { requestKey } from "@/lib/client-api";
 
 export default function CommerceLauncher({ initialDescription = "" }) {
-  const locale = useLocale(), zh = locale === "zh", router = useRouter(), { data: session } = useSession();
+  const locale = useLocale(), zh = locale === "zh", router = useRouter(), { data: session, status } = useSession();
   const t = (cn, en) => zh ? cn : en;
   const [brief, setBrief] = useState({ product: "", brand: "", platform: "taobao", region: "CN", language: locale, description: initialDescription });
   const [assets, setAssets] = useState({ product: null, reference: null });
@@ -15,7 +16,7 @@ export default function CommerceLauncher({ initialDescription = "" }) {
   const files = useRef({}), lock = useRef(false);
   const change = (key, value) => setBrief(b => ({ ...b, [key]: value }));
   function stash() {
-    const token = crypto.randomUUID();
+    const token = requestKey();
     sessionStorage.setItem(`commerce-start:${token}`, JSON.stringify({ owner: session?.user?.id || "guest", brief, ...assets }));
     return token;
   }
@@ -38,7 +39,7 @@ export default function CommerceLauncher({ initialDescription = "" }) {
     } catch (e) { setNotice(t("上传失败，请重试：", "Upload failed: ") + e.message); }
     finally { lock.current = false; setBusy(false); }
   }
-  return <fieldset disabled={busy} className="cr-commerce-launcher">
+  return <fieldset disabled={busy || status === "loading"} className="cr-commerce-launcher">
     <div className="cr-home-images">{[["product", "商品图", "Product image"], ["reference", "风格参考图", "Style reference"]].map(([kind, cn, en]) => <div key={kind}>
       <button className="cr-home-image" aria-label={zh ? cn : en} onClick={() => session?.user ? files.current[kind]?.click() : setNotice(t("请先登录上传图片，商品资料会带入下一步。", "Sign in to upload images. Your brief carries over."))}>
         {assets[kind] ? <Image src={`/api/assets/${assets[kind].assetId}`} unoptimized fill sizes="110px" alt={zh ? cn : en} /> : <ImagePlus size={21} strokeWidth={1.2} />}

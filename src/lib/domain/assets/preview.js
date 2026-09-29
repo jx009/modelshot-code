@@ -8,7 +8,7 @@ let used = 0;
 export function previewSize(value) {
   if (value === null || value === undefined) return null;
   const size = Number(value);
-  if (![320, 1280].includes(size)) throw new AppError("INVALID_PREVIEW_SIZE", 400);
+  if (![320, 640, 1280].includes(size)) throw new AppError("INVALID_PREVIEW_SIZE", 400);
   return size;
 }
 

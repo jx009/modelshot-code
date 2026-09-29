@@ -16,7 +16,7 @@ export default function Navbar() {
   const f = useTranslations("flow");
   const path = usePathname();
   const [open, setOpen] = useState(false);
-  if (path === "/admin" || path.startsWith("/admin/") || path === "/" || path === "/projects" || path === "/commerce" || path === "/explore" || path.startsWith("/explore/") || path === "/studio-v2") return null;
+  if (path === "/admin" || path.startsWith("/admin/") || path === "/" || path === "/projects" || path === "/assets" || path === "/commerce" || path === "/explore" || path.startsWith("/explore/") || path === "/studio-v2") return null;
   const links = [
     { href: "/studio", label: tn("studio"), icon: Camera },
     { href: "/gallery", label: t("gallery"), icon: Images },

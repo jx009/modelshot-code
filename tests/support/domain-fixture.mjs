@@ -54,6 +54,7 @@ export async function domainFixture() {
       await db.generationAttempt.deleteMany({ where: { tryOnId: { in: ids } } });
       await db.creditReservation.deleteMany({ where: { userId: { in: users } } });
       await db.assetReference.deleteMany({ where: { asset: { userId: { in: users } } } });
+      await db.libraryItem.deleteMany({ where: { userId: { in: users } } });
       await db.draft.deleteMany({ where: { userId: { in: users } } });
       await db.project.deleteMany({ where: { userId: { in: users } } });
       await db.tryOn.deleteMany({ where: { userId: { in: users } } });

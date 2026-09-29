@@ -44,6 +44,9 @@ const supplier = http.createServer(async (req, res) => {
     const input = JSON.parse(body);
     if (input.model !== "fixture-language") { res.writeHead(422); res.end("{}"); return; }
     res.setHeader("Content-Type", "application/json");
+    if (input.messages[0].content.startsWith("Rewrite the user's image-generation prompt")) {
+      res.end(JSON.stringify({ choices: [{ message: { content: "A cat sitting by a sunlit window, warm light, natural fur texture." } }] })); return;
+    }
     res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ summary: "Fixture plan", steps: [{ tool: "generate", params: { prompt: "A product on a white background" }, explanation: "Create requested image" }] }) } }] })); return;
   }
   if (req.url === "/health") { res.end("ok"); return; }

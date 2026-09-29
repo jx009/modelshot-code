@@ -1,0 +1,68 @@
+import { test, expect } from "@playwright/test";
+import { PrismaClient } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
+import bcrypt from "bcryptjs";
+import sharp from "sharp";
+import { getTestEnvironment } from "../support/environment.mjs";
+import { E2E_PASSWORD } from "../support/e2e-users.mjs";
+import { readStudioDraft } from "../support/studio-draft.mjs";
+
+test("home uploads, project references, fixed prompt and multi-output retry keep one charge per job", async ({ page }, info) => {
+  const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: getTestEnvironment().databaseUrl }) });
+  const email = `references-${info.project.name}-${Date.now()}@modelshot.test`;
+  try {
+    const user = await db.user.create({ data: { email, passwordHash: await bcrypt.hash(E2E_PASSWORD, 10), credits: 200, emailVerified: new Date() } });
+    await page.goto("/en/login?callbackUrl=/en");
+    await page.getByRole("button", { name: "Email", exact: true }).click();
+    await page.getByLabel("Email", { exact: true }).fill(email); await page.getByLabel("Password", { exact: true }).fill(E2E_PASSWORD);
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
+    await expect(page.getByLabel("Describe your idea")).toBeVisible();
+    await page.getByLabel("Describe your idea").fill("Two images, preserve the cat");
+    await page.getByRole("tab", { name: /Commerce Agent/ }).click();
+    await page.getByLabel("Product name", { exact: true }).fill("Handmade desk");
+    await page.getByLabel("Brand", { exact: true }).fill("Workshop");
+    await page.getByRole("tab", { name: "Quick", exact: true }).click();
+    await expect(page.getByLabel("Describe your idea")).toHaveValue("Two images, preserve the cat");
+    await page.getByRole("tab", { name: /Commerce Agent/ }).click();
+    await expect(page.getByLabel("Product name", { exact: true })).toHaveValue("Handmade desk");
+    await expect(page.getByLabel("Brand", { exact: true })).toHaveValue("Workshop");
+    await page.getByRole("tab", { name: "Chat", exact: true }).click();
+    await page.screenshot({ path: info.outputPath("creation-home.png"), fullPage: true, animations: "disabled" });
+    const image = await sharp({ create: { width: 200, height: 240, channels: 3, background: "#d49e80" } }).png().toBuffer();
+    await page.getByLabel("Upload reference images").setInputFiles([{ name: "cat.png", mimeType: "image/png", buffer: image }, { name: "style.png", mimeType: "image/png", buffer: image }]);
+    await expect(page).toHaveURL(/document=/);
+    await expect(page.getByLabel("Creative prompt")).toHaveValue("Two images, preserve the cat");
+    await expect(page.locator(".ms-reference-list .ms-reference")).toHaveCount(2);
+    await page.getByRole("button", { name: "Fixed prompt", exact: true }).click();
+    await page.getByLabel("Fixed prompt", { exact: true }).fill("Warm morning light.");
+    await page.getByLabel("Output count", { exact: true }).selectOption("2");
+    await page.reload();
+    await expect(page.getByLabel("Creative prompt")).toHaveValue("Two images, preserve the cat");
+    await expect(page.locator(".ms-reference-list .ms-reference")).toHaveCount(2);
+    const draft = await readStudioDraft(page);
+    expect(draft.composer.fixedPrompt).toBe("Warm morning light.");
+    let posts = 0;
+    await page.route("**/api/studio/jobs", async route => {
+      if (route.request().method() !== "POST") return route.continue();
+      posts++;
+      const response = await route.fetch();
+      if (posts === 2) return route.abort();
+      return route.fulfill({ response });
+    });
+    await page.getByRole("button", { name: "Generate · 36 credits", exact: true }).click();
+    await expect.poll(() => posts).toBe(2);
+    await expect(page.getByRole("button", { name: "Generate · 36 credits", exact: true })).toBeEnabled();
+    await page.getByRole("button", { name: "Generate · 36 credits", exact: true }).click();
+    await expect(page.getByLabel("Creative prompt")).toHaveValue("");
+    const jobs = await db.tryOn.findMany({ where: { userId: user.id } });
+    expect(jobs).toHaveLength(2);
+    expect(posts).toBe(3);
+    expect(jobs.every(job => job.prompt.includes("Warm morning light.") && job.snapshot.referenceAssetIds.length === 1)).toBe(true);
+    expect(await db.creditReservation.count({ where: { userId: user.id } })).toBe(2);
+    await page.getByLabel("Creative prompt").fill("@");
+    await expect(page.locator(".ms-reference-picker")).toBeVisible();
+    await page.getByRole("button", { name: "Close image picker", exact: true }).click();
+    await page.getByLabel("Creative prompt").fill("*");
+    await expect(page.getByRole("dialog", { name: "Choose assets" })).toBeVisible();
+  } finally { await db.$disconnect(); }
+});

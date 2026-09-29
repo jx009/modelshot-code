@@ -8,7 +8,7 @@ export const TOOLS = [
   { id: "upscale", zh: "AI 超清放大", en: "AI upscale", dependency: "upscale", cost: 4, source: true },
   { id: "describe", zh: "反推提示词", en: "Reverse prompt", dependency: "vision", cost: 1, source: true },
   { id: "erase", zh: "AI 智能消除", en: "AI erase", dependency: "image", cost: 18, source: true, mask: true },
-  { id: "inpaint", zh: "局部修改", en: "Local edit", dependency: "image", preview: "segment", cost: 18, source: true, mask: true },
+  { id: "inpaint", zh: "局部修改", en: "Local edit", dependency: "image", preview: "segment", previewOptional: true, cost: 18, source: true, mask: true },
   { id: "split", zh: "图层拆分", en: "Split layers", dependency: "split", cost: 20, source: true },
   { id: "move", zh: "物体移动", en: "Move object", dependency: "image", cost: 18, source: true, mask: true },
   { id: "ocr", zh: "文字识别", en: "Recognize text", dependency: "ocr", cost: 1, source: true },
@@ -26,6 +26,8 @@ export const paramsSchema = z.object({
   size: z.enum(["1024x1024", "1024x1536", "1536x1024"]).default("1024x1024"),
   scale: z.union([z.literal(2), z.literal(4)]).default(2),
   rect: z.object({ left: z.number().int().min(0).max(8192), top: z.number().int().min(0).max(8192), width: positive, height: positive }).strict().optional(),
+  cropShape: z.enum(["rectangle", "ellipse", "triangle", "heart", "grid"]).default("rectangle"),
+  cropGrid: z.object({ x: z.array(z.number().min(.01).max(.99)).max(4), y: z.array(z.number().min(.01).max(.99)).max(4) }).strict().refine(grid => [grid.x, grid.y].every(cuts => cuts.every((value, index) => !index || value > cuts[index - 1])), "INVALID_CROP_GRID").optional(),
   padding: z.union([
     z.number().int().min(32).max(1024),
     z.object({ left: edgePadding, right: edgePadding, top: edgePadding, bottom: edgePadding }).strict()
@@ -59,17 +61,18 @@ const layer = z.object({
   groupId: id.optional(), layerRole: z.enum(["background", "object", "decomposed"]).optional(), repairJobId: id.optional(),
 }).strict();
 export const contentSchema = z.object({
-  schemaVersion: z.literal(1), layers: z.array(layer).max(150),
+  schemaVersion: z.literal(1), layers: z.array(layer).max(1000),
   commerce: commerceSchema.optional(),
-  messages: z.array(z.object({ id, role: z.enum(["user", "assistant"]), text: z.string().max(8000), assetId: id.optional() }).strict()).max(100),
+  composer: z.object({ text: z.string().max(4000).default(""), fixedPrompt: z.string().max(2000).default(""), referenceIds: z.array(id).max(3).default([]), outputCount: z.number().int().min(1).max(4).default(1) }).strict().optional(),
+  messages: z.array(z.object({ id, role: z.enum(["user", "assistant"]), text: z.string().max(8000), assetId: id.optional() }).strict()).max(20000),
   jobs: z.array(id).max(100),
-  appliedJobs: z.array(id).max(100).default([]),
+  appliedJobs: z.array(id).max(20000).default([]),
   plan: z.object({ id, summary: z.string().max(1000), steps: z.array(z.object({ tool: z.enum(TOOLS.map(t => t.id)), params: paramsSchema, explanation: z.string().max(500) }).strict()).min(1).max(4), credits: z.number().int().nonnegative(), attempt: z.number().int().min(0).max(100).default(0), index: z.number().int().min(0).max(4), targetId: id.nullable(), activeJob: id.nullable(), status: z.enum(["ready", "running", "paused", "complete"]) }).strict().nullable().optional(),
 }).strict().superRefine((content, ctx) => {
   if (new Set(content.layers.map(l => l.id)).size !== content.layers.length) ctx.addIssue({ code: "custom", message: "DUPLICATE_LAYER" });
   for (const l of content.layers) if (l.type !== "text" && !l.assetId) ctx.addIssue({ code: "custom", message: "ASSET_REQUIRED" });
 });
-export const documentSchema = z.object({ id: id.optional(), version: z.number().int().positive().optional(), name: z.string().trim().min(1).max(100), content: contentSchema }).strict();
+export const documentSchema = z.object({ copyFromId: id.optional(), id: id.optional(), version: z.number().int().positive().optional(), createKey: id.optional(), nameSource: z.enum(["manual", "prompt", "upload", "fallback"]).optional(), name: z.string().trim().min(1).max(100), content: contentSchema }).strict();
 export const planSchema = z.object({ summary: z.string().max(1000), steps: z.array(z.object({ tool: z.enum(["generate", "edit", "expand", "upscale", "describe", "split", "remove-bg", "ocr", "video"]), params: paramsSchema, explanation: z.string().max(500) }).strict()).min(1).max(4) }).strict();
 
 export function validatePlan(value, available, hasImage, costs = {}) {

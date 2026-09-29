@@ -35,7 +35,7 @@ describe("studio real HTTP protocol against isolated fixture", () => {
     const config = await studioConfig(db);
     expect(config).toMatchObject({ imageProvider: "image-pro", imageModel: "gpt-image-2", imageDisplayName: "ModelShot Pro", chatModel: "gpt-4.1-mini" });
     const caps = await capabilities(db, config);
-    expect(caps.imageModels).toEqual([{ id: "image-pro", label: "ModelShot Pro", creditCost: 7 }]);
+    expect(caps.imageModels).toEqual([{ id: "image-pro", label: "ModelShot Pro", creditCost: 7, maxReferenceImages: 3 }]);
     expect(caps.planningCost).toBe(3);
     expect(caps.tools.find(tool => tool.id === "describe").cost).toBe(3);
     expect(caps.tools.find(tool => tool.id === "generate").cost).toBe(7);
@@ -64,7 +64,7 @@ describe("studio real HTTP protocol against isolated fixture", () => {
       expect(caps.tools.find(tool => tool.id === id), id).toMatchObject({ available: true, reason: null });
     }
     expect(caps.tools.find(tool => tool.id === "move")).toMatchObject({ available: true, reason: null });
-    for (const id of ["inpaint"]) expect(caps.tools.find(tool => tool.id === id)).toMatchObject({ available: false, reason: "SEGMENTATION_NOT_CONFIGURED" });
+    expect(caps.tools.find(tool => tool.id === "inpaint")).toMatchObject({ available: true, objectSelectionAvailable: false, reason: null });
     expect(caps.tools.find(tool => tool.id === "split")).toMatchObject({ available: false, reason: "SERVICE_NOT_CONFIGURED" });
     await generateImage(config, { image: png, mask: png, prompt: "repair background", size: "1024x1024" });
     const request = calls.at(-1);
@@ -88,7 +88,7 @@ describe("studio real HTTP protocol against isolated fixture", () => {
     const db = { modelProvider: { findMany: vi.fn().mockResolvedValue([]) }, studioToolConfig: { findMany: vi.fn().mockResolvedValue([]) } };
     const config = { apiKey: "fixture", toolsURL: base, toolsKey: "fixture-tools-key" };
     const caps = await capabilities(db, config);
-    expect(caps.tools.find(tool => tool.id === "inpaint")).toMatchObject({ available: false, preview: "segment", reason: "SEGMENTATION_NOT_CONFIGURED" });
+    expect(caps.tools.find(tool => tool.id === "inpaint")).toMatchObject({ available: true, preview: "segment", previewOptional: true, objectSelectionAvailable: false, reason: null });
   });
   it("sends actual selected pixels and bounded conversation to vision", async () => {
     expect(await vision({ apiKey: "fixture", baseURL: `${base}/v1`, chatModel: "vision-model" }, { image: png, instruction: "Describe only", messages: [{ role: "user", text: "What material?" }] })).toBe("Image description");

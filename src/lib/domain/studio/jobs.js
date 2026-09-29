@@ -28,7 +28,7 @@ export async function submitStudioJob(userId, input, key, db = prisma, deps = {}
     // Preview availability only gates choosing an object. Once a valid owned
     // mask exists, an outage of the preview service must not block image editing.
     if (!tool?.available && !(tool?.reason === "SEGMENTATION_NOT_CONFIGURED" && data.maskId)) throw new AppError(tool?.reason || "TOOL_UNAVAILABLE", 503);
-    const document = await tx.studioDocument.findFirst({ where: { id: data.documentId, userId } });
+    const document = await tx.studioDocument.findFirst({ where: { id: data.documentId, userId, deletedAt: null } });
     if (!document) throw new AppError("DOCUMENT_NOT_FOUND", 404);
     if (document.version !== data.documentVersion) throw new AppError("DOCUMENT_VERSION_CONFLICT", 409);
     if (data.sectionId) {

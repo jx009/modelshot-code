@@ -1,3 +1,4 @@
+import { readStudioDraft } from "../support/studio-draft.mjs";
 import { test, expect } from "@playwright/test";
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -91,7 +92,7 @@ test("admin owns tool models, has no page scrollbar, and decomposition remains e
     const job = await response.json();
     await expect.poll(async () => (await (await page.request.get(`/api/studio/jobs/${job.id}`)).json()).status, { timeout: 45000 }).toBe("succeeded");
     await expect(page.locator(".ms-canvas-label")).toContainText("3 layers");
-    const readDraft = () => page.evaluate(() => JSON.parse(localStorage.getItem(Object.keys(localStorage).find(k => k.startsWith("modelshot-studio-v1:")))));
+    const readDraft = () => readStudioDraft(page);
     const draft = await readDraft();
     expect(draft.layers[0].visible).toBe(true);
     for (const layer of draft.layers.slice(1)) expect(layer).toMatchObject({ x: draft.layers[0].x + draft.layers[0].width + 50, y: draft.layers[0].y, width: 320, height: 480, groupId: job.id });
@@ -103,7 +104,7 @@ test("admin owns tool models, has no page scrollbar, and decomposition remains e
     await expect(page.locator(".ms-layer")).toHaveCount(3);
     await page.screenshot({ path: info.outputPath("cloud-aligned-layers.png"), fullPage: true });
     if (info.project.name === "mobile") await page.locator(".ms-mobile-toggle").click();
-    await page.getByRole("tab", { name: "Planned chat", exact: true }).click();
+    await page.getByRole("tab", { name: "Chat", exact: true }).click();
     await page.getByLabel("Creative prompt").fill("Plan a product photo");
     const planning = page.waitForResponse(r => r.url().endsWith("/api/studio/plan") && r.request().method() === "POST");
     await page.getByRole("button", { name: "Create plan · 3 credits", exact: true }).click();
@@ -113,6 +114,18 @@ test("admin owns tool models, has no page scrollbar, and decomposition remains e
     const savedPlan = page.waitForResponse(r => r.url().includes("/api/studio/documents") && ["PUT", "POST"].includes(r.request().method()));
     await page.keyboard.press("Control+s");
     expect((await savedPlan).ok()).toBe(true);
+    await page.getByLabel("Creative prompt").fill("A cat");
+    const optimizing = page.waitForResponse(r => r.url().endsWith("/api/studio/optimize") && r.request().method() === "POST");
+    await page.getByRole("button", { name: "Improve prompt · 3 credits", exact: true }).click();
+    const optimized = await optimizing;
+    expect(optimized.ok()).toBe(true);
+    await expect(page.getByRole("dialog", { name: "Improved prompt", exact: true })).toBeVisible();
+    await expect(page.getByLabel("Creative prompt")).toHaveValue("A cat");
+    await page.getByRole("button", { name: "Apply prompt", exact: true }).click();
+    await expect(page.getByLabel("Creative prompt")).toHaveValue(/sunlit window/);
+    const replay = await page.request.post("/api/studio/optimize", { headers: { "Idempotency-Key": optimized.request().headers()["idempotency-key"] }, data: { prompt: "A cat" } });
+    expect(replay.ok()).toBe(true);
+    expect((await (await page.request.get("/api/usage")).json()).credits).toBe(74);
     expect(errors).toEqual([]);
   } finally {
     await db.studioToolConfig.deleteMany({ where: { toolId: "move" } });

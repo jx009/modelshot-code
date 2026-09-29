@@ -1,2 +1,2 @@
 import StudioWorkbench from "@/components/studio/StudioWorkbench";
-export default async function StudioPage({ searchParams }) { const q = await searchParams; return <StudioWorkbench initialDocument={typeof q.document === "string" ? q.document : ""} initialPrompt={typeof q.prompt === "string" ? q.prompt.slice(0, 4000) : ""} initialMode={q.mode === "quick" ? "quick" : "chat"} />; }
+export default async function StudioPage({ searchParams }) { const q = await searchParams; return <StudioWorkbench initialDocument={typeof q.document === "string" ? q.document : ""} initialPrompt={typeof q.prompt === "string" ? q.prompt.slice(0, 4000) : ""} initialProvider={typeof q.provider === "string" ? q.provider.slice(0, 128) : ""} initialMode={q.mode === "quick" ? "quick" : "chat"} />; }

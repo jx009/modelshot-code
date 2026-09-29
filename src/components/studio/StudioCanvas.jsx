@@ -2,6 +2,8 @@
 
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { Stage, Layer, Image as CanvasImage, Transformer, Text, Group, Line, Rect } from "react-konva";
+import CropOverlay from "./canvas/CropOverlay";
+import { exportCanvas } from "@/lib/studio/canvas-export";
 import MoveRegions from "./canvas/MoveRegions";
 import { editRegion } from "@/lib/studio/selection-geometry";
 import { useCanvasState } from "./canvas/hooks/useCanvasState";
@@ -30,17 +32,18 @@ async function createCutout(assetId, maskBlob, signal, tool, point, onLoading) {
   return { image, bounds: result.bounds, maskId: result.mask, objectAssetId: result.object, holeAssetId: result.hole };
 }
 
-function Picture({ item, selected, onSelect, onChange, interactive, accent, onError, previewImage, onPreview }) {
+function Picture({ item, shouldLoad = true, selected, onSelect, onChange, interactive, accent, onError, previewImage, onPreview }) {
   const [image, setImage] = useState(null);
   const shape = useRef(null), transformer = useRef(null);
   useEffect(() => {
     if (item.type !== "image") return;
     let live = true;
+    if (!shouldLoad) { Promise.resolve().then(() => { if (live) setImage(null); }); return () => { live = false; }; }
     loadImage(previewUrl(item.assetId))
       .then(processed => { if (live) setImage(processed); })
       .catch(error => { if (live) onError(error); });
     return () => { live = false; };
-  }, [item.assetId, item.type, onError]);
+  }, [item.assetId, item.type, onError, shouldLoad]);
   useEffect(() => { if (selected && transformer.current && shape.current) { transformer.current.nodes([shape.current]); transformer.current.getLayer().batchDraw(); } }, [selected, interactive]);
   const props = { ref: shape, id: item.id, x: item.x, y: item.y, width: item.width, height: item.height, rotation: item.rotation || 0, opacity: item.opacity ?? 1, draggable: interactive,
     onClick: onSelect, onTap: onSelect, onDblClick: onPreview, onDblTap: onPreview, onDragEnd: e => onChange({ x: e.target.x(), y: e.target.y() }),
@@ -89,7 +92,7 @@ function ExpansionBox({ value, width, height, accent, onChange }) {
       enabledAnchors={["top-left", "top-center", "top-right", "middle-left", "middle-right", "bottom-left", "bottom-center", "bottom-right"]} /></>;
 }
 
-const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSelect, onChange, mode, panning: requestedPanning = false, moveRegions, onMoveRegions, onPreview, onViewport, zh, selectionTool, editPadding = 0.25, brushSize = 35, moveOffset = { dx: 0, dy: 0 }, onMoveOffset, onMovePreparing, onMoveReady, onMoveFailed, onCrop, expandPadding = 256, onExpandPadding, onZoom, onUpload, onError, label }, ref) {
+const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSelect, onChange, mode, onMaskChange, panning: requestedPanning = false, moveRegions, onMoveRegions, onPreview, onViewport, onCamera, zh, selectionTool, editPadding = 0.25, brushSize = 35, moveOffset = { dx: 0, dy: 0 }, onMoveOffset, onMovePreparing, onMoveReady, onMoveFailed, onCrop, cropRect, cropShape, cropGrid, onCropGrid, expandPadding = 256, onExpandPadding, onZoom, onUpload, onError, label }, ref) {
   const [middleHeld, setMiddleHeld] = useState(false);
   const panning = requestedPanning || middleHeld;
   const container = useRef(null), stage = useRef(null), artwork = useRef(null);
@@ -127,8 +130,11 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
     }
   }, [primaryColor, applyColors]);
   useEffect(() => { onZoom(camera.scale); }, [camera.scale, onZoom]);
+  useEffect(() => { onCamera?.(camera); }, [camera, onCamera]);
   useEffect(() => { if (selection) onViewport?.({ left: camera.x + selection.x * camera.scale, top: camera.y + selection.y * camera.scale, width: selection.width * camera.scale, height: selection.height * camera.scale, viewportWidth: dimensions.width, viewportHeight: dimensions.height }); }, [camera, selection, dimensions, onViewport]);
   const maskKey = `${selectedId}:mask`;
+  const hasMask = strokes.some(stroke => stroke.target === maskKey);
+  useEffect(() => { onMaskChange?.(hasMask); }, [hasMask, onMaskChange]);
   const toolKey = `${selectedId}:${mode}`;
   useEffect(() => { drawing.current = false; clearStrokes(); }, [toolKey, clearStrokes]);
   useEffect(() => {
@@ -186,7 +192,13 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
     onMoveReady?.({ bounds, thumbnail: thumb.toDataURL("image/png"), maskId: cutout.maskId, objectAssetId: cutout.objectAssetId, holeAssetId: cutout.holeAssetId });
   }
 
-  useImperativeHandle(ref, () => ({ zoom, fit, fitExpansion,
+  useImperativeHandle(ref, () => ({ zoom, fit, fitExpansion, restoreView: updateCamera,
+    focusLayer(id) {
+      const item = layers.find(layer => layer.id === id);
+      if (!item) return;
+      const scale = Math.max(.08, Math.min(1.5, (dimensions.width - 120) / item.width, (dimensions.height - 180) / item.height));
+      updateCamera({ scale, x: dimensions.width / 2 - (item.x + item.width / 2) * scale, y: dimensions.height / 2 - (item.y + item.height / 2) * scale });
+    },
     focusSelection() {
       if (!selection) return;
       const scale = Math.max(0.08, Math.min(2, (dimensions.width - 120) / selection.width, (dimensions.height - 350) / selection.height));
@@ -195,21 +207,8 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
     clearMask: () => { operation.current++; selectionRequest.current?.abort(); clearStrokes(); clearSelection(); },
     clearMovePreview: () => { operation.current++; selectionRequest.current?.abort(); clearMove(); },
     maskBlob,
-    async exportPNG() {
-      const visible = layers.filter(l => l.visible && l.type !== "video");
-      if (!visible.length) throw new Error("画布上没有图片 / No images on canvas");
-      const originals = new Map(await Promise.all(visible.filter(layer => layer.type === "image").map(async layer => [layer.id, await loadImage(imageUrl(layer.assetId))])));
-      const clone = artwork.current.clone();
-      clone.find("Image").forEach(node => { const original = originals.get(node.id()); if (original) node.image(original); });
-      clone.find("Transformer").forEach(t => t.destroy());
-      clone.scale({ x: 1, y: 1 }); clone.position({ x: 0, y: 0 });
-      const rect = clone.getClientRect();
-      const pixels = rect.width * rect.height;
-      if (pixels > 40000000) { clone.destroy(); throw new Error("导出范围过大 / Export area is too large"); }
-      const url = clone.toDataURL({ ...rect, pixelRatio: Math.min(2, Math.sqrt(40000000 / Math.max(1, pixels))) });
-      clone.destroy();
-      const anchor = document.createElement("a"); anchor.download = "modelshot-canvas.png"; anchor.href = url; anchor.click();
-    },
+    exportImage: options => exportCanvas(artwork.current, layers, { ...options, selectedId }),
+    exportPNG: () => exportCanvas(artwork.current, layers),
   }));
   function point() {
     if (!selection || !stage.current) return null;
@@ -316,7 +315,7 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
   const editing = selection?.type === "image" && ["mask", "crop", "move", "object-edit", "object-preparing", "object-select-rect", "object-select-lasso", "expand"].includes(mode);
   const cursorStyle = getCursorForMode(panning ? "hand" : mode, brushSize);
 
-  return <div ref={container} className="ms-stage" data-selection-frame={selection ? JSON.stringify({ left: camera.x + selection.x * camera.scale, top: camera.y + selection.y * camera.scale, width: selection.width * camera.scale, height: selection.height * camera.scale }) : undefined} data-mode={mode} data-panning={panning} data-camera-scale={camera.scale} aria-label={label} style={{ cursor: cursorStyle }}
+  return <div ref={container} className="ms-stage" data-selection-frame={selection ? JSON.stringify({ left: camera.x + selection.x * camera.scale, top: camera.y + selection.y * camera.scale, width: selection.width * camera.scale, height: selection.height * camera.scale }) : undefined} data-mode={mode} data-panning={panning} data-camera-scale={camera.scale} data-camera={JSON.stringify(camera)} data-crop={JSON.stringify({ rect: cropRect, shape: cropShape, grid: cropGrid })} aria-label={label} style={{ cursor: cursorStyle }}
     onMouseDownCapture={e => {
       if (e.button !== 1) return;
       e.preventDefault(); e.stopPropagation();
@@ -340,7 +339,7 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
       onMouseMove={handleMouseMove} onTouchMove={handleMouseMove}
       onMouseUp={finishDrawing} onTouchEnd={finishDrawing} onMouseLeave={finishDrawing}>
       <Layer ref={artwork}>
-        {layers.filter(l => l.visible).map(item => <Picture key={item.id} item={item} selected={selectedId === item.id} interactive={!panning && mode === "select"} accent={color} onError={onError} onPreview={() => { if (!editing && item.type === "image") onPreview?.(item.assetId); }} onSelect={() => { if (!panning && !editing) onSelect(item.id); }} onChange={patch => { try { onChange(layers.map(l => l.id === item.id ? { ...l, ...patch } : l)); } catch (e) { onError(e); } }} />)}
+        {layers.filter(l => l.visible).map(item => <Picture key={item.id} item={item} shouldLoad={camera.x + item.x * camera.scale + Math.max(item.width, item.height) * camera.scale > -200 && camera.y + item.y * camera.scale + Math.max(item.width, item.height) * camera.scale > -200 && camera.x + item.x * camera.scale - Math.max(item.width, item.height) * camera.scale < dimensions.width + 200 && camera.y + item.y * camera.scale - Math.max(item.width, item.height) * camera.scale < dimensions.height + 200} selected={selectedId === item.id} interactive={!panning && mode === "select"} accent={color} onError={onError} onPreview={() => { if (!editing && item.type === "image") onPreview?.(item.assetId); }} onSelect={() => { if (!panning && !editing) onSelect(item.id); }} onChange={patch => { try { onChange(layers.map(l => l.id === item.id ? { ...l, ...patch } : l)); } catch (e) { onError(e); } }} />)}
       </Layer>
       {editing && !["crop", "expand", "move", "object-edit"].includes(mode) && <Layer listening={false}><Group x={selection.x} y={selection.y} rotation={selection.rotation} scaleX={selection.width / selection.pixelWidth} scaleY={selection.height / selection.pixelHeight} clipWidth={selection.pixelWidth} clipHeight={selection.pixelHeight}>
         {mode === "mask" && strokes.filter(s => s.target === maskKey).map((s, i) => <Line key={i} points={s.points} stroke={color} strokeWidth={s.width} opacity={0.55} lineCap="round" lineJoin="round" />)}
@@ -356,7 +355,8 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
         </>}
       </Group></Layer>}
       {mode === "crop" && selection && <Layer listening={!panning}><Group x={selection.x} y={selection.y} rotation={selection.rotation} scaleX={selection.width / selection.pixelWidth} scaleY={selection.height / selection.pixelHeight} clipWidth={selection.pixelWidth} clipHeight={selection.pixelHeight}>
-        <CropBox value={crop || { left: 0, top: 0, width: selection.pixelWidth, height: selection.pixelHeight }} width={selection.pixelWidth} height={selection.pixelHeight} accent={color} onChange={rect => { updateCrop(rect); onCrop(rect); }} />
+        <CropBox value={cropRect || crop || { left: 0, top: 0, width: selection.pixelWidth, height: selection.pixelHeight }} width={selection.pixelWidth} height={selection.pixelHeight} accent={color} onChange={rect => { updateCrop(rect); onCrop(rect); }} />
+        <CropOverlay rect={cropRect || crop || { left: 0, top: 0, width: selection.pixelWidth, height: selection.pixelHeight }} shape={cropShape} grid={cropGrid || { x: [.5], y: [.5] }} onGrid={onCropGrid} scale={camera.scale * selection.width / selection.pixelWidth} accent={color} />
       </Group></Layer>}
       {mode === "expand" && selection && <Layer listening={!panning}><Group x={selection.x} y={selection.y} rotation={selection.rotation} scaleX={selection.width / selection.pixelWidth} scaleY={selection.height / selection.pixelHeight}>
         <ExpansionBox value={expandPadding} width={selection.pixelWidth} height={selection.pixelHeight} accent={color} onChange={onExpandPadding} />

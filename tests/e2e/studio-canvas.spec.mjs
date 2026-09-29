@@ -1,3 +1,4 @@
+import { readStudioDraft } from "../support/studio-draft.mjs";
 import { test, expect } from "@playwright/test";
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -20,10 +21,10 @@ test("canvas upload, crop through durable worker, layers, export and cloud resto
     await page.getByLabel("Email", { exact: true }).fill(email);
     await page.getByLabel("Password", { exact: true }).fill(E2E_PASSWORD);
     await page.getByRole("button", { name: "Sign in", exact: true }).click();
-    await expect(page).toHaveURL(/\/en\/studio-v2$/);
+    await expect(page).toHaveURL(/\/en\/studio-v2(?:\?|$)/);
     await expect(page.locator(".ms-studio")).toBeVisible();
     await expect(page.locator(".site-nav")).toHaveCount(0);
-    await expect(page.locator(".ms-avatar")).toBeVisible();
+    await expect(page.getByRole("button", { name: email, exact: true })).toBeVisible();
     await expect(page.locator(".ms-stage canvas").first()).toBeAttached();
     await expect.poll(() => page.locator(".ms-empty-art img").evaluateAll(images => images.every(img => img.complete && img.naturalWidth > 0))).toBe(true);
     await page.screenshot({ path: info.outputPath("canvas-empty.png"), fullPage: true });
@@ -54,6 +55,8 @@ test("canvas upload, crop through durable worker, layers, export and cloud resto
     await expect(page.locator(".ms-edge-readout")).not.toContainText("R 256");
     await page.getByRole("button", { name: "Close tool", exact: true }).click();
     await page.getByRole("button", { name: /Local edit/ }).click();
+    await expect(page.locator(".ms-stage")).toHaveAttribute("data-mode", "mask");
+    await page.getByRole("button", { name: "Detect object", exact: true }).click();
     let releaseSegment;
     const segmentGate = new Promise(resolve => { releaseSegment = resolve; });
     await page.route("**/api/studio/segment", async route => {
@@ -136,7 +139,7 @@ test("canvas upload, crop through durable worker, layers, export and cloud resto
     expect(moveResponse.request().postDataJSON().maskId).toBeUndefined();
     expect(moveResponse.request().postDataJSON().moveBundle).toBeUndefined();
     const moveJob = await moveResponse.json();
-    const readDraft = () => page.evaluate(() => JSON.parse(localStorage.getItem(Object.keys(localStorage).find(k => k.startsWith("modelshot-studio-v1:")))));
+    const readDraft = () => readStudioDraft(page);
     // Do not replace the original with a transparent hole while the provider runs.
     expect((await readDraft()).layers[0].visible).toBe(true);
     await expect.poll(async () => (await (await page.request.get(`/api/studio/jobs/${moveJob.id}`)).json()).status, { timeout: 45000 }).toBe("succeeded");
@@ -176,7 +179,7 @@ test("canvas upload, crop through durable worker, layers, export and cloud resto
     await page.mouse.down();
     await page.mouse.move(cropTopLeft.x + 70, cropTopLeft.y + 80, { steps: 8 });
     await page.mouse.up();
-    await expect(page.locator(".ms-direct-hint")).not.toContainText("400 × 500");
+    await expect(page.locator(".ms-crop-controls")).not.toContainText("400 × 500");
     const submitted = page.waitForResponse(r => r.url().endsWith("/api/studio/jobs") && r.request().method() === "POST");
     await page.getByRole("button", { name: "Apply Free" }).click();
     const response = await submitted;
@@ -192,7 +195,8 @@ test("canvas upload, crop through durable worker, layers, export and cloud resto
     await page.getByRole("button", { name: "Select", exact: true }).click();
     const download = page.waitForEvent("download");
     await page.getByRole("button", { name: "Export", exact: true }).click();
-    expect((await download).suggestedFilename()).toBe("modelshot-canvas.png");
+    await page.getByRole("button", { name: "Export file", exact: true }).click();
+    expect((await download).suggestedFilename()).toBe("product.png");
     await page.locator(".ms-project-trigger").click();
     await page.getByLabel("Current project name").fill("Canvas acceptance");
     const saved = page.waitForResponse(r => r.url().endsWith("/api/studio/documents") && r.request().method() === "POST");
@@ -217,8 +221,8 @@ test("canvas upload, crop through durable worker, layers, export and cloud resto
     const imageJob = await generatedResponse.json();
     await expect.poll(async () => (await (await page.request.get(`/api/studio/jobs/${imageJob.id}`)).json()).status, { timeout: 45000 }).toBe("succeeded");
     await expect.poll(async () => (await (await page.request.get("/api/usage")).json()).credits).toBe(64);
-    if (info.project.name === "mobile") await page.locator(".ms-mobile-toggle").click();
     await expect(page.locator(".ms-canvas-label")).toContainText("4 layers");
+    if (info.project.name === "mobile" && await page.getByRole("button", { name: "Canvas", exact: true }).isVisible()) await page.getByRole("button", { name: "Canvas", exact: true }).click();
     await page.getByRole("button", { name: "Undo", exact: true }).click();
     await expect(page.locator(".ms-canvas-label")).toContainText("3 layers");
     const replayPoll = page.waitForResponse(r => r.url().includes("/api/studio/jobs?"));
@@ -227,7 +231,8 @@ test("canvas upload, crop through durable worker, layers, export and cloud resto
     await expect(page.locator(".ms-canvas-label")).toContainText("3 layers");
     await page.getByRole("button", { name: "Redo", exact: true }).click();
     await expect(page.locator(".ms-canvas-label")).toContainText("4 layers");
-    await page.goto("/zh/studio-v2");
+    await expect.poll(async () => (await readStudioDraft(page))?.layers.length).toBe(4);
+    await page.goto(`/zh/studio-v2?document=${new URL(page.url()).searchParams.get("document")}`);
     if (info.project.name === "mobile") await page.locator(".ms-mobile-toggle").click();
     await expect(page.locator(".ms-canvas-label")).toContainText("4 个图层");
     await page.getByRole("button", { name: "适应画布", exact: true }).click();

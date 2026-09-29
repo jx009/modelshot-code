@@ -63,7 +63,8 @@ describe("studio real HTTP protocol against isolated fixture", () => {
     for (const id of ["expand", "erase"]) {
       expect(caps.tools.find(tool => tool.id === id), id).toMatchObject({ available: true, reason: null });
     }
-    for (const id of ["inpaint", "move"]) expect(caps.tools.find(tool => tool.id === id)).toMatchObject({ available: false, reason: "SEGMENTATION_NOT_CONFIGURED" });
+    expect(caps.tools.find(tool => tool.id === "move")).toMatchObject({ available: true, reason: null });
+    for (const id of ["inpaint"]) expect(caps.tools.find(tool => tool.id === id)).toMatchObject({ available: false, reason: "SEGMENTATION_NOT_CONFIGURED" });
     expect(caps.tools.find(tool => tool.id === "split")).toMatchObject({ available: false, reason: "SERVICE_NOT_CONFIGURED" });
     await generateImage(config, { image: png, mask: png, prompt: "repair background", size: "1024x1024" });
     const request = calls.at(-1);
@@ -78,7 +79,7 @@ describe("studio real HTTP protocol against isolated fixture", () => {
     const withoutKey = await capabilities(db, { ...config, apiKey: undefined });
     expect(withoutKey.tools.find(tool => tool.id === "inpaint")).toMatchObject({ available: false, reason: "SERVICE_NOT_CONFIGURED" });
     const withoutSegment = await capabilities(db, { ...config, toolsURL: undefined });
-    expect(withoutSegment.tools.find(tool => tool.id === "move")).toMatchObject({ available: false, reason: "SEGMENTATION_NOT_CONFIGURED" });
+    expect(withoutSegment.tools.find(tool => tool.id === "move")).toMatchObject({ available: true, reason: null });
     pricing.mockResolvedValue([{ toolId: "move", isEnabled: false }]);
     const disabled = await capabilities(db, config);
     expect(disabled.tools.find(tool => tool.id === "move")).toMatchObject({ available: false, reason: "TOOL_DISABLED" });
@@ -87,7 +88,7 @@ describe("studio real HTTP protocol against isolated fixture", () => {
     const db = { modelProvider: { findMany: vi.fn().mockResolvedValue([]) }, studioToolConfig: { findMany: vi.fn().mockResolvedValue([]) } };
     const config = { apiKey: "fixture", toolsURL: base, toolsKey: "fixture-tools-key" };
     const caps = await capabilities(db, config);
-    expect(caps.tools.find(tool => tool.id === "move")).toMatchObject({ available: false, preview: "segment", reason: "SEGMENTATION_NOT_CONFIGURED" });
+    expect(caps.tools.find(tool => tool.id === "inpaint")).toMatchObject({ available: false, preview: "segment", reason: "SEGMENTATION_NOT_CONFIGURED" });
   });
   it("sends actual selected pixels and bounded conversation to vision", async () => {
     expect(await vision({ apiKey: "fixture", baseURL: `${base}/v1`, chatModel: "vision-model" }, { image: png, instruction: "Describe only", messages: [{ role: "user", text: "What material?" }] })).toBe("Image description");

@@ -22,7 +22,7 @@ Read `jiaotu-development-plan.md` for the implementation and acceptance plan.
 
 阿里、火山的图像编辑接口不被冒充为分割或 RGBA 拆层接口。配置一个图像通道不会自动启用拆层。所有模型计算均可使用托管服务，不需要本机或业务服务器 GPU。最终边缘质量、生成画质、模型处理时间和厂商限流仍需用真实账户验证。
 
-“工具配置”按工具绑定执行方式：图像工具可沿用用户生图模型或指定专用模型；裁剪是纯代码处理；反推提示词自动使用后台大语言模型。物体移动/局部修改分别绑定物体分割服务和图像修复模型；拆层使用后台绑定的专用模型。用户不能覆盖内部模型。正在执行的任务固定其提交时的供应商、协议和模型。已停用、不存在或能力不匹配的显式选择会报错，不会偷偷回退到其他厂商。模型名可以后续修改；已提交任务仍使用原模型。任务执行前若协议或 Base URL 变化，则中止并释放积分，避免把凭据发送到变更前的地址。
+“工具配置”按工具绑定执行方式：图像工具可沿用用户生图模型或指定专用模型；裁剪是纯代码处理；反推提示词自动使用后台大语言模型。物体移动绑定支持多图参考的图像编辑模型；局部修改分别绑定物体分割服务和图像编辑模型；拆层使用后台绑定的专用模型。用户不能覆盖内部模型。正在执行的任务固定其提交时的供应商、协议和模型。已停用、不存在或能力不匹配的显式选择会报错，不会偷偷回退到其他厂商。模型名可以后续修改；已提交任务仍使用原模型。任务执行前若协议或 Base URL 变化，则中止并释放积分，避免把凭据发送到变更前的地址。
 
 Base URL 支持官方服务和管理员配置的任意 HTTPS OpenAI 兼容网关，例如企业代理或自建转发地址。百炼工作空间地址需与 API Key 地域匹配；阿里、火山、fal 各自使用对应通道的凭据，旧 OpenAI 环境变量不会覆盖它们。
 
@@ -33,29 +33,30 @@ Base URL 支持官方服务和管理员配置的任意 HTTPS OpenAI 兼容网关
 | STUDIO_API_KEY / STUDIO_BASE_URL / STUDIO_IMAGE_MODEL | Legacy OpenAI-compatible fallback; stored channel credentials take precedence |
 | STUDIO_CHAT_MODEL | Vision planner fallback when no planner channel is configured |
 | ARK_API_KEY / ARK_VIDEO_MODEL / ARK_BASE_URL | Existing Ark video task configuration; image editing is configured separately in Admin |
-| STUDIO_TOOLS_URL / STUDIO_TOOLS_KEY | Optional private service for segmentation, remove-background, OCR and upscale |
+| STUDIO_TOOLS_URL / STUDIO_TOOLS_KEY | Optional private service for remove-background, OCR and upscale |
 
 后台“测试功能”会发起真实模型请求并产生供应商费用，自动化测试不使用真实付费 API。分割预览目前不扣用户积分，平台承担上游费用；接口按用户限流并缓存相同原图、选区和模型的成功结果。生产上线需要结合实际用量配置供应商额度。
 
 ### 配置物体移动
 
-1. “模型配置 → 工具专用模型 → 新增模型”，选择阿里百炼 Qwen 编辑或火山方舟 Seedream，填写模型 ID、API Key 和地址。
-2. “工具配置 → 物体移动 → 背景修复模型”选择“指定工具专用模型”，选择刚创建的模型并保存。也可以显式选择“沿用用户选择的生图模型”。
-3. 同一卡片的“物体分割”选择云端 SAM 3 或已部署的本地分割服务。通用图像模型不能输出可替代 SAM 的分割蒙版。
-4. 纯拖动物体是前端坐标操作；圈选分割和确认后的背景修复才执行模型请求。未适配云端协议的 OCR、超分、抠图继续使用 tools 服务，视频继续使用 ARK 部署配置，页面会明确显示。
+1. “模型配置 → 工具专用模型 → 新增模型”，选择阿里百炼 Qwen 编辑、火山方舟 Seedream 或支持多图编辑的 OpenAI 兼容接口，填写模型 ID、API Key 和地址。
+2. “工具配置 → 物体移动 → 物体移动模型（完整场景编辑）”选择“指定工具专用模型”，选择刚创建的模型并保存。也可以选择“沿用用户选择的生图模型”，前提是该模型支持图像编辑和多图参考。
+3. 物体移动不再依赖分割服务。矩形框选后立刻出现源区域和目标区域；两者均可拖动、缩放、旋转。位置未改变时不能提交。
+4. 确认后进行一次图像编辑请求，发送完整原图、红色源区/蓝色目标区位置参考、编辑范围和说明。目标是生成移走物体、补全旧位置、融合新位置光影的完整场景，不再把透明抠图直接贴到修复背景。
+5. 局部修改仍使用云端分割选择物体；火山 EntitySegment 的 AK/SK 配置仍供局部修改和实体拆层使用。OCR、超分、抠图继续使用 tools 服务，视频继续使用 ARK 部署配置。
 
 升级会执行 `20260928090000_tool_routing`：为工具增加路由配置，并把已启用的旧 `chatModel` 规划配置复制成独立后台大语言模型。密钥仍为密文，旧图像通道保留。Web 和 Worker 必须同时升级。
 
 ## Tool implementation
 
-- 选物体：点击、矩形或套索提供语义分割提示；模型产生 mask，不把框选矩形直接当抠图，也不将返回对象硬裁成套索形状。保留 mask 的软透明边缘。
-- 移动物体：预览阶段显示透明物体和原位置空洞；确认后立即保存独立的背景层、紧边界物体层，隐藏原图。物体的后续拖动/缩放/旋转只改前端坐标。模型异步修复旧位置，成功后仅替换关联背景 asset，不重置物体的新位置。
-- 修改动作：给图像编辑模型提供原图上下文、独立物体参考和可扩展编辑区域。无原生 mask 参数的百炼/方舟协议额外接收区域提示图；服务端最终受控合成，编辑范围以外保持原像素。提示图不等于模型原生硬 mask，区域内的语义正确性依赖模型。
-- 拆层：仅主动执行时调用 Qwen-Image-Layered，校验尺寸一致且存在透明前景，按供应商顺序与原图坐标、尺寸、旋转叠放，保存同一 groupId。不是把两张图排到画布右侧，也不保证精确还原原始 PSD。
-- 迟到结果：移动背景只更新仍存在、仍关联该任务的背景层；局部替换/拆层不覆盖已变更或删除的源图。移动修复也同步更新撤销/重做快照中已有的对应背景，不创建新的图层。
-- 失败时保留独立物体、待修复背景、隐藏原图和任务错误；可以撤销移动或恢复原图重新操作。透明空洞不代表背景修复成功。
+- 物体移动：源区/目标区坐标在原图像素空间保存，旋转以区域左上角为原点；客户端约束边界，服务端再次检查四角。前端操作不发送分割请求。
+- 移动生成：源区和目标区各扩展 20% 并羽化，保留场景上下文；多图编辑模型同时接收原图、位置引导图，以及原生 mask 或供应商适配的范围引导。结果校验比例并还原原尺寸，范围外像素保持原图，范围内的物体身份、遮挡与阴影质量取决于实际模型。过长的旧阴影或大幅移动仍需真实案例验收。
+- 局部修改：点击、矩形或套索提供云端分割提示。编辑模型接收原图上下文、物体参考和可扩展编辑区域；范围外保留原像素。
+- 拆层：支持火山 EntitySegment 和 Qwen-Image-Layered。一个拆层结果组内部保持原始位置关系，整个组放在原图旁边。火山不补全被遮挡内容。
+- 结果交付：移动、局部修改、裁剪等生成完整新图片，与原图并排保留；加载失败可重试加载而不重新请求模型。旧版本已排队的物体移动任务保留执行兼容。
+- 画布交互：图片旁竖向工具菜单；物体移动时聚焦图片；抓手、按住空格和中键平移独立于编辑状态；双击空白适应全部图片，双击图片打开带历史缩略图的预览；Ctrl/Cmd+Z 撤销，Ctrl/Cmd+Shift+Z 重做。聊天面板可折叠。
 
-自动化验证包括原生协议的本地 HTTP fixture、能力选择/凭据隔离、透明边缘、旋转坐标、迟到结果，以及数据库任务恢复。源代码未使用真实供应商密钥进行画质或延迟测试。
+自动化验证覆盖区域变换、原生供应商协议的本地 HTTP fixture、完整尺寸输出、范围外像素、能力配置、桌面/手机手势与任务恢复。fixture 不能验证真实模型的语义画质或耗时；部署后仍需用真实供应商完成画质验收。
 
 ## Prices and recovery
 
@@ -66,8 +67,8 @@ Creation, reservation and Outbox commit together. Provider results are stored as
 ## Known product boundaries
 
 - Frontend follows Lovart-style canvas-first interaction with ModelShot branding; it is not a claim that every private Lovart behavior or model capability is replicated.
-- Cloud segmentation and decomposition require separate configured API channels. Background repair and layer generation remain asynchronous; no first-call one-second SLA is promised.
+- Local-edit segmentation and decomposition require configured API channels. Region movement only requires the image-edit model. Model generation remains asynchronous; no first-call one-second SLA is promised.
 - OCR replacement creates a movable text layer after background repair; original font matching, perspective and complex typography require manual adjustments.
 - Video currently implements one explicit Ark content-generation contract; other providers require separate adapters and real credentials.
-- Cloud document saves use version checks. Local draft recovery also retains an in-progress plan. Ordinary generation appends new layers; object edits preserve the hidden original and place replacements at its transform.
+- Cloud document saves use version checks. Local draft recovery also retains an in-progress plan. Ordinary generation appends new layers; object edits append complete results alongside visible originals.
 - GPU engines and real provider quality/cost/latency must be verified separately before commercial launch.

@@ -2,6 +2,7 @@
 
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { Stage, Layer, Image as CanvasImage, Transformer, Text, Group, Line, Rect } from "react-konva";
+import MoveRegions from "./canvas/MoveRegions";
 import { editRegion } from "@/lib/studio/selection-geometry";
 import { useCanvasState } from "./canvas/hooks/useCanvasState";
 import { useDrawingState } from "./canvas/hooks/useDrawingState";
@@ -29,7 +30,7 @@ async function createCutout(assetId, maskBlob, signal, tool, point, onLoading) {
   return { image, bounds: result.bounds, maskId: result.mask, objectAssetId: result.object, holeAssetId: result.hole };
 }
 
-function Picture({ item, selected, onSelect, onChange, interactive, accent, onError, previewImage }) {
+function Picture({ item, selected, onSelect, onChange, interactive, accent, onError, previewImage, onPreview }) {
   const [image, setImage] = useState(null);
   const shape = useRef(null), transformer = useRef(null);
   useEffect(() => {
@@ -42,7 +43,7 @@ function Picture({ item, selected, onSelect, onChange, interactive, accent, onEr
   }, [item.assetId, item.type, onError]);
   useEffect(() => { if (selected && transformer.current && shape.current) { transformer.current.nodes([shape.current]); transformer.current.getLayer().batchDraw(); } }, [selected, interactive]);
   const props = { ref: shape, id: item.id, x: item.x, y: item.y, width: item.width, height: item.height, rotation: item.rotation || 0, opacity: item.opacity ?? 1, draggable: interactive,
-    onClick: onSelect, onTap: onSelect, onDragEnd: e => onChange({ x: e.target.x(), y: e.target.y() }),
+    onClick: onSelect, onTap: onSelect, onDblClick: onPreview, onDblTap: onPreview, onDragEnd: e => onChange({ x: e.target.x(), y: e.target.y() }),
     onTransformEnd: () => { const node = shape.current; const width = Math.max(16, node.width() * node.scaleX()), height = Math.max(16, node.height() * node.scaleY()); node.scaleX(1); node.scaleY(1); onChange({ x: node.x(), y: node.y(), width, height, rotation: node.rotation() }); } };
   return <>
     {item.type === "image" ? <CanvasImage {...props} image={previewImage || image} /> : item.type === "text" ? <Text {...props} text={item.text || ""} fontSize={item.fontSize || 36} fill={item.fill || accent} fontFamily="Arial, sans-serif" /> : <Group {...props}><Rect width={item.width} height={item.height} fill={accent} opacity={0.13} cornerRadius={12} /><Text text="▶  VIDEO" width={item.width} align="center" y={item.height / 2 - 10} fill={accent} fontSize={22} /></Group>}
@@ -88,7 +89,9 @@ function ExpansionBox({ value, width, height, accent, onChange }) {
       enabledAnchors={["top-left", "top-center", "top-right", "middle-left", "middle-right", "bottom-left", "bottom-center", "bottom-right"]} /></>;
 }
 
-const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSelect, onChange, mode, panning = false, selectionTool, editPadding = 0.25, brushSize = 35, moveOffset = { dx: 0, dy: 0 }, onMoveOffset, onMovePreparing, onMoveReady, onMoveFailed, onCrop, expandPadding = 256, onExpandPadding, onZoom, onUpload, onError, label }, ref) {
+const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSelect, onChange, mode, panning: requestedPanning = false, moveRegions, onMoveRegions, onPreview, onViewport, zh, selectionTool, editPadding = 0.25, brushSize = 35, moveOffset = { dx: 0, dy: 0 }, onMoveOffset, onMovePreparing, onMoveReady, onMoveFailed, onCrop, expandPadding = 256, onExpandPadding, onZoom, onUpload, onError, label }, ref) {
+  const [middleHeld, setMiddleHeld] = useState(false);
+  const panning = requestedPanning || middleHeld;
   const container = useRef(null), stage = useRef(null), artwork = useRef(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
   const [themeColor, setColor] = useState("#D9F154");
@@ -124,6 +127,7 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
     }
   }, [primaryColor, applyColors]);
   useEffect(() => { onZoom(camera.scale); }, [camera.scale, onZoom]);
+  useEffect(() => { if (selection) onViewport?.({ left: camera.x + selection.x * camera.scale, top: camera.y + selection.y * camera.scale, width: selection.width * camera.scale, height: selection.height * camera.scale, viewportWidth: dimensions.width, viewportHeight: dimensions.height }); }, [camera, selection, dimensions, onViewport]);
   const maskKey = `${selectedId}:mask`;
   const toolKey = `${selectedId}:${mode}`;
   useEffect(() => { drawing.current = false; clearStrokes(); }, [toolKey, clearStrokes]);
@@ -183,6 +187,11 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
   }
 
   useImperativeHandle(ref, () => ({ zoom, fit, fitExpansion,
+    focusSelection() {
+      if (!selection) return;
+      const scale = Math.max(0.08, Math.min(2, (dimensions.width - 120) / selection.width, (dimensions.height - 350) / selection.height));
+      updateCamera({ scale, x: (dimensions.width - selection.width * scale) / 2 - selection.x * scale, y: 45 + (dimensions.height - 350 - selection.height * scale) / 2 - selection.y * scale });
+    },
     clearMask: () => { operation.current++; selectionRequest.current?.abort(); clearStrokes(); clearSelection(); },
     clearMovePreview: () => { operation.current++; selectionRequest.current?.abort(); clearMove(); },
     maskBlob,
@@ -210,6 +219,17 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
     const x = p.x / selection.width * selection.pixelWidth, y = p.y / selection.height * selection.pixelHeight;
     return { x: Math.max(0, Math.min(selection.pixelWidth, x)), y: Math.max(0, Math.min(selection.pixelHeight, y)) };
   }
+
+  useEffect(() => {
+    const release = () => {
+      if (!middleHeld) return;
+      stage.current?.stopDrag();
+      if (stage.current) updateCamera({ x: stage.current.x(), y: stage.current.y() });
+      setMiddleHeld(false);
+    };
+    window.addEventListener("mouseup", release); window.addEventListener("blur", release);
+    return () => { window.removeEventListener("mouseup", release); window.removeEventListener("blur", release); };
+  }, [middleHeld, updateCamera]);
 
   function handleMouseDown(e) {
     if (panning) return;
@@ -272,6 +292,10 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
     if (!["object-select-rect", "object-select-lasso"].includes(mode) || !activeMove.current) return;
     const shape = { ...activeMove.current };
     cropStart.current = null;
+    if (selectionTool === "move") {
+      if (shape.rectangle?.width >= 3 && shape.rectangle?.height >= 3) onMoveReady?.({ bounds: shape.rectangle, region: true });
+      return;
+    }
     if (shape.rectangle && shape.rectangle.width < 3 && shape.rectangle.height < 3) {
       shape.point = {
         x: Math.min(selection.pixelWidth - 1, Math.round(shape.rectangle.left)),
@@ -292,10 +316,15 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
   const editing = selection?.type === "image" && ["mask", "crop", "move", "object-edit", "object-preparing", "object-select-rect", "object-select-lasso", "expand"].includes(mode);
   const cursorStyle = getCursorForMode(panning ? "hand" : mode, brushSize);
 
-  return <div ref={container} className="ms-stage" data-mode={mode} data-panning={panning} data-camera-scale={camera.scale} aria-label={label} style={{ cursor: cursorStyle }}
+  return <div ref={container} className="ms-stage" data-selection-frame={selection ? JSON.stringify({ left: camera.x + selection.x * camera.scale, top: camera.y + selection.y * camera.scale, width: selection.width * camera.scale, height: selection.height * camera.scale }) : undefined} data-mode={mode} data-panning={panning} data-camera-scale={camera.scale} aria-label={label} style={{ cursor: cursorStyle }}
+    onMouseDownCapture={e => {
+      if (e.button !== 1) return;
+      e.preventDefault(); e.stopPropagation();
+      stage.current.setPointersPositions(e.nativeEvent); stage.current.draggable(true); stage.current.startDrag(); setMiddleHeld(true);
+    }}
     onDragOver={e => e.preventDefault()}
     onDrop={e => { e.preventDefault(); onUpload(e.dataTransfer.files); }}>
-    <Stage ref={stage} {...dimensions} x={camera.x} y={camera.y} scaleX={camera.scale} scaleY={camera.scale} draggable={panning}
+    <Stage onDblClick={e => { if (e.target === stage.current) fit(); }} onDblTap={e => { if (e.target === stage.current) fit(); }} ref={stage} {...dimensions} x={camera.x} y={camera.y} scaleX={camera.scale} scaleY={camera.scale} draggable={panning}
       onDragEnd={e => { if (e.target === stage.current) updateCamera({ x: e.target.x(), y: e.target.y() }); }}
       onWheel={e => {
         e.evt.preventDefault();
@@ -311,7 +340,7 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
       onMouseMove={handleMouseMove} onTouchMove={handleMouseMove}
       onMouseUp={finishDrawing} onTouchEnd={finishDrawing} onMouseLeave={finishDrawing}>
       <Layer ref={artwork}>
-        {layers.filter(l => l.visible).map(item => <Picture key={item.id} item={item} selected={selectedId === item.id} interactive={!panning && mode === "select"} accent={color} onError={onError} onSelect={() => { if (!panning && !editing) onSelect(item.id); }} onChange={patch => { try { onChange(layers.map(l => l.id === item.id ? { ...l, ...patch } : l)); } catch (e) { onError(e); } }} />)}
+        {layers.filter(l => l.visible).map(item => <Picture key={item.id} item={item} selected={selectedId === item.id} interactive={!panning && mode === "select"} accent={color} onError={onError} onPreview={() => { if (!editing && item.type === "image") onPreview?.(item.assetId); }} onSelect={() => { if (!panning && !editing) onSelect(item.id); }} onChange={patch => { try { onChange(layers.map(l => l.id === item.id ? { ...l, ...patch } : l)); } catch (e) { onError(e); } }} />)}
       </Layer>
       {editing && !["crop", "expand", "move", "object-edit"].includes(mode) && <Layer listening={false}><Group x={selection.x} y={selection.y} rotation={selection.rotation} scaleX={selection.width / selection.pixelWidth} scaleY={selection.height / selection.pixelHeight} clipWidth={selection.pixelWidth} clipHeight={selection.pixelHeight}>
         {mode === "mask" && strokes.filter(s => s.target === maskKey).map((s, i) => <Line key={i} points={s.points} stroke={color} strokeWidth={s.width} opacity={0.55} lineCap="round" lineJoin="round" />)}
@@ -331,6 +360,9 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
       </Group></Layer>}
       {mode === "expand" && selection && <Layer listening={!panning}><Group x={selection.x} y={selection.y} rotation={selection.rotation} scaleX={selection.width / selection.pixelWidth} scaleY={selection.height / selection.pixelHeight}>
         <ExpansionBox value={expandPadding} width={selection.pixelWidth} height={selection.pixelHeight} accent={color} onChange={onExpandPadding} />
+      </Group></Layer>}
+      {mode === "move" && moveRegions && selection && <Layer listening={!panning}><Group x={selection.x} y={selection.y} rotation={selection.rotation} scaleX={selection.width / selection.pixelWidth} scaleY={selection.height / selection.pixelHeight} clipWidth={selection.pixelWidth} clipHeight={selection.pixelHeight}>
+        <MoveRegions {...moveRegions} width={selection.pixelWidth} height={selection.pixelHeight} scale={camera.scale * selection.width / selection.pixelWidth} onChange={onMoveRegions} zh={zh} />
       </Group></Layer>}
       {["move", "object-edit"].includes(mode) && movePreview?.target === selectedId && selection && <Layer listening={!panning}><Group x={selection.x} y={selection.y} rotation={selection.rotation} scaleX={selection.width / selection.pixelWidth} scaleY={selection.height / selection.pixelHeight} clipWidth={selection.pixelWidth} clipHeight={selection.pixelHeight}>
         {mode === "object-edit" && (() => {

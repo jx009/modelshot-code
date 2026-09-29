@@ -101,8 +101,9 @@ export default function StudioToolPricingPage() {
                       保存
                     </button>
                   </div>
-                  {modelTool && <label className="text-xs text-secondary-text space-y-1"><span>{tool.id === "move" ? "背景修复模型（移动后补全原位置）" : "执行方式"}</span><select className="w-full bg-bg-page border border-divider rounded-[10px] px-3 py-2 text-primary-text" value={tool.routing.mode} onChange={e => updateRouting({ mode: e.target.value, channelName: null })}>{tool.dependency === "image" && <option value="inherit">沿用用户选择的生图模型</option>}<option value="dedicated">指定工具专用模型</option></select></label>}
+                  {modelTool && <label className="text-xs text-secondary-text space-y-1"><span>{tool.id === "move" ? "物体移动模型（完整场景编辑）" : "执行方式"}</span><select className="w-full bg-bg-page border border-divider rounded-[10px] px-3 py-2 text-primary-text" value={tool.routing.mode} onChange={e => updateRouting({ mode: e.target.value, channelName: null })}>{tool.dependency === "image" && <option value="inherit">沿用用户选择的生图模型</option>}<option value="dedicated">指定工具专用模型</option></select></label>}
                   {modelTool && tool.routing.mode === "dedicated" && <label className="text-xs text-secondary-text space-y-1"><span>专用模型</span>{channelSelect(tool.dependency, tool.routing.channelName, channelName => updateRouting({ channelName }), tool.dependency === "split" ? "使用后台默认拆层模型" : "请选择模型")}</label>}
+                  {tool.id === "move" && <p className="text-xs text-secondary-text">框选源区域并调整目标位置后，编辑模型一次生成完整场景，修补原位置并融合新位置的光影。支持阿里、火山或兼容图像编辑接口，不需要先调用物体分割。</p>}
                   {tool.dependency === "split" && <>
                     {!data.channels.split?.length && <div className="rounded-[10px] border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">尚未配置拆层模型。请在 <Link href="/admin/providers?category=tool" className="underline underline-offset-2">工具专用模型</Link> 中启用火山智能视觉 EntitySegment 或 Qwen 图层拆分。</div>}
                     <p className="text-xs text-secondary-text">可直接选择局部修改使用的火山 EntitySegment，无需重复填写 AK/SK。火山按识别结果自动拆成透明图层，保留可见内容，遮挡区域不会自动补全；Qwen 支持指定拆分层数。</p>
@@ -110,7 +111,7 @@ export default function StudioToolPricingPage() {
                   {tool.preview === "segment" && <>
                     <label className="text-xs text-secondary-text space-y-1"><span>物体分割模型（圈选时生成透明物体）</span><select className="w-full bg-bg-page border border-divider rounded-[10px] px-3 py-2 text-primary-text" value={tool.routing.segmentMode === "dedicated" ? (tool.routing.segmentChannelName || "") : "__default"} onChange={e => { const value = e.target.value; updateRouting(value === "__default" ? { segmentMode: "default", segmentChannelName: null } : { segmentMode: "dedicated", segmentChannelName: value }); }}><option value="__default">后台默认分割模型</option>{data.channels.segment?.map(ch => <option key={ch.name} value={ch.name}>{ch.label} · {ch.kind}</option>)}</select></label>
                     {!data.channels.segment?.length && <div className="rounded-[10px] border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">当前没有已启用的云端分割模型。请先在 <Link href="/admin/providers?category=tool" className="underline underline-offset-2">模型配置 → 工具专用模型</Link> 新增火山智能视觉 EntitySegment，填写 AK/SK 并启用。</div>}
-                    <p className="text-xs text-secondary-text">圈选后使用分割模型提取完整物体；移动后的背景修复由工具绑定的图像编辑模型完成。</p>
+                    <p className="text-xs text-secondary-text">圈选后使用分割模型提取完整物体；局部修改由工具绑定的图像编辑模型完成。</p>
                   </>}
                   {tool.dependency === "vision" && <Link href="/admin/providers?category=language" className="text-xs text-primary">配置后台大语言模型和每次积分 →</Link>}
                   {!["image", "split", "vision", "local"].includes(tool.dependency) && <p className="text-xs text-secondary-text">{tool.dependency === "video" ? "当前接入火山视频服务，使用部署配置 ARK_VIDEO_MODEL。" : "当前由 tools 服务执行本地推理，使用已部署的模型。此工具尚未接入可切换的云端协议。"}</p>}

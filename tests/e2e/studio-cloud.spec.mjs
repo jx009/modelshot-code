@@ -57,7 +57,7 @@ test("admin owns tool models, has no page scrollbar, and decomposition remains e
     expect(await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight + 1)).toBe(true);
     const moveCard = page.getByRole("heading", { name: "物体移动", exact: true }).locator("xpath=ancestor::div[contains(@class, 'rounded-[14px]')][1]");
     const moveSelect = label => moveCard.locator("label").filter({ hasText: label }).last().locator("select");
-    await moveSelect("背景修复模型").selectOption("dedicated");
+    await moveSelect("物体移动模型").selectOption("dedicated");
     await moveSelect("专用模型").selectOption(channels[0].name);
     const configured = page.waitForResponse(r => r.url().endsWith("/api/admin/studio-tools") && r.request().method() === "PATCH");
     await moveCard.getByRole("button", { name: "保存", exact: true }).click();

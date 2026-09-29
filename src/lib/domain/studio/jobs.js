@@ -3,6 +3,7 @@ import { prisma } from "../../prisma.js";
 import { AppError } from "../../http.js";
 import { ownedAsset } from "../assets/service.js";
 import { lockUser, reserveCreditLots } from "../billing/ledger.js";
+import { regionInside } from "../../studio/move-geometry.js";
 import { jobSchema, getTool } from "../../studio/tools.js";
 import { capabilities, studioConfig } from "./providers.js";
 import { ACTIVE, LIMITS, digestJson } from "../generation/contracts.js";
@@ -43,6 +44,7 @@ export async function submitStudioJob(userId, input, key, db = prisma, deps = {}
     if (getTool(data.tool).source && (!target || target.assetId !== data.assetId || target.type !== "image")) throw new AppError("TARGET_CHANGED", 409);
     const inputAsset = data.assetId ? await ownedAsset(userId, data.assetId, tx) : null;
     if (inputAsset && inputAsset.contentType !== "image/png") throw new AppError("INVALID_SOURCE");
+    if (data.params.selectionMode === "region" && ![data.params.moveSource, data.params.moveTarget].every(r => regionInside(r, inputAsset.width, inputAsset.height))) throw new AppError("MOVE_OUT_OF_BOUNDS", 422);
     if (data.maskId) {
       const mask = await ownedAsset(userId, data.maskId, tx);
       if (mask.width !== inputAsset.width || mask.height !== inputAsset.height) throw new AppError("MASK_SIZE_MISMATCH");

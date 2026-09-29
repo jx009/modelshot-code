@@ -39,3 +39,36 @@
 /* Keep viewport controls reachable while an editing dock is open. */
 @media(max-width:1250px){.ms-canvas-space:has(.ms-direct-dock) .ms-zoom{top:16px;bottom:auto;right:72px}}
 @media(max-width:760px){.ms-canvas-space:has(.ms-direct-dock) .ms-zoom{top:56px;right:66px}}
+
+/* Canvas tools stay anchored to the selected image; controls never jump on hover. */
+.ms-context-toolbar,.ms-context-toolbar:hover{bottom:auto;right:auto;transform:none;width:160px;padding:7px;border-radius:14px;overflow-y:auto;transition:none;box-shadow:var(--depth-3)}
+.ms-context-toolbar .ms-menu-caption{display:flex;flex-direction:column;align-items:flex-start;gap:3px;padding:5px 7px 9px;font-size:10px}
+.ms-context-toolbar .ms-menu-caption span:first-child{max-width:136px}
+.ms-context-scroll{flex-direction:column;overflow:visible;gap:1px}
+.ms-context-scroll>button,.ms-context-scroll>a{flex-direction:row;min-width:0;width:100%;padding:8px;gap:9px;font-size:11px}
+.ms-context-scroll small{margin-left:auto}
+.ms-tool-panel.ms-direct-dock,.ms-tool-panel.ms-direct-dock:hover{transition:none;transform:translateX(-50%);box-shadow:var(--depth-3)}
+.ms-tool-panel.ms-object-dock{width:min(540px,calc(100% - 32px));padding:13px;gap:12px}
+.ms-region-controls{display:flex;flex-direction:column;gap:12px;width:100%}
+.ms-region-controls .ms-direct-hint{max-width:none;font-size:12px}
+.ms-region-controls .ms-direct-prompt{width:100%}
+.ms-region-controls .ms-reselect{margin-left:auto}
+.ms-chat-restore{position:absolute;top:12px;left:14px;z-index:15;background:var(--bg-card);border:1px solid var(--divider)}
+.ms-chat-restore~.ms-canvas-label{left:60px}
+.ms-image-preview{position:fixed;inset:0;z-index:100;background:var(--bg-page);display:flex;flex-direction:column;align-items:center;padding:20px;gap:14px}
+.ms-preview-controls{display:flex;align-items:center;gap:12px;flex-shrink:0;align-self:flex-end}
+.ms-preview-image{width:100%;flex:1;min-height:0;overflow:auto;display:grid;place-items:center}
+.ms-preview-image img{width:auto;height:auto;max-width:100%;max-height:100%;object-fit:contain;transform-origin:center}
+.ms-preview-history{display:flex;gap:9px;max-width:100%;overflow-x:auto;flex-shrink:0;padding:4px}
+.ms-preview-history button{flex:0 0 64px;height:64px;border:2px solid transparent;border-radius:8px;overflow:hidden}
+.ms-preview-history button.active{border-color:var(--primary)}
+.ms-preview-history img{width:100%;height:100%;object-fit:cover}
+@media(min-width:761px){.ms-body{padding:12px;gap:12px}.ms-chat{border:1px solid var(--divider);border-radius:18px;overflow:hidden;box-shadow:var(--depth-2)}.ms-body.chat-collapsed{grid-template-columns:1fr}.ms-body.chat-collapsed>.ms-chat{display:none}}
+@media(max-width:760px){.ms-tool-panel.ms-direct-dock,.ms-tool-panel.ms-direct-dock:hover{transform:none}.ms-tool-panel.ms-object-dock{width:auto}.ms-context-toolbar{right:auto}.ms-context-toolbar .ms-context-scroll>button,.ms-context-toolbar .ms-context-scroll>a{padding:7px;font-size:10px}}
+
+.ms-chat-heading>.ms-icon{display:inline-flex}
+.ms-canvas-space .ms-icon:hover,.ms-canvas-space .ms-button:hover{transform:none}
+.ms-region-controls>.ms-direct-hint,.ms-region-controls>.ms-direct-prompt{flex:none}
+.ms-region-controls .ms-move-offset{flex-wrap:wrap}
+.ms-chat:hover{transform:none}
+@media(max-width:760px){.ms-tool-panel.ms-object-dock>.ms-direct-apply{width:auto;min-width:170px;max-width:100%;font-size:11px}.ms-object-dock>.ms-direct-apply>svg{flex-shrink:0}}

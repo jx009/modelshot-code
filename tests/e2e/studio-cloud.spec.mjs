@@ -103,6 +103,7 @@ test("admin owns tool models, has no page scrollbar, and decomposition remains e
     await expect(page.locator(".ms-layer")).toHaveCount(3);
     await page.screenshot({ path: info.outputPath("cloud-aligned-layers.png"), fullPage: true });
     if (info.project.name === "mobile") await page.locator(".ms-mobile-toggle").click();
+    await page.getByRole("tab", { name: "Planned chat", exact: true }).click();
     await page.getByLabel("Creative prompt").fill("Plan a product photo");
     const planning = page.waitForResponse(r => r.url().endsWith("/api/studio/plan") && r.request().method() === "POST");
     await page.getByRole("button", { name: "Create plan · 3 credits", exact: true }).click();

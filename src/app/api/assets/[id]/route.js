@@ -4,13 +4,24 @@ import { deleteAsset } from "../../../../lib/domain/assets/lifecycle.js";
 import { ownedAsset } from "../../../../lib/domain/assets/service.js";
 import { objectStorage } from "../../../../lib/infra/storage/s3.js";
 import { byteRange } from "../../../../lib/domain/assets/range.js";
+import { imagePreview, previewSize } from "../../../../lib/domain/assets/preview.js";
 
 export async function GET(request, context) {
   try {
+    const started = performance.now();
     const user = await requireUser();
     const { id } = await context.params;
     const asset = await ownedAsset(user.id, id);
     const video = asset.contentType === "video/mp4";
+    const authorized = performance.now();
+    const size = previewSize(new URL(request.url).searchParams.get("preview"));
+    if (size && !video) {
+      const etag = '"' + asset.checksum + '-webp-v1-' + size + '"';
+      const previewHeaders = { "Content-Type": "image/webp", "Cache-Control": "private, max-age=31536000, immutable", "ETag": etag, "X-Content-Type-Options": "nosniff" };
+      if (request.headers.get("if-none-match") === etag) return new Response(null, { status: 304, headers: previewHeaders });
+      const bytes = await imagePreview(asset, size, objectStorage());
+      return new Response(bytes, { headers: { ...previewHeaders, "Content-Length": String(bytes.length), "Server-Timing": "authorize;dur=" + (authorized - started).toFixed(1) + ", preview;dur=" + (performance.now() - authorized).toFixed(1) } });
+    }
     const range = request.headers.get("range");
     const headers = {
       "Content-Type": asset.contentType,

@@ -1,6 +1,7 @@
 import sharp from "sharp";
 import { editRegion } from "../../studio/selection-geometry.js";
 import { alphaMask, maskPixels, compositeSelection, moveSelection } from "./pixels.js";
+import { editFrame, restoreEditFrame } from "./edit-frame.js";
 
 export async function prepareObjectEdit(image, mask, { remove = false, editPadding = 0.25 } = {}) {
   const { width, height } = await sharp(image).metadata();
@@ -13,24 +14,19 @@ export async function prepareObjectEdit(image, mask, { remove = false, editPaddi
   // maskPixels rejects all-zero input; very faint masks still need a valid box.
   if (right < left) throw new Error("EMPTY_MASK");
   const bounds = { left, top, width: right - left + 1, height: bottom - top + 1 };
-  const region = editRegion(bounds, width, height, remove ? 0.04 : editPadding);
-  const context = editRegion(region, width, height, 0.2);
-  let blendMask;
-  if (remove) {
-    // Include a narrow edge around the old silhouette to avoid a leftover halo.
-    // Sharp may schedule threshold before blur in one pipeline. Materialize the
-    // dilation first so the selected silhouette is removed completely.
-    const expanded = await sharp(pixels, { raw: { width, height, channels: 1 } }).blur(2).png().toBuffer();
-    blendMask = await sharp(expanded).threshold(16).png().toBuffer();
-  } else {
-    const blend = Buffer.alloc(width * height);
-    const feather = Math.max(1, Math.min(8, Math.round(Math.min(region.width, region.height) * 0.025)));
-    for (let y = region.top; y < region.top + region.height; y++) for (let x = region.left; x < region.left + region.width; x++) {
-      const edge = Math.min(x - region.left + 1, region.left + region.width - x, y - region.top + 1, region.top + region.height - y);
-      blend[y * width + x] = Math.round(255 * Math.min(1, edge / feather));
-    }
-    blendMask = await sharp(blend, { raw: { width, height, channels: 1 } }).png().toBuffer();
+  // Repair a surrounding patch, including contact/cast shadows. A hard binary
+  // silhouette copies every slight lighting difference back as a cat-shaped scar.
+  const region = editRegion(bounds, width, height, remove ? 0.25 : editPadding);
+  const context = remove ? { left: 0, top: 0, width, height } : editRegion(region, width, height, 0.2);
+  const blend = Buffer.alloc(width * height);
+  const feather = Math.max(1, Math.min(remove ? 48 : 8, Math.round(Math.min(region.width, region.height) * (remove ? 0.08 : 0.025))));
+  for (let y = region.top; y < region.top + region.height; y++) for (let x = region.left; x < region.left + region.width; x++) {
+    const edge = Math.min(region.left ? x - region.left + 1 : feather, region.left + region.width < width ? region.left + region.width - x : feather,
+      region.top ? y - region.top + 1 : feather, region.top + region.height < height ? region.top + region.height - y : feather);
+    const weight = Math.min(1, edge / feather);
+    blend[y * width + x] = pixels[y * width + x] > 16 ? 255 : Math.round(255 * weight * weight * (3 - 2 * weight));
   }
+  const blendMask = await sharp(blend, { raw: { width, height, channels: 1 } }).png().toBuffer();
   // Supply the isolated object as a visual identity reference. This makes the
   // selection explicit even on gateways that poorly follow alpha masks.
   const object = await sharp(image).ensureAlpha().raw().toBuffer();
@@ -51,8 +47,13 @@ export async function runObjectEdit(config, snapshot, image, mask, signal, gener
   const remove = snapshot.tool === "move";
   const prepared = await prepareObjectEdit(image, mask, { remove, editPadding: snapshot.params.editPadding });
   const { bounds, context } = prepared;
+  const frame = await editFrame(prepared.image, prepared.mask, prepared.size);
   const target = [bounds.left - context.left, bounds.top - context.top, bounds.width, bounds.height]
-    .map((value, index) => Math.round(value / (index % 2 === 0 ? context.width : context.height) * 1000));
+    .map((value, index) => {
+      const horizontal = index % 2 === 0;
+      const scaled = value / (horizontal ? context.width : context.height) * (horizontal ? frame.content.width : frame.content.height);
+      return Math.round((scaled + (index < 2 ? horizontal ? frame.content.left : frame.content.top : 0)) / (horizontal ? frame.width : frame.height) * 1000);
+    });
   const prompt = [
     "Edit the FIRST image in place, keeping its exact composition, camera and dimensions. The SECOND image is an isolated reference identifying the ONE selected object, not another object to add.",
     `The selected object's bounding box in the first image is x=${target[0]}, y=${target[1]}, width=${target[2]}, height=${target[3]} on a 0–1000 coordinate scale.`,
@@ -62,10 +63,11 @@ export async function runObjectEdit(config, snapshot, image, mask, signal, gener
     "Return just the edited first image, without borders, side-by-side panels, selection outlines or reference thumbnails.",
     snapshot.params.prompt || "",
   ].join("\n");
-  const generated = await generate(config, { image: prepared.image, references: [prepared.reference], mask: prepared.mask, prompt, size: prepared.size, signal });
-  const crop = await sharp(generated).resize(context.width, context.height, { fit: "fill" }).png().toBuffer();
+  const generated = await generate(config, { image: frame.image, references: [prepared.reference], mask: frame.mask, prompt: prompt + "\nKeep the output canvas and any outer gray padding exactly the same. Preserve the perspective and exposure of the surrounding scene.", size: prepared.size, signal });
+  const crop = await restoreEditFrame(generated, frame);
   const placed = await sharp(image).composite([{ input: crop, left: context.left, top: context.top }]).png().toBuffer();
   const edited = await compositeSelection(image, placed, prepared.blendMask);
-  if (remove && snapshot.moveBundle) return { images: [edited], placement: "repair-background" };
-  return { images: [remove ? await moveSelection(image, edited, mask, snapshot.params.dx, snapshot.params.dy) : edited], ...(!remove ? { placement: "replace-source" } : {}) };
+  // The primary result is always a complete image. The request retains the
+  // source, mask and extracted object for further edits and undo.
+  return { images: [remove ? await moveSelection(image, edited, mask, snapshot.params.dx, snapshot.params.dy) : edited], placement: "replace-source" };
 }

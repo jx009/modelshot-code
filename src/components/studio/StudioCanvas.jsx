@@ -7,23 +7,26 @@ import { useCanvasState } from "./canvas/hooks/useCanvasState";
 import { useDrawingState } from "./canvas/hooks/useDrawingState";
 import { useSelectionState } from "./canvas/hooks/useSelectionState";
 import { useImageColors } from "./canvas/hooks/useImageColors";
-import { loadImage, alphaMaskBlob, processLargeImage } from "@/lib/studio/image-processor";
+import { loadImage } from "@/lib/studio/image-processor";
+import { imageUrl, previewUrl } from "@/lib/studio/image-url";
 import { getCursorForMode } from "@/lib/studio/cursor-generator";
 
-async function createCutout(assetId, maskBlob, width, height, signal, tool, point) {
+async function createCutout(assetId, maskBlob, signal, tool, point, onLoading) {
   const form = new FormData();
   form.append("assetId", assetId);
   form.append("selection", maskBlob, "selection.png");
   if (tool) form.append("tool", tool);
   if (point) form.append("point", JSON.stringify(point));
-  const response = await fetch("/api/studio/segment", { method: "POST", body: form, signal, headers: { Accept: "application/json" } });
+  const timeout = AbortSignal.timeout(65000);
+  const response = await fetch("/api/studio/segment", { method: "POST", body: form, signal: AbortSignal.any([signal, timeout]), headers: { Accept: "application/json" } });
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
     throw new Error(body.code || "SEGMENTATION_FAILED");
   }
   const result = await response.json();
-  const [image, hole] = await Promise.all([loadImage(`/api/assets/${result.cutout}`), loadImage(`/api/assets/${result.hole}`)]);
-  return { image, hole, ...await alphaMaskBlob(image, width, height), maskId: result.mask, objectAssetId: result.object, holeAssetId: result.hole };
+  onLoading?.("preview");
+  const image = await loadImage(previewUrl(result.object), { signal });
+  return { image, bounds: result.bounds, maskId: result.mask, objectAssetId: result.object, holeAssetId: result.hole };
 }
 
 function Picture({ item, selected, onSelect, onChange, interactive, accent, onError, previewImage }) {
@@ -32,10 +35,9 @@ function Picture({ item, selected, onSelect, onChange, interactive, accent, onEr
   useEffect(() => {
     if (item.type !== "image") return;
     let live = true;
-    loadImage(`/api/assets/${item.assetId}`)
-      .then(img => processLargeImage(img, 2048))
+    loadImage(previewUrl(item.assetId))
       .then(processed => { if (live) setImage(processed); })
-      .catch(() => { if (live) onError("IMAGE_LOAD_FAILED"); });
+      .catch(error => { if (live) onError(error); });
     return () => { live = false; };
   }, [item.assetId, item.type, onError]);
   useEffect(() => { if (selected && transformer.current && shape.current) { transformer.current.nodes([shape.current]); transformer.current.getLayer().batchDraw(); } }, [selected, interactive]);
@@ -95,7 +97,7 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
   const { camera, updateCamera, zoom, fit, fitExpansion } = useCanvasState(dimensions, layers);
   const { strokes, startStroke, addPoint, endStroke, clearAll: clearStrokes } = useDrawingState();
   const {
-    crop, movePreview, moveSelection, moveMask,
+    crop, movePreview, moveSelection, moveMask, activeMove,
     startCrop, updateCrop,
     startMoveRect, updateMoveRect, startMoveLasso, addLassoPoint,
     setMovePreviewData: setMovePreview, setMoveMaskData, clearMove, clearAll: clearSelection
@@ -165,18 +167,18 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
     const mask = await maskBlob(shape.rectangle, shape.polygon);
     if (current !== operation.current) return;
     let cutout;
-    try { cutout = await createCutout(selection.assetId, mask, selection.pixelWidth, selection.pixelHeight, controller.signal, selectionTool, shape.point); }
+    try { cutout = await createCutout(selection.assetId, mask, controller.signal, selectionTool, shape.point, onMovePreparing); }
     catch (error) { if (current !== operation.current) return; throw error; }
     if (current !== operation.current) return;
-    setMoveMaskData({ blob: cutout.mask });
+    setMoveMaskData({ maskId: cutout.maskId });
     const { bounds } = cutout;
     const object = document.createElement("canvas"); object.width = bounds.width; object.height = bounds.height;
-    object.getContext("2d").drawImage(cutout.image, bounds.left, bounds.top, bounds.width, bounds.height, 0, 0, bounds.width, bounds.height);
+    object.getContext("2d").drawImage(cutout.image, 0, 0, bounds.width, bounds.height);
     const thumb = document.createElement("canvas");
     const ratio = Math.min(1, 160 / Math.max(bounds.width, bounds.height));
     thumb.width = Math.max(1, Math.round(bounds.width * ratio)); thumb.height = Math.max(1, Math.round(bounds.height * ratio));
     thumb.getContext("2d").drawImage(object, 0, 0, thumb.width, thumb.height);
-    setMovePreview({ target: selectedId, image: object, hole: cutout.hole, bounds });
+    setMovePreview({ target: selectedId, image: object, bounds });
     onMoveReady?.({ bounds, thumbnail: thumb.toDataURL("image/png"), maskId: cutout.maskId, objectAssetId: cutout.objectAssetId, holeAssetId: cutout.holeAssetId });
   }
 
@@ -187,8 +189,9 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
     async exportPNG() {
       const visible = layers.filter(l => l.visible && l.type !== "video");
       if (!visible.length) throw new Error("画布上没有图片 / No images on canvas");
-      if (artwork.current.find("Image").some(node => !node.image()?.complete)) throw new Error("图片仍在加载，请稍后导出 / Images are still loading");
+      const originals = new Map(await Promise.all(visible.filter(layer => layer.type === "image").map(async layer => [layer.id, await loadImage(imageUrl(layer.assetId))])));
       const clone = artwork.current.clone();
+      clone.find("Image").forEach(node => { const original = originals.get(node.id()); if (original) node.image(original); });
       clone.find("Transformer").forEach(t => t.destroy());
       clone.scale({ x: 1, y: 1 }); clone.position({ x: 0, y: 0 });
       const rect = clone.getClientRect();
@@ -265,8 +268,8 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
     if (!drawing.current) return;
     drawing.current = false;
     endStroke();
-    if (!["object-select-rect", "object-select-lasso"].includes(mode) || !moveSelection) return;
-    const shape = { ...moveSelection };
+    if (!["object-select-rect", "object-select-lasso"].includes(mode) || !activeMove.current) return;
+    const shape = { ...activeMove.current };
     cropStart.current = null;
     if (shape.rectangle && shape.rectangle.width < 3 && shape.rectangle.height < 3) {
       shape.point = {
@@ -281,7 +284,7 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
     catch (error) {
       if (error.name !== "AbortError") {
         onMoveFailed?.();
-        onError(error);
+        onError(error.name === "TimeoutError" ? new Error("SEGMENTATION_TIMEOUT") : error);
       }
     }
   }
@@ -307,7 +310,7 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
       onMouseMove={handleMouseMove} onTouchMove={handleMouseMove}
       onMouseUp={finishDrawing} onTouchEnd={finishDrawing} onMouseLeave={finishDrawing}>
       <Layer ref={artwork}>
-        {layers.filter(l => l.visible).map(item => <Picture key={item.id} item={item} previewImage={mode === "move" && movePreview?.target === item.id ? movePreview.hole : null} selected={selectedId === item.id} interactive={mode === "select"} accent={color} onError={onError} onSelect={() => { if (!editing) onSelect(item.id); }} onChange={patch => { try { onChange(layers.map(l => l.id === item.id ? { ...l, ...patch } : l)); } catch (e) { onError(e); } }} />)}
+        {layers.filter(l => l.visible).map(item => <Picture key={item.id} item={item} selected={selectedId === item.id} interactive={mode === "select"} accent={color} onError={onError} onSelect={() => { if (!editing) onSelect(item.id); }} onChange={patch => { try { onChange(layers.map(l => l.id === item.id ? { ...l, ...patch } : l)); } catch (e) { onError(e); } }} />)}
       </Layer>
       {editing && !["crop", "expand", "move", "object-edit"].includes(mode) && <Layer listening={false}><Group x={selection.x} y={selection.y} rotation={selection.rotation} scaleX={selection.width / selection.pixelWidth} scaleY={selection.height / selection.pixelHeight} clipWidth={selection.pixelWidth} clipHeight={selection.pixelHeight}>
         {mode === "mask" && strokes.filter(s => s.target === maskKey).map((s, i) => <Line key={i} points={s.points} stroke={color} strokeWidth={s.width} opacity={0.55} lineCap="round" lineJoin="round" />)}
@@ -329,14 +332,13 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
         <ExpansionBox value={expandPadding} width={selection.pixelWidth} height={selection.pixelHeight} accent={color} onChange={onExpandPadding} />
       </Group></Layer>}
       {["move", "object-edit"].includes(mode) && movePreview?.target === selectedId && selection && <Layer><Group x={selection.x} y={selection.y} rotation={selection.rotation} scaleX={selection.width / selection.pixelWidth} scaleY={selection.height / selection.pixelHeight} clipWidth={selection.pixelWidth} clipHeight={selection.pixelHeight}>
-        <Rect width={selection.pixelWidth} height={selection.pixelHeight} fill="#000" opacity={0.16} listening={false} />
         {mode === "object-edit" && (() => {
           const region = editRegion(movePreview.bounds, selection.pixelWidth, selection.pixelHeight, editPadding);
           return <Rect x={region.left} y={region.top} width={region.width} height={region.height} stroke="#fff" strokeWidth={1 / (camera.scale * selection.width / selection.pixelWidth)} dash={[5, 5]} fill="#FFFFFF08" listening={false} />;
         })()}
         <CanvasImage image={movePreview.image} width={movePreview.bounds.width} height={movePreview.bounds.height}
           x={movePreview.bounds.left + (mode === "move" ? moveOffset.dx : 0)} y={movePreview.bounds.top + (mode === "move" ? moveOffset.dy : 0)} draggable={mode === "move"}
-          shadowColor={color} shadowBlur={14 / (camera.scale * selection.width / selection.pixelWidth)} shadowOpacity={0.9}
+          opacity={mode === "move" && (moveOffset.dx || moveOffset.dy) ? 0.85 : 1}
           onDragMove={event => {
             const bounds = movePreview.bounds;
             const dx = Math.round(Math.max(-bounds.left, Math.min(selection.pixelWidth - bounds.left - bounds.width, event.target.x() - bounds.left)));

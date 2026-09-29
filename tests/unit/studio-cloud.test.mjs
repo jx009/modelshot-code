@@ -171,10 +171,22 @@ describe("editable layers and late background repair", () => {
     const changed = { ...target, assetId: "changed" };
     expect(appendResult([changed], job, changed)).toEqual([changed]);
   });
-  it("returns repaired background without baking the moved object into it", async () => {
-    const result = await runImageTool({}, { tool: "move", moveBundle: bundle, params: { dx: 4, dy: 0 } }, png, mask, undefined, { generate: async () => sharp({ create: { width: 20, height: 12, channels: 4, background: "blue" } }).png().toBuffer() });
-    expect(result.placement).toBe("repair-background");
+  it("returns a complete moved image even when the client supplied extracted assets", async () => {
+    const result = await runImageTool({}, { tool: "move", moveBundle: bundle, params: { dx: 4, dy: 0 } }, png, mask, undefined, { generate: async (_config, args) => { const [width, height] = args.size.split("x").map(Number); return sharp({ create: { width, height, channels: 4, background: "blue" } }).png().toBuffer(); } });
+    expect(result.placement).toBe("replace-source");
     const rgba = await sharp(result.images[0]).raw().toBuffer();
     expect([...rgba.slice(85 * 4, 85 * 4 + 3)]).toEqual([0, 0, 255]);
+    expect([...rgba.slice(89 * 4, 89 * 4 + 3)]).toEqual([255, 0, 0]);
+  });
+  it("keeps concurrent full-image results without overwriting a newer edit", () => {
+    const job = { id: "first", assetId: target.assetId, tool: "move", resultData: { placement: "replace-source", assets: [{ id: "first-image", width: 20, height: 12 }] } };
+    const first = appendResult([target], job, target);
+    const secondJob = { ...job, id: "second", resultData: { ...job.resultData, assets: [{ id: "second-image", width: 20, height: 12 }] } };
+    const second = appendResult(first, secondJob, first[0]);
+    expect(second).toHaveLength(3);
+    expect(second[1]).toBe(first[1]);
+    expect(second[2]).toMatchObject({ assetId: "second-image", visible: true, sourceJobId: "second" });
+    expect(second[2].x).toBeGreaterThan(first[1].x + first[1].width);
+    expect(appendResult(second, secondJob, second[0])).toBe(second);
   });
 });

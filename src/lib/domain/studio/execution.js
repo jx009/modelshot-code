@@ -89,15 +89,17 @@ export async function executeStudio(id, { db = prisma, store = objectStorage(), 
       const asset = await db.asset.upsert({ where: { id: assetId }, create: { id: assetId, userId: output.userId, objectKey, kind: "original", contentType: "video/mp4", width: 0, height: 0, bytes: bytes.length, checksum }, update: {} });
       result = { assets: [assetSummary(asset)] };
     } else {
+      const modelStarted = performance.now();
       const response = await runImageTool(config, snapshot, image, mask, controller.signal, adapters, references, { requestId: attempt.requestId, onSubmitted: async requestId => {
         await db.generationAttempt.update({ where: { id: attempt.id }, data: { requestId, state: "provider_pending" } });
       } });
+      const modelMs = Math.round(performance.now() - modelStarted), persistStarted = performance.now();
       const assets = [];
       for (const [index, bytes] of (response.images || []).entries()) {
         const asset = await createImage(output.userId, bytes, { id: `${id}_studio_${index}`, kind: "original" }, db, store);
         assets.push({ ...assetSummary(asset), ...(response.labels?.[index] ? { label: response.labels[index] } : {}) });
       }
-      result = { assets, ...(response.placement ? { placement: response.placement } : {}), ...(response.text ? { text: response.text.slice(0, 8000) } : {}), ...(response.ocr ? { ocr: response.ocr } : {}) };
+      result = { assets, timings: { modelMs, persistMs: Math.round(performance.now() - persistStarted) }, ...(response.placement ? { placement: response.placement } : {}), ...(response.text ? { text: response.text.slice(0, 8000) } : {}), ...(response.ocr ? { ocr: response.ocr } : {}) };
     }
     // Persist the entire output manifest and its references atomically. Recovery can
     // finish billing without calling a paid provider again after this commit.

@@ -72,7 +72,7 @@ describe("studio pixel contracts", () => {
     const image = await sharp({ create: { width: 20, height: 12, channels: 4, background: "green" } })
       .composite([{ input: await solid("red", 5, 4), left: 5, top: 4 }]).png().toBuffer(), mask = await sharp({ create: { width: 20, height: 12, channels: 3, background: "black" } })
       .composite([{ input: await sharp({ create: { width: 5, height: 4, channels: 3, background: "white" } }).png().toBuffer(), left: 5, top: 4 }]).png().toBuffer();
-    const result = await runObjectEdit({}, { tool: "move", params: { dx: 4, dy: 0 } }, image, mask, undefined, async () => solid("blue", 2, 2));
+    const result = await runObjectEdit({}, { tool: "move", params: { dx: 4, dy: 0 } }, image, mask, undefined, async (_config, args) => { const [w, h] = args.size.split("x").map(Number); return solid("blue", w, h); });
     const raw = await sharp(result.images[0]).raw().toBuffer();
     const repaired = raw.slice((5 * 20 + 6) * 4, (5 * 20 + 6) * 4 + 3), moved = raw.slice((5 * 20 + 10) * 4, (5 * 20 + 10) * 4 + 3);
     expect(repaired[2]).toBeGreaterThan(repaired[0]);

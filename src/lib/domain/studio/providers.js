@@ -5,7 +5,7 @@ import { AppError } from "../../http.js";
 import { editThroughCompatibleGateway } from "../../ai/adapters/openai.js";
 import { downloadProviderImage } from "../../infra/storage/download.js";
 import { TOOLS } from "../../studio/tools.js";
-import { channelCapability, channelScope, toolRouting, supportsImageTask, segmentChannelReady } from "../../studio/model-channels.js";
+import { channelCapability, channelScope, toolRouting, supportsImageTask, supportsChannelCapability, segmentChannelReady, splitChannelReady } from "../../studio/model-channels.js";
 import { generateCloudImage } from "./cloud.js";
 
 // Resolve user-visible image selection separately from administrator-owned tool stages.
@@ -14,7 +14,7 @@ export function resolveStudioConfig(rows, toolRows = [], channelName, capability
   const setting = toolRows.find(row => row.toolId === toolId);
   const routing = tool ? toolRouting(tool, setting) : null;
   const select = cap => {
-    const candidates = rows.filter(row => channelCapability(row) === cap);
+    const candidates = rows.filter(row => supportsChannelCapability(row, cap));
     let name, internal = pinned || !toolId && capability !== "image";
     if (pinned && capability === cap) name = channelName;
     else if (cap === "image" && tool?.dependency === "image" && routing.mode === "dedicated") { name = routing.channelName; internal = true; if (!name) throw new AppError("SERVICE_NOT_CONFIGURED", 503); }
@@ -28,7 +28,7 @@ export function resolveStudioConfig(rows, toolRows = [], channelName, capability
       if (!selected) throw new AppError("PROVIDER_CAPABILITY_UNSUPPORTED", 422);
       return selected;
     }
-    return eligible.find(row => JSON.parse(row.config || "{}").studioDefault) || (cap === "segment" ? eligible.find(row => row.kind === "volc-visual") : null) || eligible[0];
+    return eligible.find(row => channelCapability(row) === cap && JSON.parse(row.config || "{}").studioDefault) || (["segment", "split"].includes(cap) ? eligible.find(row => row.kind === "volc-visual") : null) || eligible[0];
   };
   const row = select("image");
   const planner = pinned && capability === "language" ? select("language") : rows.find(candidate => candidate.isPlanner);
@@ -88,10 +88,10 @@ export async function capabilities(db = prisma, config) {
         // Explicit configurations are also used by isolated provider diagnostics.
         if (!("requestedProvider" in c) && !setting?.routing) chosen = { ...chosen, ...c }; }
       catch (e) { error = e.code; chosen = {}; }
-      const ready = { local: true, image: Boolean(chosen.apiKey) && supportsImageTask(chosen, tool.id === "generate" ? "generate" : "edit"), vision: Boolean(chosen.visionApiKey && chosen.chatModel), video: Boolean(chosen.videoKey && chosen.videoModel), segment: segmentChannelReady(chosen.segmentChannel), split: Boolean(chosen.splitChannel?.apiKey), "remove-bg": external.includes("remove-bg"), upscale: external.includes("upscale"), ocr: external.includes("ocr") };
+      const ready = { local: true, image: Boolean(chosen.apiKey) && supportsImageTask(chosen, tool.id === "generate" ? "generate" : "edit"), vision: Boolean(chosen.visionApiKey && chosen.chatModel), video: Boolean(chosen.videoKey && chosen.videoModel), segment: segmentChannelReady(chosen.segmentChannel), split: splitChannelReady(chosen.splitChannel), "remove-bg": external.includes("remove-bg"), upscale: external.includes("upscale"), ocr: external.includes("ocr") };
       const cost = tool.dependency === "vision" ? c.plannerCreditCost : ["generate", "edit"].includes(tool.id) ? chosen.imageCreditCost ?? 18 : setting?.creditCost ?? tool.cost;
       const dependencyReady = !error && ready[tool.dependency], previewReady = !tool.preview || ready[tool.preview];
-      return { ...tool, cost, enabled, available: Boolean(enabled && dependencyReady && previewReady), reason: !enabled ? "TOOL_DISABLED" : !dependencyReady ? error || "SERVICE_NOT_CONFIGURED" : !previewReady ? "SEGMENTATION_NOT_CONFIGURED" : null };
+      return { ...tool, cost, enabled, ...(tool.id === "split" ? { layerCountMode: chosen.splitChannel?.kind === "volc-visual" ? "auto" : "custom" } : {}), available: Boolean(enabled && dependencyReady && previewReady), reason: !enabled ? "TOOL_DISABLED" : !dependencyReady ? error || "SERVICE_NOT_CONFIGURED" : !previewReady ? "SEGMENTATION_NOT_CONFIGURED" : null };
     }) };
 }
 

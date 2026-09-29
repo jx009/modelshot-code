@@ -106,6 +106,12 @@ docker compose --env-file .env.production -f compose.prod.yaml up -d --no-build 
 docker compose --env-file .env.production -f compose.prod.yaml ps
 ```
 
+“工具配置 → 图层拆分 → 专用模型”也可选择同一个火山 EntitySegment 通道，无需重复配置 AK/SK。火山按实际识别结果输出透明图层，并保留未分配的像素；各层按原位置叠放，原图保留为隐藏图层。此方式保留原图可见内容，不会生成被遮挡部分；需要生成式拆层时仍可绑定 Qwen Layered。未指定通道时优先使用已设置的默认拆层模型，其次使用已启用的火山通道。
+
+物体移动的新任务输出完整合成图：先修复旧位置及周边阴影区域，再把原物体合成到新位置。前端在结果预览加载成功前保留原图，完成后自动放到画布并选中；下载和对话缩略图均指向完整结果。原图作为隐藏图层保留，支持撤销。预览加载失败时可“重试加载”，不会重新请求模型或重复扣费。实际背景修补效果仍须用部署环境配置的编辑模型验收。
+
+画布及对话使用私有 WebP 预览（`/api/assets/:id?preview=1280` 或 `320`），下载、导出和模型输入仍使用原始图片。排查等待时间时，分割接口的 `Server-Timing` 区分准备、模型调用及存储；图片预览接口区分鉴权及预览生成；任务结果的 `timings.modelMs`、`timings.persistMs` 区分工具执行与结果存储。
+
 日常应用更新优先用 `sh scripts/deploy-update.sh`；仅在工具镜像也更新时加 `--tools`。修改 Compose 后应同步服务器的 `compose.prod.yaml`，单独 `pull` 镜像不会更新编排文件。持续 unhealthy 时查看 tools 日志和健康检查输出，不应把真实加载失败当成冷启动延迟。
 
 图像工具默认同时处理 2 个请求（`TOOLS_CONCURRENCY=2`，上限 4）。8 核单机先保持默认值，压测 CPU、内存和抠图 P95 耗时后再逐步调到 3 或 4；超过并发槽的请求最多等待 20 秒，之后返回 429。调高此值不能增加外部图像生成供应商的额度。

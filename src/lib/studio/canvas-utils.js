@@ -23,7 +23,13 @@ export function appendResult(layers, job, target) {
       ? { ...layer, assetId: outputs[0].id, repairJobId: undefined } : layer);
   }
   if (["stack", "replace-source"].includes(placement)) {
-    if (!target || target.assetId !== job.assetId || !target.visible || layers.some(layer => layer.sourceJobId === job.id)) return layers;
+    if (layers.some(layer => layer.sourceJobId === job.id)) return layers;
+    if (!target || target.assetId !== job.assetId || !target.visible) {
+      // Another edit may have replaced this source while the job was running.
+      // Keep a completed full-image result as an alternative beside the work.
+      if (placement === "replace-source") return appendResult(layers, { ...job, resultData: { ...job.resultData, placement: undefined } }, target);
+      return layers;
+    }
     const index = layers.findIndex(layer => layer.id === target.id);
     const created = outputs.map((asset, i) => ({ ...target, id: `${job.id}-${i}`, assetId: asset.id,
       name: asset.label || (placement === "stack" ? `${target.name} · ${i + 1}` : target.name),

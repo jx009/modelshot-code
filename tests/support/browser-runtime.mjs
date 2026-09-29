@@ -11,6 +11,15 @@ const supplier = http.createServer(async (req, res) => {
   for await (const chunk of req) chunks.push(chunk);
   const payload = Buffer.concat(chunks), body = payload.toString();
   const dataURL = bytes => `data:image/png;base64,${bytes.toString("base64")}`;
+  if (req.url === "/cloud?Action=EntitySegment&Version=2022-08-31") {
+    const source = Buffer.from(JSON.parse(body).binary_data_base64[0], "base64");
+    const { width, height } = await sharp(source).metadata();
+    const labels = Buffer.alloc(width * height, 1);
+    for (let y = Math.floor(height * 0.3); y < Math.floor(height * 0.7); y++) labels.fill(2, y * width + Math.floor(width * 0.3), y * width + Math.floor(width * 0.7));
+    const map = await sharp(labels, { raw: { width, height, channels: 1 } }).toColourspace("b-w").png().toBuffer();
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ code: 10000, data: { algorithm_base_resp: { status_code: 0 }, binary_data_base64: [map.toString("base64")] } })); return;
+  }
   if (req.url.startsWith("/cloud/queue/fal-ai/qwen-image-layered")) {
     res.setHeader("Content-Type", "application/json");
     if (req.method === "POST") {
@@ -67,8 +76,15 @@ const supplier = http.createServer(async (req, res) => {
   }
   if (body.includes("FIXTURE_REJECT")) { res.writeHead(422, { "Content-Type": "application/json" }); res.end(JSON.stringify({ error: { message: "Fixture rejection" } })); return; }
   await new Promise(resolve => setTimeout(resolve, body.includes("FIXTURE_DELAY") ? 5000 : body.includes("Remove ONLY this object") ? 3500 : 100));
+  let result = png;
+  let size;
+  if (req.headers["content-type"]?.startsWith("multipart/form-data")) {
+    const form = await new Response(payload, { headers: { "content-type": req.headers["content-type"] } }).formData();
+    size = form.get("size");
+  } else { try { size = JSON.parse(body).size; } catch {} }
+  if (/^\d+x\d+$/.test(size || "")) { const [width, height] = size.split("x").map(Number); result = await sharp({ create: { width, height, channels: 3, background: "#42a79b" } }).png().toBuffer(); }
   res.writeHead(200, { "Content-Type": "application/json" });
-  res.end(JSON.stringify({ data: [{ b64_json: png.toString("base64") }] }));
+  res.end(JSON.stringify({ data: [{ b64_json: result.toString("base64") }] }));
 });
 await new Promise(resolve => supplier.listen(3199, "127.0.0.1", resolve));
 const startWorker = () => spawn(process.execPath, ["src/workers/main.mjs"], { stdio: "inherit", env: process.env });

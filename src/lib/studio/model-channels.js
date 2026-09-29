@@ -27,6 +27,12 @@ export function channelCapability(row, config = JSON.parse(row.config || "{}")) 
   return config.studioCapability || (kind === "fal" ? inferFalCapability(config) : STUDIO_KINDS.includes(kind) ? "image" : null);
 }
 
+// EntitySegment's label map supports both selecting one object and exporting
+// every entity. Reuse the same channel and credentials for both operations.
+export function supportsChannelCapability(row, capability, config = JSON.parse(row.config || "{}")) {
+  return channelCapability(row, config) === capability || (row.kind || row.name) === "volc-visual" && capability === "split";
+}
+
 export function supportsImageTask(config, task) {
   const mode = config.imageMode || "both";
   return mode === "both" || mode === task;
@@ -61,6 +67,10 @@ export function validChannel(kind, config) {
 
 export function segmentChannelReady(channel) {
   return channel?.kind === "volc-visual" ? Boolean(channel.accessKeyId && channel.secretAccessKey) : Boolean(channel?.kind === "fal" && channel.apiKey);
+}
+
+export function splitChannelReady(channel) {
+  return channel?.kind === "volc-visual" ? segmentChannelReady(channel) : Boolean(channel?.kind === "fal" && channel.apiKey);
 }
 
 // Allow official APIs and administrator-configured HTTPS-compatible gateways.

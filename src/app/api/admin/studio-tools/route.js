@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/admin-auth";
 import { auditedOperation } from "@/lib/domain/identity/admin-operation";
 import { AppError, errorResponse, readJson } from "@/lib/http";
-import { channelCapability, toolRouting, supportsImageTask } from "@/lib/studio/model-channels";
+import { supportsChannelCapability, toolRouting, supportsImageTask } from "@/lib/studio/model-channels";
 import { TOOLS } from "@/lib/studio/tools";
 
 const configurable = TOOLS.filter(tool => !["generate", "edit"].includes(tool.id));
@@ -17,8 +17,10 @@ export async function GET(request) {
   const providers = await prisma.modelProvider.findMany({ where: { isActive: true }, select: { name: true, displayName: true, kind: true, config: true, isPlanner: true, creditCost: true }, orderBy: { priority: "asc" } });
   const channels = { image: [], segment: [], split: [] };
   for (const p of providers) {
-    const config = JSON.parse(p.config || "{}"), cap = channelCapability(p, config);
-    if (channels[cap] && (cap !== "image" || supportsImageTask(config, "edit"))) channels[cap].push({ name: p.name, label: p.displayName, kind: p.kind });
+    const config = JSON.parse(p.config || "{}");
+    for (const cap of Object.keys(channels)) {
+      if (supportsChannelCapability(p, cap, config) && (cap !== "image" || supportsImageTask(config, "edit"))) channels[cap].push({ name: p.name, label: p.displayName, kind: p.kind });
+    }
   }
   return Response.json({
     tools: configurable.map(tool => ({
@@ -56,7 +58,7 @@ export async function PATCH(request) {
       async function validateChannel(name, capability, required = true) {
         if (!name && !required) return;
         const row = name ? await tx.modelProvider.findUnique({ where: { name } }) : null;
-        if (!row?.isActive || channelCapability(row) !== capability || capability === "image" && !supportsImageTask(JSON.parse(row.config || "{}"), "edit")) throw new AppError("PROVIDER_CAPABILITY_UNSUPPORTED", 422);
+        if (!row?.isActive || !supportsChannelCapability(row, capability) || capability === "image" && !supportsImageTask(JSON.parse(row.config || "{}"), "edit")) throw new AppError("PROVIDER_CAPABILITY_UNSUPPORTED", 422);
       }
       if (routing.mode === "dedicated") await validateChannel(routing.channelName, tool.dependency, tool.dependency !== "split");
       else routing.channelName = null;

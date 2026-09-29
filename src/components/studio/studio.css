@@ -33,3 +33,5 @@
 .ms-object-dock .ms-selected-object{flex:1 1 270px;min-width:0;max-width:none}
 .ms-object-dock .ms-object-tip{flex:1 1 100%}
 @media(max-width:760px){.ms-tool-panel.ms-object-dock{max-height:34dvh}.ms-direct-controls>label{flex-wrap:wrap}.ms-direct-controls>label select{max-width:140px}.ms-object-dock .ms-object-steps{width:auto}}
+.ms-task-status { position: absolute; top: 48px; left: 20px; z-index: 12; max-width: calc(100% - 90px); padding: 10px 14px; border: 1px solid #ffffff20; border-radius: 12px; background: #1c1d20ee; color: #ededed; font-size: 12px; }
+.ms-task-status > div { display: flex; align-items: center; gap: 12px; }

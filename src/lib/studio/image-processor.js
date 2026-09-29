@@ -31,12 +31,36 @@ export async function processLargeImage(image, maxDimension = 2048) {
  * @param {string} src - Image source URL
  * @returns {Promise<HTMLImageElement>} Loaded image
  */
-export function loadImage(src) {
+const images = new Map();
+export function loadImage(src, { signal, timeoutMs = 25000 } = {}) {
+  if (signal?.aborted) return Promise.reject(new DOMException("Aborted", "AbortError"));
+  if (!images.has(src)) {
+    const task = new Promise((resolve, reject) => {
+      let attempt = 0;
+      function start() {
+        const image = new window.Image();
+        const timer = setTimeout(() => fail("IMAGE_LOAD_TIMEOUT"), timeoutMs);
+        const cleanup = () => { clearTimeout(timer); image.onload = null; image.onerror = null; };
+        function fail(code) {
+          cleanup(); image.src = "";
+          if (++attempt < 2) start(); else reject(new Error(code));
+        }
+        image.onload = () => { cleanup(); if (image.naturalWidth) resolve(image); else reject(new Error("IMAGE_LOAD_FAILED")); };
+        image.onerror = () => fail("IMAGE_LOAD_FAILED");
+        image.src = src;
+      }
+      start();
+    });
+    images.set(src, task);
+    task.catch(() => { if (images.get(src) === task) images.delete(src); });
+    while (images.size > 32) images.delete(images.keys().next().value);
+  }
+  const task = images.get(src);
+  if (!signal) return task;
   return new Promise((resolve, reject) => {
-    const image = new window.Image();
-    image.onload = () => resolve(image);
-    image.onerror = reject;
-    image.src = src;
+    const abort = () => reject(new DOMException("Aborted", "AbortError"));
+    signal.addEventListener("abort", abort, { once: true });
+    task.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
   });
 }
 

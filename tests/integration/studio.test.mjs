@@ -142,19 +142,19 @@ describe("studio documents and task ledger", () => {
     expect(finished.resultData.assets).toHaveLength(3);
     expect(await f.db.creditTransaction.count({ where: { tryOnId: job.id, type: "consume" } })).toBe(1);
   });
-  it("validates owned move assets, preserves references and stores only repaired background", async () => {
+  it("validates owned move assets and stores a complete result while retaining source references", async () => {
     const { user, input } = await setup(), other = await f.user();
     const maskBytes = await sharp({ create: { width: user.asset.width, height: user.asset.height, channels: 3, background: "white" } }).png().toBuffer();
     const mask = await createImage(user.id, maskBytes, {}, f.db, f.store);
     const extracted = await extractObject(f.image, maskBytes);
     const object = await createImage(user.id, extracted.object, {}, f.db, f.store), hole = await createImage(user.id, extracted.hole, {}, f.db, f.store);
-    const move = { ...input, tool: "move", maskId: mask.id, moveBundle: { objectAssetId: object.id, holeAssetId: hole.id, bounds: extracted.bounds } };
+    const move = { ...input, tool: "move", params: { dx: 4, dy: 0 }, maskId: mask.id, moveBundle: { objectAssetId: object.id, holeAssetId: hole.id, bounds: extracted.bounds } };
     await expect(submitStudioJob(user.id, { ...move, moveBundle: { ...move.moveBundle, objectAssetId: other.asset.id } }, randomUUID(), f.db, deps)).rejects.toThrow("ASSET_NOT_FOUND");
     const job = await submitStudioJob(user.id, move, randomUUID(), f.db, deps);
     expect(await f.db.assetReference.count({ where: { entityId: job.id, kind: "generation_input" } })).toBe(4);
-    await executeStudio(job.id, { db: f.db, store: f.store, config, adapters: { generate: async () => f.image } });
+    await executeStudio(job.id, { db: f.db, store: f.store, config, adapters: { generate: async (_config, args) => args.image } });
     const output = await f.db.tryOn.findUnique({ where: { id: job.id } });
-    expect(output.status).toBe("succeeded"); expect(output.resultData).toMatchObject({ placement: "repair-background" });
+    expect(output.status).toBe("succeeded"); expect(output.resultData).toMatchObject({ placement: "replace-source" });
     expect(output.resultData.assets).toHaveLength(1);
   });
   it("executes a real crop with zero reservation and exact stored dimensions", async () => {

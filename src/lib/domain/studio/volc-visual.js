@@ -37,12 +37,17 @@ export async function entityLabels(channel, image, signal) {
   return Buffer.from(encoded, "base64");
 }
 
-export async function selectEntityMask(labels, selection, width, height, selectionBytes) {
+async function decodeEntityLabels(labels, width, height) {
   const input = sharp(labels, { limitInputPixels: 40000000 });
   const meta = await input.metadata();
   if (meta.format !== "png" || meta.width !== width || meta.height !== height || meta.space !== "b-w" || meta.hasAlpha) throw new AppError("INVALID_SEGMENT_RESULT", 502);
   const pixels = await input.extractChannel(0).raw().toBuffer();
   if (pixels.length !== width * height) throw new AppError("INVALID_SEGMENT_RESULT", 502);
+  return pixels;
+}
+
+export async function selectEntityMask(labels, selection, width, height, selectionBytes) {
+  const pixels = await decodeEntityLabels(labels, width, height);
   const selected = selection.box && selectionBytes ? await maskPixels(selectionBytes, width, height) : null;
   let best = null, bestScore = -Infinity;
   // Zero marks uncertain boundaries, not an object. Retain the entire selected
@@ -60,4 +65,35 @@ export async function selectEntityMask(labels, selection, width, height, selecti
 export async function segmentVolcImage(channel, image, selection, signal, selectionBytes) {
   const { width, height } = await sharp(image).metadata();
   return selectEntityMask(await entityLabels(channel, image, signal), selection, width, height, selectionBytes);
+}
+
+export async function entityLayers(image, labels, signal) {
+  const { data: source, info: { width, height } } = await sharp(image, { limitInputPixels: 40000000 }).toColourspace("srgb").ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const pixels = await decodeEntityLabels(labels, width, height);
+  const counts = new Map();
+  for (let i = 0; i < pixels.length; i++) {
+    if (source[i * 4 + 3]) counts.set(pixels[i], (counts.get(pixels[i]) || 0) + 1);
+  }
+  const entities = [...counts.keys()].filter(label => label !== 0).sort((a, b) => counts.get(b) - counts.get(a) || a - b);
+  // Preserve unassigned boundary pixels in a separate bottom layer. Every
+  // visible source pixel belongs to exactly one layer, so stacking is lossless.
+  const layerIds = [...(counts.has(0) ? [0] : []), ...entities];
+  if (!entities.length || layerIds.length < 2) throw new AppError("NO_SEPARABLE_OBJECTS", 422);
+  if (entities.length > 20) throw new AppError("INVALID_LAYER_RESULT", 502);
+  const images = [];
+  for (const label of layerIds) {
+    signal?.throwIfAborted();
+    const rgba = Buffer.alloc(source.length);
+    for (let i = 0; i < pixels.length; i++) {
+      if (pixels[i] !== label || !source[i * 4 + 3]) continue;
+      source.copy(rgba, i * 4, i * 4, i * 4 + 4);
+    }
+    images.push(await sharp(rgba, { raw: { width, height, channels: 4 } }).png().toBuffer());
+  }
+  return images;
+}
+
+export async function splitVolcImage(channel, image, signal) {
+  const requestSignal = signal ? AbortSignal.any([signal, AbortSignal.timeout(45000)]) : AbortSignal.timeout(45000);
+  return entityLayers(image, await entityLabels(channel, image, requestSignal), requestSignal);
 }

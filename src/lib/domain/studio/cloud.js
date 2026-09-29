@@ -4,7 +4,7 @@ import { AppError } from "../../http.js";
 import { downloadProviderImage } from "../../infra/storage/download.js";
 import { maskPixels } from "./pixels.js";
 import { segmentMaskScore } from "./segmentation.js";
-import { segmentVolcImage } from "./volc-visual.js";
+import { segmentVolcImage, splitVolcImage } from "./volc-visual.js";
 
 const dataURL = bytes => `data:image/png;base64,${bytes.toString("base64")}`;
 const maxImageBytes = 10 * 1024 * 1024;
@@ -120,6 +120,7 @@ export async function segmentCloudImage(channel, image, selection, signal, selec
 }
 
 export async function splitCloudImage(channel, image, { numLayers = 4 } = {}, context = {}) {
+  if (channel?.kind === "volc-visual") return splitVolcImage(channel, image, context.signal);
   const result = await falRequest(channel, { image_url: dataURL(image), num_layers: numLayers, output_format: "png" }, context);
   if (!Array.isArray(result.images) || result.images.length < 2 || result.images.length > 16) throw new AppError("INVALID_LAYER_RESULT", 422);
   const images = [];

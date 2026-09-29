@@ -2,6 +2,9 @@ import { setTimeout as delay } from "node:timers/promises";
 import sharp from "sharp";
 import { AppError } from "../../http.js";
 import { downloadProviderImage } from "../../infra/storage/download.js";
+import { maskPixels } from "./pixels.js";
+import { segmentMaskScore } from "./segmentation.js";
+import { segmentVolcImage } from "./volc-visual.js";
 
 const dataURL = bytes => `data:image/png;base64,${bytes.toString("base64")}`;
 const maxImageBytes = 10 * 1024 * 1024;
@@ -90,23 +93,30 @@ export async function falRequest(channel, input, { signal, requestId, onSubmitte
   }
 }
 
-export async function segmentCloudImage(channel, image, selection, signal) {
-  const result = await falRequest(channel, { image_url: dataURL(image), prompt: "", apply_mask: false, output_format: "png", sync_mode: true, return_multiple_masks: false,
+export async function segmentCloudImage(channel, image, selection, signal, selectionBytes) {
+  if (channel?.kind === "volc-visual") return segmentVolcImage(channel, image, selection, signal, selectionBytes);
+  const result = await falRequest(channel, { image_url: dataURL(image), prompt: "", apply_mask: false, output_format: "png", sync_mode: true, return_multiple_masks: true, max_masks: 3,
     ...(selection.box ? { box_prompts: [{ x_min: selection.box.left, y_min: selection.box.top, x_max: selection.box.left + selection.box.width, y_max: selection.box.top + selection.box.height, object_id: 1 }] } : {}),
     point_prompts: (selection.points || []).map(point => ({ ...point, object_id: 1 })),
   }, { signal });
-  const value = result.masks?.[0]?.url || result.image?.url;
-  if (!value) throw new AppError("SEGMENTATION_FAILED", 422);
-  const bytes = await providerImage(value);
   const meta = await sharp(image).metadata();
-  const input = sharp(bytes, { limitInputPixels: 40000000 });
-  const metadata = await input.metadata(), statistics = await input.stats();
-  const transparent = metadata.hasAlpha && statistics.channels.at(-1).min < 255;
-  const grayscale = transparent ? input.extractChannel("alpha") : input.removeAlpha().greyscale();
-  const mask = await grayscale.resize(meta.width, meta.height, { fit: "fill" }).png().toBuffer();
-  const stats = await sharp(mask).stats();
-  if (stats.channels[0].max <= 16) throw new AppError("SEGMENTATION_FAILED", 422);
-  return mask;
+  const selected = selection.box && selectionBytes ? await maskPixels(selectionBytes, meta.width, meta.height) : null;
+  const candidates = result.masks?.length ? result.masks : result.image ? [result.image] : [];
+  let best = null, bestScore = -Infinity;
+  for (const candidate of candidates) {
+    if (!candidate?.url) continue;
+    const bytes = await providerImage(candidate.url);
+    const input = sharp(bytes, { limitInputPixels: 40000000 });
+    const metadata = await input.metadata(), statistics = await input.stats();
+    const transparent = metadata.hasAlpha && statistics.channels.at(-1).min < 255;
+    const grayscale = transparent ? input.extractChannel("alpha") : input.removeAlpha().greyscale();
+    const mask = await grayscale.resize(meta.width, meta.height, { fit: "fill" }).png().toBuffer();
+    const pixels = await sharp(mask).greyscale().raw().toBuffer();
+    const score = segmentMaskScore(pixels, selected, meta.width, meta.height, selection);
+    if (score > bestScore) { best = mask; bestScore = score; }
+  }
+  if (!best) throw new AppError("SEGMENTATION_FAILED", 422);
+  return best;
 }
 
 export async function splitCloudImage(channel, image, { numLayers = 4 } = {}, context = {}) {

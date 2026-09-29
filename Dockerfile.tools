@@ -5,7 +5,6 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     U2NET_HOME=/opt/modelshot-models \
-    SEGMENT_MODEL_DIR=/opt/modelshot-models/slimsam \
     OMP_NUM_THREADS=2 \
     OPENBLAS_NUM_THREADS=1
 
@@ -20,10 +19,7 @@ ARG REMBG_MODEL=u2net
 RUN mkdir -p "$U2NET_HOME" \
     && REMBG_MODEL="$REMBG_MODEL" python -c "import os; from rembg import new_session; new_session(os.environ['REMBG_MODEL'])"
 
-COPY services/image-tools/download_models.py ./download_models.py
-RUN python download_models.py
-
-COPY services/image-tools/app.py services/image-tools/segmentation.py ./
+COPY services/image-tools/app.py ./
 RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin modelshot \
     && chown -R modelshot:modelshot /app "$U2NET_HOME"
 

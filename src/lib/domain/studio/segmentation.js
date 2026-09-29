@@ -10,7 +10,17 @@ export async function selectionPrompt(selection, width, height, point) {
     return { points: [{ ...point, label: 1 }] };
   }
   const pixels = await maskPixels(selection, width, height);
-  return { box: maskBounds(pixels, width, height) };
+  const box = maskBounds(pixels, width, height);
+  const centerX = box.left + Math.floor(box.width / 2), centerY = box.top + Math.floor(box.height / 2);
+  let nearest = -1, distance = Infinity;
+  for (let i = 0; i < pixels.length; i++) {
+    if (pixels[i] <= 127) continue;
+    const x = i % width, y = Math.floor(i / width);
+    const next = (x - centerX) ** 2 + (y - centerY) ** 2;
+    if (next < distance) { nearest = i; distance = next; }
+  }
+  if (nearest < 0) throw new AppError("INVALID_SELECTION", 422);
+  return { box, points: [{ x: nearest % width, y: Math.floor(nearest / width), label: 1 }] };
 }
 
 export function maskBounds(pixels, width, height) {
@@ -21,6 +31,25 @@ export function maskBounds(pixels, width, height) {
   }
   if (right < left) throw new AppError("SEGMENTATION_FAILED", 422);
   return { left, top, width: right - left + 1, height: bottom - top + 1 };
+}
+
+export function segmentMaskScore(pixels, selection, width, height, prompt) {
+  const point = prompt.points?.find(item => item.label === 1);
+  if (point && pixels[point.y * width + point.x] <= 64) return -Infinity;
+  const box = prompt.box;
+  let area = 0, overlap = 0, selected = 0;
+  for (let i = 0; i < pixels.length; i++) {
+    const x = i % width, y = Math.floor(i / width);
+    const inSelection = box && (selection ? selection[i] > 127 : x >= box.left && x < box.left + box.width && y >= box.top && y < box.top + box.height);
+    if (inSelection) selected++;
+    if (pixels[i] <= 64) continue;
+    area++;
+    if (inSelection) overlap++;
+  }
+  if (!area || area > width * height * 0.85) return -Infinity;
+  if (!box) return area;
+  if (!selected || overlap < Math.max(3, selected * 0.08) || overlap / area < 0.35) return -Infinity;
+  return overlap * (overlap / area);
 }
 
 export async function extractObject(image, mask) {

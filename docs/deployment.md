@@ -97,9 +97,9 @@ MODELSHOT_IMAGE=jx009/modelshot:latest
 MODELSHOT_TOOLS_IMAGE=jx009/modelshot:tools-latest
 ```
 
-`tools` 只在 Compose 私有网络监听 8090，不应映射到公网。第一次自行构建会下载并写入 U2Net 与 SlimSAM 权重，因此耗时和镜像体积会明显大于普通 Web 镜像；运行时不下载模型，用户圈选后才按需执行一次分割。
+`tools` 只在 Compose 私有网络监听 8090，不应映射到公网。第一次自行构建会下载并写入 U2Net 抠图权重，因此比普通 Web 镜像慢；运行时不下载模型。物体移动和局部修改的圈选由配置好的火山智能视觉 EntitySegment API 完成。
 
-本地工具服务默认使用 rembg 作为 CPU 回退，SlimSAM 仅在显式设置 `SEGMENT_ANYTHING_ENABLED=1` 时加载。生产环境优先配置云端 SAM 3；云端分割未配置时，rembg 负责框选区域内的前景提取。不要反复对整套服务执行 `--force-recreate`，这会重置模型加载。若先前启动被依赖检查中断，在数据库、Redis、存储和迁移已成功的前提下，用以下命令恢复应用容器：
+本地工具服务只用 rembg 处理一键抠图，不再负责物体分割。在“模型配置 → 工具专用模型”新增火山智能视觉 EntitySegment，填写 AK/SK；“工具配置”可为物体移动和局部修改指定该通道。不要反复对整套服务执行 `--force-recreate`，这会重置抠图模型加载。若先前启动被依赖检查中断，在数据库、Redis、存储和迁移已成功的前提下，用以下命令恢复应用容器：
 
 ```bash
 docker compose --env-file .env.production -f compose.prod.yaml up -d --no-build --no-deps web worker
@@ -108,7 +108,7 @@ docker compose --env-file .env.production -f compose.prod.yaml ps
 
 日常应用更新优先用 `sh scripts/deploy-update.sh`；仅在工具镜像也更新时加 `--tools`。修改 Compose 后应同步服务器的 `compose.prod.yaml`，单独 `pull` 镜像不会更新编排文件。持续 unhealthy 时查看 tools 日志和健康检查输出，不应把真实加载失败当成冷启动延迟。
 
-图像工具默认同时处理 2 个请求（`TOOLS_CONCURRENCY=2`，上限 4），每个 SlimSAM 推理默认使用 2 个 CPU 线程。8 核单机先保持默认值，压测 CPU、内存和圈选 P95 耗时后再逐步调到 3 或 4；超过并发槽的请求最多等待 20 秒，之后返回 429。调高此值不能增加外部图像生成供应商的额度。
+图像工具默认同时处理 2 个请求（`TOOLS_CONCURRENCY=2`，上限 4）。8 核单机先保持默认值，压测 CPU、内存和抠图 P95 耗时后再逐步调到 3 或 4；超过并发槽的请求最多等待 20 秒，之后返回 429。调高此值不能增加外部图像生成供应商的额度。
 
 ## 3. 首次初始化
 

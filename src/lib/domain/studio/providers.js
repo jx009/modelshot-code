@@ -5,7 +5,7 @@ import { AppError } from "../../http.js";
 import { editThroughCompatibleGateway } from "../../ai/adapters/openai.js";
 import { downloadProviderImage } from "../../infra/storage/download.js";
 import { TOOLS } from "../../studio/tools.js";
-import { channelCapability, channelScope, toolRouting, supportsImageTask } from "../../studio/model-channels.js";
+import { channelCapability, channelScope, toolRouting, supportsImageTask, segmentChannelReady } from "../../studio/model-channels.js";
 import { generateCloudImage } from "./cloud.js";
 
 // Resolve user-visible image selection separately from administrator-owned tool stages.
@@ -19,7 +19,6 @@ export function resolveStudioConfig(rows, toolRows = [], channelName, capability
     if (pinned && capability === cap) name = channelName;
     else if (cap === "image" && tool?.dependency === "image" && routing.mode === "dedicated") { name = routing.channelName; internal = true; if (!name) throw new AppError("SERVICE_NOT_CONFIGURED", 503); }
     else if (cap === "segment" && tool?.preview === "segment") {
-      if (routing.segmentMode === "local") return null;
       if (routing.segmentMode === "dedicated") { name = routing.segmentChannelName; internal = true; if (!name) throw new AppError("SEGMENTATION_NOT_CONFIGURED", 503); }
     } else if (cap === "split" && tool?.dependency === "split") { name = routing.channelName; internal = true; }
     if (!name && capability === cap && (!tool || tool.dependency === "image" && cap === "image")) name = channelName;
@@ -29,7 +28,7 @@ export function resolveStudioConfig(rows, toolRows = [], channelName, capability
       if (!selected) throw new AppError("PROVIDER_CAPABILITY_UNSUPPORTED", 422);
       return selected;
     }
-    return eligible.find(row => JSON.parse(row.config || "{}").studioDefault) || eligible[0];
+    return eligible.find(row => JSON.parse(row.config || "{}").studioDefault) || (cap === "segment" ? eligible.find(row => row.kind === "volc-visual") : null) || eligible[0];
   };
   const row = select("image");
   const planner = pinned && capability === "language" ? select("language") : rows.find(candidate => candidate.isPlanner);
@@ -40,7 +39,8 @@ export function resolveStudioConfig(rows, toolRows = [], channelName, capability
     const candidate = select(cap);
     if (!candidate) return null;
     const parsed = JSON.parse(candidate.config || "{}");
-    return { name: candidate.name, kind: candidate.kind, model: parsed.model, baseURL: parsed.baseURL, apiKey: secret(candidate, parsed), creditCost: candidate.creditCost, displayName: candidate.displayName };
+    return { name: candidate.name, kind: candidate.kind, model: parsed.model, baseURL: parsed.baseURL, apiKey: secret(candidate, parsed),
+      ...(candidate.kind === "volc-visual" ? { accessKeyId: parsed.accessKeyIdEnc ? decryptSecret(parsed.accessKeyIdEnc) : undefined, secretAccessKey: parsed.secretAccessKeyEnc ? decryptSecret(parsed.secretAccessKeyEnc) : undefined } : {}), creditCost: candidate.creditCost, displayName: candidate.displayName };
   };
   const envFallback = !row || (row.kind || row.name) === "openai" && !config.apiKeyEnc;
   let visionBaseURL = plannerConfig.baseURL || (!planner ? process.env.STUDIO_BASE_URL : undefined);
@@ -88,7 +88,7 @@ export async function capabilities(db = prisma, config) {
         // Explicit configurations are also used by isolated provider diagnostics.
         if (!("requestedProvider" in c) && !setting?.routing) chosen = { ...chosen, ...c }; }
       catch (e) { error = e.code; chosen = {}; }
-      const ready = { local: true, image: Boolean(chosen.apiKey) && supportsImageTask(chosen, tool.id === "generate" ? "generate" : "edit"), vision: Boolean(chosen.visionApiKey && chosen.chatModel), video: Boolean(chosen.videoKey && chosen.videoModel), segment: Boolean(chosen.segmentChannel?.apiKey) || external.includes("segment"), split: Boolean(chosen.splitChannel?.apiKey), "remove-bg": external.includes("remove-bg"), upscale: external.includes("upscale"), ocr: external.includes("ocr") };
+      const ready = { local: true, image: Boolean(chosen.apiKey) && supportsImageTask(chosen, tool.id === "generate" ? "generate" : "edit"), vision: Boolean(chosen.visionApiKey && chosen.chatModel), video: Boolean(chosen.videoKey && chosen.videoModel), segment: segmentChannelReady(chosen.segmentChannel), split: Boolean(chosen.splitChannel?.apiKey), "remove-bg": external.includes("remove-bg"), upscale: external.includes("upscale"), ocr: external.includes("ocr") };
       const cost = tool.dependency === "vision" ? c.plannerCreditCost : ["generate", "edit"].includes(tool.id) ? chosen.imageCreditCost ?? 18 : setting?.creditCost ?? tool.cost;
       const dependencyReady = !error && ready[tool.dependency], previewReady = !tool.preview || ready[tool.preview];
       return { ...tool, cost, enabled, available: Boolean(enabled && dependencyReady && previewReady), reason: !enabled ? "TOOL_DISABLED" : !dependencyReady ? error || "SERVICE_NOT_CONFIGURED" : !previewReady ? "SEGMENTATION_NOT_CONFIGURED" : null };

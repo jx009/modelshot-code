@@ -1,7 +1,7 @@
 import { beforeAll, afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import http from "node:http";
 import sharp from "sharp";
-import { capabilities, generateImage, studioConfig, toolService, videoRequest, vision } from "../../src/lib/domain/studio/providers.js";
+import { capabilities, generateImage, studioConfig, videoRequest, vision } from "../../src/lib/domain/studio/providers.js";
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -13,8 +13,7 @@ beforeAll(async () => {
     const chunks = []; for await (const c of req) chunks.push(c);
     const body = Buffer.concat(chunks);
     calls.push({ path: req.url, method: req.method, contentType: req.headers["content-type"], body, authorization: req.headers.authorization });
-    if (req.url === "/capabilities") { res.setHeader("Content-Type", "application/json"); return res.end(JSON.stringify({ tools: ["segment", "remove-bg"] })); }
-    if (req.url === "/tools/segment") { res.setHeader("Content-Type", "image/png"); return res.end(png); }
+    if (req.url === "/capabilities") { res.setHeader("Content-Type", "application/json"); return res.end(JSON.stringify({ tools: ["remove-bg"] })); }
     res.setHeader("Content-Type", "application/json");
     if (req.url.endsWith("/tasks/remote-id")) return res.end(JSON.stringify({ status: "succeeded", content: { video_url: "https://example.com/result.mp4" } }));
     if (req.url.endsWith("/tasks")) return res.end(JSON.stringify({ id: "remote-id" }));
@@ -61,9 +60,10 @@ describe("studio real HTTP protocol against isolated fixture", () => {
     ]) }, studioToolConfig: { findMany: vi.fn().mockResolvedValue([]) } };
     const config = await studioConfig(db, "gateway");
     const caps = await capabilities(db, config);
-    for (const id of ["expand", "erase", "inpaint", "move"]) {
+    for (const id of ["expand", "erase"]) {
       expect(caps.tools.find(tool => tool.id === id), id).toMatchObject({ available: true, reason: null });
     }
+    for (const id of ["inpaint", "move"]) expect(caps.tools.find(tool => tool.id === id)).toMatchObject({ available: false, reason: "SEGMENTATION_NOT_CONFIGURED" });
     expect(caps.tools.find(tool => tool.id === "split")).toMatchObject({ available: false, reason: "SERVICE_NOT_CONFIGURED" });
     await generateImage(config, { image: png, mask: png, prompt: "repair background", size: "1024x1024" });
     const request = calls.at(-1);
@@ -83,15 +83,11 @@ describe("studio real HTTP protocol against isolated fixture", () => {
     const disabled = await capabilities(db, config);
     expect(disabled.tools.find(tool => tool.id === "move")).toMatchObject({ available: false, reason: "TOOL_DISABLED" });
   });
-  it("requires semantic segmentation for move previews and forwards the selection mask", async () => {
+  it("does not mistake a local tool service for cloud object segmentation", async () => {
     const db = { modelProvider: { findMany: vi.fn().mockResolvedValue([]) }, studioToolConfig: { findMany: vi.fn().mockResolvedValue([]) } };
     const config = { apiKey: "fixture", toolsURL: base, toolsKey: "fixture-tools-key" };
     const caps = await capabilities(db, config);
-    expect(caps.tools.find(tool => tool.id === "move")).toMatchObject({ available: true, preview: "segment" });
-    expect(await toolService(config, "segment", png, {}, undefined, { selection: png })).toEqual(png);
-    const request = calls.at(-1);
-    expect(request.path).toBe("/tools/segment");
-    expect(request.body.toString()).toContain('name="selection"; filename="selection.png"');
+    expect(caps.tools.find(tool => tool.id === "move")).toMatchObject({ available: false, preview: "segment", reason: "SEGMENTATION_NOT_CONFIGURED" });
   });
   it("sends actual selected pixels and bounded conversation to vision", async () => {
     expect(await vision({ apiKey: "fixture", baseURL: `${base}/v1`, chatModel: "vision-model" }, { image: png, instruction: "Describe only", messages: [{ role: "user", text: "What material?" }] })).toBe("Image description");

@@ -43,7 +43,7 @@ export async function PATCH(request) {
       toolId: z.enum(toolIds),
       creditCost: z.number().int().min(0).max(100000).optional(),
       isEnabled: z.boolean().optional(),
-      routing: z.object({ mode: z.enum(["inherit", "dedicated", "code", "language", "service"]), channelName: z.string().min(1).max(128).nullable(), segmentMode: z.enum(["default", "local", "dedicated"]), segmentChannelName: z.string().min(1).max(128).nullable() }).strict().optional(),
+      routing: z.object({ mode: z.enum(["inherit", "dedicated", "code", "language", "service"]), channelName: z.string().min(1).max(128).nullable(), segmentMode: z.enum(["default", "dedicated"]), segmentChannelName: z.string().min(1).max(128).nullable() }).strict().optional(),
       reason: z.string().min(3).max(500),
     }).strict());
     if (input.creditCost === undefined && input.isEnabled === undefined && input.routing === undefined) throw new AppError("NO_CHANGES");

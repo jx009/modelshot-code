@@ -140,7 +140,7 @@ services:
     networks:
       - app
 
-  # 私有图像工具：为物体移动提供语义分割，同时提供抠图能力。
+  # 私有图像工具：保留一键抠图和其他本地工具；物体分割调用云端模型。
   # 不暴露宿主机端口，只允许 Web / Worker 通过内部网络访问。
   tools:
     build:
@@ -154,16 +154,11 @@ services:
       STUDIO_TOOLS_KEY: ${STUDIO_TOOLS_KEY:?STUDIO_TOOLS_KEY is required}
       REMBG_ENABLED: "1"
       REMBG_MODEL: ${REMBG_MODEL:-u2net}
-      # Cloud SAM 3 is preferred for semantic selection. The local fallback
-      # uses the already-loaded rembg foreground engine and stays fast on CPU.
-      SEGMENT_ANYTHING_ENABLED: "0"
-      SEGMENT_MODEL_DIR: /opt/modelshot-models/slimsam
       TOOLS_CONCURRENCY: ${TOOLS_CONCURRENCY:-2}
       OMP_NUM_THREADS: ${TOOLS_INFERENCE_THREADS:-2}
       OPENBLAS_NUM_THREADS: "1"
     healthcheck:
-      test: ["CMD", "python", "-c", "import json,os,urllib.request; r=urllib.request.Request('http://127.0.0.1:8090/capabilities',headers={'Authorization':'Bearer '+os.environ['STUDIO_TOOLS_KEY']}); d=json.load(urllib.request.urlopen(r,timeout=5)); raise SystemExit(0 if 'segment' in d.get('tools',[]) else 1)"]
-      # The local fallback is rembg-based and loads during normal startup.
+      test: ["CMD", "python", "-c", "import json,os,urllib.request; r=urllib.request.Request('http://127.0.0.1:8090/capabilities',headers={'Authorization':'Bearer '+os.environ['STUDIO_TOOLS_KEY']}); d=json.load(urllib.request.urlopen(r,timeout=5)); raise SystemExit(0 if 'remove-bg' in d.get('tools',[]) else 1)"]
       interval: 10s
       timeout: 10s
       retries: 6

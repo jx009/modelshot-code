@@ -9,13 +9,15 @@ import { extractObject, selectionPrompt } from "../../src/lib/domain/studio/segm
 import { beginObjectMove, appendResult } from "../../src/lib/studio/canvas-utils.js";
 import { runImageTool } from "../../src/lib/domain/studio/execution.js";
 
-let server, base, png, mask, foreground;
+let server, base, png, mask, shadow, foreground;
 const calls = [];
 const url = bytes => `data:image/png;base64,${bytes.toString("base64")}`;
 beforeAll(async () => {
   png = await sharp({ create: { width: 20, height: 12, channels: 4, background: "red" } }).png().toBuffer();
   const pixels = Buffer.alloc(20 * 12); pixels.fill(128, 65, 70); pixels.fill(255, 85, 90);
   mask = await sharp(pixels, { raw: { width: 20, height: 12, channels: 1 } }).png().toBuffer();
+  const shadowPixels = Buffer.alloc(20 * 12); shadowPixels.fill(255, 86, 88);
+  shadow = await sharp(shadowPixels, { raw: { width: 20, height: 12, channels: 1 } }).png().toBuffer();
   foreground = (await extractObject(png, mask)).cutout;
   server = http.createServer(async (req, res) => {
     const chunks = []; for await (const chunk of req) chunks.push(chunk);
@@ -25,7 +27,7 @@ beforeAll(async () => {
     if (req.url.includes("/queue/") && req.method === "POST") return res.end(JSON.stringify({ request_id: "remote-123" }));
     if (req.url.endsWith("/status")) return res.end(JSON.stringify({ status: "COMPLETED" }));
     if (req.url.includes("qwen-image-layered")) return res.end(JSON.stringify({ images: [{ url: url(png) }, { url: url(foreground) }] }));
-    if (req.url.includes("sam-3")) return res.end(JSON.stringify({ masks: [{ url: url(mask) }] }));
+    if (req.url.includes("sam-3")) return res.end(JSON.stringify({ masks: body.point_prompts?.[0]?.x === 7 ? [{ url: url(shadow) }] : [{ url: url(shadow) }, { url: url(mask) }] }));
     if (req.url.includes("multimodal-generation")) return res.end(JSON.stringify({ output: { choices: [{ message: { content: [{ image: url(png) }] } }] } }));
     res.end(JSON.stringify({ data: [{ b64_json: png.toString("base64") }] }));
   });
@@ -59,9 +61,13 @@ describe("cloud protocol contracts", () => {
     const bytes = await segmentCloudImage({ kind: "fal", apiKey: "fal-key", baseURL: base, model: "fal-ai/sam-3/image" }, png, { box: { left: 3, top: 2, width: 7, height: 5 }, points: [{ x: 6, y: 4, label: 1 }] });
     const call = calls.at(-1);
     expect(call.auth).toBe("Key fal-key");
-    expect(call.body).toMatchObject({ prompt: "", apply_mask: false, box_prompts: [{ x_min: 3, y_min: 2, x_max: 10, y_max: 7, object_id: 1 }], point_prompts: [{ x: 6, y: 4, label: 1, object_id: 1 }] });
+    expect(call.body).toMatchObject({ prompt: "", apply_mask: false, return_multiple_masks: true, max_masks: 3, box_prompts: [{ x_min: 3, y_min: 2, x_max: 10, y_max: 7, object_id: 1 }], point_prompts: [{ x: 6, y: 4, label: 1, object_id: 1 }] });
     expect((await sharp(bytes).metadata()).width).toBe(20);
     expect((await sharp(bytes).greyscale().raw().toBuffer())[65]).toBe(128);
+  });
+  it("rejects a shadow-only segmentation instead of creating a movable layer", async () => {
+    await expect(segmentCloudImage({ kind: "fal", apiKey: "fal-key", baseURL: base, model: "fal-ai/sam-3/image" }, png,
+      { box: { left: 3, top: 2, width: 7, height: 5 }, points: [{ x: 7, y: 4, label: 1 }] })).rejects.toThrow("SEGMENTATION_FAILED");
   });
   it("persists the fal request ID before polling and resumes without a second POST", async () => {
     const channel = { kind: "fal", apiKey: "fal-key", baseURL: base, model: "fal-ai/qwen-image-layered" };
@@ -132,6 +138,14 @@ describe("editable layers and late background repair", () => {
     expect(rgba[65 * 4 + 3]).toBe(128); expect(hole[65 * 4 + 3]).toBe(127);
     expect(rgba[3]).toBe(0); expect(hole[3]).toBe(255);
     expect(await selectionPrompt(mask, 20, 12, { x: 2, y: 3 })).toEqual({ points: [{ x: 2, y: 3, label: 1 }] });
+    expect(await selectionPrompt(mask, 20, 12)).toEqual({ box: bundle.bounds, points: [{ x: 7, y: 4, label: 1 }] });
+    const lassoPixels = Buffer.alloc(20 * 12);
+    for (let y = 1; y <= 5; y++) lassoPixels[y * 20 + 1] = 255;
+    for (let x = 1; x <= 5; x++) lassoPixels[20 + x] = 255;
+    const lasso = await sharp(lassoPixels, { raw: { width: 20, height: 12, channels: 1 } }).png().toBuffer();
+    const prompt = await selectionPrompt(lasso, 20, 12);
+    expect(prompt.box).toEqual({ left: 1, top: 1, width: 5, height: 5 });
+    expect(lassoPixels[prompt.points[0].y * 20 + prompt.points[0].x]).toBe(255);
   });
   it("keeps a moved object independent, rotates offsets and only replaces its pending background", () => {
     const pending = { id: "job", moveBundle: bundle };

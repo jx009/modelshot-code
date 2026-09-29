@@ -28,11 +28,11 @@ describe("administrator tool routing", () => {
     expect(caps.imageModels.map(m => m.id)).toEqual(["public"]);
     expect(JSON.stringify(caps)).not.toMatch(/secret|Private|ep-repair|fal-ai|qwen/);
   });
-  it("supports inherited images, backend split routing and explicit local segmentation", () => {
+  it("supports inherited images, backend split routing and legacy local settings", () => {
     expect(resolveStudioConfig(rows, [], "public", "image", "erase").imageProvider).toBe("public");
     const settings = [{ toolId: "split", routing: { mode: "dedicated", channelName: "layers" } }, { toolId: "move", routing: { mode: "inherit", segmentMode: "local" } }];
     expect(resolveStudioConfig(rows, settings, "public", "image", "split").splitChannel.name).toBe("layers");
-    expect(resolveStudioConfig(rows, settings, "public", "image", "move").segmentChannel).toBeNull();
+    expect(resolveStudioConfig(rows, settings, "public", "image", "move").segmentChannel.name).toBe("segment");
     expect(() => resolveStudioConfig(rows, [], "repair")).toThrow("PROVIDER_CAPABILITY_UNSUPPORTED");
     expect(() => resolveStudioConfig(rows, [{ toolId: "move", routing: { mode: "dedicated", channelName: "deleted" } }], "public", "image", "move")).toThrow("PROVIDER_CAPABILITY_UNSUPPORTED");
   });

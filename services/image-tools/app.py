@@ -1,7 +1,5 @@
 """Private CPU/GPU tool service. Models are optional; capabilities reflect loaded engines."""
 import asyncio
-from collections import OrderedDict
-import hashlib
 import hmac
 import io
 import json
@@ -9,19 +7,17 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
-import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Depends, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import Response
-from PIL import Image, ImageChops, UnidentifiedImageError
+from PIL import Image, UnidentifiedImageError
 
 Image.MAX_IMAGE_PIXELS = 40_000_000
 MAX_BYTES = 10 * 1024 * 1024
 ENGINES = {}
 TOOL_CONCURRENCY = min(4, max(1, int(os.environ.get("TOOLS_CONCURRENCY", "2"))))
 LOCK = asyncio.Semaphore(TOOL_CONCURRENCY)
-FOREGROUNDS = OrderedDict()
 
 
 @asynccontextmanager
@@ -32,15 +28,6 @@ async def lifespan(_app):
         from rembg import new_session, remove
         engine = (remove, new_session(os.environ.get("REMBG_MODEL", "u2net")))
         ENGINES["remove-bg"] = engine
-        ENGINES["segment"] = engine
-    # SlimSAM is retained as an opt-in experiment, not the production local
-    # fallback. Its box masks are materially less reliable than rembg for the
-    # common "box this object" workflow and its CPU session adds a long cold
-    # start. Cloud SAM 3 is selected by the web layer whenever configured.
-    if os.environ.get("SEGMENT_ANYTHING_ENABLED") == "1":
-        from segmentation import Segmenter
-        segmenter = Segmenter(os.environ.get("SEGMENT_MODEL_DIR", "/opt/modelshot-models/slimsam"), threads=int(os.environ.get("OMP_NUM_THREADS", "2")))
-        ENGINES["segment"] = segmenter
     if os.environ.get("OCR_ENABLED") == "1":
         from paddleocr import PaddleOCR
         ENGINES["ocr"] = PaddleOCR(use_angle_cls=True, lang=os.environ.get("OCR_LANGUAGE", "ch"), show_log=False)
@@ -54,7 +41,6 @@ async def lifespan(_app):
         ENGINES["upscale"] = (str(executable), str(directory), model_name)
     yield
     ENGINES.clear()
-    FOREGROUNDS.clear()
 
 
 app = FastAPI(title="ModelShot private image tools", lifespan=lifespan)
@@ -82,41 +68,11 @@ def decode(data):
         raise HTTPException(422, "Invalid image") from exc
 
 
-def process(tool, data, params, selection_data=None):
+def process(tool, data, params):
     source = decode(data)
-    if tool in ("remove-bg", "segment"):
-        selection = None
-        if tool == "segment":
-            if not selection_data:
-                raise HTTPException(422, "Selection is required")
-            selection = decode(selection_data)
-            if selection.size != source.size:
-                raise HTTPException(422, "Selection dimensions do not match")
-        if tool == "segment" and hasattr(ENGINES["segment"], "select"):
-            try:
-                result = ENGINES["segment"].select(source, data, selection)
-            except ValueError as exc:
-                raise HTTPException(422, "No object detected") from exc
-        else:
-            # Legacy foreground removal remains available; repeat selections reuse it.
-            key = hashlib.sha256(data).hexdigest()
-            cached = FOREGROUNDS.get(key)
-            if cached and time.monotonic() - cached[0] < 600:
-                result = cached[1].copy()
-                FOREGROUNDS.move_to_end(key)
-            else:
-                remove, session = ENGINES[tool]
-                result = remove(source, session=session).convert("RGBA")
-                if source.width * source.height <= 4_000_000:
-                    FOREGROUNDS[key] = (time.monotonic(), result.copy())
-                    while len(FOREGROUNDS) > 2:
-                        FOREGROUNDS.popitem(last=False)
-        if tool == "segment" and not hasattr(ENGINES["segment"], "select"):
-            selection_mask = selection.convert("L")
-            alpha = ImageChops.multiply(result.getchannel("A"), selection_mask)
-            if alpha.getbbox() is None:
-                raise HTTPException(422, "No object detected")
-            result.putalpha(alpha)
+    if tool == "remove-bg":
+        remove, session = ENGINES[tool]
+        result = remove(source, session=session).convert("RGBA")
     elif tool == "upscale":
         scale = params.get("scale", 2)
         if scale not in (2, 4) or max(source.size) * scale > 8192 or source.width * source.height * scale * scale > 40_000_000:
@@ -158,19 +114,13 @@ def process(tool, data, params, selection_data=None):
 
 
 @app.post("/tools/{tool}", dependencies=[Depends(authorize)])
-async def execute(tool: str, image: UploadFile = File(...), selection: UploadFile | None = File(None), params: str = Form("{}")):
+async def execute(tool: str, image: UploadFile = File(...), params: str = Form("{}")):
     if tool not in ENGINES:
         raise HTTPException(503, "Tool is not configured")
     data = await image.read(MAX_BYTES + 1)
     await image.close()
-    selection_data = None
-    if selection is not None:
-        selection_data = await selection.read(MAX_BYTES + 1)
-        await selection.close()
     if len(data) > MAX_BYTES or len(params) > 8192:
         raise HTTPException(413, "Payload too large")
-    if selection_data is not None and len(selection_data) > MAX_BYTES:
-        raise HTTPException(413, "Selection too large")
     try:
         options = json.loads(params)
         if not isinstance(options, dict):
@@ -182,7 +132,7 @@ async def execute(tool: str, image: UploadFile = File(...), selection: UploadFil
     except asyncio.TimeoutError as exc:
         raise HTTPException(429, "Tool busy; try again shortly") from exc
     try:
-        result = await asyncio.to_thread(process, tool, data, options, selection_data)
+        result = await asyncio.to_thread(process, tool, data, options)
     finally:
         LOCK.release()
     return result if isinstance(result, dict) else Response(result, media_type="image/png")

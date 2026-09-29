@@ -19,9 +19,13 @@ export async function api(url, { method = "GET", body, key, signal } = {}) {
   const response = await fetch(url, { method, signal, headers: { ...(body ? { "Content-Type": "application/json" } : {}), ...(key ? { "Idempotency-Key": key } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const error = new Error(data.code || data.error || "REQUEST_FAILED");
-    error.code = data.code || data.error || "REQUEST_FAILED";
+    const code = data.code || data.error || "REQUEST_FAILED";
+    const error = new Error(code);
+    error.code = code;
     error.status = response.status;
+    error.url = url;
+    error.method = method;
+    error.detail = data.message || data.detail || "";
     throw error;
   }
   return data;

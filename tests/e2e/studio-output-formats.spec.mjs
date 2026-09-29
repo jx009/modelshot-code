@@ -35,6 +35,21 @@ test("paint selection survives pan; shape crop and six export formats produce re
     await expect(page.getByRole("button", { name: /Apply edit/ })).toBeDisabled();
     await page.getByRole("button", { name: "Close tool", exact: true }).click();
     await page.getByRole("button", { name: /Crop image/ }).click();
+    await page.getByRole("button", { name: "Ellipse", exact: true }).click();
+    await page.screenshot({ path: info.outputPath("ellipse-crop-preview.png"), fullPage: true, animations: "disabled" });
+    const cropFrame = JSON.parse(await page.locator(".ms-stage").getAttribute("data-selection-frame"));
+    const cropPreview = sharp(await page.locator(".ms-stage").screenshot());
+    const { data: cropPixels, info: cropInfo } = await cropPreview.removeAlpha().raw().toBuffer({ resolveWithObject: true });
+    const stageBounds = await page.locator(".ms-stage").boundingBox();
+    const pixelRatio = cropInfo.width / stageBounds.width;
+    const brightness = (x, y) => {
+      const index = (Math.round(y * pixelRatio) * cropInfo.width + Math.round(x * pixelRatio)) * 3;
+      return cropPixels[index] + cropPixels[index + 1] + cropPixels[index + 2];
+    };
+    if (info.project.name === "desktop") {
+      expect(brightness(cropFrame.left + cropFrame.width * .1, cropFrame.top + cropFrame.height * .1))
+        .toBeLessThan(brightness(cropFrame.left + cropFrame.width * .5, cropFrame.top + cropFrame.height * .5) - 25);
+    }
     await page.getByRole("button", { name: "Heart", exact: true }).click();
     const submitted = page.waitForResponse(response => response.url().endsWith("/api/studio/jobs") && response.request().method() === "POST");
     await page.getByRole("button", { name: "Apply Free", exact: true }).click();

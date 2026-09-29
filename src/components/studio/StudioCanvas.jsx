@@ -54,7 +54,7 @@ function Picture({ item, shouldLoad = true, selected, onSelect, onChange, intera
   </>;
 }
 
-function CropBox({ value, width, height, accent, onChange }) {
+function CropBox({ value, width, height, scale = 1, onChange }) {
   const shape = useRef(null), transformer = useRef(null);
   useEffect(() => { if (shape.current && transformer.current) { transformer.current.nodes([shape.current]); transformer.current.getLayer()?.batchDraw(); } }, []);
   function commit(node) {
@@ -68,10 +68,19 @@ function CropBox({ value, width, height, accent, onChange }) {
     node.scale({ x: 1, y: 1 }); node.position({ x: next.left, y: next.top }); node.size({ width: next.width, height: next.height });
     onChange(next);
   }
-  return <><Rect ref={shape} x={value.left} y={value.top} width={value.width} height={value.height} stroke={accent} strokeWidth={2} dash={[10, 6]} fill={`${accent}18`} draggable
+  const handle = 14 / Math.max(scale, 0.01), lineWidth = 3.5 / Math.max(scale, 0.01);
+  const left = value.left, top = value.top, right = left + value.width, bottom = top + value.height;
+  const corners = [
+    [left, top + handle, left, top, left + handle, top],
+    [right - handle, top, right, top, right, top + handle],
+    [left, bottom - handle, left, bottom, left + handle, bottom],
+    [right - handle, bottom, right, bottom, right, bottom - handle],
+  ];
+  return <><Rect ref={shape} x={value.left} y={value.top} width={value.width} height={value.height} stroke="#ffffff" strokeWidth={2 / Math.max(scale, 0.01)} fill="#ffffff08" draggable
     onDragMove={event => commit(event.target)} onTransformEnd={event => commit(event.target)} />
-    <Transformer ref={transformer} rotateEnabled={false} flipEnabled={false} anchorFill={accent} anchorStroke={accent} borderStroke={accent} anchorSize={9}
-      enabledAnchors={["top-left", "top-center", "top-right", "middle-left", "middle-right", "bottom-left", "bottom-center", "bottom-right"]} /></>;
+    <Transformer ref={transformer} rotateEnabled={false} flipEnabled={false} anchorFill="#fff" anchorStroke="#111318" anchorStrokeWidth={1.5} borderStroke="#fff" borderStrokeWidth={2} anchorSize={12}
+      enabledAnchors={["top-left", "top-center", "top-right", "middle-left", "middle-right", "bottom-left", "bottom-center", "bottom-right"]} />
+    {corners.map((points, index) => <Line key={index} points={points} stroke="#fff" strokeWidth={lineWidth} lineCap="round" lineJoin="round" shadowColor="#08090d" shadowBlur={5 / Math.max(scale, 0.01)} listening={false} />)}</>;
 }
 
 function paddingEdges(value) { return typeof value === "number" ? { left: value, right: value, top: value, bottom: value } : value; }
@@ -359,8 +368,9 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
         </>}
       </Group></Layer>}
       {mode === "crop" && selection && <Layer listening={!panning}><Group x={selection.x} y={selection.y} rotation={selection.rotation} scaleX={selection.width / selection.pixelWidth} scaleY={selection.height / selection.pixelHeight} clipWidth={selection.pixelWidth} clipHeight={selection.pixelHeight}>
-        <CropBox value={cropRect || crop || { left: 0, top: 0, width: selection.pixelWidth, height: selection.pixelHeight }} width={selection.pixelWidth} height={selection.pixelHeight} accent={color} onChange={rect => { updateCrop(rect); onCrop(rect); }} />
-        <CropOverlay rect={cropRect || crop || { left: 0, top: 0, width: selection.pixelWidth, height: selection.pixelHeight }} shape={cropShape} grid={cropGrid || { x: [.5], y: [.5] }} onGrid={onCropGrid} scale={camera.scale * selection.width / selection.pixelWidth} accent={color} />
+        {cropShape !== "grid" && <CropOverlay rect={cropRect || crop || { left: 0, top: 0, width: selection.pixelWidth, height: selection.pixelHeight }} shape={cropShape} grid={cropGrid || { x: [.5], y: [.5] }} onGrid={onCropGrid} scale={camera.scale * selection.width / selection.pixelWidth} accent="#ffffff" canvasWidth={selection.pixelWidth} canvasHeight={selection.pixelHeight} />}
+        <CropBox value={cropRect || crop || { left: 0, top: 0, width: selection.pixelWidth, height: selection.pixelHeight }} width={selection.pixelWidth} height={selection.pixelHeight} scale={camera.scale * selection.width / selection.pixelWidth} onChange={rect => { updateCrop(rect); onCrop(rect); }} />
+        {cropShape === "grid" && <CropOverlay rect={cropRect || crop || { left: 0, top: 0, width: selection.pixelWidth, height: selection.pixelHeight }} shape={cropShape} grid={cropGrid || { x: [.5], y: [.5] }} onGrid={onCropGrid} scale={camera.scale * selection.width / selection.pixelWidth} accent="#ff8a00" canvasWidth={selection.pixelWidth} canvasHeight={selection.pixelHeight} />}
       </Group></Layer>}
       {mode === "expand" && selection && <Layer listening={!panning}><Group x={selection.x} y={selection.y} rotation={selection.rotation} scaleX={selection.width / selection.pixelWidth} scaleY={selection.height / selection.pixelHeight}>
         <ExpansionBox value={expandPadding} width={selection.pixelWidth} height={selection.pixelHeight} accent={color} onChange={onExpandPadding} />

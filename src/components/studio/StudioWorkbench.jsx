@@ -54,6 +54,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
       SEGMENTATION_CREDENTIALS: t("分割服务鉴权失败，请管理员检查对应模型的密钥和权限。", "Segmentation authentication failed. Ask an admin to check its credentials and permissions."),
       SEGMENTATION_RATE_LIMITED: t("分割服务请求过于频繁，请稍后重试。", "The segmentation provider is rate limited. Please retry shortly."),
       SEGMENTATION_REJECTED: t("分割服务未接受这次请求，请检查模型配置或更换图片。", "The segmentation provider rejected the request. Check its configuration or try another image."),
+      REQUEST_FAILED: t("请求失败，服务暂时没有返回结果，请稍后重试。", "The request failed without a result. Please try again shortly."),
       IMAGE_LOAD_TIMEOUT: t("图片加载超时，原图已保留。可在任务记录中重新加载，无需再次生成。", "Image loading timed out. Retry loading from the task; no new generation is needed."),
       IMAGE_LOAD_FAILED: t("图片加载失败，原图已保留。请重试加载。", "Image loading failed. Your original is safe; retry loading."),
       EDIT_GEOMETRY_MISMATCH: t("模型返回的画面比例不符合编辑要求，已保留原图。", "The provider returned an incompatible aspect ratio. Your original was preserved."),
@@ -61,7 +62,10 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
       TARGET_CHANGED: t("目标图片已变化，请重新选择图片。", "The target changed. Select the image again."),
       VISION_NOT_CONFIGURED: t("管理员尚未配置对话规划模型。请在后台“模型配置 → 后台大语言模型”配置；也可使用“快速生图”直接生成一张图。", "No planning model is configured. Configure one in Admin → Models → Backend language model, or use Quick generation for a direct single-image request."),
     };
-    setNotice(descriptions[code] || code);
+    const detail = code === "REQUEST_FAILED" && error?.url
+      ? `（${error.method || "GET"} ${error.url}${error.detail ? `：${error.detail}` : ""}）`
+      : "";
+    setNotice((descriptions[code] || code) + detail);
   }, [t]);
   const { draft, draftRef, update, save, saveState, ready, open: loadProject, create: createProject, flushLocal, reloadCloud } = useStudioProject({ userId: session?.user?.id, initialDocument, initialPrompt, paused: busy, onError: error => notify(error) });
   const [selectedId, setSelected] = useState(null), [tab, setTab] = useState(initialMode === "quick" ? "quick" : "chat"), [mode, setMode] = useState("select");
@@ -208,7 +212,11 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
         // Once every job is terminal there is nothing useful to poll. The
         // submit path changes draft.jobs, which restarts this effect for a new job.
         if (!rows.some(row => !TERMINAL.includes(row.status))) return;
-      } catch (e) { if (!abort.signal.aborted) notify(e); }
+      } catch (e) {
+        // Job recovery is a background poll. A transient 502/timeout should
+        // not cover the canvas with repeated generic REQUEST_FAILED toasts.
+        if (abort.signal.aborted) return;
+      }
       if (!abort.signal.aborted) timer = setTimeout(poll, 4000);
     }
     poll(); return () => { abort.abort(); clearTimeout(timer); };

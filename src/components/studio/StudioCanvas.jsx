@@ -88,7 +88,7 @@ function ExpansionBox({ value, width, height, accent, onChange }) {
       enabledAnchors={["top-left", "top-center", "top-right", "middle-left", "middle-right", "bottom-left", "bottom-center", "bottom-right"]} /></>;
 }
 
-const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSelect, onChange, mode, selectionTool, editPadding = 0.25, brushSize = 35, moveOffset = { dx: 0, dy: 0 }, onMoveOffset, onMovePreparing, onMoveReady, onMoveFailed, onCrop, expandPadding = 256, onExpandPadding, onZoom, onUpload, onError, label }, ref) {
+const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSelect, onChange, mode, panning = false, selectionTool, editPadding = 0.25, brushSize = 35, moveOffset = { dx: 0, dy: 0 }, onMoveOffset, onMovePreparing, onMoveReady, onMoveFailed, onCrop, expandPadding = 256, onExpandPadding, onZoom, onUpload, onError, label }, ref) {
   const container = useRef(null), stage = useRef(null), artwork = useRef(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
   const [themeColor, setColor] = useState("#D9F154");
@@ -212,6 +212,7 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
   }
 
   function handleMouseDown(e) {
+    if (panning) return;
     if (e.evt?.button && e.evt.button !== 0) return;
     if (mode.startsWith("object-select-")) {
       const imageNode = artwork.current?.findOne(`#${selectedId}`);
@@ -240,7 +241,7 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
   }
 
   function handleMouseMove() {
-    if (!drawing.current) return;
+    if (panning || !drawing.current) return;
     const p = point(); if (!p) return;
     if (mode === "crop" || mode === "object-select-rect") {
       const start = cropStart.current;
@@ -265,7 +266,7 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
   }
 
   async function finishDrawing() {
-    if (!drawing.current) return;
+    if (panning || !drawing.current) return;
     drawing.current = false;
     endStroke();
     if (!["object-select-rect", "object-select-lasso"].includes(mode) || !activeMove.current) return;
@@ -289,12 +290,12 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
     }
   }
   const editing = selection?.type === "image" && ["mask", "crop", "move", "object-edit", "object-preparing", "object-select-rect", "object-select-lasso", "expand"].includes(mode);
-  const cursorStyle = getCursorForMode(mode, brushSize);
+  const cursorStyle = getCursorForMode(panning ? "hand" : mode, brushSize);
 
-  return <div ref={container} className="ms-stage" data-mode={mode} data-camera-scale={camera.scale} aria-label={label} style={{ cursor: cursorStyle }}
+  return <div ref={container} className="ms-stage" data-mode={mode} data-panning={panning} data-camera-scale={camera.scale} aria-label={label} style={{ cursor: cursorStyle }}
     onDragOver={e => e.preventDefault()}
     onDrop={e => { e.preventDefault(); onUpload(e.dataTransfer.files); }}>
-    <Stage ref={stage} {...dimensions} x={camera.x} y={camera.y} scaleX={camera.scale} scaleY={camera.scale} draggable={mode === "hand"}
+    <Stage ref={stage} {...dimensions} x={camera.x} y={camera.y} scaleX={camera.scale} scaleY={camera.scale} draggable={panning}
       onDragEnd={e => { if (e.target === stage.current) updateCamera({ x: e.target.x(), y: e.target.y() }); }}
       onWheel={e => {
         e.evt.preventDefault();
@@ -310,7 +311,7 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
       onMouseMove={handleMouseMove} onTouchMove={handleMouseMove}
       onMouseUp={finishDrawing} onTouchEnd={finishDrawing} onMouseLeave={finishDrawing}>
       <Layer ref={artwork}>
-        {layers.filter(l => l.visible).map(item => <Picture key={item.id} item={item} selected={selectedId === item.id} interactive={mode === "select"} accent={color} onError={onError} onSelect={() => { if (!editing) onSelect(item.id); }} onChange={patch => { try { onChange(layers.map(l => l.id === item.id ? { ...l, ...patch } : l)); } catch (e) { onError(e); } }} />)}
+        {layers.filter(l => l.visible).map(item => <Picture key={item.id} item={item} selected={selectedId === item.id} interactive={!panning && mode === "select"} accent={color} onError={onError} onSelect={() => { if (!panning && !editing) onSelect(item.id); }} onChange={patch => { try { onChange(layers.map(l => l.id === item.id ? { ...l, ...patch } : l)); } catch (e) { onError(e); } }} />)}
       </Layer>
       {editing && !["crop", "expand", "move", "object-edit"].includes(mode) && <Layer listening={false}><Group x={selection.x} y={selection.y} rotation={selection.rotation} scaleX={selection.width / selection.pixelWidth} scaleY={selection.height / selection.pixelHeight} clipWidth={selection.pixelWidth} clipHeight={selection.pixelHeight}>
         {mode === "mask" && strokes.filter(s => s.target === maskKey).map((s, i) => <Line key={i} points={s.points} stroke={color} strokeWidth={s.width} opacity={0.55} lineCap="round" lineJoin="round" />)}
@@ -325,13 +326,13 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
           <Line points={moveSelection.polygon} stroke="#ffffff" strokeWidth={1.5 / (camera.scale * selection.width / selection.pixelWidth)} opacity={0.6} closed lineCap="round" lineJoin="round" />
         </>}
       </Group></Layer>}
-      {mode === "crop" && selection && <Layer><Group x={selection.x} y={selection.y} rotation={selection.rotation} scaleX={selection.width / selection.pixelWidth} scaleY={selection.height / selection.pixelHeight} clipWidth={selection.pixelWidth} clipHeight={selection.pixelHeight}>
+      {mode === "crop" && selection && <Layer listening={!panning}><Group x={selection.x} y={selection.y} rotation={selection.rotation} scaleX={selection.width / selection.pixelWidth} scaleY={selection.height / selection.pixelHeight} clipWidth={selection.pixelWidth} clipHeight={selection.pixelHeight}>
         <CropBox value={crop || { left: 0, top: 0, width: selection.pixelWidth, height: selection.pixelHeight }} width={selection.pixelWidth} height={selection.pixelHeight} accent={color} onChange={rect => { updateCrop(rect); onCrop(rect); }} />
       </Group></Layer>}
-      {mode === "expand" && selection && <Layer><Group x={selection.x} y={selection.y} rotation={selection.rotation} scaleX={selection.width / selection.pixelWidth} scaleY={selection.height / selection.pixelHeight}>
+      {mode === "expand" && selection && <Layer listening={!panning}><Group x={selection.x} y={selection.y} rotation={selection.rotation} scaleX={selection.width / selection.pixelWidth} scaleY={selection.height / selection.pixelHeight}>
         <ExpansionBox value={expandPadding} width={selection.pixelWidth} height={selection.pixelHeight} accent={color} onChange={onExpandPadding} />
       </Group></Layer>}
-      {["move", "object-edit"].includes(mode) && movePreview?.target === selectedId && selection && <Layer><Group x={selection.x} y={selection.y} rotation={selection.rotation} scaleX={selection.width / selection.pixelWidth} scaleY={selection.height / selection.pixelHeight} clipWidth={selection.pixelWidth} clipHeight={selection.pixelHeight}>
+      {["move", "object-edit"].includes(mode) && movePreview?.target === selectedId && selection && <Layer listening={!panning}><Group x={selection.x} y={selection.y} rotation={selection.rotation} scaleX={selection.width / selection.pixelWidth} scaleY={selection.height / selection.pixelHeight} clipWidth={selection.pixelWidth} clipHeight={selection.pixelHeight}>
         {mode === "object-edit" && (() => {
           const region = editRegion(movePreview.bounds, selection.pixelWidth, selection.pixelHeight, editPadding);
           return <Rect x={region.left} y={region.top} width={region.width} height={region.height} stroke="#fff" strokeWidth={1 / (camera.scale * selection.width / selection.pixelWidth)} dash={[5, 5]} fill="#FFFFFF08" listening={false} />;

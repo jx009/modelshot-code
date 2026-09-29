@@ -51,11 +51,39 @@ test("canvas upload, crop through durable worker, layers, export and cloud resto
     // The tool controls are docked below the image on both screen sizes.
     const moveAnchor = { x: stage.x + stage.width / 2, y: stage.y + stage.height / 2 };
     const moveScale = Math.min(1.5, (stage.width - 110) / 400, (stage.height - 180) / 500);
+    // Hold the response to exercise panning during recognition.
+    let releaseSegment;
+    const segmentGate = new Promise(resolve => { releaseSegment = resolve; });
+    await page.route("**/api/studio/segment", async route => {
+      const response = await route.fetch();
+      await segmentGate;
+      await route.fulfill({ response });
+    });
     await page.mouse.move(moveAnchor.x - 90 * moveScale, moveAnchor.y - 110 * moveScale);
     await page.mouse.down();
     await page.mouse.move(moveAnchor.x + 90 * moveScale, moveAnchor.y + 110 * moveScale, { steps: 8 });
     await page.mouse.up();
+    await expect(page.locator(".ms-stage")).toHaveAttribute("data-mode", "object-preparing");
+    await page.getByRole("button", { name: "Pan", exact: true }).click();
+    await expect(page.locator(".ms-stage")).toHaveAttribute("data-panning", "true");
+    await expect(page.getByRole("button", { name: "Cancel and select again" })).toBeVisible();
+    releaseSegment();
     await expect(page.getByText("Drag the selected object", { exact: false })).toBeVisible();
+    await expect(page.locator(".ms-stage")).toHaveAttribute("data-panning", "true");
+    const canvasBeforePan = await page.locator(".ms-stage canvas").first().screenshot();
+    const offsetBeforePan = await page.locator(".ms-move-offset").textContent();
+    await page.mouse.move(moveAnchor.x, moveAnchor.y);
+    await page.mouse.down();
+    await page.mouse.move(moveAnchor.x + 25, moveAnchor.y + 15, { steps: 8 });
+    await page.mouse.up();
+    await expect(page.locator(".ms-move-offset")).toHaveText(offsetBeforePan);
+    expect((await page.locator(".ms-stage canvas").first().screenshot()).equals(canvasBeforePan)).toBe(false);
+    await page.screenshot({ path: info.outputPath("pan-preserves-selection.png"), fullPage: true });
+    await expect(page.getByText("Drag the selected object", { exact: false })).toBeVisible();
+    await page.getByRole("button", { name: "Select", exact: true }).click();
+    await expect(page.locator(".ms-stage")).toHaveAttribute("data-panning", "false");
+    await expect(page.locator(".ms-stage")).toHaveAttribute("data-mode", "move");
+    await page.getByRole("button", { name: "Fit canvas", exact: true }).click();
     await page.mouse.move(moveAnchor.x, moveAnchor.y);
     await page.mouse.down();
     await page.mouse.move(moveAnchor.x + 60, moveAnchor.y + 20, { steps: 8 });
@@ -71,8 +99,10 @@ test("canvas upload, crop through durable worker, layers, export and cloud resto
     await expect.poll(async () => (await (await page.request.get(`/api/studio/jobs/${moveJob.id}`)).json()).status, { timeout: 45000 }).toBe("succeeded");
     await expect(page.locator(".ms-canvas-label")).toContainText("2 layers");
     const completed = await readDraft();
-    expect(completed.layers[0].visible).toBe(false);
-    const resultLayer = completed.layers.find(layer => layer.visible);
+    expect(completed.layers[0].visible).toBe(true);
+    const resultLayer = completed.layers.find(layer => layer.sourceJobId === moveJob.id);
+    expect(resultLayer.visible).toBe(true);
+    expect(resultLayer.x).toBeGreaterThan(completed.layers[0].x + completed.layers[0].width);
     expect(resultLayer).toMatchObject({ pixelWidth: 400, pixelHeight: 500 });
     await expect(page.getByRole("link", { name: "Download", exact: true })).toHaveAttribute("href", `/api/assets/${resultLayer.assetId}`);
     expect(completed.messages.find(m => m.id === moveJob.id).assetId).toBe(resultLayer.assetId);
@@ -80,7 +110,9 @@ test("canvas upload, crop through durable worker, layers, export and cloud resto
     await page.getByRole("button", { name: "Undo", exact: true }).click();
     await expect(page.locator(".ms-canvas-label")).toContainText("1 layers");
     await page.getByRole("button", { name: "Fit canvas", exact: true }).click();
-    await page.mouse.click(moveAnchor.x, moveAnchor.y);
+    await page.getByRole("button", { name: "Layers", exact: true }).click();
+    await page.locator(".ms-layer-select").first().click();
+    await page.getByRole("button", { name: "Layers", exact: true }).click();
     await expect(page.locator(".ms-image-menu")).toBeVisible();
     await page.getByRole("button", { name: /Crop image/ }).click();
     const cropStage = await page.locator(".ms-stage").boundingBox();

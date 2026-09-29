@@ -13,6 +13,7 @@ export function isVideoUrl(url) {
 }
 
 export function appendResult(layers, job, target) {
+  if (job.resultData?.placement !== "repair-background" && layers.some(layer => layer.sourceJobId === job.id)) return layers;
   const placement = job.resultData?.placement;
   const outputs = job.resultData?.assets || [];
   if (placement === "repair-background") {
@@ -22,22 +23,21 @@ export function appendResult(layers, job, target) {
     return layers.map(layer => layer.id === `${job.id}-background` && layer.repairJobId === job.id && layer.layerRole === "background" && (!job.moveBundle || layer.assetId === job.moveBundle.holeAssetId)
       ? { ...layer, assetId: outputs[0].id, repairJobId: undefined } : layer);
   }
-  if (["stack", "replace-source"].includes(placement)) {
-    if (layers.some(layer => layer.sourceJobId === job.id)) return layers;
+  if (placement === "stack") {
     if (!target || target.assetId !== job.assetId || !target.visible) {
-      // Another edit may have replaced this source while the job was running.
-      // Keep a completed full-image result as an alternative beside the work.
-      if (placement === "replace-source") return appendResult(layers, { ...job, resultData: { ...job.resultData, placement: undefined } }, target);
+      // Do not attach a decomposed group to a deleted or changed source.
       return layers;
     }
-    const index = layers.findIndex(layer => layer.id === target.id);
+    const right = Math.max(80, ...layers.map(layer => layer.x + layer.width)) + 50;
     const created = outputs.map((asset, i) => ({ ...target, id: `${job.id}-${i}`, assetId: asset.id,
-      name: asset.label || (placement === "stack" ? `${target.name} · ${i + 1}` : target.name),
-      pixelWidth: asset.width, pixelHeight: asset.height, sourceJobId: job.id,
-      ...(placement === "stack" ? { groupId: job.id, layerRole: "decomposed" } : {}), repairJobId: undefined }));
+      name: asset.label || `${target.name} · ${i + 1}`,
+      x: right, pixelWidth: asset.width, pixelHeight: asset.height, sourceJobId: job.id,
+      groupId: job.id, layerRole: "decomposed", repairJobId: undefined }));
     if (!created.length) return layers;
-    return [...layers.slice(0, index), { ...target, visible: false }, ...created, ...layers.slice(index + 1)];
+    return [...layers, ...created];
   }
+  // A completed edit is a new canvas version, even for legacy replace-source jobs.
+  // Keep every existing image and its visibility exactly as the user left it.
   const existing = new Set(layers.map(layer => layer.id));
   const assets = job.resultData?.assets || (job.asset ? [job.asset] : []);
   let right = Math.max(80, ...layers.map(layer => layer.x + layer.width)) + 50;

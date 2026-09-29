@@ -93,8 +93,8 @@ test("admin owns tool models, has no page scrollbar, and decomposition remains e
     await expect(page.locator(".ms-canvas-label")).toContainText("3 layers");
     const readDraft = () => page.evaluate(() => JSON.parse(localStorage.getItem(Object.keys(localStorage).find(k => k.startsWith("modelshot-studio-v1:")))));
     const draft = await readDraft();
-    expect(draft.layers[0].visible).toBe(false);
-    for (const layer of draft.layers.slice(1)) expect(layer).toMatchObject({ x: draft.layers[0].x, y: draft.layers[0].y, width: 320, height: 480, groupId: job.id });
+    expect(draft.layers[0].visible).toBe(true);
+    for (const layer of draft.layers.slice(1)) expect(layer).toMatchObject({ x: draft.layers[0].x + draft.layers[0].width + 50, y: draft.layers[0].y, width: 320, height: 480, groupId: job.id });
     await page.getByRole("button", { name: "Undo", exact: true }).click();
     await expect(page.locator(".ms-canvas-label")).toContainText("1 layers");
     await page.getByRole("button", { name: "Redo", exact: true }).click();

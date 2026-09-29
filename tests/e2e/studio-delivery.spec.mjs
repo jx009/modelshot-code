@@ -55,7 +55,9 @@ test("one send generates directly; failed preview preserves input and retries wi
     rejectPreview = false;
     await page.locator(".ms-task-status").getByRole("button", { name: "Retry loading" }).click();
     await expect.poll(async () => (await draft()).appliedJobs.includes(editJob.id)).toBe(true);
-    const edited = (await draft()).layers.find(layer => layer.visible);
+    const edited = (await draft()).layers.find(layer => layer.sourceJobId === editJob.id);
+    expect((await draft()).layers.filter(layer => layer.visible)).toHaveLength(2);
+    expect(edited.x).toBeGreaterThan(first.x + first.width);
     expect(edited.assetId).not.toBe(first.assetId);
     await expect(page.getByRole("link", { name: "Download", exact: true })).toHaveAttribute("href", `/api/assets/${edited.assetId}`);
     expect(posted).toHaveLength(2); expect(plans).toEqual([]);

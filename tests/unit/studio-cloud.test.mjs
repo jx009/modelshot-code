@@ -163,8 +163,8 @@ describe("editable layers and late background repair", () => {
   it("stacks decomposition in source order and leaves deleted or replaced input alone", () => {
     const job = { id: "split", assetId: target.assetId, resultData: { placement: "stack", assets: [{ id: "bg", width: 1024, height: 768 }, { id: "fg", width: 1024, height: 768 }] } };
     const layers = appendResult([target], job, target);
-    expect(layers).toHaveLength(3); expect(layers[0].visible).toBe(false);
-    for (const l of layers.slice(1)) expect(l).toMatchObject({ x: 10, y: 20, width: 200, height: 120, rotation: 90, groupId: "split" });
+    expect(layers).toHaveLength(3); expect(layers[0]).toBe(target);
+    for (const l of layers.slice(1)) expect(l).toMatchObject({ x: 260, y: 20, width: 200, height: 120, rotation: 90, groupId: "split" });
     expect(layers.map(l => l.assetId)).toEqual(["source-asset", "bg", "fg"]);
     expect(appendResult(layers, job, target)).toBe(layers);
     expect(appendResult([], job)).toEqual([]);
@@ -184,6 +184,12 @@ describe("editable layers and late background repair", () => {
     const secondJob = { ...job, id: "second", resultData: { ...job.resultData, assets: [{ id: "second-image", width: 20, height: 12 }] } };
     const second = appendResult(first, secondJob, first[0]);
     expect(second).toHaveLength(3);
+    expect(second[0]).toBe(target);
+    expect(second.every(layer => layer.visible)).toBe(true);
+    expect(first[1].x).toBeGreaterThan(target.x + target.width);
+    expect(second[0]).toBe(target);
+    expect(second.every(layer => layer.visible)).toBe(true);
+    expect(first[1].x).toBeGreaterThan(target.x + target.width);
     expect(second[1]).toBe(first[1]);
     expect(second[2]).toMatchObject({ assetId: "second-image", visible: true, sourceJobId: "second" });
     expect(second[2].x).toBeGreaterThan(first[1].x + first[1].width);

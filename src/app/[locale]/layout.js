@@ -1,5 +1,6 @@
 import localFont from "next/font/local";
 import "../globals.css";
+import StylesheetRecovery from "../../components/StylesheetRecovery";
 import { Providers } from "../providers";
 import Navbar from "../../components/Navbar";
 import { ThemeProvider } from "next-themes";
@@ -58,6 +59,7 @@ export default async function LocaleLayout({ children, params }) {
   return (
     <html lang={locale} className={`${instrumentSerif.variable} ${geist.variable} h-full w-full`} suppressHydrationWarning>
       <body className={`min-h-dvh w-full flex flex-col antialiased bg-bg-page text-primary-text font-sans`}>
+        <StylesheetRecovery locale={locale} />
         {/* 双主题：attribute 模式驱动 [data-theme]，浅/深/跟随系统三态，默认深色（品牌基调） */}
         <ThemeProvider attribute="data-theme" defaultTheme="dark" enableSystem disableTransitionOnChange={false}>
           <NextIntlClientProvider messages={messages}>

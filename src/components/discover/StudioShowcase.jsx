@@ -1,5 +1,5 @@
 import { ArrowUpRight } from "lucide-react";
-import { Link } from "@/i18n/navigation";
+import Link from "@/components/ui/NavigationLink";
 import { getCase } from "@/lib/commerce/catalog";
 import CaseArtwork from "./CaseArtwork";
 

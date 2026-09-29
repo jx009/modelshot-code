@@ -1,4 +1,5 @@
 ARG NODE_IMAGE=node:22.23.2-bookworm-slim
+ARG NEXT_DEPLOYMENT_ID
 FROM ${NODE_IMAGE} AS base
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -9,10 +10,14 @@ FROM base AS build
 COPY package.json package-lock.json .npmrc ./
 RUN --mount=type=cache,target=/root/.npm NODE_OPTIONS=--use-env-proxy npm ci
 COPY . .
+ARG NEXT_DEPLOYMENT_ID
+ENV NEXT_DEPLOYMENT_ID=$NEXT_DEPLOYMENT_ID
 # Building never needs a live database or deployment credentials.
 RUN npm run build && NODE_OPTIONS=--use-env-proxy npm prune --omit=dev && rm -rf .next/cache
 
 FROM base AS runtime
+ARG NEXT_DEPLOYMENT_ID
+ENV NEXT_DEPLOYMENT_ID=$NEXT_DEPLOYMENT_ID
 ENV NODE_ENV=production PORT=3000 C2PA_ENABLED=0
 COPY --from=build --chown=node:node /app/package.json /app/package-lock.json /app/next.config.js /app/prisma.config.ts ./
 COPY --from=build --chown=node:node /app/node_modules ./node_modules

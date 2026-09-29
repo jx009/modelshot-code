@@ -2,7 +2,8 @@
 import { useTheme } from "next-themes";
 import { useLocale } from "next-intl";
 import { useSession } from "next-auth/react";
-import { Link, usePathname } from "@/i18n/navigation";
+import { usePathname } from "@/i18n/navigation";
+import Link from "@/components/ui/NavigationLink";
 import { Aperture, Compass, House, Images, LayoutGrid, ShoppingBag, ArrowUpRight, FolderOpen, CircleHelp, Zap, Globe2, SunMoon } from "lucide-react";
 import "./discover.css";
 import "./creative-direction.css";

@@ -3,13 +3,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, requestKey } from "@/lib/client-api";
 import { documentContent } from "@/lib/studio/project-title";
-import { readProjectDraft, writeProjectDraft } from "@/lib/studio/project-storage";
+import { activeProject, rememberProject, readProjectDraft, writeProjectDraft } from "@/lib/studio/project-storage";
 
 export const emptyProject = () => ({ id: null, version: null, name: "Untitled", nameSource: "fallback", createKey: requestKey(), layers: [], messages: [], jobs: [], appliedJobs: [], plan: null });
 const meaningful = draft => draft.layers.length || draft.messages.length || draft.plan;
 function projectURL(id, createKey, push = false) {
   const url = new URL(window.location.href);
   url.searchParams.delete("prompt"); url.searchParams.delete("document"); url.searchParams.delete("draft");
+  url.searchParams.delete("new");
   url.searchParams.set(id ? "document" : "draft", id || createKey);
   window.history[push ? "pushState" : "replaceState"](null, "", url);
 }
@@ -21,6 +22,7 @@ export function useStudioProject({ userId, initialDocument, initialPrompt = "", 
   const errorRef = useRef(onError); useEffect(() => { errorRef.current = onError; }, [onError]);
   const persist = useCallback(value => {
     if (!userId) return;
+    rememberProject(userId, value);
     localWrite.current = writeProjectDraft(userId, value.id || value.createKey, value);
     localWrite.current.catch(() => errorRef.current("LOCAL_SAVE_FAILED"));
   }, [userId]);
@@ -113,9 +115,18 @@ export function useStudioProject({ userId, initialDocument, initialPrompt = "", 
       Promise.resolve().then(() => { epoch.current++; const empty = emptyProject(); draftRef.current = empty; setDraft(empty); setReady(false); });
       return;
     }
-    const token = new URL(window.location.href).searchParams.get("draft") || requestKey();
+    const query = new URL(window.location.href).searchParams;
+    const current = !initialDocument && !initialPrompt && !query.has("draft") && query.get("new") !== "1" ? activeProject(userId) : null;
+    const token = query.get("draft") || current?.createKey || requestKey();
     let active = true;
-    Promise.resolve().then(() => { if (active) return load(initialDocument, token); }).catch(error => { if (active) { setSaveState("error"); errorRef.current(error); } });
+    Promise.resolve().then(async () => {
+      if (!active) return;
+      try { return await load(initialDocument || current?.id, token); }
+      catch (error) {
+        if (current && error.code === "DOCUMENT_NOT_FOUND") return load(null, requestKey());
+        throw error;
+      }
+    }).catch(error => { if (active) { setSaveState("error"); errorRef.current(error); } });
     const pop = () => {
       const url = new URL(window.location.href);
       load(url.searchParams.get("document"), url.searchParams.get("draft") || requestKey()).catch(error => errorRef.current(error));
@@ -123,7 +134,7 @@ export function useStudioProject({ userId, initialDocument, initialPrompt = "", 
     window.addEventListener("popstate", pop);
     const invalidate = () => { epoch.current++; };
     return () => { active = false; invalidate(); window.removeEventListener("popstate", pop); };
-  }, [userId, initialDocument, load]);
+  }, [userId, initialDocument, initialPrompt, load]);
 
   useEffect(() => {
     if (!ready || paused || !draft._dirty || saveState === "conflict" || !meaningful(draft)) return;

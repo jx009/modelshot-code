@@ -2,7 +2,7 @@
 import Image from "next/image";
 import { useState } from "react";
 import { useLocale } from "next-intl";
-import { Link } from "@/i18n/navigation";
+import Link from "@/components/ui/NavigationLink";
 import { ArrowLeft, ArrowUpRight, Copy, Check, Sparkles, Layers3 } from "lucide-react";
 import CreativeShell from "./CreativeShell";
 import { caseImage } from "@/lib/commerce/catalog";

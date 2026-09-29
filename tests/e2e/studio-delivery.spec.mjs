@@ -34,13 +34,18 @@ test("one send generates directly; failed preview preserves input and retries wi
     expect(preview.headers()["content-type"]).toBe("image/webp");
     expect(await sharp(await preview.body()).metadata()).toMatchObject({ width: 320, height: 320 });
 
-    // Optional object editing goes through the segmentation API, then the durable worker.
+    // The freehand outline selects its interior without a segmentation request.
     await page.getByRole("button", { name: /Local edit/ }).click();
-    await page.getByRole("button", { name: "Detect object", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Detect object", exact: true })).toHaveCount(0);
     const box = await page.locator(".ms-stage").boundingBox();
-    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-    await expect(page.getByLabel("Object edit instruction")).toBeVisible({ timeout: 20000 });
-    await page.getByLabel("Object edit instruction").fill("Raise one paw FIXTURE_DELAY");
+    const frame = JSON.parse(await page.locator(".ms-stage").getAttribute("data-selection-frame"));
+    const point = (x, y) => ({ x: box.x + frame.left + frame.width * x, y: box.y + frame.top + frame.height * y });
+    const start = point(.35, .35);
+    await page.mouse.move(start.x, start.y); await page.mouse.down();
+    for (const [x, y] of [[.65,.35],[.65,.65],[.35,.65],[.35,.35]]) { const p = point(x,y); await page.mouse.move(p.x,p.y,{ steps: 8 }); }
+    await page.mouse.up();
+    await page.screenshot({ path: info.outputPath("green-freehand-selection.png"), fullPage: true });
+    await page.getByLabel("Local edit instruction").fill("Raise one paw FIXTURE_DELAY");
     let rejectPreview = true;
     const blockPreview = async route => {
       if (rejectPreview && !route.request().url().includes(first.assetId)) await route.abort(); else await route.continue();
@@ -49,6 +54,11 @@ test("one send generates directly; failed preview preserves input and retries wi
     const editing = page.waitForResponse(r => r.url().endsWith("/api/studio/jobs") && r.request().method() === "POST");
     await page.getByRole("button", { name: "Apply edit 18 credits", exact: true }).click();
     const editJob = await (await editing).json();
+    const maskResponse = await page.request.get(`/api/assets/${posted[1].maskId}`);
+    const { data: maskPixels, info: maskInfo } = await sharp(await maskResponse.body()).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+    expect(maskPixels[(Math.floor(maskInfo.height / 2) * maskInfo.width + Math.floor(maskInfo.width / 2)) * maskInfo.channels]).toBe(255);
+    expect(maskPixels[0]).toBe(0);
+
     await expect(page.getByRole("button", { name: "Upload image", exact: true })).toBeEnabled();
     await expect(page.locator(".ms-task-status")).toContainText("original kept");
     await expect(page.locator(".ms-task-status").getByRole("button", { name: "Retry loading" })).toBeVisible({ timeout: 45000 });

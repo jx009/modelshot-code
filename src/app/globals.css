@@ -1,5 +1,13 @@
 @import "tailwindcss";
 
+.navigation-progress {
+  position:fixed; top:12px; left:50%; transform:translateX(-50%);
+  z-index:10000; padding:8px 16px; border-radius:12px;
+  background:var(--bg-elevated); color:var(--primary-text); border:1px solid var(--divider);
+  box-shadow:0 4px 20px var(--shadow-soft); font:13px/1.5 var(--font-geist),system-ui,sans-serif;
+  width:max-content; max-width:calc(100vw - 24px); text-align:center; pointer-events:none;
+}
+
 /* Shared operation surfaces. */
 
 /* ══════════════════════════════════════════════════════════
@@ -13,6 +21,7 @@
 
 /* ══════════ 第一层 · 原始色板（深色 = 品牌默认 — 避免深色用户加载瞬间白闪）══════════ */
 :root {
+  --selection-ink: #30ed19;
   /* Fixed artboard colors belong to the artwork, independent of UI theme. */
   --art-paper: #ece9e0;
   --art-ink: #353a30;

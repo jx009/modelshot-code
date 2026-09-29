@@ -3,7 +3,8 @@ import Image from "next/image";
 import { useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useLocale } from "next-intl";
-import { Link, useRouter } from "@/i18n/navigation";
+import { useRouter } from "@/i18n/navigation";
+import Link from "@/components/ui/NavigationLink";
 import { ArrowUp, ImagePlus, LoaderCircle, X } from "lucide-react";
 import { requestKey } from "@/lib/client-api";
 

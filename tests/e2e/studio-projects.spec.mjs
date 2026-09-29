@@ -44,6 +44,17 @@ test("project title, autosave, task popover, history and rename survive navigati
     await page.reload();
     if (info.project.name === "mobile") await page.getByRole("button", { name: "Canvas", exact: true }).click();
     await expect.poll(async () => JSON.parse(await page.locator(".ms-stage").getAttribute("data-camera"))).toEqual(camera);
+    // A second conversation turn belongs to this canvas and keeps its first title.
+    if (info.project.name === "mobile") await page.getByRole("button", { name: "Chat", exact: true }).click();
+    await page.getByLabel("Creative prompt").fill("Now make the window blue");
+    await page.getByRole("button", { name: "Generate · 18 credits", exact: true }).click();
+    await expect.poll(async () => (await db.studioDocument.findUnique({ where: { id } }))?.content.layers.length).toBe(2);
+    expect(await db.studioDocument.count({ where: { userId: user.id } })).toBe(1);
+    expect((await db.studioDocument.findUnique({ where: { id } })).name).toBe("A cat on a windowsill FIXTURE_DELAY");
+    await page.goto("/en/projects");
+    await page.getByRole("navigation", { name: "Creative navigation" }).getByRole("link", { name: "Canvas", exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`document=${id}`));
+    await expect.poll(async () => (await readStudioDraft(page))?.layers.length).toBe(2);
     await page.goto("/en/projects");
     await expect(page.getByRole("heading", { name: "My projects", exact: true })).toBeVisible();
     await expect(page.locator(".mp-card")).toHaveCount(1);
@@ -71,8 +82,8 @@ test("project title, autosave, task popover, history and rename survive navigati
     await page.getByRole("button", { name: email, exact: true }).click();
     await page.getByRole("menuitem", { name: "Usage history", exact: true }).click();
     const records = page.getByRole("dialog", { name: "Account records", exact: true });
-    await expect(records.getByText("Currently available credits: 82", { exact: false })).toBeVisible();
-    await expect(records.locator("tbody tr")).toHaveCount(1);
+    await expect(records.getByText("Currently available credits: 64", { exact: false })).toBeVisible();
+    await expect(records.locator("tbody tr")).toHaveCount(2);
     await records.getByRole("button", { name: "Purchases", exact: true }).click();
     await expect(records.getByText("No records yet", { exact: true })).toBeVisible();
     await records.getByRole("button", { name: "Help", exact: true }).click();
@@ -81,6 +92,12 @@ test("project title, autosave, task popover, history and rename survive navigati
     await page.keyboard.press("Escape");
     await expect(records).toHaveCount(0);
     await expect(page.getByRole("button", { name: email, exact: true })).toBeFocused();
+    await page.goto("/en/projects");
+    await page.getByRole("link", { name: "New project", exact: true }).click();
+    await expect(page).toHaveURL(/draft=/);
+    expect(new URL(page.url()).searchParams.get("document")).toBeNull();
+    await expect.poll(async () => (await readStudioDraft(page))?.layers.length).toBe(0);
+    expect(await db.studioDocument.count({ where: { userId: user.id } })).toBe(1);
     expect(errors).toEqual([]);
   } finally { await db.$disconnect(); }
 });

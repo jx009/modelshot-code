@@ -3,7 +3,7 @@ import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { useLocale } from "next-intl";
 import { useSession } from "next-auth/react";
-import { Link } from "@/i18n/navigation";
+import Link from "@/components/ui/NavigationLink";
 import { Plus, FolderOpen, Search, X, MoreHorizontal, Pencil, Trash2, LoaderCircle } from "lucide-react";
 import { api } from "@/lib/client-api";
 import { previewUrl } from "@/lib/studio/image-url";
@@ -61,7 +61,7 @@ export default function CreativeProjects() {
     {error && <p role="alert" className="mp-error">{error}</p>}
     {status === "unauthenticated" ? <div className="mp-empty"><FolderOpen size={36} /><p>{zh ? "登录后查看和继续你的项目" : "Sign in to continue your projects"}</p><Link href="/login?callbackUrl=/projects">{zh ? "登录" : "Sign in"}</Link></div> : <>
       <div className="mp-grid" aria-busy={loading}>
-        <Link href="/studio-v2" className="mp-new"><span><Plus size={28} /></span><strong>{zh ? "新建项目" : "New project"}</strong></Link>
+        <Link href="/studio-v2?new=1" className="mp-new"><span><Plus size={28} /></span><strong>{zh ? "新建项目" : "New project"}</strong></Link>
         {rows === null ? Array.from({ length: 5 }, (_, i) => <div className="mp-skeleton" key={i} />) : rows.map(row => <article className="mp-card" key={row.id}>
           <Link className="mp-cover" href={`/${row.kind === "commerce" ? "commerce" : "studio-v2"}?document=${row.id}`} aria-label={row.name} aria-disabled={filter === "trash"} onClick={event => { if (filter === "trash") event.preventDefault(); }}>{row.coverAssetId ? <Image unoptimized src={previewUrl(row.coverAssetId, 640)} alt="" fill sizes="(max-width:600px) 90vw, 320px" /> : <FolderOpen size={40} strokeWidth={1} />}</Link>
           <div className="mp-card-footer"><div>{editing === row.id ? <form onSubmit={event => { event.preventDefault(); rename(row); }}><input autoFocus aria-label={zh ? "项目名称" : "Project name"} maxLength={100} value={name} disabled={saving} onChange={event => setName(event.target.value)} onKeyDown={event => { if (event.key === "Escape") setEditing(null); }} /><button disabled={saving || !name.trim()}>{zh ? "保存" : "Save"}</button><button type="button" disabled={saving} onClick={() => setEditing(null)}>{zh ? "取消" : "Cancel"}</button></form> : <h2 title={row.name}>{row.name}</h2>}<time dateTime={row.updatedAt}>{zh ? "更新于 " : "Updated "}{new Date(row.updatedAt).toLocaleString(locale, { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}</time></div>

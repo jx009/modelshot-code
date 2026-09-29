@@ -98,10 +98,11 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
   const container = useRef(null), stage = useRef(null), artwork = useRef(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
   const [themeColor, setColor] = useState("#D9F154");
+  const [selectionInk, setSelectionInk] = useState("#30ed19");
 
   // Use custom hooks for state management
   const { camera, updateCamera, zoom, fit, fitExpansion } = useCanvasState(dimensions, layers);
-  const { strokes, startStroke, addPoint, endStroke, clearAll: clearStrokes } = useDrawingState();
+  const { strokes, isDrawing, startStroke, addPoint, endStroke, clearAll: clearStrokes } = useDrawingState();
   const {
     crop, movePreview, moveSelection, moveMask, activeMove,
     startCrop, updateCrop,
@@ -120,6 +121,7 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
     const observer = new ResizeObserver(([entry]) => setDimensions({ width: entry.contentRect.width, height: entry.contentRect.height }));
     observer.observe(container.current);
     setColor(getComputedStyle(container.current).getPropertyValue("--primary").trim() || "#D9F154");
+    setSelectionInk(getComputedStyle(container.current).getPropertyValue("--selection-ink").trim() || "#30ed19");
     return () => observer.disconnect();
   }, []);
 
@@ -164,6 +166,8 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
         for (const stroke of lines) {
           ctx.lineWidth = stroke.width; ctx.beginPath();
           for (let i = 0; i < stroke.points.length; i += 2) { if (i === 0) ctx.moveTo(stroke.points[i], stroke.points[i + 1]); else ctx.lineTo(stroke.points[i], stroke.points[i + 1]); }
+          // Freehand loops select the enclosed area, not only a thin edge.
+          if (stroke.points.length >= 6) { ctx.closePath(); ctx.fill(); }
           ctx.stroke(); ctx.beginPath(); ctx.arc(stroke.points[0], stroke.points[1], stroke.width / 2, 0, Math.PI * 2); ctx.fill();
         }
       }
@@ -255,7 +259,7 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
       startMoveLasso(p);
     }
     else {
-      startStroke(p, maskKey, brushSize);
+      startStroke(p, maskKey, brushSize / (camera.scale * selection.width / selection.pixelWidth));
     }
   }
 
@@ -313,7 +317,7 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
     }
   }
   const editing = selection?.type === "image" && ["mask", "crop", "move", "object-edit", "object-preparing", "object-select-rect", "object-select-lasso", "expand"].includes(mode);
-  const cursorStyle = getCursorForMode(panning ? "hand" : mode, brushSize);
+  const cursorStyle = getCursorForMode(panning ? "hand" : mode, brushSize, selectionInk);
 
   return <div ref={container} className="ms-stage" data-selection-frame={selection ? JSON.stringify({ left: camera.x + selection.x * camera.scale, top: camera.y + selection.y * camera.scale, width: selection.width * camera.scale, height: selection.height * camera.scale }) : undefined} data-mode={mode} data-panning={panning} data-camera-scale={camera.scale} data-camera={JSON.stringify(camera)} data-crop={JSON.stringify({ rect: cropRect, shape: cropShape, grid: cropGrid })} aria-label={label} style={{ cursor: cursorStyle }}
     onMouseDownCapture={e => {
@@ -342,7 +346,7 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
         {layers.filter(l => l.visible).map(item => <Picture key={item.id} item={item} shouldLoad={camera.x + item.x * camera.scale + Math.max(item.width, item.height) * camera.scale > -200 && camera.y + item.y * camera.scale + Math.max(item.width, item.height) * camera.scale > -200 && camera.x + item.x * camera.scale - Math.max(item.width, item.height) * camera.scale < dimensions.width + 200 && camera.y + item.y * camera.scale - Math.max(item.width, item.height) * camera.scale < dimensions.height + 200} selected={selectedId === item.id} interactive={!panning && mode === "select"} accent={color} onError={onError} onPreview={() => { if (!editing && item.type === "image") onPreview?.(item.assetId); }} onSelect={() => { if (!panning && !editing) onSelect(item.id); }} onChange={patch => { try { onChange(layers.map(l => l.id === item.id ? { ...l, ...patch } : l)); } catch (e) { onError(e); } }} />)}
       </Layer>
       {editing && !["crop", "expand", "move", "object-edit"].includes(mode) && <Layer listening={false}><Group x={selection.x} y={selection.y} rotation={selection.rotation} scaleX={selection.width / selection.pixelWidth} scaleY={selection.height / selection.pixelHeight} clipWidth={selection.pixelWidth} clipHeight={selection.pixelHeight}>
-        {mode === "mask" && strokes.filter(s => s.target === maskKey).map((s, i) => <Line key={i} points={s.points} stroke={color} strokeWidth={s.width} opacity={0.55} lineCap="round" lineJoin="round" />)}
+        {mode === "mask" && strokes.filter(s => s.target === maskKey).map((s, i, lines) => <Line key={i} points={s.points} stroke={selectionInk} strokeWidth={s.width} closed={!isDrawing || i < lines.length - 1} lineCap="round" lineJoin="round" />)}
         {mode === "object-select-rect" && moveSelection?.rectangle && <>
           <Rect x={moveSelection.rectangle.left} y={moveSelection.rectangle.top} width={moveSelection.rectangle.width} height={moveSelection.rectangle.height} fill={`${color}35`} />
           <Rect x={moveSelection.rectangle.left} y={moveSelection.rectangle.top} width={moveSelection.rectangle.width} height={moveSelection.rectangle.height} stroke={color} strokeWidth={3 / (camera.scale * selection.width / selection.pixelWidth)} dash={[10, 8]} />

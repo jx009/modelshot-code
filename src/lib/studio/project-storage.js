@@ -1,4 +1,12 @@
 let database;
+export function activeProject(userId) {
+  try { return JSON.parse(localStorage.getItem(`modelshot-active-project:${userId}`)); }
+  catch { return null; }
+}
+export function rememberProject(userId, draft) {
+  try { localStorage.setItem(`modelshot-active-project:${userId}`, JSON.stringify({ id: draft.id, createKey: draft.createKey })); }
+  catch { /* The full draft still persists in IndexedDB. */ }
+}
 function openDatabase() {
   if (!database) database = new Promise((resolve, reject) => {
     const request = indexedDB.open("modelshot-projects", 1);

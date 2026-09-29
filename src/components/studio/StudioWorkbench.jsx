@@ -67,7 +67,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
   const [selectedId, setSelected] = useState(null), [tab, setTab] = useState(initialMode === "quick" ? "quick" : "chat"), [mode, setMode] = useState("select");
   const [toolId, setTool] = useState(null), [params, setParams] = useState({ size: "1024x1024", scale: 2, padding: 256, dx: 100, dy: 0, duration: 5, editPadding: 0.25, numLayers: 4 });
   const [hasMask, setHasMask] = useState(false);
-  const [brush, setBrush] = useState(40), [zoom, setZoom] = useState(1), [capabilities, setCapabilities] = useState(null), [usage, setUsage] = useState(null);
+  const [brush, setBrush] = useState(8), [zoom, setZoom] = useState(1), [capabilities, setCapabilities] = useState(null), [usage, setUsage] = useState(null);
   const [modelProvider, setModelProvider] = useState(initialProvider);
   const prompt = draft.composer?.text ?? "";
   const fixedPrompt = draft.composer?.fixedPrompt || "", outputCount = draft.composer?.outputCount || 1;
@@ -80,7 +80,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
   const menuTop = viewport ? Math.max(52, Math.min(viewport.viewportHeight - 620, viewport.top)) : 52;
   const [imagePreview, setImagePreview] = useState(null), [previewZoom, setPreviewZoom] = useState(1);
   const moveUnchanged = objectSelection?.region ? JSON.stringify(params.moveSource) === JSON.stringify(params.moveTarget) : !params.dx && !params.dy;
-  const [selectionPhase, setSelectionPhase] = useState("recognize"), [resultStates, setResultStates] = useState({}), [planRunning, setPlanRunning] = useState(false);
+  const [resultStates, setResultStates] = useState({}), [planRunning, setPlanRunning] = useState(false);
   const [projectLoad, setProjectLoad] = useState(0);
   const [pendingTask, setPendingTask] = useState(null);
   const [exportOpen, setExportOpen] = useState(false);
@@ -113,6 +113,11 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
   }
   function message(role, text, assetId, id = requestKey()) {
     update(d => d.messages.some(m => m.id === id) ? d : ({ ...d, messages: [...d.messages, { id, role, text, ...(assetId ? { assetId } : {}) }] }));
+  }
+  function nameFromFirstPrompt(text) {
+    if (text.trim() && ["fallback", "upload"].includes(draftRef.current.nameSource)) {
+      update(d => ({ ...d, name: promptTitle(text), nameSource: "prompt" }));
+    }
   }
   function scheduleFit(delay = 0) {
     clearTimeout(fitTimer.current);
@@ -294,6 +299,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
     try {
       const mask = tool?.mask && !objectSelection?.region && !objectSelection?.maskId ? await canvas.current.maskBlob() : null;
       const target = selected;
+      nameFromFirstPrompt(prompt);
       await submit(toolId, target, prompt, { ...params, selectionMode: objectSelection?.region ? "region" : objectSelection ? "object" : "mask" }, mask, requestKey(), objectSelection);
       message("user", prompt || (zh ? tool.zh : tool.en), target?.assetId);
       setPanning(false); setTool(null); setMode("select"); setPrompt(""); setObjectSelection(null); canvas.current?.clearMask();
@@ -308,7 +314,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
       if (text.length > 4000) throw new Error(t("固定提示词与描述合计不能超过 4000 字。", "The fixed prompt and description must total at most 4,000 characters."));
       if (references.length > referenceLimit) throw new Error(t(`当前模型最多支持 ${referenceLimit} 张参考图，请更换模型或移除部分引用。`, `This model supports ${referenceLimit} reference images. Change model or remove references.`));
       if (planned && extraReferences.length) throw new Error(t("多步骤规划目前支持一张参考图；多张参考图可直接生成。", "Multi-step planning supports one reference. Use direct generation for multiple references."));
-      if (["fallback", "upload"].includes(draftRef.current.nameSource) && !draftRef.current.messages.some(m => m.role === "user")) update(d => ({ ...d, name: promptTitle(prompt), nameSource: "prompt" }));
+      nameFromFirstPrompt(prompt);
       const signature = JSON.stringify({ text, target: target?.id, extraReferences, modelProvider, tab, planned, outputCount });
       const messageId = draftRef.current.pendingMessage?.signature === signature ? draftRef.current.pendingMessage.id : requestKey();
       update(d => ({ ...d, pendingMessage: { signature, id: messageId } }));
@@ -470,7 +476,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
           selectionTool={toolId} editPadding={params.editPadding}
           zh={zh} onViewport={setViewport} onCamera={onCamera} onPreview={asset => { setImagePreview(asset); setPreviewZoom(1); }}
           moveRegions={toolId === "move" && objectSelection?.region ? { source: params.moveSource, target: params.moveTarget } : null} onMoveRegions={patch => setParams(p => ({ ...p, ...patch }))}
-          cropRect={params.rect} cropShape={params.cropShape} cropGrid={params.cropGrid} onCropGrid={cropGrid => setParams(p => ({ ...p, cropGrid }))} onMaskChange={setHasMask} panning={panning || spaceHeld} moveOffset={{ dx: params.dx, dy: params.dy }} onMoveOffset={offset => setParams(p => ({ ...p, ...offset }))} onMovePreparing={phase => { setSelectionPhase(phase || "recognize"); setObjectSelection(null); setMode("object-preparing"); }} onMoveReady={value => { setObjectSelection(value); setParams(p => ({ ...p, dx: 0, dy: 0, ...(value.region ? { moveSource: { ...value.bounds, rotation: 0 }, moveTarget: { ...value.bounds, rotation: 0 } } : {}) })); setMode(toolId === "inpaint" ? "object-edit" : "move"); }} onMoveFailed={() => { setObjectSelection(null); setMode("object-select-rect"); }}
+          cropRect={params.rect} cropShape={params.cropShape} cropGrid={params.cropGrid} onCropGrid={cropGrid => setParams(p => ({ ...p, cropGrid }))} onMaskChange={setHasMask} panning={panning || spaceHeld} moveOffset={{ dx: params.dx, dy: params.dy }} onMoveOffset={offset => setParams(p => ({ ...p, ...offset }))} onMovePreparing={() => { setObjectSelection(null); setMode("object-preparing"); }} onMoveReady={value => { setObjectSelection(value); setParams(p => ({ ...p, dx: 0, dy: 0, ...(value.region ? { moveSource: { ...value.bounds, rotation: 0 }, moveTarget: { ...value.bounds, rotation: 0 } } : {}) })); setMode(toolId === "inpaint" ? "object-edit" : "move"); }} onMoveFailed={() => { setObjectSelection(null); setMode("object-select-rect"); }}
           onCrop={rect => setParams(p => ({ ...p, rect }))} expandPadding={params.padding} onExpandPadding={padding => setParams(p => ({ ...p, padding }))}
           onZoom={setZoom} onUpload={upload} onError={notify} label={t("图片编辑画布", "Image editing canvas")} />
         <div className="ms-canvas-label"><span className="ms-status-dot" />{t("自由画布", "FREE CANVAS")}<span> / </span>{draft.layers.length} {t("个图层", "layers")}</div>
@@ -489,40 +495,13 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
         </div>}
         {toolId && <div className={`ms-tool-panel ms-direct-dock ${["move", "inpaint"].includes(toolId) ? "ms-object-dock" : ""}`}><div className="ms-direct-title"><span>{zh ? tool.zh : tool.en}</span><button className="ms-icon" onClick={closeTool} title={t("关闭工具", "Close tool")}><X size={16} /></button></div>
           <div className="ms-direct-controls">
-            {tool.mask && mode === "mask" && <><span className="ms-direct-hint">{t("直接在图片上涂抹", "Paint directly on the image")}</span><label>{t("画笔", "Brush")}<input type="range" min="5" max="200" value={brush} onChange={e => setBrush(Number(e.target.value))} /><span>{brush}px</span></label><button className="ms-text-button" onClick={() => canvas.current.clearMask()}>{t("清除", "Clear")}</button></>}
+            {tool.mask && mode === "mask" && <><span className="ms-direct-hint">{t("用绿色画笔圈出要修改的区域，松手后自动闭合", "Outline the area in green; release to close the selection")}</span><label>{t("画笔", "Brush")}<input type="range" min="5" max="200" value={brush} onChange={e => setBrush(Number(e.target.value))} /><span>{brush}px</span></label><button className="ms-text-button" onClick={() => canvas.current.clearMask()}>{t("清除", "Clear")}</button></>}
             {toolId === "move" && <div className="ms-region-controls">
               <span className="ms-direct-hint">{objectSelection ? t("拖动目标区域移动物体，拖动角点缩放，顶部圆点旋转", "Drag the destination to move, corners to resize, top handle to rotate") : t("在图片上框住完整物体，松手即可调整目标位置", "Draw a rectangle around the complete object, then position its destination")}</span>
               {objectSelection && <><div className="ms-move-offset" data-source={JSON.stringify(params.moveSource)} data-target={JSON.stringify(params.moveTarget)}><span>ΔX {params.moveTarget.left - params.moveSource.left}px</span><span>ΔY {params.moveTarget.top - params.moveSource.top}px</span><button className="ms-button ms-reselect" disabled={busy} onClick={() => { canvas.current.clearMovePreview(); setObjectSelection(null); setMode("object-select-rect"); }}>{t("重新框选", "Select again")}</button></div>
               <input className="ms-direct-prompt" aria-label={t("移动补充说明", "Move instruction")} placeholder={t("补充说明（可选）", "Additional instruction (optional)")} value={prompt} onChange={e => setPrompt(e.target.value)} maxLength={4000} /></>}
             </div>}
-            {toolId === "inpaint" && <div className="ms-edit-method" role="group" aria-label={t("选区方式", "Selection method")}>
-              <button className={`ms-button ${mode === "mask" ? "active" : ""}`} disabled={busy} onClick={() => { canvas.current.clearMask(); setObjectSelection(null); setMode("mask"); }}>{t("画笔涂抹", "Paint area")}</button>
-              <button className={`ms-button ${mode !== "mask" ? "active" : ""}`} disabled={busy || !toolStatus?.objectSelectionAvailable} title={!toolStatus?.objectSelectionAvailable ? t("需配置物体分割服务", "Requires object segmentation") : ""} onClick={() => { canvas.current.clearMask(); setObjectSelection(null); setMode("object-select-rect"); }}>{t("识别物体", "Detect object")}</button>
-            </div>}
             {toolId === "inpaint" && mode === "mask" && <textarea className="ms-object-prompt" aria-label={t("局部修改描述", "Local edit instruction")} placeholder={t("描述涂抹区域要修改成什么…", "Describe how the painted area should change…")} value={prompt} onChange={e => setPrompt(e.target.value)} maxLength={4000} disabled={busy} />}
-            {toolId === "inpaint" && mode !== "mask" && <div className="ms-object-controls">
-              <div className="ms-object-steps"><span className={!objectSelection ? "active" : "done"}>1 · {t("选择物体", "Select object")}</span><span className={objectSelection ? "active" : ""}>2 · {t("移动或修改", "Move or edit")}</span></div>
-              {objectSelection ? <>
-                <div className="ms-selected-object">
-                  <Image unoptimized src={objectSelection.thumbnail} width={56} height={56} alt={t("已选中的物体", "Selected object")} />
-                  <span><strong>{t("物体已选中", "Object selected")}</strong><small>{toolId === "move" ? t("拖动选中的物体，预览新位置", "Drag the selected object to preview its position") : t("描述这个物体要变成什么样", "Describe how this object should change")}</small></span>
-                  <button className="ms-button ms-reselect" disabled={busy} onClick={() => { canvas.current.clearMovePreview(); setObjectSelection(null); setMode("object-select-rect"); setParams(p => ({ ...p, dx: 0, dy: 0 })); }}><MousePointer2 size={15} />{t("重新圈选", "Select again")}</button>
-                </div>
-                <div className="ms-object-actions" role="group" aria-label={t("物体操作", "Object action")}>
-                  <button className={`ms-button ${toolId === "move" ? "active" : ""}`} disabled={busy || !capabilities?.tools.find(item => item.id === "move")?.available} onClick={() => { chooseTool("move"); }}><Move size={16} />{t("移动物体", "Move object")}</button>
-                  <button className={`ms-button ${toolId === "inpaint" ? "active" : ""}`} disabled={busy || !capabilities?.tools.find(item => item.id === "inpaint")?.available} onClick={() => { setTool("inpaint"); setMode("object-edit"); setParams(p => ({ ...p, dx: 0, dy: 0 })); }}><WandSparkles size={16} />{t("修改物体 / 动作", "Edit object / pose")}</button>
-                </div>
-                {toolId === "move" ? <div className="ms-object-tip"><span>{t("半透明物体为位置预览；确认后修补旧位置，新结果与原图并排保留", "Translucent object previews its position. The complete result appears beside the original.")}</span><div className="ms-move-offset"><span>ΔX {params.dx}px</span><span>ΔY {params.dy}px</span></div></div> : <>
-                  <textarea className="ms-object-prompt" aria-label={t("物体修改描述", "Object edit instruction")} placeholder={t("例如：让猫抬起前爪；把这把椅子换成香蕉造型，保留坐着的人", "For example: raise the cat’s front paw; replace this chair with a banana-shaped chair, keeping the person seated")} value={prompt} onChange={e => setPrompt(e.target.value)} maxLength={4000} disabled={busy} />
-                  <label className="ms-edit-room">{t("动作空间", "Room for new pose")}<input aria-label={t("动作空间", "Room for new pose")} type="range" min="0.05" max="0.5" step="0.05" value={params.editPadding} disabled={busy} onChange={e => setParams(p => ({ ...p, editPadding: Number(e.target.value) }))} /><span>{Math.round(params.editPadding * 100)}%</span></label>
-                  <span className="ms-object-tip">{t("白色虚线内可生成新动作；框外保持原图", "New poses can extend within the white boundary; outside it stays unchanged")}</span>
-                </>}
-              </> : <>
-                <span className="ms-direct-hint" role="status" aria-live="polite">{mode === "object-preparing" ? <><LoaderCircle size={16} className="ms-spin" />{(selectionPhase === "preview" ? t("物体已识别，正在加载预览…", "Object detected. Loading preview…") : t("正在识别完整物体…", "Detecting the complete object…"))}</> : t("👇 点击物体，或用框选/套索圈出物体（松手后自动识别边缘）", "👇 Click an object, or draw a box/lasso around it (auto-detects edges)")}</span>
-                <div className="ms-segment-modes">{[["rect", Crop, t("框选", "Rectangle")], ["lasso", Scissors, t("套索", "Lasso")]].map(([shape, Icon, title]) => <button key={shape} className={`ms-button ${mode === `object-select-${shape}` ? "active" : ""}`} onClick={() => { canvas.current.clearMovePreview(); setObjectSelection(null); setMode(`object-select-${shape}`); }}><Icon size={15} />{title}</button>)}</div>
-                {mode === "object-preparing" && <button className="ms-button ms-reselect" onClick={() => { canvas.current.clearMovePreview(); setMode("object-select-rect"); }}>{t("取消识别，重新选择", "Cancel and select again")}</button>}
-              </>}
-            </div>}
             {toolId === "crop" && <CropControls value={params} onChange={value => setParams(p => ({ ...p, ...value }))} width={selected.pixelWidth} height={selected.pixelHeight} zh={zh} />}
             {toolId === "expand" && <><span className="ms-direct-hint">{t("拖动图片外侧边界扩展画布", "Drag the outer handles to expand the canvas")}</span><div className="ms-edge-readout">{Object.entries(typeof params.padding === "number" ? { left: params.padding, right: params.padding, top: params.padding, bottom: params.padding } : params.padding).map(([key, value]) => <span key={key}>{key[0].toUpperCase()} {value}</span>)}</div><button className="ms-text-button" onClick={() => setParams(p => ({ ...p, padding: { left: 256, right: 256, top: 256, bottom: 256 } }))}>{t("重置边界", "Reset edges")}</button></>}
             {toolId === "upscale" && <label>{t("放大", "Scale")}<select value={params.scale} onChange={e => setParams(p => ({ ...p, scale: Number(e.target.value) }))}><option value="2">2×</option><option value="4">4×</option></select></label>}

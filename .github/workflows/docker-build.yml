@@ -117,6 +117,8 @@ jobs:
           platforms: ${{ matrix.platform }}
           push: true
           tags: ${{ env.IMAGE }}:${{ env.BUILD_TAG }}-${{ matrix.arch }}
+          build-args: |
+            NEXT_DEPLOYMENT_ID=${{ env.BUILD_TAG }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=modelshot-${{ matrix.arch }}
           cache-to: type=gha,scope=modelshot-${{ matrix.arch }},mode=max

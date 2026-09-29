@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { History, FolderOpen, X } from "lucide-react";
-import { Link } from "@/i18n/navigation";
+import Link from "@/components/ui/NavigationLink";
 import { api } from "@/lib/client-api";
 import "./recent-projects.css";
 export default function RecentProjects({ zh, onChoose, disabled }) {

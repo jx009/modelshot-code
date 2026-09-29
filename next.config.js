@@ -15,6 +15,7 @@ if (signingEnabled) {
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  deploymentId: process.env.NEXT_DEPLOYMENT_ID || undefined,
   // c2pa-node 含 napi 原生二进制，不能打包进 ESM chunk，需作为外部依赖
   serverExternalPackages: signingEnabled ? ["c2pa-node"] : [],
 

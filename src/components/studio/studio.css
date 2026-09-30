@@ -132,3 +132,11 @@
 @media(max-width:760px){.ms-topbar{height:62px;padding:0 12px;gap:8px}.ms-body{height:calc(100dvh - 62px);padding:8px;display:block}.ms-brand{font-size:15px}.ms-brand>svg{display:none}.ms-project-trigger{min-width:0;max-width:150px;font-size:12px}.ms-chat{border-radius:24px}.ms-context-toolbar .ms-context-scroll>button,.ms-context-toolbar .ms-context-scroll>a{font-size:12px;padding:7px}.ms-bottom-toolbar{bottom:12px;gap:4px;padding:6px;max-width:calc(100% - 20px)}.ms-bottom-toolbar>.ms-icon{width:32px;height:32px}.ms-zoom{top:52px;right:12px;bottom:auto}.ms-studio .ms-zoom input{width:44px}.ms-canvas-space:has(.ms-editor) .ms-zoom{top:56px;right:12px}.ms-editor{z-index:6}.ms-mobile-toggle{font-size:11px!important}.ms-canvas-top-right{top:8px}.ms-canvas-label{max-width:40%;overflow:hidden;white-space:nowrap}}
 @media(prefers-reduced-motion:reduce){.ms-studio *{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 @media(max-width:760px){.ms-mobile-toggle{right:132px}}
+
+/* The canvas is a dark workspace even when the surrounding site is light.
+   Native selects, popup menus and dialogs must use that same color scheme. */
+.ms-studio { color-scheme: dark; }
+.ms-studio .ms-model-pill select { appearance: none; border-radius: 0; }
+.ms-studio .ms-model-pill > svg { flex-shrink: 0; pointer-events: none; }
+.ms-studio select:focus-visible { outline: 2px solid var(--secondary-text); outline-offset: 2px; }
+.ms-studio select:disabled { color: var(--secondary-text); }

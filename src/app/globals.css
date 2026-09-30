@@ -21,6 +21,7 @@
 
 /* ══════════ 第一层 · 原始色板（深色 = 品牌默认 — 避免深色用户加载瞬间白闪）══════════ */
 :root {
+  color-scheme: dark;
   --selection-ink: #30ed19;
   /* Fixed artboard colors belong to the artwork, independent of UI theme. */
   --art-paper: #ece9e0;
@@ -105,6 +106,7 @@
 
 /* ══════════ 第一层 · 原始色板（浅色 = 覆盖块）══════════ */
 [data-theme="light"] {
+  color-scheme: light;
   /* 表面 */
   --bg-page: #F6F6F3;            /* 暖纸白，禁纯白 */
   --bg-card: #FFFFFF;
@@ -138,6 +140,21 @@
   --ambient-glow-color: rgba(122, 143, 28, 0.05);
   --noise-opacity: 0.02;
   --btn-highlight: rgba(255, 255, 255, 0.45);
+}
+
+/* Native popups need an opaque surface; a transparent select can otherwise
+   inherit light text while the operating system draws a white menu. */
+select option,
+select optgroup {
+  background-color: var(--bg-elevated);
+  color: var(--primary-text);
+}
+select option:checked {
+  background-color: var(--bg-card-hover);
+  color: var(--primary-text);
+}
+select option:disabled {
+  color: var(--secondary-text);
 }
 
 /* dark: 变体（深色为 :root 默认，浅色为 html 显式覆盖 → 从 html 判定，避免子元素误匹配）*/

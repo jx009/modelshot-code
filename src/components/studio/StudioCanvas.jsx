@@ -121,6 +121,7 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
   const color = "#ff9a36";
 
   const drawing = useRef(false), cropStart = useRef(null);
+  const [drawingActive, setDrawingActive] = useState(false);
   const expansionTarget = useRef(null);
   const selection = layers.find(l => l.id === selectedId);
   const selectionRequest = useRef(null), operation = useRef(0);
@@ -247,6 +248,7 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
     }
     const p = point(); if (!p) return;
     drawing.current = true;
+    setDrawingActive(true);
     if (mode === "crop") {
       cropStart.current = p;
       startCrop(p); onCrop(null);
@@ -291,6 +293,7 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
   async function finishDrawing() {
     if (panning || !drawing.current) return;
     drawing.current = false;
+    setDrawingActive(false);
     endStroke();
     if (!["object-select-rect", "object-select-lasso"].includes(mode) || !activeMove.current) return;
     const shape = { ...activeMove.current };
@@ -316,10 +319,24 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
       }
     }
   }
+  // A stroke belongs to the pointer, not to the canvas rectangle. The editor
+  // card can sit over the lower edge of the artwork, so finish only when the
+  // pointer is released (including when release happens over that card).
+  useEffect(() => {
+    const release = () => { if (drawing.current) finishDrawing(); };
+    document.addEventListener("mouseup", release);
+    document.addEventListener("pointerup", release);
+    document.addEventListener("touchend", release);
+    return () => {
+      document.removeEventListener("mouseup", release);
+      document.removeEventListener("pointerup", release);
+      document.removeEventListener("touchend", release);
+    };
+  });
   const editing = selection?.type === "image" && ["mask", "crop", "move", "object-edit", "object-preparing", "object-select-rect", "object-select-lasso", "expand"].includes(mode);
   const cursorStyle = getCursorForMode(panning ? "hand" : mode, brushSize, selectionInk);
 
-  return <div ref={container} className="ms-stage" data-selection-frame={selection ? JSON.stringify({ left: camera.x + selection.x * camera.scale, top: camera.y + selection.y * camera.scale, width: selection.width * camera.scale, height: selection.height * camera.scale }) : undefined} data-mode={mode} data-panning={panning} data-camera-scale={camera.scale} data-camera={JSON.stringify(camera)} data-crop={JSON.stringify({ rect: cropRect, shape: cropShape, grid: cropGrid })} aria-label={label} style={{ cursor: cursorStyle }}
+  return <div ref={container} className={`ms-stage ${drawingActive ? "is-drawing" : ""}`} data-selection-frame={selection ? JSON.stringify({ left: camera.x + selection.x * camera.scale, top: camera.y + selection.y * camera.scale, width: selection.width * camera.scale, height: selection.height * camera.scale }) : undefined} data-mode={mode} data-panning={panning} data-camera-scale={camera.scale} data-camera={JSON.stringify(camera)} data-crop={JSON.stringify({ rect: cropRect, shape: cropShape, grid: cropGrid })} aria-label={label} style={{ cursor: cursorStyle }}
     onMouseDownCapture={e => {
       if (e.button !== 1) return;
       e.preventDefault(); e.stopPropagation();
@@ -341,7 +358,7 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
       }}
       onMouseDown={handleMouseDown} onTouchStart={handleMouseDown}
       onMouseMove={handleMouseMove} onTouchMove={handleMouseMove}
-      onMouseUp={finishDrawing} onTouchEnd={finishDrawing} onMouseLeave={finishDrawing}>
+      onMouseUp={finishDrawing} onTouchEnd={finishDrawing}>
       <Layer ref={artwork}>
         {layers.filter(l => l.visible).map(item => <Picture key={item.id} item={item} shouldLoad={camera.x + item.x * camera.scale + Math.max(item.width, item.height) * camera.scale > -200 && camera.y + item.y * camera.scale + Math.max(item.width, item.height) * camera.scale > -200 && camera.x + item.x * camera.scale - Math.max(item.width, item.height) * camera.scale < dimensions.width + 200 && camera.y + item.y * camera.scale - Math.max(item.width, item.height) * camera.scale < dimensions.height + 200} selected={selectedId === item.id} interactive={!panning && mode === "select"} accent={color} onError={onError} onPreview={() => { if (!editing && item.type === "image") onPreview?.(item.assetId); }} onSelect={() => { if (!panning && !editing) onSelect(item.id); }} onChange={patch => { try { onChange(layers.map(l => l.id === item.id ? { ...l, ...patch } : l)); } catch (e) { onError(e); } }} />)}
       </Layer>

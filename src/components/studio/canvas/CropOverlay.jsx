@@ -21,14 +21,14 @@ function shapeShade(context, rect, shape, width, height) {
     canvas.bezierCurveTo(x(65), y(-10), x(100), y(-2), x(100), y(29));
     canvas.bezierCurveTo(x(100), y(60), x(60), y(84), x(50), y(96)); canvas.closePath();
   }
-  canvas.fillStyle = "rgba(8, 9, 13, 0.9)";
+  canvas.fillStyle = "rgba(8, 9, 13, 0.97)";
   canvas.fill("evenodd");
   canvas.restore();
 }
 
 function RectShade({ rect, width, height }) {
   if (!Number.isFinite(width) || !Number.isFinite(height)) return null;
-  const shade = { fill: "#08090d", opacity: 0.9, listening: false };
+  const shade = { fill: "#08090d", opacity: 0.97, listening: false };
   return <>
     <Rect x={0} y={0} width={width} height={Math.max(0, rect.top)} {...shade} />
     <Rect x={0} y={rect.top + rect.height} width={width} height={Math.max(0, height - rect.top - rect.height)} {...shade} />

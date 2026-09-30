@@ -9,7 +9,6 @@ import { editRegion } from "@/lib/studio/selection-geometry";
 import { useCanvasState } from "./canvas/hooks/useCanvasState";
 import { useDrawingState } from "./canvas/hooks/useDrawingState";
 import { useSelectionState } from "./canvas/hooks/useSelectionState";
-import { useImageColors } from "./canvas/hooks/useImageColors";
 import { loadImage } from "@/lib/studio/image-processor";
 import { imageUrl, previewUrl } from "@/lib/studio/image-url";
 import { getCursorForMode } from "@/lib/studio/cursor-generator";
@@ -50,7 +49,7 @@ function Picture({ item, shouldLoad = true, selected, onSelect, onChange, intera
     onTransformEnd: () => { const node = shape.current; const width = Math.max(16, node.width() * node.scaleX()), height = Math.max(16, node.height() * node.scaleY()); node.scaleX(1); node.scaleY(1); onChange({ x: node.x(), y: node.y(), width, height, rotation: node.rotation() }); } };
   return <>
     {item.type === "image" ? <CanvasImage {...props} image={previewImage || image} /> : item.type === "text" ? <Text {...props} text={item.text || ""} fontSize={item.fontSize || 36} fill={item.fill || accent} fontFamily="Arial, sans-serif" /> : <Group {...props}><Rect width={item.width} height={item.height} fill={accent} opacity={0.13} cornerRadius={12} /><Text text="▶  VIDEO" width={item.width} align="center" y={item.height / 2 - 10} fill={accent} fontSize={22} /></Group>}
-    {selected && interactive && <Transformer ref={transformer} flipEnabled={false} borderStroke={accent} anchorStroke={accent} anchorFill={accent} anchorSize={8} anchorCornerRadius={4} padding={3} boundBoxFunc={(old, next) => next.width < 16 || next.height < 16 || next.width > 8192 || next.height > 8192 ? old : next} />}
+    {selected && interactive && <Transformer ref={transformer} flipEnabled={false} borderStroke={accent} anchorStroke={accent} anchorFill="#fff" anchorSize={9} anchorCornerRadius={4} padding={3} boundBoxFunc={(old, next) => next.width < 16 || next.height < 16 || next.width > 8192 || next.height > 8192 ? old : next} />}
   </>;
 }
 
@@ -106,8 +105,7 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
   const panning = requestedPanning || middleHeld;
   const container = useRef(null), stage = useRef(null), artwork = useRef(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
-  const [themeColor, setColor] = useState("#D9F154");
-  const [selectionInk, setSelectionInk] = useState("#30ed19");
+  const selectionInk = "#30ed19";
 
   // Use custom hooks for state management
   const { camera, updateCamera, zoom, fit, fitExpansion } = useCanvasState(dimensions, layers);
@@ -118,8 +116,9 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
     startMoveRect, updateMoveRect, startMoveLasso, addLassoPoint,
     setMovePreviewData: setMovePreview, setMoveMaskData, clearMove, clearAll: clearSelection
   } = useSelectionState();
-  const { colors, primaryColor, applyColors } = useImageColors(layers, selectedId);
-  const color = primaryColor || themeColor;
+  // Selection chrome must contrast with every image and must not recolor
+  // the application (or download an original) whenever geometry changes.
+  const color = "#ff9a36";
 
   const drawing = useRef(false), cropStart = useRef(null);
   const expansionTarget = useRef(null);
@@ -129,17 +128,9 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
   useEffect(() => {
     const observer = new ResizeObserver(([entry]) => setDimensions({ width: entry.contentRect.width, height: entry.contentRect.height }));
     observer.observe(container.current);
-    setColor(getComputedStyle(container.current).getPropertyValue("--primary").trim() || "#D9F154");
-    setSelectionInk(getComputedStyle(container.current).getPropertyValue("--selection-ink").trim() || "#30ed19");
     return () => observer.disconnect();
   }, []);
 
-  // Auto-apply dynamic colors when primaryColor changes
-  useEffect(() => {
-    if (primaryColor) {
-      applyColors();
-    }
-  }, [primaryColor, applyColors]);
   useEffect(() => { onZoom(camera.scale); }, [camera.scale, onZoom]);
   useEffect(() => { onCamera?.(camera); }, [camera, onCamera]);
   useEffect(() => { if (selection) onViewport?.({ left: camera.x + selection.x * camera.scale, top: camera.y + selection.y * camera.scale, width: selection.width * camera.scale, height: selection.height * camera.scale, viewportWidth: dimensions.width, viewportHeight: dimensions.height }); }, [camera, selection, dimensions, onViewport]);

@@ -10,7 +10,7 @@
 .mp-filters button[aria-pressed=true] { background:var(--bg-elevated); color:var(--primary-text); }
 .mp-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:28px 22px; }
 .mp-new { aspect-ratio:16/9; border-radius:18px; background:radial-gradient(ellipse at 95% 100%,#69a6a5,transparent 62%),radial-gradient(ellipse at 5% 100%,#ff9020,transparent 70%),linear-gradient(120deg,#ff355e,#d731b4); border:1px solid var(--divider); display:flex; align-items:center; justify-content:center; flex-direction:column; gap:10px; color:white; text-decoration:none; }
-.mp-new>span { width:48px; height:48px; border-radius:50%; display:grid; place-items:center; background:var(--bg-elevated); transition:transform 150ms; }
+.mp-new>span { width:48px; height:48px; border-radius:50%; display:grid; place-items:center; background:var(--bg-elevated); color:var(--primary-text); transition:transform 150ms; }
 .mp-new:hover>span { transform:scale(1.08); }
 .mp-new strong { font-size:14px; font-weight:500; }
 .mp-cover { display:grid; place-items:center; position:relative; aspect-ratio:16/9; overflow:hidden; background:var(--bg-elevated); border-radius:18px; color:var(--tertiary-text); }
@@ -34,7 +34,7 @@
 .mp-skeleton { aspect-ratio:16/9; border-radius:18px; background:var(--bg-elevated); animation:mp-pulse 1.4s ease-in-out infinite; }
 .mp-empty { display:flex; align-items:center; justify-content:center; flex-direction:column; gap:16px; padding:40px; color:var(--secondary-text); font-size:14px; }
 .mp-more { display:flex; gap:8px; align-items:center; margin:32px auto; padding:9px 22px; border:1px solid var(--divider); border-radius:12px; background:var(--bg-card); color:var(--primary-text); }
-.mp-error { color:var(--error-text,#cc5555); font-size:13px; }
+.mp-error { color:var(--danger); font-size:13px; }
 @keyframes mp-pulse { 50% { opacity:.45; } }
 @media(max-width:600px) { .mp-library { padding:25px 18px 80px; } .mp-heading h1 { font-size:21px; } .mp-grid { grid-template-columns:1fr; } .mp-search input,.mp-search:hover input,.mp-search:focus-within input { width:120px; } }
 @media(prefers-reduced-motion:reduce) { .mp-library * { animation:none!important; transition:none!important; } }

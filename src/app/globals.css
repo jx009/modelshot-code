@@ -16,7 +16,7 @@
    border-divider、bg-primary、text-success 等工具类）。
    原始色板仅允许存在于本文件的 :root / [data-theme] 两块中。
    深色：酸性黄绿 #D9F154（秀场感）
-   浅色：橄榄绿 #7A8F1C（黄绿在白底对比度仅 1.4:1，必须压暗）
+   浅色：橄榄绿 #596B13（黄绿在白底对比度仅 1.4:1，必须压暗）
    ══════════════════════════════════════════════════════════ */
 
 /* ══════════ 第一层 · 原始色板（深色 = 品牌默认 — 避免深色用户加载瞬间白闪）══════════ */
@@ -51,8 +51,8 @@
 
   /* 文字（暖白系，禁纯白）*/
   --primary-text: #FAFAF8;
-  --secondary-text: #8A8A93;
-  --tertiary-text: #5C5C64;
+  --secondary-text: #A1A1AA;
+  --tertiary-text: #92929B;
 
   /* 语义 */
   --success: #5DCAA5;
@@ -117,15 +117,15 @@
   --divider-strong: #C8C8C2;
 
   /* 强调（浅色压暗为橄榄绿——黄绿在白底对比度仅 1.4:1）*/
-  --primary: #7A8F1C;
-  --primary-hover: #697F17;
+  --primary: #596B13;
+  --primary-hover: #556612;
   --primary-muted: rgba(122, 143, 28, 0.10);
   --primary-btn-text: #FCFCFA;
 
   /* 文字 */
   --primary-text: #1A1A1C;
   --secondary-text: #5F5F66;
-  --tertiary-text: #8E8E94;
+  --tertiary-text: #6B6B73;
 
   /* 语义（浅色下加深保对比度）*/
   --success: #22785A;
@@ -155,6 +155,13 @@ select option:checked {
 }
 select option:disabled {
   color: var(--secondary-text);
+}
+
+/* Placeholder copy is still instructional text, not a disabled control. */
+input::placeholder,
+textarea::placeholder {
+  color: var(--tertiary-text);
+  opacity: 1;
 }
 
 /* dark: 变体（深色为 :root 默认，浅色为 html 显式覆盖 → 从 html 判定，避免子元素误匹配）*/

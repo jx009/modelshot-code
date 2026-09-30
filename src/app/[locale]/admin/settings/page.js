@@ -152,7 +152,7 @@ export default function AdminSettings() {
                   <label className="block text-xs text-secondary-text">
                     {f.label}
                     {c && (
-                      <span className={`ml-2 font-medium ${c.source === "db" ? "text-success" : c.source === "env" ? "text-warning" : "text-secondary-text/60"}`}>
+                      <span className={`ml-2 font-medium ${c.source === "db" ? "text-success" : c.source === "env" ? "text-warning" : "text-tertiary-text"}`}>
                         {c.source === "db" ? `DB：${c.display || "已配置"}` : c.source === "env" ? `env：${c.display}` : "未配置"}
                       </span>
                     )}

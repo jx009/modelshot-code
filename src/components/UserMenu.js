@@ -101,7 +101,7 @@ export default function UserMenu({ user }) {
           <div className="h-px bg-divider/50 my-1 mx-1" />
 
           {/* 主题：跟随系统（低频设置，与主切换按钮互补） */}
-          <p className="px-3 py-1 text-[10px] uppercase tracking-[0.14em] text-secondary-text/70 font-medium">{t("themeMode")}</p>
+          <p className="px-3 py-1 text-[10px] uppercase tracking-[0.14em] text-tertiary-text font-medium">{t("themeMode")}</p>
           <button
             role="menuitemradio"
             aria-checked={isSystem}

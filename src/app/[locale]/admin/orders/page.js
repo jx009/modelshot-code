@@ -83,7 +83,7 @@ export default function AdminOrders() {
                     <td className="px-4 py-2.5 text-primary-text">{o.User?.email || "—"}</td>
                     <td className="px-4 py-2.5">
                       <span className="text-secondary-text">{o.type === "subscription" ? "订阅" : "积分包"}</span>
-                      <span className="text-secondary-text/70 ml-1">{o.planId}</span>
+                      <span className="text-tertiary-text ml-1">{o.planId}</span>
                     </td>
                     <td className="px-4 py-2.5 text-right text-primary-text tabular-nums">${o.amount.toFixed(2)}</td>
                     <td className="px-4 py-2.5">

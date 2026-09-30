@@ -16,7 +16,7 @@ export default function Filmstrip({ items = [], selectedId, onSelect, emptyLabel
   return (
     <div className="h-[88px] flex-shrink-0 border-t border-divider bg-bg-card/40 flex items-center px-4 gap-2.5 overflow-x-auto scrollbar-subtle">
       {items.length === 0 ? (
-        <span className="text-xs text-secondary-text/60 px-2">{emptyLabel}</span>
+        <span className="text-xs text-tertiary-text px-2">{emptyLabel}</span>
       ) : (
         items.map(item => {
           const selected = item.id === selectedId;

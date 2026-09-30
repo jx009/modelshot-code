@@ -35,7 +35,7 @@ export default function LocaleSwitcher({ compact = false }) {
           className={clsx(
             "px-2.5 rounded-full font-bold transition-colors cursor-pointer",
             compact ? "text-[10px] py-0.5" : "text-[11px] py-1",
-            locale === l.id ? "bg-primary/15 text-primary" : "text-secondary-text hover:text-primary-btn-text"
+            locale === l.id ? "bg-primary/15 text-primary" : "text-secondary-text hover:text-primary-text hover:bg-bg-card-hover"
           )}
         >
           {l.label}

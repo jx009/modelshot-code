@@ -99,7 +99,7 @@
 .ms-canvas-top-right{right:76px}@media(max-width:760px){.ms-mobile-toggle{right:76px}.ms-image-menu,.ms-tool-panel,.ms-layers{top:102px}}
 
 /* Workspace chrome: one canvas surface with a quiet floating conversation. */
-.ms-studio{--primary:#f3a45e;--primary-hover:#ffc084;--primary-muted:#f3a45e18;--primary-btn-text:#171717;--primary-text:#eee;--secondary-text:#aaa;--tertiary-text:#777;--bg-page:#0e0e0e;--bg-canvas:#0e0e0e;--bg-card:#121212;--bg-elevated:#202020;--bg-card-hover:#2b2b2b;--divider:#ffffff12;--divider-strong:#ffffff26;--glass-bg:#202020ed;--glass-border:#ffffff0a;perspective:none}
+.ms-studio{--primary:#f3a45e;--primary-hover:#ffc084;--primary-muted:#f3a45e18;--primary-btn-text:#171717;--primary-text:#eee;--secondary-text:#aaa;--tertiary-text:#999;--success:#5DCAA5;--warning:#EF9F27;--danger:#F0695A;--bg-page:#0e0e0e;--bg-canvas:#0e0e0e;--bg-card:#121212;--bg-elevated:#202020;--bg-card-hover:#2b2b2b;--divider:#ffffff12;--divider-strong:#ffffff26;--glass-bg:#202020ed;--glass-border:#ffffff0a;perspective:none}
 .ms-studio button,.ms-studio a{transition:background 150ms,color 150ms,opacity 150ms,transform 75ms}
 .ms-studio button:active:not(:disabled){scale:.97}
 .ms-studio input:focus-visible,.ms-studio textarea:focus-visible,.ms-studio select:focus-visible{outline:1px solid #ffffff4d;outline-offset:0;box-shadow:none}

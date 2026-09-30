@@ -4,7 +4,8 @@ import { signIn, useSession, getProviders } from "next-auth/react";
 import { ArrowRight, Info, Key, Mail } from "lucide-react";
 import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import toast, { Toaster } from "react-hot-toast";
+import toast from "react-hot-toast";
+import ThemedToaster from "@/components/ui/ThemedToaster";
 import ContentShell from "@/components/ContentShell";
 import { useTranslations } from "next-intl";
 import { safeNext } from "@/lib/client-api";
@@ -146,7 +147,7 @@ function LoginContent() {
 
   return (
     <ContentShell className="items-center justify-center px-6 select-none">
-      <Toaster position="top-right" />
+      <ThemedToaster />
       <div className="relative bg-bg-card border border-divider w-full max-w-md rounded-xl p-8 space-y-6 shadow-2xl animate-scale-up">
         <div className="flex flex-col items-center text-center space-y-3">
           <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center text-2xl text-primary font-medium shadow-md shadow-primary/15">

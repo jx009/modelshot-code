@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { Copy, LoaderCircle, Users, X } from "lucide-react";
-import toast, { Toaster } from "react-hot-toast";
+import toast from "react-hot-toast";
+import ThemedToaster from "@/components/ui/ThemedToaster";
 import ContentShell from "@/components/ContentShell";
 import { useTranslations } from "next-intl";
 
@@ -59,7 +60,7 @@ export default function InvitePage() {
 
   return (
     <ContentShell className="px-6 py-10">
-      <Toaster position="top-right" />
+      <ThemedToaster />
       <div className="max-w-content mx-auto w-full space-y-6">
         <div>
           <h1 className="font-display text-2xl tracking-[-0.02em] text-primary-text">{t("title")}</h1>

@@ -165,7 +165,7 @@ export default function AdminUsers() {
                           : <span className="w-6 h-6 rounded-full bg-bg-page border border-divider flex items-center justify-center"><User size={11} className="text-secondary-text" /></span>}
                         <div>
                           <div className="text-primary-text">{u.name || "—"}</div>
-                          <div className="text-secondary-text/70">{u.email}</div>
+                          <div className="text-tertiary-text">{u.email}</div>
                         </div>
                       </div>
                     </td>

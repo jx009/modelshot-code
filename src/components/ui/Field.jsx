@@ -13,11 +13,11 @@ export default function Field({ label, hint, required, className, children }) {
         </label>
       )}
       {children}
-      {hint && <p className="text-xs text-secondary-text/70 mt-1.5">{hint}</p>}
+      {hint && <p className="text-xs text-tertiary-text mt-1.5">{hint}</p>}
     </div>
   );
 }
 
 /** 统一输入/选择控件样式 */
 export const inputCls =
-  "w-full bg-bg-page border border-divider rounded-lg px-3.5 py-2.5 text-xs text-primary-text placeholder:text-secondary-text/50 focus:outline-none focus:border-primary transition-colors cursor-pointer";
+  "w-full bg-bg-page border border-divider rounded-lg px-3.5 py-2.5 text-xs text-primary-text placeholder:text-tertiary-text focus:outline-none focus:border-primary transition-colors cursor-pointer";

@@ -26,7 +26,7 @@
 .ms-editor-reference small { display: block; font-size: 10px; margin-top: 4px; }
 .ms-studio .ms-editor-prompt { display: block; width: 100%; min-height: 68px; max-height: 150px; resize: vertical; margin: 0; padding: 11px; border: 1px solid transparent; border-radius: 12px; background: var(--editor-input); color: var(--editor-text); font-size: 13px; line-height: 1.65; transition: border-color 150ms, background 150ms; }
 .ms-studio .ms-editor-prompt:focus { outline: none; border-color: #ffffff3d; background: #292929; box-shadow: none; }
-.ms-studio .ms-editor-prompt::placeholder { color: #868686; }
+.ms-studio .ms-editor-prompt::placeholder { color: var(--editor-muted); opacity: 1; }
 .ms-editor-brush { display: flex; align-items: center; justify-content: center; gap: 9px; font-size: 12px; }
 .ms-studio .ms-editor-brush input { flex: 1; min-width: 30px; max-width: 130px; width: auto; accent-color: #fff; }
 .ms-editor-brush output { min-width: 34px; font-size: 12px; color: #ddd; font-variant-numeric: tabular-nums; }

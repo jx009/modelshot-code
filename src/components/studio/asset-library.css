@@ -23,7 +23,7 @@
 .ml-actions select { min-width:0; max-width:calc(100% - 25px); border:0; background:var(--bg-elevated); color:var(--secondary-text); font-size:11px; border-radius:5px; }
 .ml-actions button { display:flex; align-items:center; gap:5px; border:0; background:none; color:var(--secondary-text); font-size:12px; }
 .ml-empty { min-height:200px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:15px; color:var(--tertiary-text); font-size:14px; }
-.ml-note { color:var(--secondary-text); font-size:12px; margin-bottom:18px; }.ml-error { color:var(--error-text,#cc5555); font-size:12px; }
+.ml-note { color:var(--secondary-text); font-size:12px; margin-bottom:18px; }.ml-error { color:var(--danger); font-size:12px; }
 .ml-more { display:block; margin:24px auto; padding:9px 18px; background:var(--bg-elevated); border:0; border-radius:9px; color:var(--primary-text); }
 .ml-grid form input { width:100%; background:var(--bg-elevated); color:var(--primary-text); border:1px solid var(--divider); border-radius:5px; }
 .ml-library button:active { transform:scale(.97); transition:transform 75ms; }

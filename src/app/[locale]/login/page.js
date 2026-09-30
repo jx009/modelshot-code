@@ -26,7 +26,7 @@ function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const rawNext = searchParams.get("callbackUrl") || searchParams.get("next") || "";
-  const next = safeNext(rawNext && rawNext !== "/" ? rawNext : "/studio");
+  const next = safeNext(rawNext && rawNext !== "/" ? rawNext : "/studio-v2");
   const refCode = searchParams.get("ref") || ""; // 分销邀请码（注册时绑定，一次性）
 
   const [activeTab, setActiveTab] = useState("google"); // "google" | "email"

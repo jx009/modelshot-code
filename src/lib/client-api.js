@@ -32,6 +32,6 @@ export async function api(url, { method = "GET", body, key, signal } = {}) {
 }
 
 export const terminalStatus = status => ["succeeded", "failed", "cancelled", "partial_success"].includes(status);
-export function safeNext(value, fallback = "/studio") {
+export function safeNext(value, fallback = "/studio-v2") {
   return typeof value === "string" && value.startsWith("/") && !value.startsWith("//") && !/[\\\x00-\x20]/.test(value) ? value : fallback;
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Aperture, Camera, Images, CreditCard, Coins, Menu, X, LogOut } from "lucide-react";
+import { Aperture, CreditCard, Coins, Menu, X, LogOut } from "lucide-react";
 import { useSession, signOut } from "next-auth/react";
 import { useTranslations } from "next-intl";
 import { Link, usePathname } from "@/i18n/navigation";
@@ -18,8 +18,6 @@ export default function Navbar() {
   const [open, setOpen] = useState(false);
   if (path === "/admin" || path.startsWith("/admin/") || path === "/" || path === "/projects" || path === "/assets" || path === "/commerce" || path === "/explore" || path.startsWith("/explore/") || path === "/studio-v2") return null;
   const links = [
-    { href: "/studio", label: tn("studio"), icon: Camera },
-    { href: "/gallery", label: t("gallery"), icon: Images },
     { href: "/pricing", label: tn("pricing"), icon: CreditCard },
     { href: "/account", label: f("account"), icon: Coins },
   ];

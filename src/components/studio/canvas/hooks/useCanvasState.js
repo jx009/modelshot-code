@@ -1,15 +1,47 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 
 export function useCanvasState(dimensions, layers) {
   const [camera, setCamera] = useState({ x: 30, y: 20, scale: 1 });
+  const currentCamera = useRef(camera), animation = useRef(0);
+  const [cameraMoving, setCameraMoving] = useState(false);
+  const getCamera = useCallback(() => currentCamera.current, []);
+  const stopCamera = useCallback(() => {
+    cancelAnimationFrame(animation.current);
+    animation.current = 0;
+    setCameraMoving(false);
+  }, []);
+  const commitCamera = useCallback(next => {
+    setCamera(current => {
+      const value = typeof next === "function" ? next(current) : next;
+      currentCamera.current = value;
+      return value;
+    });
+  }, []);
+  const animateCamera = useCallback(target => {
+    stopCamera();
+    const start = { ...currentCamera.current };
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) { commitCamera(target); return; }
+    const started = performance.now();
+    setCameraMoving(true);
+    const tick = now => {
+      const t = Math.min(1, (now - started) / 280), ease = 1 - (1 - t) ** 3;
+      commitCamera({ x: start.x + (target.x - start.x) * ease, y: start.y + (target.y - start.y) * ease, scale: start.scale + (target.scale - start.scale) * ease });
+      if (t < 1) animation.current = requestAnimationFrame(tick);
+      else { animation.current = 0; setCameraMoving(false); }
+    };
+    animation.current = requestAnimationFrame(tick);
+  }, [commitCamera, stopCamera]);
+  useEffect(() => () => cancelAnimationFrame(animation.current), []);
 
   const updateCamera = useCallback((next) => {
-    setCamera((current) => ({ ...current, ...next }));
-  }, []);
+    stopCamera();
+    commitCamera((current) => ({ ...current, ...next }));
+  }, [commitCamera, stopCamera]);
 
   const zoom = useCallback(
     (factor) => {
-      setCamera((c) => {
+      stopCamera();
+      commitCamera((c) => {
         const scale = Math.min(4, Math.max(0.08, c.scale * factor));
         const center = { x: dimensions.width / 2, y: dimensions.height / 2 };
         return {
@@ -19,14 +51,14 @@ export function useCanvasState(dimensions, layers) {
         };
       });
     },
-    [dimensions]
+    [dimensions, commitCamera, stopCamera]
   );
 
   const fit = useCallback(
     () => {
       const visible = layers.filter((l) => l.visible);
       if (!visible.length) {
-        setCamera({ x: 30, y: 20, scale: 1 });
+        updateCamera({ x: 30, y: 20, scale: 1 });
         return;
       }
       const left = Math.min(...visible.map((l) => l.x));
@@ -43,13 +75,13 @@ export function useCanvasState(dimensions, layers) {
           (dimensions.height - 180) / height
         )
       );
-      setCamera({
+      updateCamera({
         scale,
         x: (dimensions.width - width * scale) / 2 - left * scale,
         y: (dimensions.height - height * scale) / 2 - top * scale,
       });
     },
-    [dimensions, layers]
+    [dimensions, layers, updateCamera]
   );
 
   const fitExpansion = useCallback(
@@ -73,13 +105,13 @@ export function useCanvasState(dimensions, layers) {
           (dimensions.height - 180) / height
         )
       );
-      setCamera({
+      updateCamera({
         scale,
         x: (dimensions.width - width * scale) / 2 - left * scale,
         y: (dimensions.height - height * scale) / 2 - top * scale,
       });
     },
-    [dimensions]
+    [dimensions, updateCamera]
   );
 
   return {
@@ -90,5 +122,9 @@ export function useCanvasState(dimensions, layers) {
     zoom,
     fit,
     fitExpansion,
+    animateCamera,
+    getCamera,
+    stopCamera,
+    cameraMoving,
   };
 }

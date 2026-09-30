@@ -6,6 +6,7 @@ import sharp from "sharp";
 import fs from "node:fs/promises";
 import { getTestEnvironment } from "../support/environment.mjs";
 import { E2E_PASSWORD } from "../support/e2e-users.mjs";
+import { waitForToolViewport } from "../support/studio-viewport.mjs";
 
 test("paint selection survives pan; shape crop and six export formats produce real files", async ({ page }, info) => {
   const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: getTestEnvironment().databaseUrl }) });
@@ -20,9 +21,25 @@ test("paint selection survives pan; shape crop and six export formats produce re
     const bytes = await sharp({ create: { width: 240, height: 240, channels: 4, background: "#c89d87" } }).png().toBuffer();
     await page.getByLabel("Upload image files").setInputFiles({ name: "cat.png", mimeType: "image/png", buffer: bytes });
     await expect(page.locator(".ms-image-menu")).toBeVisible();
+    // Every tool shares the measured safe viewport, including tools with a
+    // short card. Closing returns to the same pre-edit camera.
+    await page.getByRole("button", { name: "Fit canvas", exact: true }).click();
+    const originalCamera = await page.locator(".ms-stage").getAttribute("data-camera");
+    for (const name of [/AI upscale/, /AI erase/, /Split layers/, /Remove background/, /Recognize text/, /Reverse prompt/, /Generate video/]) {
+      const button = page.getByRole("button", { name });
+      if (!await button.isEnabled()) continue;
+      await button.click();
+      await waitForToolViewport(page);
+      await page.getByRole("button", { name: "Close tool", exact: true }).click();
+      await expect(page.locator(".ms-stage")).toHaveAttribute("data-camera-moving", "false");
+      const restored = JSON.parse(await page.locator(".ms-stage").getAttribute("data-camera"));
+      for (const key of ["x", "y", "scale"]) expect(restored[key]).toBeCloseTo(JSON.parse(originalCamera)[key], 5);
+    }
     await page.getByRole("button", { name: /Local edit/ }).click();
     await page.getByLabel("Local edit instruction", { exact: true }).fill("Make it blue");
     await expect(page.getByRole("button", { name: /Apply edit/ })).toBeDisabled();
+    await waitForToolViewport(page);
+    await page.screenshot({ path: info.outputPath("local-edit-unobstructed.png"), fullPage: true });
     const stage = await page.locator(".ms-stage").boundingBox(), rect = JSON.parse(await page.locator(".ms-stage").getAttribute("data-selection-frame"));
     const center = { x: stage.x + rect.left + rect.width / 2, y: stage.y + rect.top + rect.height / 2 };
     await page.mouse.move(center.x, center.y); await page.mouse.down(); await page.mouse.move(center.x + 20, center.y, { steps: 5 }); await page.mouse.up();
@@ -36,6 +53,7 @@ test("paint selection survives pan; shape crop and six export formats produce re
     await page.getByRole("button", { name: "Close tool", exact: true }).click();
     await page.getByRole("button", { name: /Crop image/ }).click();
     await page.getByRole("button", { name: "Ellipse", exact: true }).click();
+    await waitForToolViewport(page);
     await page.screenshot({ path: info.outputPath("ellipse-crop-preview.png"), fullPage: true, animations: "disabled" });
     const cropFrame = JSON.parse(await page.locator(".ms-stage").getAttribute("data-selection-frame"));
     const cropPreview = sharp(await page.locator(".ms-stage").screenshot());
@@ -71,6 +89,7 @@ test("paint selection survives pan; shape crop and six export formats produce re
     }
     await page.getByRole("button", { name: /Crop image/ }).click();
     await page.getByRole("button", { name: "Grid", exact: true }).click();
+    await waitForToolViewport(page);
     const gridStage = await page.locator(".ms-stage").boundingBox(), frame = JSON.parse(await page.locator(".ms-stage").getAttribute("data-selection-frame"));
     const point = { x: gridStage.x + frame.left + frame.width / 2, y: gridStage.y + frame.top + frame.height / 2 };
     await page.mouse.move(point.x, point.y); await page.mouse.down(); await page.mouse.move(point.x + frame.width * .1, point.y + frame.height * .1, { steps: 5 }); await page.mouse.up();

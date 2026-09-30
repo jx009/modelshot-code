@@ -266,8 +266,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
     setPanning(false); setTool(id); canvas.current?.clearMask(); setObjectSelection(null);
     setMode(id === "move" ? "object-select-rect" : id === "expand" ? "expand" : getTool(id)?.mask ? "mask" : id === "crop" ? "crop" : "select");
     if (id === "crop" && selected) setParams(p => ({ ...p, rect: { left: 0, top: 0, width: selected.pixelWidth, height: selected.pixelHeight } }));
-    if (id === "move") { setParams(p => ({ ...p, dx: 0, dy: 0, moveSource: undefined, moveTarget: undefined })); canvas.current?.focusSelection(); }
-    if (["inpaint", "erase"].includes(id)) canvas.current?.focusSelection();
+    if (id === "move") { setParams(p => ({ ...p, dx: 0, dy: 0, moveSource: undefined, moveTarget: undefined })); }
     if (id === "expand") {
       setParams(p => ({ ...p, padding: typeof p.padding === "number" ? { left: p.padding, right: p.padding, top: p.padding, bottom: p.padding } : p.padding }));
     }
@@ -420,9 +419,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
     } catch (e) { notify(e); } finally { submission.current = false; setBusy(false); }
   }
   const closeTool = () => {
-    const restoreView = ["expand", "move", "inpaint", "erase"].includes(toolId);
     setPanning(false); setTool(null); setMode("select"); setObjectSelection(null); canvas.current?.clearMask();
-    if (restoreView) scheduleFit();
   };
   const ActiveToolIcon = toolId ? (ICONS[toolId] || Sparkles) : Sparkles;
   return <div className="ms-studio" data-history={historyCount.past}>

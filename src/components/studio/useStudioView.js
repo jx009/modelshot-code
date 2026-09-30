@@ -20,8 +20,12 @@ export function useStudioView({ documentId, draftKey, userId, ready, canvas }) {
       const apply = () => {
         if (!live) return;
         if (!canvas.current) { timer.current = setTimeout(apply, 50); return; }
-        if (camera) { saved.current = JSON.stringify(camera); canvas.current.restoreView(camera); }
-        else canvas.current.fit();
+        // Receiving the first cloud ID does not open a different canvas.
+        // Reapplying its in-flight camera here interrupts tool zooms and pans.
+        if (!adopted) {
+          if (camera) { saved.current = JSON.stringify(camera); canvas.current.restoreView(camera); }
+          else canvas.current.fit();
+        }
         scope.current = key;
         if (adopted && camera) { writeProjectDraft(userId, `view:${key}`, camera).catch(() => {}); api(`/api/studio/documents/${documentId}/view`, { method: "PUT", body: camera }).catch(() => {}); }
       };

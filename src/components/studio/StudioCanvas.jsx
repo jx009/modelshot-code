@@ -6,6 +6,7 @@ import CropOverlay from "./canvas/CropOverlay";
 import { exportCanvas } from "@/lib/studio/canvas-export";
 import MoveRegions from "./canvas/MoveRegions";
 import { editRegion } from "@/lib/studio/selection-geometry";
+import { useToolViewport } from "./canvas/hooks/useToolViewport";
 import { useCanvasState } from "./canvas/hooks/useCanvasState";
 import { useDrawingState } from "./canvas/hooks/useDrawingState";
 import { useSelectionState } from "./canvas/hooks/useSelectionState";
@@ -108,7 +109,7 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
   const selectionInk = "#30ed19";
 
   // Use custom hooks for state management
-  const { camera, updateCamera, zoom, fit, fitExpansion } = useCanvasState(dimensions, layers);
+  const { camera, updateCamera, zoom, fit: fitAll, fitExpansion, animateCamera, getCamera, stopCamera, cameraMoving } = useCanvasState(dimensions, layers);
   const { strokes, isDrawing, startStroke, addPoint, endStroke, clearAll: clearStrokes } = useDrawingState();
   const {
     crop, movePreview, moveSelection, moveMask, activeMove,
@@ -122,8 +123,9 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
 
   const drawing = useRef(false), cropStart = useRef(null);
   const [drawingActive, setDrawingActive] = useState(false);
-  const expansionTarget = useRef(null);
   const selection = layers.find(l => l.id === selectedId);
+  const focusTool = useToolViewport({ container, selection, tool: selectionTool, padding: expandPadding, animateCamera, getCamera });
+  const fit = () => selectionTool && selection ? focusTool() : fitAll();
   const selectionRequest = useRef(null), operation = useRef(0);
   useEffect(() => () => { operation.current++; selectionRequest.current?.abort(); }, [selectedId]);
   useEffect(() => {
@@ -140,12 +142,6 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
   useEffect(() => { onMaskChange?.(hasMask); }, [hasMask, onMaskChange]);
   const toolKey = `${selectedId}:${mode}`;
   useEffect(() => { drawing.current = false; clearStrokes(); }, [toolKey, clearStrokes]);
-  useEffect(() => {
-    if (mode !== "expand" || !selection?.pixelWidth || !selection?.pixelHeight) { expansionTarget.current = null; return; }
-    if (expansionTarget.current === selectedId) return;
-    expansionTarget.current = selectedId;
-    fitExpansion(selection, expandPadding);
-  }, [mode, selectedId, selection, expandPadding, fitExpansion]);
 
   async function maskBlob(rectangle, polygon) {
       if (!selection) throw new Error("Select an image");
@@ -204,11 +200,7 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
       const scale = Math.max(.08, Math.min(1.5, (dimensions.width - 120) / item.width, (dimensions.height - 180) / item.height));
       updateCamera({ scale, x: dimensions.width / 2 - (item.x + item.width / 2) * scale, y: dimensions.height / 2 - (item.y + item.height / 2) * scale });
     },
-    focusSelection() {
-      if (!selection) return;
-      const scale = Math.max(0.08, Math.min(2, (dimensions.width - 120) / selection.width, (dimensions.height - 350) / selection.height));
-      updateCamera({ scale, x: (dimensions.width - selection.width * scale) / 2 - selection.x * scale, y: 45 + (dimensions.height - 350 - selection.height * scale) / 2 - selection.y * scale });
-    },
+    focusSelection: focusTool,
     clearMask: () => { operation.current++; selectionRequest.current?.abort(); clearStrokes(); clearSelection(); },
     clearMovePreview: () => { operation.current++; selectionRequest.current?.abort(); clearMove(); },
     maskBlob,
@@ -336,7 +328,8 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
   const editing = selection?.type === "image" && ["mask", "crop", "move", "object-edit", "object-preparing", "object-select-rect", "object-select-lasso", "expand"].includes(mode);
   const cursorStyle = getCursorForMode(panning ? "hand" : mode, brushSize, selectionInk);
 
-  return <div ref={container} className={`ms-stage ${drawingActive ? "is-drawing" : ""}`} data-selection-frame={selection ? JSON.stringify({ left: camera.x + selection.x * camera.scale, top: camera.y + selection.y * camera.scale, width: selection.width * camera.scale, height: selection.height * camera.scale }) : undefined} data-mode={mode} data-panning={panning} data-camera-scale={camera.scale} data-camera={JSON.stringify(camera)} data-crop={JSON.stringify({ rect: cropRect, shape: cropShape, grid: cropGrid })} aria-label={label} style={{ cursor: cursorStyle }}
+  return <div ref={container} className={`ms-stage ${drawingActive ? "is-drawing" : ""}`} data-camera-moving={cameraMoving} data-selection-frame={selection ? JSON.stringify({ left: camera.x + selection.x * camera.scale, top: camera.y + selection.y * camera.scale, width: selection.width * camera.scale, height: selection.height * camera.scale }) : undefined} data-mode={mode} data-panning={panning} data-camera-scale={camera.scale} data-camera={JSON.stringify(camera)} data-crop={JSON.stringify({ rect: cropRect, shape: cropShape, grid: cropGrid })} aria-label={label} style={{ cursor: cursorStyle }}
+    onPointerDownCapture={stopCamera}
     onMouseDownCapture={e => {
       if (e.button !== 1) return;
       e.preventDefault(); e.stopPropagation();

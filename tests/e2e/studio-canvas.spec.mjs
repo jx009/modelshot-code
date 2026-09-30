@@ -1,4 +1,5 @@
 import { readStudioDraft } from "../support/studio-draft.mjs";
+import { waitForToolViewport } from "../support/studio-viewport.mjs";
 import { test, expect } from "@playwright/test";
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -42,11 +43,13 @@ test("canvas upload, crop through durable worker, layers, export and cloud resto
 
     await page.getByRole("button", { name: /AI expand/ }).click();
     await expect(page.locator(".ms-edge-readout")).toContainText("R 256");
+    await waitForToolViewport(page);
     const expandStage = await page.locator(".ms-stage").boundingBox();
-    const expandScale = Math.min(1.5, (expandStage.width - 110) / 912, (expandStage.height - 180) / 1012);
+    const expandFrame = JSON.parse(await page.locator(".ms-stage").getAttribute("data-selection-frame"));
+    const expandScale = expandFrame.width / 400;
     const expandRight = {
-      x: expandStage.x + expandStage.width / 2 + 912 * expandScale / 2,
-      y: expandStage.y + expandStage.height / 2,
+      x: expandStage.x + expandFrame.left + expandFrame.width + 256 * expandScale,
+      y: expandStage.y + expandFrame.top + expandFrame.height / 2,
     };
     await page.mouse.move(expandRight.x, expandRight.y);
     await page.mouse.down();
@@ -56,6 +59,7 @@ test("canvas upload, crop through durable worker, layers, export and cloud resto
     await page.getByRole("button", { name: "Close tool", exact: true }).click();
     await page.getByRole("button", { name: /Local edit/ }).click();
     await expect(page.locator(".ms-stage")).toHaveAttribute("data-mode", "mask");
+    await waitForToolViewport(page);
     await expect(page.getByRole("button", { name: "Detect object", exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Rectangle", exact: true })).toHaveCount(0);
     const localStage = await page.locator(".ms-stage").boundingBox();
@@ -72,6 +76,7 @@ test("canvas upload, crop through durable worker, layers, export and cloud resto
     await expect(page.getByRole("button", { name: /Apply edit/ })).toBeEnabled();
     await page.getByRole("button", { name: "Close tool", exact: true }).click();
     await page.getByRole("button", { name: /Move object/ }).click();
+    await waitForToolViewport(page);
     const stage = await page.locator(".ms-stage").boundingBox();
     const selectionFrame = JSON.parse(await page.locator(".ms-stage").getAttribute("data-selection-frame"));
     const moveAnchor = { x: stage.x + selectionFrame.left + selectionFrame.width / 2, y: stage.y + selectionFrame.top + selectionFrame.height / 2 };
@@ -83,6 +88,7 @@ test("canvas upload, crop through durable worker, layers, export and cloud resto
     await page.mouse.move(moveAnchor.x + 90 * moveScale, moveAnchor.y + 110 * moveScale, { steps: 8 });
     await page.mouse.up();
     await expect(page.locator(".ms-stage")).toHaveAttribute("data-mode", "move");
+    await waitForToolViewport(page);
     expect(segmentRequests).toBe(0);
     await expect(page.getByRole("button", { name: "Apply move 18 credits", exact: true })).toBeDisabled();
     const offsetBeforePan = await page.locator(".ms-move-offset").getAttribute("data-target");
@@ -115,13 +121,14 @@ test("canvas upload, crop through durable worker, layers, export and cloud resto
     await expect(page.locator(".ms-move-offset")).not.toHaveAttribute("data-target", offsetBeforePan);
     expect(segmentRequests).toBe(0);
     const targetBeforeResize = JSON.parse(await page.locator(".ms-move-offset").getAttribute("data-target"));
-    const imagePoint = (x, y) => ({ x: stage.x + frameAfterPan.left + x * moveScale, y: stage.y + frameAfterPan.top + y * moveScale });
+    const currentMoveScale = frameAfterPan.width / 400;
+    const imagePoint = (x, y) => ({ x: stage.x + frameAfterPan.left + x * currentMoveScale, y: stage.y + frameAfterPan.top + y * currentMoveScale });
     const corner = imagePoint(targetBeforeResize.left + targetBeforeResize.width, targetBeforeResize.top + targetBeforeResize.height);
     await page.mouse.move(corner.x, corner.y); await page.mouse.down();
     await page.mouse.move(corner.x - 12, corner.y - 12, { steps: 5 }); await page.mouse.up();
     await expect.poll(async () => JSON.parse(await page.locator(".ms-move-offset").getAttribute("data-target")).width).toBeLessThan(targetBeforeResize.width);
     const targetBeforeRotate = JSON.parse(await page.locator(".ms-move-offset").getAttribute("data-target"));
-    const rotationHandle = imagePoint(targetBeforeRotate.left + targetBeforeRotate.width / 2, targetBeforeRotate.top - 25 / moveScale);
+    const rotationHandle = imagePoint(targetBeforeRotate.left + targetBeforeRotate.width / 2, targetBeforeRotate.top - 25 / currentMoveScale);
     await page.mouse.move(rotationHandle.x, rotationHandle.y); await page.mouse.down();
     await page.mouse.move(rotationHandle.x + 20, rotationHandle.y + 10, { steps: 5 }); await page.mouse.up();
     await expect.poll(async () => JSON.parse(await page.locator(".ms-move-offset").getAttribute("data-target")).rotation).not.toBe(0);

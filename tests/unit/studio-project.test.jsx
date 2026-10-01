@@ -7,7 +7,12 @@ import { taskSummary } from "../../src/lib/studio/task-presentation.js";
 
 const mocks = vi.hoisted(() => ({ api: vi.fn(), read: vi.fn(), write: vi.fn() }));
 vi.mock("@/lib/client-api", () => ({ api: mocks.api, requestKey: () => crypto.randomUUID() }));
-vi.mock("@/lib/studio/project-storage", () => ({ readProjectDraft: mocks.read, writeProjectDraft: mocks.write }));
+vi.mock("@/lib/studio/project-storage", () => ({
+  activeProject: () => null,
+  rememberProject: vi.fn(),
+  readProjectDraft: mocks.read,
+  writeProjectDraft: mocks.write,
+}));
 beforeEach(() => { mocks.api.mockReset(); mocks.read.mockReset().mockResolvedValue(null); mocks.write.mockReset().mockResolvedValue(); window.history.replaceState(null, "", "/en/studio-v2"); });
 afterEach(cleanup);
 const message = { id: "first-message", role: "user", text: "生成一只猫" };

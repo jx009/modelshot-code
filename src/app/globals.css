@@ -572,6 +572,23 @@ button:disabled, select:disabled, textarea:disabled { cursor: not-allowed; opaci
 .output-actions { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 42px; padding: 6px 12px; border-top: 1px solid var(--divider); font-size: 12px; flex-shrink: 0; }.output-error { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--danger); font-family: var(--font-mono); font-size: 10px; }
 .workflow-dialog { width: min(520px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); padding: 24px; border: 1px solid var(--divider); border-radius: 6px; background: var(--bg-card); color: var(--primary-text); overflow-y: auto; margin: auto; }
 .workflow-dialog::backdrop { background: var(--shadow-soft); }.workflow-dialog h2 { font-size: 20px; margin: 0 0 18px; }.workflow-dialog p { font-size: 13px; line-height: 1.7; color: var(--secondary-text); margin: 12px 0; }.workflow-dialog input, .workflow-dialog select { width: 100%; margin: 7px 0; }.workflow-dialog label { font-size: 13px; }
+
+/* Menus and dialogs are reading surfaces: stay opaque throughout motion. */
+.user-menu-panel {
+  position:absolute; right:0; top:44px; width:min(260px,calc(100vw - 32px));
+  max-height:calc(100dvh - 100px); overflow-y:auto; overscroll-behavior:contain;
+  padding:6px; border:1px solid var(--divider-strong); border-radius:16px;
+  background:var(--bg-popover); color:var(--primary-text); box-shadow:var(--depth-4);
+  animation:surface-enter 160ms ease-out;
+}
+.user-menu-panel :is([role="menuitem"],[role="menuitemradio"]) { border-radius:8px; min-height:38px; text-align:left; }
+.user-menu-panel :is([role="menuitem"],[role="menuitemradio"]):hover { background:var(--bg-card-hover); }
+.user-menu-panel :is(a,button):focus-visible { outline:2px solid var(--primary-text); outline-offset:-2px; }
+.workflow-dialog { background:var(--bg-popover); border-radius:20px; box-shadow:var(--depth-5); overscroll-behavior:contain; }
+.workflow-dialog p { overflow-wrap:anywhere; }
+.dialog-actions { flex-wrap:wrap; }
+@keyframes surface-enter { from { transform:translateY(-4px); } to { transform:translateY(0); } }
+@media(prefers-reduced-motion:reduce) { .user-menu-panel { animation:none; } }
 .quote-details { display: grid; gap: 12px; margin: 20px 0; }.quote-details > div { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; }.quote-details dt { color: var(--secondary-text); }.quote-details dd { text-align: right; overflow-wrap: anywhere; }.dialog-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
 .pagination { display: flex; align-items: center; justify-content: center; gap: 16px; margin: 24px 0; font-size: 13px; }
 .export-tray { margin-top: 30px; border-top: 1px solid var(--divider); padding-top: 18px; }.export-tray h2 { font-size: 16px; margin-bottom: 12px; }.export-row { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; min-height: 44px; padding: 8px 0; border-bottom: 1px solid var(--divider); font-size: 13px; }.export-row > span:first-child { color: var(--secondary-text); font-family: var(--font-mono); }
@@ -776,4 +793,9 @@ input[type="checkbox"] { width: 14px; height: 14px; accent-color: var(--primary)
   .subscription-row { align-items: stretch; flex-direction: column; }
   .page-heading h1 { font-size: 24px; }
   .detail-actions .button { padding: 7px 9px; font-size: 12px; }
+}
+
+@media (hover:hover) and (pointer:fine) {
+  .admin-model-actions { opacity:0; transition:opacity 150ms; }
+  .group:hover .admin-model-actions,.group:focus-within .admin-model-actions { opacity:1; }
 }

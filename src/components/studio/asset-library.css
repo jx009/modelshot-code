@@ -43,3 +43,15 @@
 @media(max-width:760px) { .ms-library-trigger { top:56px; right:56px; } }
 
 .ml-bulk{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 18px;font-size:12px}.ml-bulk button,.ml-bulk select{border:1px solid var(--divider);border-radius:8px;background:var(--bg-elevated);color:var(--primary-text);padding:7px 10px}.ml-bulk button:disabled{opacity:.45}
+
+.ml-library { align-content:start; }
+.ml-sidebar { align-self:start; }
+.ml-picker-dialog,.ml-preview-dialog { margin:auto; overflow:auto; max-height:calc(100dvh - 32px); }
+@media(max-width:760px) {
+  .ml-sidebar { align-items:center; padding-bottom:8px; margin-bottom:18px; }
+  .ml-sidebar .ml-trash { margin-top:0; }
+  .ml-content>header { flex-wrap:wrap; margin-bottom:18px; }
+  .ml-search { flex:1; max-width:210px; min-width:140px; }
+  .ml-search input { width:100%; }
+  .ml-picker-dialog .ml-library { min-height:0; }
+}

@@ -33,7 +33,13 @@ export default function CreativeProjects() {
   }, [query, status]);
   useEffect(() => {
     if (!menu) return;
-    const close = event => { if (event.type === "keydown" && event.key !== "Escape") return; if (!event.target.closest?.(".mp-card-menu")) setMenu(null); };
+    const close = event => {
+      if (event.type === "keydown") {
+        if (event.key !== "Escape") return;
+        event.target.closest?.(".mp-card-menu")?.querySelector("button[aria-expanded]")?.focus();
+        setMenu(null);
+      } else if (!event.target.closest?.(".mp-card-menu")) setMenu(null);
+    };
     document.addEventListener("pointerdown", close); document.addEventListener("keydown", close);
     return () => { document.removeEventListener("pointerdown", close); document.removeEventListener("keydown", close); };
   }, [menu]);

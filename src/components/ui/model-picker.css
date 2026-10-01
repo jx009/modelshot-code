@@ -36,10 +36,10 @@
 .mpk-price { font-size:11px; line-height:1.5; color:var(--secondary-text); }
 .mpk-check { width:18px; flex-shrink:0; }
 .mpk-panel button:focus-visible,.mpk-trigger:focus-visible { outline:2px solid var(--primary-text); outline-offset:-2px; }
-.ms-composer-tools { display:grid; grid-template-columns:28px 24px minmax(0,1fr) 44px 40px 34px; gap:4px; }
-.ms-composer-tools .mpk-trigger { max-width:100%; padding:6px; gap:5px; font-size:12px; }
-.ms-composer-tools > select { min-width:0; width:100%; padding-inline:3px; }
-.ms-composer-tools > .ms-send { margin-left:0; }
+.ms-studio .ms-composer-tools { display:grid; grid-template-columns:28px 24px minmax(0,1fr) 44px 40px 34px; gap:4px; }
+.ms-studio .ms-composer-tools .mpk-trigger { max-width:100%; padding:6px; gap:5px; font-size:12px; }
+.ms-studio .ms-composer-tools > select { min-width:0; width:100%; padding-inline:3px; }
+.ms-studio .ms-composer-tools > .ms-send { margin-left:0; }
 .cr-shell .cr-home-composer:focus-within { box-shadow:0 8px 24px var(--shadow-soft); }
 @keyframes mpk-enter { from { transform:translateY(5px) scale(.97); } to { transform:translateY(0) scale(1); } }
 @media(max-width:600px) { .mpk-trigger { max-width:190px; font-size:12px; }.mpk-panel { border-radius:18px; }.mpk-option { padding:11px 8px; } }

@@ -5,3 +5,6 @@
 @media(prefers-reduced-motion:reduce){.cm-spin{animation:none}}
 .cm-rendered-section{position:relative}.cm-preview-render{width:100%;height:auto;aspect-ratio:1000/1150;display:block}.cm-render-error{padding:15px;color:var(--story-text);font-size:12px;background:var(--story-bg)}
 .cm-interaction-lock{border:0;margin:0;padding:0;min-width:0}
+
+.cm-modal { margin:auto; color:var(--primary-text); background:var(--bg-popover); max-width:calc(100vw - 32px); max-height:calc(100dvh - 32px); overflow:auto; }
+.cm-modal::backdrop { background:#0008; backdrop-filter:blur(5px); }

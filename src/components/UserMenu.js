@@ -38,10 +38,13 @@ export default function UserMenu({ user }) {
     if (!open) return;
     const onClick = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
     const onKey = (e) => { if (e.key === "Escape") { setOpen(false); trigger.current?.focus(); } };
-    document.addEventListener("mousedown", onClick);
+    ref.current?.querySelector('[role="menuitem"]')?.focus({ preventScroll: true });
+    document.addEventListener("pointerdown", onClick);
+    document.addEventListener("focusin", onClick);
     document.addEventListener("keydown", onKey);
     return () => {
-      document.removeEventListener("mousedown", onClick);
+      document.removeEventListener("pointerdown", onClick);
+      document.removeEventListener("focusin", onClick);
       document.removeEventListener("keydown", onKey);
     };
   }, [open]);
@@ -73,8 +76,13 @@ export default function UserMenu({ user }) {
       {open && (
         <div
           role="menu"
-          className="absolute right-0 top-11 min-w-[220px] rounded-[10px] border border-divider bg-bg-card shadow-2xl py-1.5 animate-enter"
-          style={{ animationDuration: "160ms" }}
+          className="user-menu-panel"
+          onKeyDown={event => {
+            const items = [...event.currentTarget.querySelectorAll('[role="menuitem"], [role="menuitemradio"]')];
+            const index = items.indexOf(document.activeElement);
+            const next = event.key === "ArrowDown" ? (index + 1) % items.length : event.key === "ArrowUp" ? (index - 1 + items.length) % items.length : event.key === "Home" ? 0 : event.key === "End" ? items.length - 1 : null;
+            if (next !== null) { event.preventDefault(); items[next]?.focus(); }
+          }}
         >
           {user?.email && (
             <div className="px-3 py-2 text-xs text-secondary-text border-b border-divider/50 mb-1 truncate">

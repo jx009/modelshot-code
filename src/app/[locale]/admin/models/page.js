@@ -185,21 +185,21 @@ export default function AdminModels() {
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-secondary-text text-xs">无图</div>
                 )}
-                <div className="absolute inset-x-0 bottom-0 bg-bg-page/85 px-2 py-1.5">
+                <div className="absolute inset-x-0 bottom-0 bg-bg-page px-2 py-1.5">
                   <div className="text-xs font-medium text-primary-text truncate">{m.name}</div>
                   <div className="text-[10px] text-secondary-text truncate">{m.nameEn}</div>
                 </div>
-                {/* hover 操作 */}
-                <div className="absolute inset-x-0 top-0 p-1.5 flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                {/* Keep actions available to touch and keyboard users. */}
+                <div className="absolute inset-x-0 top-0 p-1.5 flex justify-end gap-1 admin-model-actions">
                   <button
                     onClick={() => patch(m.id, { isActive: !m.isActive }, m.isActive ? "已停用" : "已启用")}
                     disabled={saving === m.id}
-                    className="px-2 py-0.5 rounded bg-bg-card/90 backdrop-blur border border-divider text-xs font-medium cursor-pointer"
+                    className="px-2 py-0.5 rounded bg-bg-card border border-divider text-xs font-medium cursor-pointer"
                   >{m.isActive ? "停用" : "启用"}</button>
                   <button
                     onClick={() => remove(m)}
                     disabled={saving === m.id}
-                    className="w-6 h-6 rounded bg-bg-card/90 backdrop-blur border border-danger/40 text-danger flex items-center justify-center cursor-pointer"
+                    className="w-6 h-6 rounded bg-bg-card border border-danger/40 text-danger flex items-center justify-center cursor-pointer"
                   ><Trash2 size={11} /></button>
                 </div>
               </div>

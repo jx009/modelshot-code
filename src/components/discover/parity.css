@@ -40,6 +40,12 @@
 .cr-shell .cr-home-composer:focus-within { border-color:var(--divider-strong); box-shadow:0 0 0 2px var(--primary-muted),0 8px 24px var(--shadow-soft); }
 .cr-shell .cr-home-composer textarea:focus-visible { outline:none; }
 @media(max-width:600px) {
+  .cr-shell .cr-sidebar { gap:8px; padding-inline:12px; }
+  .cr-shell .cr-sidebar .cr-logo { flex-shrink:0; }
+  .cr-shell .cr-sidebar nav { min-width:0; overflow-x:auto; overscroll-behavior-x:contain; }
+  .cr-shell .cr-sidebar nav a { flex-shrink:0; }
+}
+@media(max-width:600px) {
   .cr-shell .cr-topbar { font-size:12px; }
   .cr-shell .cr-topbar .cr-wordmark,
   .cr-shell .cr-topbar>span>.cr-live-dot { display:none; }

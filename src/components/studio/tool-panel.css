@@ -1,8 +1,8 @@
 .ms-editor {
-  --editor-bg: #1d1d1d;
-  --editor-input: #262626;
-  --editor-text: #f5f5f5;
-  --editor-muted: #aaa;
+  --editor-bg: var(--bg-popover);
+  --editor-input: var(--bg-elevated);
+  --editor-text: var(--primary-text);
+  --editor-muted: var(--secondary-text);
   position: absolute;
   left: 50%;
   bottom: 86px;
@@ -13,62 +13,62 @@
   animation: ms-editor-enter 220ms ease-out both;
 }
 .ms-editor-crop { width: min(380px, calc(100% - 28px)); }
-.ms-editor-hint { margin: 0 0 9px; padding: 0 6px; color: #aaa; text-shadow: 0 1px 3px #000; text-align: center; font-size: 11px; line-height: 1.6; pointer-events: none; }
-.ms-editor-card { background: var(--editor-bg); border: 1px solid #ffffff1f; border-radius: 20px; box-shadow: 0 14px 44px #0005; padding: 12px; max-height: min(520px, calc(100dvh - 250px)); overflow: auto; overscroll-behavior: contain; }
+.ms-editor-hint { margin: 0 0 9px; padding: 6px 10px; color: var(--editor-text); background:var(--editor-bg); border-radius:8px; text-align: center; font-size: 11px; line-height: 1.6; pointer-events: none; }
+.ms-editor-card { background: var(--editor-bg); border: 1px solid var(--divider-strong); border-radius: 20px; box-shadow: 0 14px 44px var(--shadow-soft); padding: 12px; max-height: min(520px, calc(100dvh - 250px)); overflow: auto; overscroll-behavior: contain; }
 .ms-editor-card>header { display: flex; align-items: center; gap: 5px; min-height: 32px; margin-bottom: 10px; padding-left: 5px; }
 .ms-editor-card h2 { flex: 1; margin: 0; font-size: 14px; font-weight: 400; }
-.ms-editor-icon { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; width: 30px; height: 30px; border: 0; border-radius: 8px; background: transparent; color: #ccc; transition: background 150ms, transform 75ms; }
-.ms-editor-icon:hover { background: #ffffff12; }
+.ms-editor-icon { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; width: 30px; height: 30px; border: 0; border-radius: 8px; background: transparent; color: var(--secondary-text); transition: background 150ms, transform 75ms; }
+.ms-editor-icon:hover { background: var(--bg-card-hover); }
 .ms-editor-icon:active { transform: scale(.97); }
 .ms-editor-content { display: flex; flex-direction: column; gap: 12px; }
 .ms-editor-reference { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--editor-muted); }
-.ms-editor-reference img { width: 52px; height: 52px; object-fit: cover; border: 1px solid #ffffff20; border-radius: 6px; }
+.ms-editor-reference img { width: 52px; height: 52px; object-fit: cover; border: 1px solid var(--divider-strong); border-radius: 6px; }
 .ms-editor-reference small { display: block; font-size: 10px; margin-top: 4px; }
 .ms-studio .ms-editor-prompt { display: block; width: 100%; min-height: 68px; max-height: 150px; resize: vertical; margin: 0; padding: 11px; border: 1px solid transparent; border-radius: 12px; background: var(--editor-input); color: var(--editor-text); font-size: 13px; line-height: 1.65; transition: border-color 150ms, background 150ms; }
-.ms-studio .ms-editor-prompt:focus { outline: none; border-color: #ffffff3d; background: #292929; box-shadow: none; }
+.ms-studio .ms-editor-prompt:focus { outline: none; border-color: var(--divider-strong); background: var(--bg-elevated); box-shadow: none; }
 .ms-studio .ms-editor-prompt::placeholder { color: var(--editor-muted); opacity: 1; }
 .ms-editor-brush { display: flex; align-items: center; justify-content: center; gap: 9px; font-size: 12px; }
-.ms-studio .ms-editor-brush input { flex: 1; min-width: 30px; max-width: 130px; width: auto; accent-color: #fff; }
-.ms-editor-brush output { min-width: 34px; font-size: 12px; color: #ddd; font-variant-numeric: tabular-nums; }
+.ms-studio .ms-editor-brush input { flex: 1; min-width: 30px; max-width: 130px; width: auto; accent-color: var(--primary-text); }
+.ms-editor-brush output { min-width: 34px; font-size: 12px; color: var(--primary-text); font-variant-numeric: tabular-nums; }
 .ms-editor .ms-editor-offset { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; margin: 0; }
-.ms-editor .ms-editor-offset span { background: none; padding: 0; border: 0; color: #969696; font-size: 10px; }
+.ms-editor .ms-editor-offset span { background: none; padding: 0; border: 0; color: var(--secondary-text); font-size: 10px; }
 .ms-editor-card>footer { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 14px; }
-.ms-editor-cost { font-size: 11px; color: #969696; }
-.ms-editor-apply { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 34px; padding: 7px 19px; border: 0; border-radius: 10px; background: #fff; color: #191919; font-size: 13px; transition: background 150ms, transform 75ms; }
-.ms-editor-apply:hover { background: #e5e5e5; }
+.ms-editor-cost { font-size: 11px; color: var(--secondary-text); }
+.ms-editor-apply { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 34px; padding: 7px 19px; border: 0; border-radius: 10px; background: var(--primary-text); color: var(--bg-page); font-size: 13px; transition: background 150ms, transform 75ms; }
+.ms-editor-apply:hover { background: var(--primary-text); }
 .ms-editor-apply:active { transform: scale(.97); }
-.ms-editor-description { font-size: 12px; line-height: 1.8; color: #aaa; margin: 0; }
-.ms-editor-unavailable { color: #e9c995; border: 1px solid #e9c99530; padding: 9px; border-radius: 9px; font-size: 12px; margin: 0; }
-.ms-editor-field { display: flex; align-items: center; gap: 12px; justify-content: space-between; color: #aaa; font-size: 12px; }
-.ms-studio .ms-editor-field select { background: #303030; color: #eee; border-color: #ffffff18; font-size: 13px; }
+.ms-editor-description { font-size: 12px; line-height: 1.8; color: var(--secondary-text); margin: 0; }
+.ms-editor-unavailable { color: var(--warning); border: 1px solid var(--divider-strong); padding: 9px; border-radius: 9px; font-size: 12px; margin: 0; }
+.ms-editor-field { display: flex; align-items: center; gap: 12px; justify-content: space-between; color: var(--secondary-text); font-size: 12px; }
+.ms-studio .ms-editor-field select { background: var(--bg-elevated); color: var(--primary-text); border-color: var(--divider); font-size: 13px; }
 .ms-editor-ratios,.ms-editor-options { display: flex; gap: 6px; }
-.ms-editor-ratios button,.ms-editor-options button { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 7px; padding: 10px 4px; border-radius: 10px; border: 1px solid #ffffff18; background: #262626; color: #bbb; font-size: 11px; }
+.ms-editor-ratios button,.ms-editor-options button { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 7px; padding: 10px 4px; border-radius: 10px; border: 1px solid var(--divider); background: var(--bg-elevated); color: var(--secondary-text); font-size: 11px; }
 .ms-editor-options button { padding: 18px 8px; font-size: 24px; }
 .ms-editor-options button small { font-size: 11px; }
-.ms-editor-options button[aria-pressed=true] { background: #fff; color: #171717; }
-.ms-editor-ratios button:hover { background: #373737; color: #fff; }
+.ms-editor-options button[aria-pressed=true] { background: var(--primary-text); color: var(--bg-page); }
+.ms-editor-ratios button:hover { background: var(--bg-card-hover); color: var(--primary-text); }
 .ms-editor .ms-edge-readout { display: flex; justify-content: space-between; gap: 8px; }
-.ms-editor .ms-edge-readout span { color: #999; font-size: 11px; }
+.ms-editor .ms-edge-readout span { color: var(--secondary-text); font-size: 11px; }
 .ms-editor .ms-crop-controls { display: grid; gap: 14px; width: 100%; max-width: none; }
 .ms-editor .ms-crop-presets { display: grid; grid-template-columns: repeat(6,minmax(0,1fr)); gap: 5px; }
 .ms-editor .ms-crop-shape-presets { grid-template-columns: repeat(5,minmax(0,1fr)); }
-.ms-editor .ms-crop-option { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 0; min-height: 50px; gap: 7px; padding: 6px 2px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: #c5c5c5; font-size: 11px; box-shadow: none; }
-.ms-editor .ms-crop-option:hover { background: #ffffff10; transform: none; }
-.ms-editor .ms-crop-option.active { background: #ffffff12; border-color: #ffffff35; color: #fff; }
+.ms-editor .ms-crop-option { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 0; min-height: 50px; gap: 7px; padding: 6px 2px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--primary-text); font-size: 11px; box-shadow: none; }
+.ms-editor .ms-crop-option:hover { background: var(--bg-card-hover); transform: none; }
+.ms-editor .ms-crop-option.active { background: var(--bg-card-hover); border-color: var(--divider-strong); color: var(--primary-text); }
 .ms-editor .ms-crop-glyph { height: 14px; width: 14px; border-width: 1px; }
 .ms-editor .ms-crop-glyph-landscape { width: 18px; height: 13px; }
 .ms-editor .ms-crop-glyph-portrait { width: 12px; height: 16px; }
 .ms-editor .ms-crop-glyph-wide { width: 20px; height: 10px; }
 .ms-editor .ms-crop-glyph-tall { width: 9px; height: 17px; }
 .ms-editor .ms-crop-glyph-heart { background: none; clip-path: none; width: 17px; height: 17px; border: 0; }
-.ms-editor .ms-crop-section-title { color: #999; font-size: 11px; letter-spacing: 0; }
-.ms-editor .ms-crop-grid-options { background: #252525; padding: 9px; border-color: #ffffff12; }
+.ms-editor .ms-crop-section-title { color: var(--secondary-text); font-size: 11px; letter-spacing: 0; }
+.ms-editor .ms-crop-grid-options { background: var(--bg-card); padding: 9px; border-color: var(--bg-card-hover); }
 .ms-editor .ms-crop-grid-selects { justify-content: space-between; }
 .ms-editor .ms-crop-grid-selects label { display: flex; align-items: center; gap: 6px; font-size: 11px; }
-.ms-editor .ms-crop-grid-selects select { background: #333; color: #fff; }
-.ms-editor .ms-crop-controls small { color: #999; font-size: 10px; line-height: 1.6; }
+.ms-editor .ms-crop-grid-selects select { background: var(--bg-elevated); color: var(--primary-text); }
+.ms-editor .ms-crop-controls small { color: var(--secondary-text); font-size: 10px; line-height: 1.6; }
 .ms-editor .ms-crop-size { text-align: center; }
-@keyframes ms-editor-enter { from { opacity: 0; translate: 0 8px; } to { opacity: 1; translate: 0 0; } }
+@keyframes ms-editor-enter { from { translate: 0 8px; } to { translate: 0 0; } }
 @media(max-width:760px) {
   .ms-editor { bottom: 78px; width: min(340px,calc(100% - 24px)); }
   .ms-editor-card { max-height: min(300px,34dvh); padding: 10px; border-radius: 18px; }
@@ -84,5 +84,5 @@
 
 /* While a brush/rectangle stroke is active the artwork owns the pointer even
    if the floating card overlaps its lower edge. Controls return on release. */
-.ms-studio:has(.ms-stage.is-drawing) .ms-editor { pointer-events: none; opacity: .72; }
+.ms-studio:has(.ms-stage.is-drawing) .ms-editor { pointer-events: none; }
 .ms-studio:has(.ms-stage.is-drawing) .ms-editor * { pointer-events: none; }

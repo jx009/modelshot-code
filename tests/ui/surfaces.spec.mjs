@@ -78,7 +78,9 @@ for (const intent of ["hover", "focus"]) {
     // Next fetches the route tree first, then the dynamic page payload.
     const prefetched = page.waitForResponse(response => new URL(response.url()).pathname === "/zh/commerce" && response.request().headers()["next-router-prefetch"] !== "1");
     await link[intent]();
-    await (await prefetched).finished();
+    await prefetched;
+    // Wait for browser network quiescence before verifying cache reuse below.
+    // response.finished() can remain pending for a cancelled RSC prefetch stream.
     await page.waitForLoadState("networkidle");
     expect(destinationRequests.length).toBeGreaterThan(0);
     const beforeClick = destinationRequests.length;

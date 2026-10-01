@@ -1,12 +1,10 @@
 import { THEMES, outputWidth } from "./schema-client.js";
+import { loadImage } from "../studio/image-processor.js";
 
 export function sectionGeometry(layout) {
   if (layout === "split") return { image: [420, 0, 580, 1150], copy: [55, 310, 320], titleSize: 62, bodyY: 555 };
   if (layout === "inset") return { image: [65, 345, 870, 720], copy: [65, 70, 850], titleSize: 66, bodyY: 240 };
   return { image: [0, 0, 1000, 1150], copy: [65, 75, 830], titleSize: 80, bodyY: 305 };
-}
-function loadImage(src) {
-  return new Promise((resolve, reject) => { const img = new Image(); const timer = setTimeout(() => reject(new Error("IMAGE_LOAD_FAILED")), 20000); img.onload = () => { clearTimeout(timer); resolve(img); }; img.onerror = () => { clearTimeout(timer); reject(new Error("IMAGE_LOAD_FAILED")); }; img.src = src; });
 }
 function wrap(ctx, text, width) {
   const lines = []; let line = "";
@@ -20,11 +18,16 @@ function fitText(ctx, text, x, y, width, size, maxLines, color, maxHeight = Infi
   ctx.fillStyle = color; ctx.textBaseline = "top"; if (draw) lines.forEach((line, i) => ctx.fillText(line, x, y + i * size * 1.4));
   return { fontSize: size, lines };
 }
-export async function renderSection(section, brief, src, { noText = false } = {}) {
-  const width = outputWidth(brief.platform), canvas = document.createElement("canvas"); canvas.width = width; canvas.height = Math.round(width * 1150 / 1000);
+export async function renderSection(section, brief, src, { noText = false, renderWidth, signal } = {}) {
+  const img = await loadImage(src, { signal });
+  signal?.throwIfAborted();
+  // Screen previews may be smaller; exports omit renderWidth and retain native size.
+  const output = outputWidth(brief.platform);
+  const width = Number.isFinite(renderWidth) ? Math.max(1, Math.min(output, Math.ceil(renderWidth))) : output;
+  const canvas = document.createElement("canvas"); canvas.width = width; canvas.height = Math.round(width * 1150 / 1000);
   const ctx = canvas.getContext("2d"), scale = width / 1000, theme = THEMES[brief.theme] || THEMES.linen, geometry = sectionGeometry(section.layout);
   ctx.scale(scale, scale); ctx.fillStyle = theme.background; ctx.fillRect(0, 0, 1000, 1150);
-  const img = await loadImage(src), [x, y, w, h] = geometry.image, ratio = Math.max(w / img.naturalWidth, h / img.naturalHeight);
+  const [x, y, w, h] = geometry.image, ratio = Math.max(w / img.naturalWidth, h / img.naturalHeight);
   ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip(); ctx.drawImage(img, x + (w - img.naturalWidth * ratio) / 2, y + (h - img.naturalHeight * ratio) / 2, img.naturalWidth * ratio, img.naturalHeight * ratio); ctx.restore();
   if (section.layout === "cover") { const gradient = ctx.createLinearGradient(0, 0, 0, 850); gradient.addColorStop(0, `${theme.background}fa`); gradient.addColorStop(.45, `${theme.background}ce`); gradient.addColorStop(1, `${theme.background}00`); ctx.fillStyle = gradient; ctx.fillRect(0, 0, 1000, 1000); }
   const [tx, ty, tw] = geometry.copy;

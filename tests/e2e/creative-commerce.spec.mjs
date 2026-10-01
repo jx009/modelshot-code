@@ -19,7 +19,7 @@ test("home, gallery, case and editable storyboard lead to real layout exports", 
   await expect(page.locator(".cr-case")).toHaveCount(2);
   await page.getByRole("link", { name: "把日常，过成喜欢的样子", exact: true }).click();
   await expect(page.locator(".cm-preview-render")).toHaveCount(6);
-  await expect.poll(() => page.locator(".cm-preview-render").evaluateAll(cs => cs.every(c => c.width === 750))).toBe(true);
+  await expect(page.locator(".cm-preview-render").first()).toHaveAttribute("data-rendered", "true");
   await page.screenshot({ path: info.outputPath("creative-case.png"), fullPage: false });
   await page.getByRole("link", { name: "使用这份版式", exact: true }).click();
   await expect(page.getByLabel("产品名称", { exact: true })).toHaveValue("休闲椅");

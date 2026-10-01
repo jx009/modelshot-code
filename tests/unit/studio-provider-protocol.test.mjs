@@ -26,6 +26,23 @@ beforeAll(async () => {
 afterAll(async () => { await new Promise(resolve => server.close(resolve)); });
 
 describe("studio real HTTP protocol against isolated fixture", () => {
+  it("loads one routing snapshot per capability request and sees subsequent admin changes", async () => {
+    vi.stubEnv("STUDIO_TOOLS_URL", "");
+    vi.stubEnv("OPENAI_API_KEY", "fixture-key");
+    const providers = [{ name: "image", kind: "openai", displayName: "Image", creditCost: 7, config: "{}" }];
+    const db = {
+      modelProvider: { findMany: vi.fn().mockResolvedValue(providers) },
+      studioToolConfig: { findMany: vi.fn().mockResolvedValue([]) },
+    };
+    const first = await capabilities(db, undefined, "image");
+    expect(first.imageProvider).toBe("image");
+    expect(db.modelProvider.findMany).toHaveBeenCalledTimes(1);
+    expect(db.studioToolConfig.findMany).toHaveBeenCalledTimes(1);
+    db.studioToolConfig.findMany.mockResolvedValue([{ toolId: "generate", isEnabled: false }]);
+    const second = await capabilities(db, undefined, "image");
+    expect(second.tools.find(tool => tool.id === "generate").available).toBe(false);
+    expect(JSON.stringify(second)).not.toContain("fixture-key");
+  });
   it("separates image model aliases from the selected planning model", async () => {
     vi.stubEnv("OPENAI_API_KEY", "fixture-key");
     const db = { modelProvider: { findMany: vi.fn().mockResolvedValue([

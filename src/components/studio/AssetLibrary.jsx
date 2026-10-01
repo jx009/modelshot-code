@@ -7,6 +7,7 @@ import { FolderOpen, ImagePlus, Images, Plus, Search, Trash2, Undo2, X, Check } 
 import { api } from "@/lib/client-api";
 import { previewUrl, imageUrl } from "@/lib/studio/image-url";
 import Modal from "@/components/ui/Modal";
+import { useDebouncedValue } from "@/components/ui/useDebouncedValue";
 import { Link } from "@/i18n/navigation";
 import "./asset-library.css";
 
@@ -18,22 +19,33 @@ export default function AssetLibrary({ onSelect, maxSelection = 10 }) {
   const [loading, setLoading] = useState(true), [busy, setBusy] = useState(false), [error, setError] = useState("");
   const [newCategory, setNewCategory] = useState(false), [categoryName, setCategoryName] = useState("");
   const [selected, setSelected] = useState([]), [preview, setPreview] = useState(null), [renaming, setRenaming] = useState(null), [name, setName] = useState("");
-  const query = new URLSearchParams({ category, q: search }).toString();
+  const debouncedSearch = useDebouncedValue(search);
+  const query = new URLSearchParams({ category, q: debouncedSearch }).toString();
   const activeQuery = useRef(query);
   useEffect(() => { activeQuery.current = query; }, [query]);
   useEffect(() => {
     if (status !== "authenticated") return;
     const abort = new AbortController();
-    const timer = setTimeout(async () => {
+    async function load() {
       setLoading(true); setError("");
       try {
-        const [data, groups] = await Promise.all([api(`/api/library?${query}`, { signal: abort.signal }), api("/api/library/categories", { signal: abort.signal })]);
-        setItems(data.items); setCursor(data.nextCursor); setCategories(groups);
+        const data = await api(`/api/library?${query}`, { signal: abort.signal });
+        if (abort.signal.aborted) return;
+        setItems(data.items); setCursor(data.nextCursor);
       } catch (err) { if (!abort.signal.aborted) setError(err.message); }
       finally { if (!abort.signal.aborted) setLoading(false); }
-    }, 150);
-    return () => { clearTimeout(timer); abort.abort(); };
+    }
+    load();
+    return () => abort.abort();
   }, [query, refresh, status]);
+  useEffect(() => {
+    if (status !== "authenticated") return;
+    const abort = new AbortController();
+    api("/api/library/categories", { signal: abort.signal }).then(groups => {
+      if (!abort.signal.aborted) setCategories(groups);
+    }).catch(err => { if (!abort.signal.aborted) setError(err.message); });
+    return () => abort.abort();
+  }, [refresh, status]);
   async function mutate(id, body) {
     setBusy(true); setError("");
     try { await api(`/api/library/${id}`, { method: "PATCH", body }); setRefresh(value => value + 1); setRenaming(null); setSelected(current => current.filter(item => item.id !== id)); }

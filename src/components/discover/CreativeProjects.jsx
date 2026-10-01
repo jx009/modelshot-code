@@ -8,7 +8,7 @@ import { Plus, FolderOpen, Search, X, MoreHorizontal, Pencil, Trash2, LoaderCirc
 import { api } from "@/lib/client-api";
 import { previewUrl } from "@/lib/studio/image-url";
 import Modal from "@/components/ui/Modal";
-import CreativeShell from "./CreativeShell";
+import { useDebouncedValue } from "@/components/ui/useDebouncedValue";
 import "./projects.css";
 
 export default function CreativeProjects() {
@@ -17,19 +17,21 @@ export default function CreativeProjects() {
   const [cursor, setCursor] = useState(null), [loading, setLoading] = useState(false), [error, setError] = useState("");
   const [menu, setMenu] = useState(null), [editing, setEditing] = useState(null), [name, setName] = useState("");
   const [removing, setRemoving] = useState(null), [saving, setSaving] = useState(false);
-  const query = new URLSearchParams({ paged: "1", q: search, kind: filter }).toString();
+  const debouncedSearch = useDebouncedValue(search);
+  const query = new URLSearchParams({ paged: "1", q: debouncedSearch, kind: filter }).toString();
   const activeQuery = useRef(query);
   useEffect(() => { activeQuery.current = query; }, [query]);
   useEffect(() => {
     if (status !== "authenticated") return;
     const abort = new AbortController();
-    const timer = setTimeout(async () => {
+    async function load() {
       setLoading(true); setError("");
       try { const data = await api(`/api/studio/documents?${query}`, { signal: abort.signal }); setRows(data.items); setCursor(data.nextCursor); }
       catch (err) { if (!abort.signal.aborted) setError(err.message); }
       finally { if (!abort.signal.aborted) setLoading(false); }
-    }, 180);
-    return () => { clearTimeout(timer); abort.abort(); };
+    }
+    load();
+    return () => abort.abort();
   }, [query, status]);
   useEffect(() => {
     if (!menu) return;
@@ -61,7 +63,7 @@ export default function CreativeProjects() {
     try { await api(`/api/studio/documents/${removing.id}`, { method: "DELETE" }); setRows(current => current.filter(row => row.id !== removing.id)); setRemoving(null); }
     catch (err) { setError(err.message); } finally { setSaving(false); }
   }
-  return <CreativeShell><section className="mp-library">
+  return <><section className="mp-library">
     <header className="mp-heading"><h1>{zh ? "我的项目" : "My projects"}</h1><label className="mp-search"><Search size={18} /><input type="search" aria-label={zh ? "搜索项目" : "Search projects"} placeholder={zh ? "搜索项目" : "Search projects"} value={search} onChange={event => setSearch(event.target.value)} />{search && <button aria-label={zh ? "清空搜索" : "Clear search"} onClick={() => setSearch("")}><X size={15} /></button>}</label></header>
     <div className="mp-filters">{[["all", "全部", "All"], ["canvas", "自由画布", "Canvas"], ["commerce", "电商套图", "Commerce"], ["trash", "已删除", "Deleted"]].map(([id, cn, en]) => <button key={id} aria-pressed={filter === id} onClick={() => setFilter(id)}>{zh ? cn : en}</button>)}</div>
     {error && <p role="alert" className="mp-error">{error}</p>}
@@ -79,5 +81,5 @@ export default function CreativeProjects() {
       {cursor && <button className="mp-more" disabled={loading} onClick={more}>{loading && <LoaderCircle className="ms-spin" size={15} />}{zh ? "加载更多" : "Load more"}</button>}
     </>}
     {removing && <Modal label={zh ? "删除项目" : "Delete project"} onClose={() => { if (!saving) setRemoving(null); }}><h2>{zh ? "删除项目？" : "Delete project?"}</h2><p>{removing.name}</p><p>{zh ? "项目移入“已删除”，可恢复；其他项目不受影响。" : "The project moves to Deleted and can be restored. Other projects stay unchanged."}</p><div className="dialog-actions"><button className="button" disabled={saving} onClick={() => setRemoving(null)}>{zh ? "取消" : "Cancel"}</button><button className="button primary" disabled={saving} onClick={remove}>{zh ? "删除" : "Delete"}</button></div></Modal>}
-  </section></CreativeShell>;
+  </section></>;
 }

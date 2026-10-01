@@ -823,3 +823,5 @@ input[type="checkbox"] { width: 14px; height: 14px; accent-color: var(--primary)
   .admin-model-actions { opacity:0; transition:opacity 150ms; }
   .group:hover .admin-model-actions,.group:focus-within .admin-model-actions { opacity:1; }
 }
+
+.cr-main > .creative-loading { min-height: calc(100dvh - 130px); }

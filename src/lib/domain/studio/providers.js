@@ -67,17 +67,24 @@ export function resolveStudioConfig(rows, toolRows = [], channelName, capability
   };
 }
 
+async function routingSnapshot(db) {
+  const [rows, settings] = await Promise.all([
+    db.modelProvider.findMany({ where: { isActive: true }, orderBy: [{ isDefault: "desc" }, { priority: "asc" }] }),
+    db.studioToolConfig?.findMany ? db.studioToolConfig.findMany() : [],
+  ]);
+  return { rows, settings };
+}
+
 export async function studioConfig(db = prisma, channelName, capability = "image", toolId = null, options = {}) {
-  const rows = await db.modelProvider.findMany({ where: { isActive: true }, orderBy: [{ isDefault: "desc" }, { priority: "asc" }] });
-  const settings = db.studioToolConfig?.findMany ? await db.studioToolConfig.findMany() : [];
+  const { rows, settings } = await routingSnapshot(db);
   return resolveStudioConfig(rows, settings, channelName, capability, toolId, options);
 }
 
-export async function capabilities(db = prisma, config) {
-  const c = config || await studioConfig(db);
-  const rows = await db.modelProvider.findMany({ where: { isActive: true }, orderBy: [{ isDefault: "desc" }, { priority: "asc" }] });
+export async function capabilities(db = prisma, config, channelName) {
+  // One request-local snapshot: no duplicated queries or stale shared credentials.
+  const { rows, settings } = await routingSnapshot(db);
+  const c = config || resolveStudioConfig(rows, settings, channelName);
   const imageModels = rows.filter(row => channelScope(row) === "public" && channelCapability(row) === "image").filter(row => { const parsed = JSON.parse(row.config || "{}"); return Boolean(parsed.apiKeyEnc || row.kind === "openai" && (process.env.OPENAI_API_KEY || process.env.STUDIO_API_KEY)); }).map(row => ({ id: row.name, label: row.displayName, creditCost: row.creditCost ?? 18, maxReferenceImages: supportsImageTask(JSON.parse(row.config || "{}"), "edit") ? 3 : 0 }));
-  const settings = db.studioToolConfig?.findMany ? await db.studioToolConfig.findMany() : [];
   let external = [];
   if (c.toolsURL && c.toolsKey) {
     try {

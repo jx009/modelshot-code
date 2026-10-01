@@ -128,18 +128,25 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
     clearTimeout(fitTimer.current);
     fitTimer.current = setTimeout(() => canvas.current?.fit(), delay);
   }
+  const loadedProvider = useRef(undefined);
   useEffect(() => {
     const abort = new AbortController(); life.current = abort;
     if (status === "authenticated") {
-      Promise.all([api("/api/studio/capabilities", { signal: abort.signal }), api("/api/usage", { signal: abort.signal })]).then(([caps, value]) => { setCapabilities(caps); setModelProvider(current => current || caps.imageProvider || caps.imageModels?.[0]?.id || ""); setUsage(value); }).catch(e => { if (!abort.signal.aborted) notify(e); });
-    }
+      api("/api/usage", { signal: abort.signal }).then(setUsage).catch(e => { if (!abort.signal.aborted) notify(e); });
+    } else loadedProvider.current = undefined;
     return () => { abort.abort(); clearTimeout(fitTimer.current); };
   }, [status, notify]);
   useEffect(() => {
-    if (status !== "authenticated" || !modelProvider) return;
+    if (status !== "authenticated" || loadedProvider.current === modelProvider) return;
     const abort = new AbortController();
-    const query = new URLSearchParams({ ...(modelProvider ? { imageProvider: modelProvider } : {}) });
-    api(`/api/studio/capabilities?${query}`, { signal: abort.signal }).then(setCapabilities).catch(e => { if (!abort.signal.aborted) notify(e); });
+    const query = new URLSearchParams(modelProvider ? { imageProvider: modelProvider } : {});
+    api(`/api/studio/capabilities?${query}`, { signal: abort.signal }).then(caps => {
+      if (abort.signal.aborted) return;
+      const selected = modelProvider || caps.imageProvider || caps.imageModels?.[0]?.id || "";
+      loadedProvider.current = selected;
+      setCapabilities(caps);
+      setModelProvider(selected);
+    }).catch(e => { if (!abort.signal.aborted) notify(e); });
     return () => abort.abort();
   }, [modelProvider, status, notify]);
   useEffect(() => {
@@ -195,7 +202,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
     return task;
   }, [update, draftRef, zh, t, notify]);
   useEffect(() => {
-    if (!draft.id || status !== "authenticated") return;
+    if (!draft.id || !ready || status !== "authenticated") return;
     const abort = new AbortController();
     let timer;
     let signature = "";
@@ -221,7 +228,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
       if (!abort.signal.aborted) timer = setTimeout(poll, 4000);
     }
     poll(); return () => { abort.abort(); clearTimeout(timer); };
-  }, [draft.id, draft.version, draft.jobs?.length, projectLoad, status, collectResult, notify]);
+  }, [draft.id, ready, draft.jobs?.length, projectLoad, status, collectResult, notify]);
 
   async function uploadFile(file) {
     if (!session?.user) throw new Error("UNAUTHORIZED");
@@ -451,7 +458,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
             <div className="ms-suggestions">{[t("为我的商品设计一张自然光海报", "Create a natural-light product poster"), t("把这张图片变成电影感的画面", "Give this image a cinematic look"), t("帮我拆分主体和背景", "Separate the subject and background")].map((text, i) => <button key={text} onClick={() => { setPrompt(text); if (i === 2 && selected) chooseTool("split"); }}><span>{text}</span><ArrowUpRight size={15} /></button>)}</div>
             <span className="ms-model-note"><span className="ms-status-dot" />{t("每一步编辑，都保留原图", "Every edit keeps your original")}</span>
           </div>}
-          {draft.messages.map(m => <div className={`ms-message ${m.role}`} key={m.id}>{m.role === "assistant" && <span className="ms-speaker"><Aperture size={17} />ModelShot</span>}<p>{m.text}</p>{m.assetId && <button className="ms-message-image" onClick={() => { const layer = draft.layers.find(l => l.assetId === m.assetId); if (layer) { setSelected(layer.id); setMobileChat(false); setTimeout(() => canvas.current?.fit(), 100); } }}><Image unoptimized width={480} height={480} loading="eager" src={previewUrl(m.assetId, 320)} alt={t("对话引用的图片", "Image referenced in conversation")} /></button>}</div>)}
+          {draft.messages.map(m => <div className={`ms-message ${m.role}`} key={m.id}>{m.role === "assistant" && <span className="ms-speaker"><Aperture size={17} />ModelShot</span>}<p>{m.text}</p>{m.assetId && <button className="ms-message-image" onClick={() => { const layer = draft.layers.find(l => l.assetId === m.assetId); if (layer) { setSelected(layer.id); setMobileChat(false); setTimeout(() => canvas.current?.fit(), 100); } }}><Image unoptimized width={480} height={480} loading="lazy" src={previewUrl(m.assetId, 320)} alt={t("对话引用的图片", "Image referenced in conversation")} /></button>}</div>)}
           {draft.plan && <div className="ms-plan"><span className="ms-eyebrow"><Sparkles size={13} />{t("创作计划", "CREATIVE PLAN")}</span><p>{draft.plan.summary}</p>{draft.plan.steps.map((step, i) => <div className="ms-plan-step" key={i}><span>{i < draft.plan.index ? <Check size={13} /> : i + 1}</span><div>{zh ? getTool(step.tool)?.zh : getTool(step.tool)?.en}<small>{step.explanation}</small></div></div>)}<button className="ms-button ms-primary" disabled={busy || planRunning || draft.plan.status === "complete"} onClick={runPlan}>{draft.plan.status === "complete" ? t("已完成", "Complete") : draft.plan.index ? t("继续执行", "Continue") : t("确认并执行", "Run plan")}<span>{draft.plan.credits} {t("积分", "credits")}</span></button><button className="ms-text-button" disabled={busy || planRunning} onClick={() => update(d => ({ ...d, plan: null }))}>{t("移除计划", "Dismiss plan")}</button></div>}
           {jobs.length > 0 && <div className="ms-job-list"><span className="ms-eyebrow">{t("任务记录", "RECENT TASKS")}</span>{jobs.slice(0, 8).map(job => <div className="ms-job" key={job.id}><span className={`ms-job-dot ${job.status}`} /><div>{zh ? getTool(job.tool)?.zh : getTool(job.tool)?.en}<small>{job.status === "succeeded" ? resultStates[job.id] === "failed" ? t("结果加载失败，原图已保留", "Result failed to load; original kept") : !draft.appliedJobs?.includes(job.id) ? t("已生成，正在加载到画布…", "Generated; loading onto canvas…") : t("已完成", "Complete") : job.status === "failed" ? `${t("失败", "Failed")} · ${job.errorCode}` : job.status === "cancelled" ? t("已取消", "Cancelled") : job.status === "reconciling" ? t("正在核对供应商结果…", "Checking provider result…") : t("正在处理…", "Processing…")}</small></div>{resultStates[job.id] === "failed" && <button className="ms-text-button" onClick={() => { setNotice(null); resultLoads.current.delete(job.id); collectResult(job).catch(() => {}); }}>{t("重试加载", "Retry loading")}</button>}{!TERMINAL.includes(job.status) && <button className="ms-icon" title={t("取消任务", "Cancel task")} onClick={() => api(`/api/studio/jobs/${job.id}`, { method: "DELETE" }).catch(notify)}><X size={13} /></button>}{job.resultData?.ocr && <button className="ms-text-button" onClick={() => { setSelected(job.targetId); setOcr(job.resultData.ocr); }}>{t("编辑文字", "Edit text")}</button>}</div>)}</div>}
         </div>

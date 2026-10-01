@@ -90,6 +90,7 @@ for (const intent of ["hover", "focus"]) {
 
 test("slow navigation shows a themed loading state until the destination arrives", async ({ page }) => {
   await open(page, "");
+  const sidebar = await page.locator(".cr-sidebar").elementHandle();
   let release;
   const gate = new Promise(resolve => { release = resolve; });
   await page.route("**/zh/commerce?*", async route => {
@@ -106,11 +107,70 @@ test("slow navigation shows a themed loading state until the destination arrives
     await expect(page.locator(".route-loading")).toHaveCSS("display", "flex");
     await expect(page.locator(".route-loading-grid")).toHaveCSS("display", "grid");
     await expectContained(page.locator(".route-loading"), page);
+    expect(await sidebar.evaluate(el => el.isConnected)).toBe(true);
+    await expect(page.getByRole("button", { name: "切换明暗主题" })).toBeEnabled();
   } finally {
     release();
   }
   await expect(page.locator(".cm-workspace")).toBeVisible();
   await expect(page.locator(".route-loading")).toHaveCount(0);
+  expect(await sidebar.evaluate(el => el.isConnected)).toBe(true);
+});
+
+test("search keeps asset categories; explore skips model discovery", async ({ page }) => {
+  let categories = 0, capabilities = 0;
+  page.on("request", request => {
+    const path = new URL(request.url()).pathname;
+    if (path === "/api/library/categories") categories++;
+    if (path === "/api/studio/capabilities") capabilities++;
+  });
+  await open(page, "assets");
+  await page.waitForLoadState("networkidle");
+  expect(categories).toBe(1);
+  const searched = page.waitForResponse(response => new URL(response.url()).pathname === "/api/library" && new URL(response.url()).searchParams.get("q") === "cat");
+  await page.getByRole("searchbox").fill("cat");
+  await searched;
+  expect(categories).toBe(1);
+  await page.getByRole("navigation", { name: "创作导航" }).getByRole("link", { name: "灵感发现", exact: true }).click();
+  await expect(page.locator(".cr-explore-heading")).toBeVisible();
+  await page.waitForLoadState("networkidle");
+  expect(capabilities).toBe(0);
+});
+
+test("canvas loads model once and autosaving does not restart idle jobs", async ({ page }) => {
+  let capabilities = 0, jobQueries = 0, saves = 0;
+  let releaseUsage;
+  const usageGate = new Promise(resolve => { releaseUsage = resolve; });
+  await page.route("**/api/usage", async route => {
+    await usageGate;
+    await route.fulfill({ json: { credits: 500, remaining: 0 } });
+  });
+  page.on("request", request => {
+    const path = new URL(request.url()).pathname;
+    if (path === "/api/studio/capabilities") capabilities++;
+    if (path === "/api/studio/jobs") jobQueries++;
+    if (path === "/api/studio/documents" && request.method() === "POST") saves++;
+  });
+  await page.route("**/api/studio/documents/perf-project?*", route => route.fulfill({ json: {
+    id: "perf-project", version: 1, name: "Performance fixture", nameSource: "prompt", layerCount: 0,
+    content: { schemaVersion: 1, layers: [], messages: [{ id: "m1", role: "user", text: "First prompt" }], jobs: [], appliedJobs: [] },
+  } }));
+  await page.route("**/api/studio/documents", async route => {
+    const body = route.request().postDataJSON();
+    await route.fulfill({ json: { ...body, id: "perf-project", version: (body.version || 0) + 1 } });
+  });
+  await open(page, "studio-v2?document=perf-project");
+  try {
+    // A slow balance endpoint must not hold up model selection.
+    await expect(page.getByRole("button", { name: "生图模型：GPT Image 2", exact: true })).toBeEnabled();
+  } finally { releaseUsage(); }
+  await expect.poll(() => jobQueries).toBe(1);
+  await page.waitForLoadState("networkidle");
+  expect(capabilities).toBe(1);
+  await page.getByRole("textbox", { name: "创作描述" }).fill("Keep editing without submitting");
+  await expect.poll(() => saves).toBeGreaterThan(0);
+  await page.waitForLoadState("networkidle");
+  expect(jobQueries).toBe(1);
 });
 
 for (const width of [1440, 390, 320]) {

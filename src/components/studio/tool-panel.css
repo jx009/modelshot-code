@@ -86,3 +86,6 @@
    if the floating card overlaps its lower edge. Controls return on release. */
 .ms-studio:has(.ms-stage.is-drawing) .ms-editor { pointer-events: none; }
 .ms-studio:has(.ms-stage.is-drawing) .ms-editor * { pointer-events: none; }
+/* Disabled HTML buttons can swallow mouseup and leave a Konva drag pending. */
+.ms-canvas-space:has(.ms-stage.is-dragging-artwork) .ms-context-toolbar,
+.ms-canvas-space:has(.ms-stage.is-dragging-artwork) .ms-context-toolbar * { pointer-events: none; }

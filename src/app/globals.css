@@ -713,6 +713,30 @@ button:disabled, select:disabled, textarea:disabled { cursor: not-allowed; opaci
 .model-choice { position: relative; min-width: 0; padding: 0; border: 1px solid var(--divider); background: var(--bg-page); overflow: hidden; }.model-choice.selected { border-color: var(--primary); }.model-choice img { width: 100%; aspect-ratio: 3/4; display: block; object-fit: cover; }.model-choice > span { display: block; padding: 5px 3px; overflow: hidden; color: var(--secondary-text); text-overflow: ellipsis; white-space: nowrap; font-size: 9px; }.model-choice i { position: absolute; top: 5px; right: 5px; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--primary); color: var(--primary-btn-text); font-style: normal; }
 .model-loading > div { aspect-ratio: 3/4; background: var(--bg-elevated); animation: skeleton 1.3s ease-in-out infinite alternate; }
 @keyframes skeleton { from { opacity: .45; } to { opacity: 1; } }
+
+/* Keep route transitions responsive while a dynamic page and its client bundle load. */
+.route-loading { position: relative; display: flex; min-height: calc(100dvh - 24px); overflow: hidden; background: var(--bg-page); color: var(--secondary-text); }
+.route-loading-sidebar { display: flex; width: 232px; flex: 0 0 232px; flex-direction: column; gap: 14px; padding: 27px 18px; border-right: 1px solid var(--divider); }
+.route-loading-logo { width: 126px; height: 19px; border-radius: 7px; background: var(--bg-elevated); }
+.route-loading-label { width: 92px; height: 9px; margin: 19px 0 4px; border-radius: 5px; background: var(--bg-elevated); }
+.route-loading-nav { width: 100%; height: 35px; border-radius: 9px; background: var(--bg-elevated); opacity: .56; }
+.route-loading-nav.active { opacity: 1; }
+.route-loading-main { flex: 1; padding: 34px clamp(22px, 5vw, 72px); }
+.route-loading-topline { display: block; width: 100%; height: 1px; margin-bottom: 56px; background: var(--divider); }
+.route-loading-heading { display: block; width: min(410px, 70%); height: 33px; border-radius: 9px; background: var(--bg-elevated); }
+.route-loading-copy { display: block; width: min(300px, 55%); height: 12px; margin-top: 17px; border-radius: 6px; background: var(--bg-elevated); opacity: .7; }
+.route-loading-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 46px; }
+.route-loading-grid span { display: block; aspect-ratio: 1 / .78; border-radius: 13px; background: var(--bg-elevated); }
+.route-loading-logo, .route-loading-label, .route-loading-nav, .route-loading-heading, .route-loading-copy, .route-loading-grid span { animation: route-loading-pulse 1.3s ease-in-out infinite alternate; }
+.route-loading-text { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 12px; letter-spacing: .02em; color: var(--tertiary-text); }
+@keyframes route-loading-pulse { from { opacity: .42; } to { opacity: .9; } }
+@media (max-width: 700px) {
+  .route-loading-sidebar { width: 68px; flex-basis: 68px; padding: 22px 12px; }
+  .route-loading-logo { width: 40px; }
+  .route-loading-label { width: 30px; }
+  .route-loading-main { padding: 24px 18px; }
+  .route-loading-grid { grid-template-columns: 1fr 1fr; }
+}
 .custom-model { position: relative; min-height: 130px; border: 1px dashed var(--divider-strong); background: var(--bg-page); overflow: hidden; }.custom-model > img { width: 100%; height: 155px; object-fit: contain; }.custom-model > button { position: absolute; top: 6px; right: 6px; background: var(--bg-card); }.custom-model > label { min-height: 130px; margin: 0; display: flex; flex-direction: column; justify-content: center; color: var(--secondary-text); cursor: pointer; }
 .ratio-options { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; }.ratio-options button { height: 48px; padding: 4px 2px; display: flex; flex-direction: column; align-items: center; justify-content: space-between; border: 1px solid var(--divider); border-radius: 2px; background: var(--bg-page); color: var(--secondary-text); font-size: 9px; }.ratio-options button[aria-pressed="true"] { border-color: var(--primary); color: var(--primary); background: var(--primary-muted); }.ratio-symbol { height: 24px; display: flex; align-items: center; }.ratio-symbol i { display: block; border: 1px solid currentColor; width: auto; }
 .parameter-details { border-bottom: 1px solid var(--divider); }.parameter-details summary { height: 45px; padding: 0 16px; display: flex; align-items: center; justify-content: space-between; color: var(--primary-text); font-size: 11px; list-style: none; }.parameter-details summary span { display: flex; align-items: center; gap: 7px; }.parameter-details[open] summary > svg { transform: rotate(180deg); }.details-body { padding: 0 16px 16px; display: grid; gap: 10px; }

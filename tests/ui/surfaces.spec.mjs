@@ -64,6 +64,55 @@ async function expectOpaque(locator) {
   }
 }
 
+for (const intent of ["hover", "focus"]) {
+  test(`navigation ${intent}: dynamic page is fetched before clicking and reused`, async ({ page }) => {
+    const destinationRequests = [];
+    page.on("request", request => {
+      if (new URL(request.url()).pathname === "/zh/commerce") destinationRequests.push(request);
+    });
+    await open(page, "");
+    await page.waitForLoadState("networkidle");
+    // Merely displaying the sidebar should not fetch the heavy destination.
+    expect(destinationRequests).toHaveLength(0);
+    const link = page.getByRole("navigation", { name: "创作导航" }).getByRole("link", { name: "电商套图 Agent", exact: true });
+    // Next fetches the route tree first, then the dynamic page payload.
+    const prefetched = page.waitForResponse(response => new URL(response.url()).pathname === "/zh/commerce" && response.request().headers()["next-router-prefetch"] !== "1");
+    await link[intent]();
+    await (await prefetched).finished();
+    await page.waitForLoadState("networkidle");
+    expect(destinationRequests.length).toBeGreaterThan(0);
+    const beforeClick = destinationRequests.length;
+    await link.click();
+    await expect(page.locator(".cm-workspace")).toBeVisible();
+    expect(destinationRequests).toHaveLength(beforeClick);
+  });
+}
+
+test("slow navigation shows a themed loading state until the destination arrives", async ({ page }) => {
+  await open(page, "");
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  await page.route("**/zh/commerce?*", async route => {
+    if (route.request().headers()["next-router-prefetch"] !== "1") await gate;
+    await route.continue();
+  });
+  try {
+    const link = page.getByRole("navigation", { name: "创作导航" }).getByRole("link", { name: "电商套图 Agent", exact: true });
+    const dynamicRequest = page.waitForRequest(request => new URL(request.url()).pathname === "/zh/commerce" && request.headers()["next-router-prefetch"] !== "1");
+    await link.hover();
+    await dynamicRequest;
+    await link.click();
+    await expect(page.getByRole("status", { name: "正在打开…", exact: true })).toBeVisible();
+    await expect(page.locator(".route-loading")).toHaveCSS("display", "flex");
+    await expect(page.locator(".route-loading-grid")).toHaveCSS("display", "grid");
+    await expectContained(page.locator(".route-loading"), page);
+  } finally {
+    release();
+  }
+  await expect(page.locator(".cm-workspace")).toBeVisible();
+  await expect(page.locator(".route-loading")).toHaveCount(0);
+});
+
 for (const width of [1440, 390, 320]) {
   for (const theme of ["dark", "light"]) {
     test(`${theme} ${width}px: pages fit viewport, composer stays aligned`, async ({ page }, testInfo) => {

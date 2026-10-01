@@ -20,13 +20,22 @@ function Feedback({ onPending }) {
   return createPortal(<span className="navigation-progress" role="status">{slow ? zh ? "连接较慢，再次点击可直接打开" : "Slow connection. Click again to open directly." : zh ? "正在打开…" : "Opening…"}</span>, document.body);
 }
 
-// Avoid hundreds of speculative RSC downloads competing with images on HTTP/1.
-// Keep client navigation, with visible feedback and deduplication while pending.
-export default function NavigationLink({ children, onNavigate, onClick, prefetch = false, ...props }) {
+// Prefetch a full destination on hover/focus, including dynamic pages. `auto`
+// alone stops at a loading boundary; prefetching every card floods HTTP/1.
+export default function NavigationLink({ children, onNavigate, onClick, onMouseEnter, onFocus, prefetch = "intent", ...props }) {
   const started = useRef(0);
+  const [intentHref, setIntentHref] = useState(null);
+  const intentKey = JSON.stringify([props.href, props.locale]);
+  const fetchMode = prefetch === "intent" ? intentHref === intentKey ? true : false : prefetch;
   const [pending, setPending] = useState(false);
   useEffect(() => { if (!pending) started.current = 0; }, [pending]);
-  return <Link prefetch={prefetch} {...props} onClick={event => {
+  return <Link prefetch={fetchMode} {...props} onMouseEnter={event => {
+    onMouseEnter?.(event);
+    if (!event.defaultPrevented && prefetch === "intent") setIntentHref(intentKey);
+  }} onFocus={event => {
+    onFocus?.(event);
+    if (!event.defaultPrevented && prefetch === "intent") setIntentHref(intentKey);
+  }} onClick={event => {
     onClick?.(event);
     if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
     if (event.currentTarget.href === window.location.href) { event.preventDefault(); return; }

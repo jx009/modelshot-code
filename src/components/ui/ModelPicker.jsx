@@ -31,12 +31,14 @@ export default function ModelPicker({ models = [], value, onChange, zh, disabled
     if (!expanded) return;
     function place() {
       const rect = trigger.current.getBoundingClientRect();
-      const width = Math.min(400, window.innerWidth - 24);
+      // Keep the picker proportional to the composer. A model chooser should
+      // explain the options without taking over the canvas or chat surface.
+      const width = Math.min(360, window.innerWidth - 32);
       const above = Math.max(0, rect.top - 20);
       const below = Math.max(0, window.innerHeight - rect.bottom - 20);
       const up = above >= Math.min(420, below);
       setPosition({ width, left: Math.max(12, Math.min(rect.left, window.innerWidth - width - 12)),
-        maxHeight: Math.min(480, up ? above : below),
+        maxHeight: Math.min(420, up ? above : below),
         ...(up ? { bottom: window.innerHeight - rect.top + 10 } : { top: rect.bottom + 10 }),
         transformOrigin: up ? "bottom left" : "top left" });
     }

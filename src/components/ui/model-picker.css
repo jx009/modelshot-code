@@ -1,0 +1,46 @@
+.mpk-trigger {
+  display:inline-flex; align-items:center; gap:8px; min-width:0; max-width:260px; min-height:40px;
+  padding:7px 11px 7px 7px; border:1px solid transparent; border-radius:13px;
+  background:var(--bg-card-hover); color:var(--primary-text); font:inherit; font-size:13px; cursor:pointer;
+  transition:background .16s,border-color .16s,box-shadow .16s;
+}
+.mpk-trigger:hover,.mpk-trigger[aria-expanded=true] { background:var(--bg-elevated); border-color:var(--divider-strong); }
+.mpk-trigger:disabled { cursor:default; color:var(--secondary-text); }
+.mpk-trigger-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.mpk-chevron { flex-shrink:0; color:var(--secondary-text); transition:transform .18s; }
+.mpk-trigger[aria-expanded=true] .mpk-chevron { transform:rotate(180deg); }
+.mpk-mark { width:48px; height:48px; flex-shrink:0; border-radius:16px; display:grid; place-items:center; background:var(--mpk-fill); color:var(--mpk-ink); }
+.mpk-mark-small { width:26px; height:26px; border-radius:9px; }
+.mpk-tone-0 { --mpk-fill:#253e38; --mpk-ink:#a9ecce; }
+.mpk-tone-1 { --mpk-fill:#393052; --mpk-ink:#dbbdff; }
+.mpk-tone-2 { --mpk-fill:#44361f; --mpk-ink:#ffda87; }
+.mpk-tone-3 { --mpk-fill:#243b52; --mpk-ink:#a9d6ff; }
+.mpk-panel {
+  position:fixed; z-index:1000; display:flex; flex-direction:column; overflow:hidden; box-sizing:border-box;
+  padding:18px 12px 12px; border:1px solid var(--divider-strong); border-radius:22px;
+  background:var(--bg-popover); opacity:1; color:var(--primary-text); text-align:left;
+  box-shadow:0 20px 64px #0004,0 3px 12px #0002; animation:mpk-enter .18s cubic-bezier(.2,.8,.2,1);
+}
+.mpk-heading { display:flex; align-items:center; gap:10px; padding:0 8px 16px; font-size:17px; font-weight:600; flex-shrink:0; }
+.mpk-close { margin-left:auto; display:grid; place-items:center; width:28px; height:28px; background:transparent; color:var(--secondary-text); border:0; border-radius:8px; cursor:pointer; }
+.mpk-close:hover { background:var(--bg-card-hover); color:var(--primary-text); }
+.mpk-category { display:flex; align-items:center; gap:8px; margin:0 6px 12px; padding:10px 12px; border:1px solid var(--divider); border-radius:12px; background:var(--bg-card); font-size:13px; flex-shrink:0; }
+.mpk-count { margin-left:auto; color:var(--secondary-text); font-size:12px; }
+.mpk-list { overflow-y:auto; overscroll-behavior:contain; min-height:0; padding:2px 4px; scrollbar-width:thin; scrollbar-color:var(--divider-strong) transparent; }
+.mpk-option { display:flex; align-items:center; gap:12px; width:100%; border:1px solid transparent; border-radius:14px; padding:13px 10px; margin:0 0 5px; background:transparent; color:var(--primary-text); text-align:left; cursor:pointer; transition:background .15s,border-color .15s; }
+.mpk-option:hover { background:var(--bg-card-hover); }
+.mpk-option[aria-selected=true] { background:var(--bg-popover-selected); }
+.mpk-copy { display:flex; flex:1; min-width:0; flex-direction:column; gap:4px; }
+.mpk-name { font-size:16px; font-weight:550; line-height:1.4; overflow-wrap:anywhere; }
+.mpk-description { font-size:12px; line-height:1.6; color:var(--secondary-text); }
+.mpk-price { font-size:11px; line-height:1.5; color:var(--secondary-text); }
+.mpk-check { width:18px; flex-shrink:0; }
+.mpk-panel button:focus-visible,.mpk-trigger:focus-visible { outline:2px solid var(--primary-text); outline-offset:-2px; }
+.ms-composer-tools { display:grid; grid-template-columns:28px 24px minmax(0,1fr) 44px 40px 34px; gap:4px; }
+.ms-composer-tools .mpk-trigger { max-width:100%; padding:6px; gap:5px; font-size:12px; }
+.ms-composer-tools > select { min-width:0; width:100%; padding-inline:3px; }
+.ms-composer-tools > .ms-send { margin-left:0; }
+.cr-shell .cr-home-composer:focus-within { box-shadow:0 8px 24px var(--shadow-soft); }
+@keyframes mpk-enter { from { transform:translateY(5px) scale(.97); } to { transform:translateY(0) scale(1); } }
+@media(max-width:600px) { .mpk-trigger { max-width:190px; font-size:12px; }.mpk-panel { border-radius:18px; }.mpk-option { padding:11px 8px; } }
+@media(prefers-reduced-motion:reduce) { .mpk-panel { animation:none; }.mpk-trigger,.mpk-option,.mpk-chevron { transition:none; } }

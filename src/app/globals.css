@@ -39,6 +39,8 @@
   --bg-card: #141416;
   --bg-card-hover: #232327;
   --bg-elevated: #1C1C1F;
+  --bg-popover: #303032;
+  --bg-popover-selected: #47474B;
   --bg-canvas: #101012;
   --divider: #2A2A2E;
   --divider-strong: #3A3A40;
@@ -112,6 +114,8 @@
   --bg-card: #FFFFFF;
   --bg-card-hover: #EFEFEC;
   --bg-elevated: #FFFFFF;
+  --bg-popover: #FFFFFF;
+  --bg-popover-selected: #EFEFEC;
   --bg-canvas: #E8E8E4;          /* 画布底：中性灰，服装图不融背景 */
   --divider: #E5E5E1;
   --divider-strong: #C8C8C2;

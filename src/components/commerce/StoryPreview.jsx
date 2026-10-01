@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { THEMES } from "@/lib/commerce/schema";
+import { THEMES } from "@/lib/commerce/schema-client";
 import { renderSection } from "@/lib/commerce/export";
 function SectionPreview({ section, brief, src }) {
   const ref = useRef(null), [error, setError] = useState("");

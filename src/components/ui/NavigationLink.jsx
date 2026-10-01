@@ -22,11 +22,11 @@ function Feedback({ onPending }) {
 
 // Avoid hundreds of speculative RSC downloads competing with images on HTTP/1.
 // Keep client navigation, with visible feedback and deduplication while pending.
-export default function NavigationLink({ children, onNavigate, onClick, ...props }) {
+export default function NavigationLink({ children, onNavigate, onClick, prefetch = false, ...props }) {
   const started = useRef(0);
   const [pending, setPending] = useState(false);
   useEffect(() => { if (!pending) started.current = 0; }, [pending]);
-  return <Link prefetch={false} {...props} onClick={event => {
+  return <Link prefetch={prefetch} {...props} onClick={event => {
     onClick?.(event);
     if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
     if (event.currentTarget.href === window.location.href) { event.preventDefault(); return; }

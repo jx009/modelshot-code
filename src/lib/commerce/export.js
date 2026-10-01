@@ -1,4 +1,4 @@
-import { THEMES, outputWidth } from "./schema.js";
+import { THEMES, outputWidth } from "./schema-client.js";
 
 export function sectionGeometry(layout) {
   if (layout === "split") return { image: [420, 0, 580, 1150], copy: [55, 310, 320], titleSize: 62, bodyY: 555 };

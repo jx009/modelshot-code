@@ -6,7 +6,7 @@ import Link from "@/components/ui/NavigationLink";
 import { ArrowLeft, ArrowUpRight, Copy, Check, Sparkles, Layers3 } from "lucide-react";
 import CreativeShell from "./CreativeShell";
 import { caseImage } from "@/lib/commerce/catalog";
-import { createStoryboard } from "@/lib/commerce/planner";
+import { createStoryboard } from "@/lib/commerce/planner-client";
 import StoryPreview from "@/components/commerce/StoryPreview";
 import "@/components/commerce/commerce.css";
 export default function CaseDetail({ item }) {

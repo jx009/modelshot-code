@@ -4,7 +4,7 @@ import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { CheckCircle2, CircleAlert, LoaderCircle, Sparkles, X, LocateFixed } from "lucide-react";
 import { api } from "@/lib/client-api";
-import { getTool } from "@/lib/studio/tools";
+import { getTool } from "@/lib/studio/tool-catalog";
 import { previewUrl } from "@/lib/studio/image-url";
 import { taskPhase, taskSummary } from "@/lib/studio/task-presentation";
 import "./task-popover.css";

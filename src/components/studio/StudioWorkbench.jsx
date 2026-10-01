@@ -9,7 +9,7 @@ import { Link } from "@/i18n/navigation";
 import { Aperture, ArrowUp, ArrowDown, ArrowUpRight, Plus, X, FolderOpen, Download, Save, Undo2, Redo2, MousePointer2, Hand, ImagePlus, Type, Layers3, Sparkles, WandSparkles, Expand, Crop, Eraser, Move, ScanText, Scissors, Video, MessageCircle, Zap, ShoppingBag, ChevronDown, Check, LoaderCircle, ZoomIn, Minus, Maximize, Trash2, Eye, EyeOff, Copy, Coins, Play, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { api, requestKey } from "@/lib/client-api";
 import ModelPicker from "@/components/ui/ModelPicker";
-import { TOOLS, getTool } from "@/lib/studio/tools";
+import { TOOLS, getTool } from "@/lib/studio/tool-catalog";
 import { appendResult, scaleToFit } from "@/lib/studio/canvas-utils";
 import { imageUrl, previewUrl } from "@/lib/studio/image-url";
 import { loadImage } from "@/lib/studio/image-processor";

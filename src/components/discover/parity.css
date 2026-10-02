@@ -2,7 +2,8 @@
 .cr-shell :is(button,a) { -webkit-tap-highlight-color:transparent; }
 .cr-shell button { transition:background var(--motion-fast),color var(--motion-fast),transform var(--motion-press); }
 .cr-shell button:active { transform:scale(.97); }
-.cr-shell :is(button,a,input,textarea,select):focus-visible { outline:2px solid var(--primary-text); outline-offset:3px; }
+.cr-shell :is(button,a):focus-visible { outline:2px solid var(--primary-text); outline-offset:3px; }
+.cr-shell :is(input,textarea,select):focus-visible { outline:1px solid var(--secondary-text); outline-offset:0; }
 .cr-shell .cr-sidebar nav a svg { transition:transform 420ms ease; }
 .cr-shell .cr-sidebar nav a:hover svg { transform:translateY(-2px) rotate(-6deg); }
 .cr-shell .cr-creation-hero { display:block; padding:64px 32px 36px; min-height:0; }
@@ -37,8 +38,9 @@
 .cr-shell .cr-quick-links a:hover { background:var(--bg-card-hover); }
 .cr-shell .cr-search { color:var(--secondary-text); }
 .cr-shell .cr-search input::placeholder { color:var(--secondary-text); opacity:1; }
-.cr-shell .cr-home-composer:focus-within { border-color:var(--divider-strong); box-shadow:0 0 0 2px var(--primary-muted),0 8px 24px var(--shadow-soft); }
+.cr-shell .cr-home-composer:focus-within { border-color:var(--secondary-text); box-shadow:0 8px 24px var(--shadow-soft); }
 .cr-shell .cr-home-composer textarea:focus-visible { outline:none; }
+.cr-shell .cr-home-fields :is(input,select):focus { border-color:var(--secondary-text); outline:none; }
 @media(max-width:600px) {
   .cr-shell .cr-sidebar { gap:8px; padding-inline:12px; }
   .cr-shell .cr-sidebar .cr-logo { flex-shrink:0; }

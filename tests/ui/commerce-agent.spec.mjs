@@ -115,6 +115,7 @@ for (const [theme, width] of [["light", 1440], ["dark", 390]]) {
       const color = await page.locator(selector).first().evaluate(el => getComputedStyle(el).backgroundColor);
       expect(color).toMatch(/^rgb\(/);
     }
+    await page.getByLabel("继续创作").focus();
     await page.screenshot({ path: info.outputPath(`commerce-${theme}-${width}.png`), fullPage: true });
   });
 }

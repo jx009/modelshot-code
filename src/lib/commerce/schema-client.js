@@ -1,7 +1,7 @@
 const ENUMS = {
   platform: ["taobao", "amazon", "shopify"], region: ["CN", "US", "EU"], language: ["zh", "en"],
   style: ["natural", "editorial", "studio"], theme: ["linen", "sand", "red", "ice", "mono", "citrus", "dark"],
-  kind: ["hero", "benefit", "detail", "lifestyle", "specs", "closing"], layout: ["cover", "split", "inset"], planning: ["template", "vision"],
+  kind: ["hero", "benefit", "detail", "lifestyle", "specs", "closing", "proof", "compare", "faq", "custom"], layout: ["cover", "split", "inset"], planning: ["template", "vision", "agent"],
 };
 export const THEMES = {
   linen: { background: "#eeebe3", text: "#383a31", muted: "#717362", accent: "#9a7250" }, sand: { background: "#e7decd", text: "#423728", muted: "#806e57", accent: "#a87843" },
@@ -10,7 +10,7 @@ export const THEMES = {
   dark: { background: "#17191a", text: "#f0ede6", muted: "#acafa6", accent: "#cbb78d" },
 };
 export const outputWidth = platform => ({ taobao: 750, amazon: 970, shopify: 1200 })[platform] || 750;
-const defaults = { brand: "", description: "", material: "", dimensions: "", audience: "", scenario: "", platform: "taobao", region: "CN", language: "zh", style: "natural", theme: "linen", caseId: "" };
+const defaults = { imageCount: 0, brand: "", description: "", material: "", dimensions: "", audience: "", scenario: "", platform: "taobao", region: "CN", language: "zh", style: "natural", theme: "linen", caseId: "" };
 function invalid(message) { const error = new Error(message); error.issues = [{ message }]; return error; }
 export function normalizeBrief(value = {}, { partial = false } = {}) {
   const brief = { ...defaults, ...value };
@@ -26,7 +26,7 @@ export const briefSchema = {
 };
 export function normalizeCommerce(value = {}) {
   const brief = normalizeBrief(value.brief);
-  if (value.version !== 1 || !Array.isArray(value.sections) || !value.sections.length || value.sections.length > 10) throw invalid("INVALID_COMMERCE");
+  if (value.version !== 1 || !Array.isArray(value.sections) || value.sections.length > 10) throw invalid("INVALID_COMMERCE");
   const sections = value.sections.map(section => {
     if (!section?.id || !ENUMS.kind.includes(section.kind) || !ENUMS.layout.includes(section.layout) || !String(section.title || "").trim()) throw invalid("INVALID_SECTION");
     return { ...section, attempt: Number.isInteger(section.attempt) ? section.attempt : 0 };

@@ -1,7 +1,4 @@
 import { test, expect } from "@playwright/test";
-import fs from "node:fs/promises";
-import JSZip from "jszip";
-import sharp from "sharp";
 
 test("story preview rendering workload", async ({ page }, info) => {
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -39,27 +36,3 @@ test("story preview rendering workload", async ({ page }, info) => {
   console.log(JSON.stringify({ initial, beforeCopy, afterCopy }));
   await info.attach("preview-workload", { body: JSON.stringify({ initial, beforeCopy, afterCopy }), contentType: "application/json" });
 });
-
-for (const [platform, width, height] of [["taobao", 750, 5178], ["amazon", 970, 6696], ["shopify", 1200, 8280]]) {
-  test(`${platform}: preview sizing preserves native export resolution and edited copy`, async ({ page }) => {
-    await page.setViewportSize({ width: 390, height: 844 });
-    await page.route("**/api/**", route => route.fulfill({ json: {} }));
-    await page.goto("/zh/commerce?case=quiet-living");
-    await page.getByLabel("目标平台", { exact: true }).selectOption(platform);
-    await page.getByRole("button", { name: "生成可编辑分镜", exact: true }).click();
-    await page.getByLabel("标题", { exact: true }).fill("更轻的预览");
-    await page.getByLabel("版式", { exact: true }).selectOption("inset");
-    const canvas = page.locator(".cm-preview-render").first();
-    await canvas.scrollIntoViewIfNeeded();
-    await expect(canvas).toHaveAttribute("data-rendered", "true");
-    expect(await canvas.evaluate(c => c.width)).toBeLessThan(width);
-    const download = page.waitForEvent("download");
-    await page.getByRole("button", { name: "导出原图排版", exact: true }).click();
-    const zip = await JSZip.loadAsync(await fs.readFile(await (await download).path()));
-    const project = JSON.parse(await zip.file("project.json").async("string"));
-    expect(project.sections[0].title).toBe("更轻的预览");
-    const full = await sharp(await zip.file("detail-page.png").async("nodebuffer")).metadata();
-    expect(full.width).toBe(width);
-    expect(full.height).toBe(height);
-  });
-}

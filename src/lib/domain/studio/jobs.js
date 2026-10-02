@@ -7,6 +7,7 @@ import { regionInside } from "../../studio/move-geometry.js";
 import { jobSchema, getTool } from "../../studio/tools.js";
 import { capabilities, studioConfig } from "./providers.js";
 import { ACTIVE, LIMITS, digestJson } from "../generation/contracts.js";
+import { commerceReferences } from "../../commerce/project.js";
 
 export async function submitStudioJob(userId, input, key, db = prisma, deps = {}) {
   const data = jobSchema.parse(input);
@@ -34,7 +35,7 @@ export async function submitStudioJob(userId, input, key, db = prisma, deps = {}
     if (data.sectionId) {
       const commerce = document.content.commerce;
       const section = commerce?.sections.find(s => s.id === data.sectionId);
-      if (!section || data.tool !== "edit" || section.attempt !== data.sectionAttempt || commerce.productAssetId !== data.assetId || section.prompt !== data.params.prompt || JSON.stringify(data.referenceAssetIds || []) !== JSON.stringify(commerce.referenceAssetId ? [commerce.referenceAssetId] : [])) throw new AppError("STORYBOARD_CHANGED", 409);
+      if (!section || data.tool !== "edit" || section.attempt !== data.sectionAttempt || commerce.productAssetId !== data.assetId || section.prompt !== data.params.prompt || JSON.stringify(data.referenceAssetIds || []) !== JSON.stringify(commerceReferences(commerce, section)) || data.provider !== commerce.provider || data.params.size !== (commerce.size || "1024x1536")) throw new AppError("STORYBOARD_CHANGED", 409);
     }
     for (const ref of data.referenceAssetIds || []) {
       const asset = await ownedAsset(userId, ref, tx);

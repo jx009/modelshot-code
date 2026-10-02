@@ -13,7 +13,7 @@ export async function saveDocument(userId, input, db = prisma) {
       if (existing?.deletedAt) throw new AppError("DOCUMENT_NOT_FOUND", 404);
       if (existing) return { ...existing, replayed: true };
     }
-    const refs = new Set([...data.content.layers.map(l => l.assetId), ...data.content.messages.map(m => m.assetId), data.content.commerce?.productAssetId, data.content.commerce?.referenceAssetId].filter(Boolean));
+    const refs = new Set([...data.content.layers.map(l => l.assetId), ...data.content.messages.map(m => m.assetId), ...(data.content.commerce?.sections || []).map(s => s.revisionAssetId), data.content.commerce?.productAssetId, data.content.commerce?.referenceAssetId].filter(Boolean));
     if (refs.size && await tx.asset.count({ where: { id: { in: [...refs] }, userId, status: "active" } }) !== refs.size) throw new AppError("ASSET_NOT_FOUND", 404);
     const jobIds = [...new Set(data.content.jobs)];
     if (jobIds.length && await tx.tryOn.count({ where: { id: { in: jobIds }, userId } }) !== jobIds.length) throw new AppError("JOB_NOT_FOUND", 404);

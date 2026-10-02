@@ -44,6 +44,17 @@ const supplier = http.createServer(async (req, res) => {
     const input = JSON.parse(body);
     if (input.model !== "fixture-language") { res.writeHead(422); res.end("{}"); return; }
     res.setHeader("Content-Type", "application/json");
+    if (input.messages[0].content.startsWith("You are a commerce visual director")) {
+      const context = JSON.parse(input.messages.at(-1).content[0].text);
+      const revising = context.currentSections.length > 0;
+      const count = context.brief.imageCount || 3;
+      const sections = revising ? [{ ...context.currentSections.find(s => s.id === context.targetSectionId), direction: "A quiet outdoor scene", title: "Outdoor living" }] : Array.from({ length: count }, (_, i) => ({ id: `commerce-card-${i}`, kind: "lifestyle", title: `Product story ${i + 1}`, body: "A chair in everyday life", eyebrow: "", layout: "inset", purpose: "Show product in context", direction: "A neutral room with soft daylight", evidence: "User product photograph" }));
+      for (const section of sections) { delete section.prompt; delete section.attempt; delete section.revisionAssetId; }
+      res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ action: revising ? "revise" : "plan", message: "A tailored product collection", styleLock: "Soft natural light and neutral colors", evidence: ["User product photograph"], questions: [], sections }) } }] })); return;
+    }
+    if (input.messages[0].content.startsWith("Review the generated commerce image")) {
+      res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ verdict: "revise", summary: "Improve headline contrast", issues: ["Headline needs more contrast"], revision: "Increase contrast without altering the product" }) } }] })); return;
+    }
     if (input.messages[0].content.startsWith("Rewrite the user's image-generation prompt")) {
       res.end(JSON.stringify({ choices: [{ message: { content: "A cat sitting by a sunlit window, warm light, natural fur texture." } }] })); return;
     }
@@ -89,10 +100,10 @@ const supplier = http.createServer(async (req, res) => {
   res.writeHead(200, { "Content-Type": "application/json" });
   res.end(JSON.stringify({ data: [{ b64_json: result.toString("base64") }] }));
 });
-await new Promise(resolve => supplier.listen(3199, "127.0.0.1", resolve));
+await new Promise(resolve => supplier.listen(Number(process.env.TEST_PROVIDER_PORT || 3199), "127.0.0.1", resolve));
 const startWorker = () => spawn(process.execPath, ["src/workers/main.mjs"], { stdio: "inherit", env: process.env });
 let worker = startWorker();
-const web = spawn(process.execPath, ["node_modules/next/dist/bin/next", "start", "--hostname", "127.0.0.1", "--port", "3100"], { stdio: "inherit", env: process.env });
+const web = spawn(process.execPath, ["node_modules/next/dist/bin/next", "start", "--hostname", "127.0.0.1", "--port", process.env.TEST_WEB_PORT || "3100"], { stdio: "inherit", env: process.env });
 function stop() { worker.kill(); web.kill(); supplier.close(); }
 process.on("SIGINT", stop);
 process.on("SIGTERM", stop);

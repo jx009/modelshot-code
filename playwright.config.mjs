@@ -2,7 +2,8 @@ import { defineConfig, devices } from "@playwright/test";
 import { getTestEnvironment } from "./tests/support/environment.mjs";
 
 const config = getTestEnvironment();
-const port = 3100;
+const port = Number(process.env.TEST_WEB_PORT || 3100);
+const supplierPort = Number(process.env.TEST_PROVIDER_PORT || 3199);
 const baseURL = `http://127.0.0.1:${port}`;
 
 export default defineConfig({
@@ -27,6 +28,8 @@ export default defineConfig({
     reuseExistingServer: false,
     timeout: 60_000,
     env: {
+      TEST_WEB_PORT: String(port),
+      TEST_PROVIDER_PORT: String(supplierPort),
       DATABASE_URL: config.databaseUrl,
       DIRECT_URL: config.databaseUrl,
       NEXTAUTH_URL: baseURL,
@@ -50,7 +53,7 @@ export default defineConfig({
       STUDIO_BASE_URL: "",
       STUDIO_IMAGE_MODEL: "fixture-image",
       STUDIO_CHAT_MODEL: "",
-      STUDIO_TOOLS_URL: "http://127.0.0.1:3199",
+      STUDIO_TOOLS_URL: `http://127.0.0.1:${supplierPort}`,
       STUDIO_TOOLS_KEY: "isolated-e2e-tools-key-32-characters",
       ARK_API_KEY: "",
       ARK_VIDEO_MODEL: "",

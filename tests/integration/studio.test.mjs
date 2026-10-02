@@ -207,7 +207,7 @@ describe("studio documents and task ledger", () => {
     await expect(saveDocument(user.id, { id: doc.id, version: saved.version, name: "Invalid", content: { ...saved.content, commerce: { ...commerce, referenceAssetId: other.asset.id } } }, f.db)).rejects.toThrow("ASSET_NOT_FOUND");
     const outputs = [];
     for (const section of sections) {
-      const data = { ...input, documentVersion: saved.version, referenceAssetIds: [reference.id], sectionId: section.id, sectionAttempt: 0, params: { prompt: section.prompt } };
+      const data = { ...input, documentVersion: saved.version, referenceAssetIds: [reference.id], sectionId: section.id, sectionAttempt: 0, params: { prompt: section.prompt, size: "1024x1536" } };
       await expect(submitStudioJob(user.id, { ...data, params: { prompt: "changed after plan" } }, randomUUID(), f.db, deps)).rejects.toThrow("STORYBOARD_CHANGED");
       const key = randomUUID(), job = await submitStudioJob(user.id, data, key, f.db, deps);
       expect((await submitStudioJob(user.id, data, key, f.db, deps)).id).toBe(job.id);

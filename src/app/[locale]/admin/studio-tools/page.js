@@ -53,7 +53,7 @@ export default function StudioToolPricingPage() {
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
           {data.tools.map(tool => {
-            const modelTool = tool.dependency === "image" || tool.dependency === "split";
+            const modelTool = ["image", "split", "ocr", "upscale"].includes(tool.dependency);
             const updateRouting = patch => update(tool.id, { routing: { ...tool.routing, ...patch } });
             const channelSelect = (cap, value, onChange, placeholder) => <select value={value || ""} onChange={e => onChange(e.target.value || null)} className="w-full bg-bg-page border border-divider rounded-[10px] px-3 py-2 text-primary-text"><option value="">{placeholder}</option>{(data.channels[cap] || []).map(ch => <option key={ch.name} value={ch.name}>{ch.label} · {ch.kind}</option>)}</select>;
             return (
@@ -65,7 +65,7 @@ export default function StudioToolPricingPage() {
                     </span>
                     <div>
                       <h2 className="text-sm font-medium text-primary-text">{tool.zh}</h2>
-                      <p className="text-[10px] text-secondary-text mt-0.5">{tool.dependency === "local" ? "纯代码处理 · 无需模型" : tool.dependency === "vision" ? "自动调用后台通用大语言模型" : tool.dependency === "image" ? "图像模型处理" : tool.dependency === "split" ? "拆分为独立 RGBA 图层" : "使用已部署的专用服务"}</p>
+                      <p className="text-[10px] text-secondary-text mt-0.5">{tool.dependency === "ocr" ? "独立视觉大模型 · 方舟 / OpenAI 兼容" : tool.dependency === "upscale" ? "火山智能视觉 · 图片超分 2×" : tool.dependency === "local" ? "纯代码处理 · 无需模型" : tool.dependency === "vision" ? "自动调用后台通用大语言模型" : tool.dependency === "image" ? "图像模型处理" : tool.dependency === "split" ? "拆分为独立 RGBA 图层" : "使用已部署的专用服务"}</p>
                     </div>
                   </div>
                   <button
@@ -102,7 +102,12 @@ export default function StudioToolPricingPage() {
                     </button>
                   </div>
                   {modelTool && <label className="text-xs text-secondary-text space-y-1"><span>{tool.id === "move" ? "物体移动模型（完整场景编辑）" : "执行方式"}</span><select className="w-full bg-bg-page border border-divider rounded-[10px] px-3 py-2 text-primary-text" value={tool.routing.mode} onChange={e => updateRouting({ mode: e.target.value, channelName: null })}>{tool.dependency === "image" && <option value="inherit">沿用用户选择的生图模型</option>}<option value="dedicated">指定工具专用模型</option></select></label>}
-                  {modelTool && tool.routing.mode === "dedicated" && <label className="text-xs text-secondary-text space-y-1"><span>专用模型</span>{channelSelect(tool.dependency, tool.routing.channelName, channelName => updateRouting({ channelName }), tool.dependency === "split" ? "使用后台默认拆层模型" : "请选择模型")}</label>}
+                  {modelTool && tool.routing.mode === "dedicated" && <label className="text-xs text-secondary-text space-y-1"><span>专用模型</span>{channelSelect(tool.dependency, tool.routing.channelName, channelName => updateRouting({ channelName }), ["split", "ocr", "upscale"].includes(tool.dependency) ? "使用此用途的默认模型" : "请选择模型")}</label>}
+                  {["ocr", "upscale"].includes(tool.dependency) && <>
+                    <p className="text-xs text-secondary-text">{tool.dependency === "ocr" ? "只使用 OCR 用途的模型，不影响后台通用大语言模型。需要支持图片输入和 JSON 输出；文字位置由模型估算。" : "使用火山 CVProcess 图片超分接口，原生放大 2 倍。输入最大 5 MB，宽 50–2128、高 50–4064 像素，不会自动缩小原图。"} 成功后按本页积分扣费。</p>
+                    {!data.channels[tool.dependency]?.length && <p className="text-xs text-warning">尚未配置已启用的{tool.dependency === "ocr" ? " OCR 模型" : "超分服务"}。</p>}
+                    <Link href={`/admin/providers?category=tool&purpose=${tool.dependency}`} className="text-xs text-primary">配置{tool.dependency === "ocr" ? " OCR 专用模型" : "火山超分 AK/SK"} →</Link>
+                  </>}
                   {tool.id === "move" && <p className="text-xs text-secondary-text">框选源区域并调整目标位置后，编辑模型一次生成完整场景，修补原位置并融合新位置的光影。支持阿里、火山或兼容图像编辑接口，不需要先调用物体分割。</p>}
                   {tool.dependency === "split" && <>
                     {!data.channels.split?.length && <div className="rounded-[10px] border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">尚未配置拆层模型。请在 <Link href="/admin/providers?category=tool" className="underline underline-offset-2">工具专用模型</Link> 中启用火山智能视觉 EntitySegment 或 Qwen 图层拆分。</div>}
@@ -114,7 +119,7 @@ export default function StudioToolPricingPage() {
                     <p className="text-xs text-secondary-text">圈选后使用分割模型提取完整物体；局部修改由工具绑定的图像编辑模型完成。</p>
                   </>}
                   {tool.dependency === "vision" && <Link href="/admin/providers?category=language" className="text-xs text-primary">配置后台大语言模型和每次积分 →</Link>}
-                  {!["image", "split", "vision", "local"].includes(tool.dependency) && <p className="text-xs text-secondary-text">{tool.dependency === "video" ? "当前接入火山视频服务，使用部署配置 ARK_VIDEO_MODEL。" : "当前由 tools 服务执行本地推理，使用已部署的模型。此工具尚未接入可切换的云端协议。"}</p>}
+                  {!["image", "split", "vision", "local", "ocr", "upscale"].includes(tool.dependency) && <p className="text-xs text-secondary-text">{tool.dependency === "video" ? "当前接入火山视频服务，使用部署配置 ARK_VIDEO_MODEL。" : "当前由 tools 服务执行本地推理，使用已部署的模型。此工具尚未接入可切换的云端协议。"}</p>}
 
                 </div>
               </div>

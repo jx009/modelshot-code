@@ -12,10 +12,12 @@ import { segmentCloudImage, splitCloudImage } from "../../../../lib/domain/studi
 import { entityLabels } from "../../../../lib/domain/studio/volc-visual";
 import { allowedProviderBaseURL, channelCapability, channelScope, validChannel } from "../../../../lib/studio/model-channels";
 import sharp from "sharp";
+import { recognizeText } from "../../../../lib/domain/studio/ocr.js";
+import { upscaleVolcImage } from "../../../../lib/domain/studio/upscale.js";
 
 const kindSchema = z.enum(["openai", "gemini", "fashn", "dashscope", "volcengine", "volc-visual", "fal"]);
 const visualSecrets = { accessKeyId: z.string().max(4096).optional(), secretAccessKey: z.string().max(4096).optional() };
-const channelFields = { scope: z.enum(["public", "tool", "language"]).optional(), studioCapability: z.enum(["image", "segment", "split", "language"]).optional(), imageMode: z.enum(["both", "generate", "edit"]).optional(), studioDefault: z.boolean().optional() };
+const channelFields = { scope: z.enum(["public", "tool", "language"]).optional(), studioCapability: z.enum(["image", "segment", "split", "language", "ocr", "upscale"]).optional(), imageMode: z.enum(["both", "generate", "edit"]).optional(), studioDefault: z.boolean().optional() };
 
 /**
  * 模型提供商管理
@@ -98,7 +100,8 @@ export async function PATCH(req) {
       const kind = input.kind || existing.kind || existing.name;
       for (const field of Object.keys(channelFields)) if (input[field] !== undefined) cfg[field] = input[field];
       if (!validChannel(kind, cfg)) throw new AppError("PROVIDER_CAPABILITY_UNSUPPORTED", 422);
-      if (kind === "volc-visual" && (!cfg.accessKeyIdEnc || !cfg.secretAccessKeyEnc)) throw new AppError("SEGMENTATION_NOT_CONFIGURED", 422);
+      if (kind === "volc-visual" && (!cfg.accessKeyIdEnc || !cfg.secretAccessKeyEnc)) throw new AppError(cfg.studioCapability === "upscale" ? "UPSCALE_NOT_CONFIGURED" : "SEGMENTATION_NOT_CONFIGURED", 422);
+      if (cfg.studioCapability === "ocr" && !cfg.apiKeyEnc) throw new AppError("OCR_NOT_CONFIGURED", 422);
       if (channelScope({ kind }, cfg) !== "public" && channelCapability({ kind }, cfg) === "image") cfg.studioDefault = false;
       if (cfg.studioDefault) {
         const rows = await tx.modelProvider.findMany();
@@ -137,7 +140,8 @@ export async function PUT(req) {
       for (const field of ["studioCapability", "imageMode", "scope"]) if (input[field] !== undefined) config[field] = input[field];
       if (input.accessKeyId?.trim()) config.accessKeyIdEnc = encryptSecret(input.accessKeyId.trim());
       if (input.secretAccessKey?.trim()) config.secretAccessKeyEnc = encryptSecret(input.secretAccessKey.trim());
-      if (input.kind === "volc-visual" && (!config.accessKeyIdEnc || !config.secretAccessKeyEnc)) throw new AppError("SEGMENTATION_NOT_CONFIGURED", 422);
+      if (input.kind === "volc-visual" && (!config.accessKeyIdEnc || !config.secretAccessKeyEnc)) throw new AppError(config.studioCapability === "upscale" ? "UPSCALE_NOT_CONFIGURED" : "SEGMENTATION_NOT_CONFIGURED", 422);
+      if (config.studioCapability === "ocr" && !config.apiKeyEnc) throw new AppError("OCR_NOT_CONFIGURED", 422);
       if (!validChannel(input.kind, config) || input.studioDefault) throw new AppError("PROVIDER_CAPABILITY_UNSUPPORTED", 422);
       if (input.scope === "language") await tx.modelProvider.updateMany({ data: { isPlanner: false } });
       const row = await tx.modelProvider.create({ data: { isPlanner: input.scope === "language", name: `${input.kind}-${randomUUID().slice(0, 12)}`, kind: input.kind, displayName: input.displayName, priority: priority + 1, creditCost: input.creditCost, costPerImage: input.costPerImage, config: JSON.stringify(config) } });
@@ -170,7 +174,13 @@ export async function POST(req) {
       const image = await sharp({ create: { width: 512, height: 512, channels: 4, background: "white" } })
         .composite([{ input: await sharp({ create: { width: 128, height: 128, channels: 4, background: "red" } }).png().toBuffer(), left: 192, top: 192 }]).png().toBuffer();
       const signal = AbortSignal.timeout(180000);
-      if (provider.kind === "volc-visual") await entityLabels(config.segmentChannel, image, signal);
+      if (capability === "ocr") {
+        const sample = await sharp(Buffer.from('<svg width="512" height="256"><rect width="512" height="256" fill="white"/><text x="40" y="150" font-size="72" fill="black">TEST 123</text></svg>')).png().toBuffer();
+        const result = await recognizeText(config.ocrChannel, sample, signal);
+        if (!result.text.includes("123")) throw new AppError("OCR_TEST_FAILED", 422);
+      }
+      else if (capability === "upscale") await upscaleVolcImage(config.upscaleChannel, image, { scale: 2 }, signal);
+      else if (provider.kind === "volc-visual") await entityLabels(config.segmentChannel, image, signal);
       else if (capability === "segment") await segmentCloudImage(config.segmentChannel, image, { box: { left: 190, top: 190, width: 132, height: 132 } }, signal);
       else if (capability === "split") await splitCloudImage(config.splitChannel, image, { numLayers: 2 }, { signal });
       else await generateImage(config, { ...(config.imageMode !== "generate" ? { image } : {}), prompt: "A red square on a white background.", size: "1024x1024", signal });

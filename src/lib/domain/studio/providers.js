@@ -7,7 +7,7 @@ import { AppError } from "../../http.js";
 import { editThroughCompatibleGateway } from "../../ai/adapters/openai.js";
 import { downloadProviderImage } from "../../infra/storage/download.js";
 import { TOOLS } from "../../studio/tools.js";
-import { channelCapability, channelScope, toolRouting, supportsImageTask, supportsChannelCapability, segmentChannelReady, splitChannelReady } from "../../studio/model-channels.js";
+import { channelCapability, channelScope, toolRouting, supportsImageTask, supportsChannelCapability, segmentChannelReady, splitChannelReady, ocrChannelReady, upscaleChannelReady } from "../../studio/model-channels.js";
 import { generateCloudImage } from "./cloud.js";
 
 // Resolve user-visible image selection separately from administrator-owned tool stages.
@@ -22,7 +22,7 @@ export function resolveStudioConfig(rows, toolRows = [], channelName, capability
     else if (cap === "image" && tool?.dependency === "image" && routing.mode === "dedicated") { name = routing.channelName; internal = true; if (!name) throw new AppError("SERVICE_NOT_CONFIGURED", 503); }
     else if (cap === "segment" && tool?.preview === "segment") {
       if (routing.segmentMode === "dedicated") { name = routing.segmentChannelName; internal = true; if (!name) throw new AppError("SEGMENTATION_NOT_CONFIGURED", 503); }
-    } else if (cap === "split" && tool?.dependency === "split") { name = routing.channelName; internal = true; }
+    } else if (["split", "ocr", "upscale"].includes(cap) && tool?.dependency === cap) { name = routing.channelName; internal = true; }
     if (!name && capability === cap && (!tool || tool.dependency === "image" && cap === "image")) name = channelName;
     const eligible = cap === "image" && !internal ? candidates.filter(row => channelScope(row) === "public") : candidates;
     if (name) {
@@ -65,7 +65,7 @@ export function resolveStudioConfig(rows, toolRows = [], channelName, capability
     videoKey: process.env.ARK_API_KEY, videoModel: process.env.ARK_VIDEO_MODEL,
     videoURL: process.env.ARK_BASE_URL || "https://ark.cn-beijing.volces.com/api/v3",
     toolsURL: process.env.STUDIO_TOOLS_URL, toolsKey: process.env.STUDIO_TOOLS_KEY,
-    segmentChannel, splitChannel: external("split"),
+    segmentChannel, splitChannel: external("split"), ocrChannel: external("ocr"), upscaleChannel: external("upscale"),
   };
 }
 
@@ -102,10 +102,10 @@ export async function capabilities(db = prisma, config, channelName) {
         // Explicit configurations are also used by isolated provider diagnostics.
         if (!("requestedProvider" in c) && !setting?.routing) chosen = { ...chosen, ...c }; }
       catch (e) { error = e.code; chosen = {}; }
-      const ready = { local: true, image: Boolean(chosen.apiKey) && supportsImageTask(chosen, tool.id === "generate" ? "generate" : "edit"), vision: Boolean(chosen.visionApiKey && chosen.chatModel), video: Boolean(chosen.videoKey && chosen.videoModel), segment: segmentChannelReady(chosen.segmentChannel), split: splitChannelReady(chosen.splitChannel), "remove-bg": external.includes("remove-bg"), upscale: external.includes("upscale"), ocr: external.includes("ocr") };
+      const ready = { local: true, image: Boolean(chosen.apiKey) && supportsImageTask(chosen, tool.id === "generate" ? "generate" : "edit"), vision: Boolean(chosen.visionApiKey && chosen.chatModel), video: Boolean(chosen.videoKey && chosen.videoModel), segment: segmentChannelReady(chosen.segmentChannel), split: splitChannelReady(chosen.splitChannel), "remove-bg": external.includes("remove-bg"), upscale: upscaleChannelReady(chosen.upscaleChannel), ocr: ocrChannelReady(chosen.ocrChannel) };
       const cost = tool.dependency === "vision" ? c.plannerCreditCost : ["generate", "edit"].includes(tool.id) ? chosen.imageCreditCost ?? 18 : setting?.creditCost ?? tool.cost;
       const dependencyReady = !error && ready[tool.dependency], previewReady = !tool.preview || tool.previewOptional || ready[tool.preview];
-      return { ...tool, cost, enabled, ...(tool.preview ? { objectSelectionAvailable: Boolean(enabled && ready[tool.preview]) } : {}), ...(tool.id === "split" ? { layerCountMode: chosen.splitChannel?.kind === "volc-visual" ? "auto" : "custom" } : {}), available: Boolean(enabled && dependencyReady && previewReady), reason: !enabled ? "TOOL_DISABLED" : !dependencyReady ? error || "SERVICE_NOT_CONFIGURED" : !previewReady ? "SEGMENTATION_NOT_CONFIGURED" : null };
+      return { ...tool, cost, enabled, ...(tool.id === "upscale" ? { supportedScales: [2] } : {}), ...(tool.preview ? { objectSelectionAvailable: Boolean(enabled && ready[tool.preview]) } : {}), ...(tool.id === "split" ? { layerCountMode: chosen.splitChannel?.kind === "volc-visual" ? "auto" : "custom" } : {}), available: Boolean(enabled && dependencyReady && previewReady), reason: !enabled ? "TOOL_DISABLED" : !dependencyReady ? error || "SERVICE_NOT_CONFIGURED" : !previewReady ? "SEGMENTATION_NOT_CONFIGURED" : null };
     }) };
 }
 

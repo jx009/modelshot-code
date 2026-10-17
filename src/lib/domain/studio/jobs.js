@@ -9,6 +9,7 @@ import { capabilities, studioConfig } from "./providers.js";
 import { ACTIVE, LIMITS, digestJson } from "../generation/contracts.js";
 import { commerceReferences } from "../../commerce/project.js";
 import { imageSizeError } from "../../studio/image-size.js";
+import { upscaleInputError } from "../../studio/upscale.js";
 
 export async function submitStudioJob(userId, input, key, db = prisma, deps = {}) {
   const data = jobSchema.parse(input);
@@ -46,6 +47,10 @@ export async function submitStudioJob(userId, input, key, db = prisma, deps = {}
     if (getTool(data.tool).source && (!target || target.assetId !== data.assetId || target.type !== "image")) throw new AppError("TARGET_CHANGED", 409);
     const inputAsset = data.assetId ? await ownedAsset(userId, data.assetId, tx) : null;
     if (inputAsset && inputAsset.contentType !== "image/png") throw new AppError("INVALID_SOURCE");
+    if (data.tool === "upscale") {
+      const invalid = upscaleInputError(inputAsset, data.params.scale);
+      if (invalid) throw new AppError(invalid, 422);
+    }
     // Reject known unsupported dimensions before reserving any credits.
     if (getTool(data.tool).dependency === "image") {
       const sizeError = imageSizeError(config, data.params.size, inputAsset);
@@ -66,7 +71,7 @@ export async function submitStudioJob(userId, input, key, db = prisma, deps = {}
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended('queue-admission', 0))::text`;
     if (await tx.tryOn.count({ where: { status: { in: ACTIVE } } }) >= LIMITS.queue) throw new AppError("QUEUE_FULL", 503);
     if (await tx.tryOn.count({ where: { userId, status: { in: ACTIVE } } }) >= 20) throw new AppError("USER_QUEUE_FULL", 429);
-    const channel = data.tool === "split" ? config.splitChannel : getTool(data.tool).dependency === "vision" ? { name: config.plannerProvider, kind: config.plannerKind, model: config.chatModel, baseURL: config.visionBaseURL } : null;
+    const channel = ["split", "ocr", "upscale"].includes(data.tool) ? config[`${data.tool}Channel`] : getTool(data.tool).dependency === "vision" ? { name: config.plannerProvider, kind: config.plannerKind, model: config.chatModel, baseURL: config.visionBaseURL } : null;
     const output = await tx.tryOn.create({ data: { id: randomUUID(), userId, requestId, personImage: "", clothesImage: inputAsset ? `/api/assets/${inputAsset.id}` : "", prompt: data.params.prompt, provider: data.tool === "video" ? "ark" : channel?.name || config.imageProvider || "studio", creditCost: tool.cost, billingType: "credits",
       snapshot: { kind: "studio", ...data, provider: channel?.name || config.imageProvider, providerKind: channel?.kind || config.imageKind || "openai", providerBaseURL: (channel ? channel.baseURL : config.baseURL) || null, digest, checksum: inputAsset?.checksum || null, price: tool.cost, priceVersion: "studio-2026-09-v1", imageModel: channel?.model || config.imageModel, chatModel: config.chatModel || null, videoModel: config.videoModel || null } } });
     if (tool.cost) {

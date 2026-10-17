@@ -55,7 +55,7 @@ describe("studio pixel contracts", () => {
     const image = await moveSelection(await solid("red"), await solid("blue"), await selection(), 3, 2);
     const raw = await sharp(image).raw().toBuffer();
     expect([...raw.slice((3 * 8 + 5) * 4, (3 * 8 + 5) * 4 + 4)]).toEqual([255, 0, 0, 255]);
-    await expect(runImageTool({}, { tool: "upscale", params: { scale: 2 } }, await solid("red"), null, undefined, { service: () => solid("blue") })).rejects.toThrow("UPSCALE_SIZE_MISMATCH");
+    await expect(runImageTool({}, { tool: "upscale", params: { scale: 2 } }, await solid("red"), null, undefined, { upscale: () => solid("blue") })).rejects.toThrow("UPSCALE_SIZE_MISMATCH");
   });
   it("gives local object edits room to extend beyond the old silhouette", async () => {
     const image = await solid("red", 20, 12), mask = await sharp({ create: { width: 20, height: 12, channels: 3, background: "black" } })

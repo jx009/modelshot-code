@@ -5,6 +5,7 @@ import { X, RotateCcw, Paintbrush, LoaderCircle, ImageIcon } from "lucide-react"
 import CropControls from "./CropControls";
 import { previewUrl } from "@/lib/studio/image-url";
 import "./tool-panel.css";
+import { upscaleInputError } from "@/lib/studio/upscale";
 
 /** Shared, stable editing surface. Tool state stays owned by the workbench. */
 export default function ToolPanel({ tool, Icon, status, selected, params, onParams, prompt, onPrompt, brush, onBrush, hasMask, selection, busy, moveUnchanged, cost, zh, onClose, onReset, onRun, referenceLayers = [], selectedReferences = [], onReferences, onAddReferences, onIdentify, identifyCost = 1, canIdentify = false }) {
@@ -14,7 +15,8 @@ export default function ToolPanel({ tool, Icon, status, selected, params, onPara
   const crop = tool.id === "crop";
   const promptTool = paint || move || ["expand", "video", "describe", "template", "merge", "focus", "enhance", "translate"].includes(tool.id);
   const unavailable = !status?.available && !crop;
-  const disabled = busy || unavailable || (crop && !params.rect) || (paint && !hasMask) || (move && (!selection || moveUnchanged)) || (["inpaint", "video", "merge", "focus"].includes(tool.id) && !prompt.trim()) || (tool.id === "text-edit" && !params.newText?.trim()) || (tool.id === "merge" && !selectedReferences.length) || (tool.id === "focus" && (!params.focusPoints?.length || params.focusPoints.some(p => p.loading || !p.label.trim())));
+  const upscaleError = tool.id === "upscale" && upscaleInputError({ width: selected.pixelWidth, height: selected.pixelHeight }, params.scale);
+  const disabled = busy || unavailable || upscaleError || (crop && !params.rect) || (paint && !hasMask) || (move && (!selection || moveUnchanged)) || (["inpaint", "video", "merge", "focus"].includes(tool.id) && !prompt.trim()) || (tool.id === "text-edit" && !params.newText?.trim()) || (tool.id === "merge" && !selectedReferences.length) || (tool.id === "focus" && (!params.focusPoints?.length || params.focusPoints.some(p => p.loading || !p.label.trim())));
   const hint = move ? selection ? t("提示：可移动、缩放或旋转源区域与目标区域", "Move, resize or rotate the source and destination regions") : t("提示：请在目标对象上拖拽框选需要移动的区域", "Draw a rectangle around the complete object to move")
     : paint ? t("提示：用画笔大致圈出需要修改的区域", "Use the brush to outline the area you want to edit")
       : crop ? t("拖动边界调整裁剪区域，原图会保留", "Drag the handles to crop. Your original stays on the canvas")
@@ -43,7 +45,8 @@ export default function ToolPanel({ tool, Icon, status, selected, params, onPara
           const x = Math.min(2048, Math.max(32, expandedWidth - width)), y = Math.min(2048, Math.max(32, expandedHeight - height));
           onParams({ padding: { left: Math.floor(x / 2), right: Math.ceil(x / 2), top: Math.floor(y / 2), bottom: Math.ceil(y / 2) } });
         }}><ImageIcon size={16} />{label}</button>)}</div><div className="ms-edge-readout">{Object.entries(typeof params.padding === "number" ? { left: params.padding, right: params.padding, top: params.padding, bottom: params.padding } : params.padding).map(([edge, value]) => <span key={edge}>{edge[0].toUpperCase()} {value}</span>)}</div></>}
-        {tool.id === "upscale" && <div className="ms-editor-options" role="group" aria-label={t("放大倍数", "Upscale factor")}>{[2,4].map(scale => <button key={scale} aria-pressed={params.scale === scale} onClick={() => onParams({ scale })}>{scale}×<small>{selected.pixelWidth * scale} × {selected.pixelHeight * scale}</small></button>)}</div>}
+        {tool.id === "upscale" && <div className="ms-editor-options" role="group" aria-label={t("放大倍数", "Upscale factor")}>{(status?.supportedScales || [2]).map(scale => <button key={scale} aria-pressed={params.scale === scale} onClick={() => onParams({ scale })}>{scale}×<small>{selected.pixelWidth * scale} × {selected.pixelHeight * scale}</small></button>)}</div>}
+        {tool.id === "upscale" && <p className="ms-editor-description">{upscaleError ? t("当前图片尺寸不支持放大：输入需宽 50–2128、高 50–4064 像素。", "Input must be 50–2128 px wide and 50–4064 px high.") : t("放大为原图的 2 倍，保留原图。输入文件最大 5 MB。", "Upscale to 2× and keep the original. Input limit: 5 MB.")}</p>}
         {tool.id === "video" && <label className="ms-editor-field">{t("时长", "Duration")}<select value={params.duration} onChange={event => onParams({ duration: Number(event.target.value) })}><option value="5">5s</option><option value="10">10s</option></select></label>}
         {tool.id === "split" && <><p className="ms-editor-description">{status?.layerCountMode === "auto" ? t("自动识别完整物体，拆分为独立图层。原图会保留，遮挡部分不会自动补全。", "Detect objects and separate them into editable layers. Your original stays; hidden content is not reconstructed.") : t("将画面拆分为可独立编辑的图层，保留原始位置和原图。", "Separate the image into editable layers, keeping their positions and your original.")}</p>{status?.layerCountMode !== "auto" && <label className="ms-editor-field">{t("拆分层数", "Layers")}<select value={params.numLayers} onChange={event => onParams({ numLayers: Number(event.target.value) })}>{[2,3,4,5,6,7,8].map(n => <option key={n} value={n}>{n}</option>)}</select></label>}</>}
         {tool.id === "remove-bg" && <p className="ms-editor-description">{t("识别主体并移除背景，生成透明图片，原图会保留。", "Isolate the subject on a transparent background. Your original stays on the canvas.")}</p>}

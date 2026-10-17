@@ -15,7 +15,7 @@ export async function GET(request) {
   const rows = await prisma.studioToolConfig.findMany();
   const byId = new Map(rows.map(row => [row.toolId, row]));
   const providers = await prisma.modelProvider.findMany({ where: { isActive: true }, select: { name: true, displayName: true, kind: true, config: true, isPlanner: true, creditCost: true }, orderBy: { priority: "asc" } });
-  const channels = { image: [], segment: [], split: [] };
+  const channels = { image: [], segment: [], split: [], ocr: [], upscale: [] };
   for (const p of providers) {
     const config = JSON.parse(p.config || "{}");
     for (const cap of Object.keys(channels)) {
@@ -60,7 +60,7 @@ export async function PATCH(request) {
         const row = name ? await tx.modelProvider.findUnique({ where: { name } }) : null;
         if (!row?.isActive || !supportsChannelCapability(row, capability) || capability === "image" && !supportsImageTask(JSON.parse(row.config || "{}"), "edit")) throw new AppError("PROVIDER_CAPABILITY_UNSUPPORTED", 422);
       }
-      if (routing.mode === "dedicated") await validateChannel(routing.channelName, tool.dependency, tool.dependency !== "split");
+      if (routing.mode === "dedicated") await validateChannel(routing.channelName, tool.dependency, !["split", "ocr", "upscale"].includes(tool.dependency));
       else routing.channelName = null;
       if (tool.preview === "segment" && routing.segmentMode === "dedicated") await validateChannel(routing.segmentChannelName, "segment");
       else routing.segmentChannelName = null;

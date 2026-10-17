@@ -33,9 +33,25 @@ Base URL 支持官方服务和管理员配置的任意 HTTPS OpenAI 兼容网关
 | STUDIO_API_KEY / STUDIO_BASE_URL / STUDIO_IMAGE_MODEL | Legacy OpenAI-compatible fallback; stored channel credentials take precedence |
 | STUDIO_CHAT_MODEL | Vision planner fallback when no planner channel is configured |
 | ARK_API_KEY / ARK_VIDEO_MODEL / ARK_BASE_URL | Existing Ark video task configuration; image editing is configured separately in Admin |
-| STUDIO_TOOLS_URL / STUDIO_TOOLS_KEY | Optional private service for remove-background, OCR and upscale |
+| STUDIO_TOOLS_URL / STUDIO_TOOLS_KEY | Optional private service for remove-background; OCR and upscale use dedicated admin channels |
 
 后台“测试功能”会发起真实模型请求并产生供应商费用，自动化测试不使用真实付费 API。分割预览目前不扣用户积分，平台承担上游费用；接口按用户限流并缓存相同原图、选区和模型的成功结果。生产上线需要结合实际用量配置供应商额度。
+
+### 配置 OCR 和火山超分
+
+1. 打开 `/zh/admin/providers?category=tool`，点击“新增 OCR 文字识别配置”。用途选择 **OCR 文字识别**，协议可选 **火山方舟** 或 **OpenAI 兼容**，填写支持图片输入与 JSON 输出的模型名 / Endpoint ID、API Key。方舟默认地址为 `https://ark.cn-beijing.volces.com/api/v3`；OpenAI 兼容默认 `https://api.openai.com/v1`，可改为供应商的 HTTPS API 前缀（通常以 `/v1` 结尾，不含 `/chat/completions`）。调用 Chat Completions 的 `image_url` 图片输入与 `json_object` 输出；纯文本模型或不支持这些参数的网关不适用。这不会修改后台通用大语言模型。
+2. 点击“新增图片超分配置”。用途为 **图片超分**、协议为火山智能视觉、算法固定 `lens_vida_nnsr`，填写有图片超分权限的 AK/SK。默认地址 `https://visual.volcengineapi.com`，签名地域 `cn-north-1`，服务 `cv`。
+3. 打开 `/zh/admin/studio-tools`，在“文字识别”和“AI 超清放大”中选择对应专用配置、设置单次积分并保存。只有一个该用途模型时默认自动选用；多个模型时建议显式绑定。工具积分以此页面为准，与通用语言模型价格独立。
+4. 管理员的“测试功能”发起真实请求：OCR 用含 `TEST 123` 的测试图片验证视觉识别；超分用 512×512 图片验证得到 1024×1024 结果。测试会产生上游费用。
+5. 无需启用 PaddleOCR 或本地 Real-ESRGAN；仅有 tools 服务中的旧 OCR/超分能力不会启用这两个云端工具。Web 和 Worker 需同时更新，部署前应排空旧版本 OCR/超分任务。
+
+超分按当前官方文档调用 `POST /?Action=CVProcess&Version=2022-08-31`，请求 `req_key=lens_vida_nnsr`、原图 `binary_data_base64`、`return_url=false`。旧 SDK 中的 `OverResolutionV2` 不是本次采用的 Action。原生仅 **2×**，界面不再提供未接入的 4×；输入最大 5 MB、宽 50–2128、高 50–4064 像素。提交前检查限制，不会静默缩小图片或用插值冒充超分。输出必须严格等于输入宽高的两倍，并通过现有资产大小限制（10 MB）。
+
+OCR 返回原文和行级估算框，统一转换到原图像素坐标。位置不合法时保留文字并禁止对应的擦除替换；支持无文字结果和复制全部文字。视觉大模型的位置不是精确排版定位，替换前需核对；原字体、倾斜与透视仍需手动调整。
+
+密钥加密保存、不返回前端；OCR/超分不出现在用户生图模型列表。提交时固定通道与模型，Worker 不跟随后续工具绑定变更；旧通道停用或协议/地址改变会中止任务。OCR/超分复用现有任务、积分冻结与结算流程，不自动重发结果不明的付费同步请求。
+
+官方依据（2026-10-18 核对）：[图片超分 V2](https://www.volcengine.com/docs/86081/1660421)。自动化验证使用本地 HTTP/响应 fixture，不能证明真实账号权限、模型画质或延迟。
 
 ### 配置物体移动
 
@@ -43,14 +59,14 @@ Base URL 支持官方服务和管理员配置的任意 HTTPS OpenAI 兼容网关
 2. “工具配置 → 物体移动 → 物体移动模型（完整场景编辑）”选择“指定工具专用模型”，选择刚创建的模型并保存。也可以选择“沿用用户选择的生图模型”，前提是该模型支持图像编辑和多图参考。
 3. 物体移动不再依赖分割服务。矩形框选后立刻出现源区域和目标区域；两者均可拖动、缩放、旋转。位置未改变时不能提交。
 4. 确认后进行一次图像编辑请求，发送完整原图、红色源区/蓝色目标区位置参考、编辑范围和说明。目标是生成移走物体、补全旧位置、融合新位置光影的完整场景，不再把透明抠图直接贴到修复背景。
-5. 局部修改仍使用云端分割选择物体；火山 EntitySegment 的 AK/SK 配置仍供局部修改和实体拆层使用。OCR、超分、抠图继续使用 tools 服务，视频继续使用 ARK 部署配置。
+5. 局部修改仍使用云端分割选择物体；火山 EntitySegment 的 AK/SK 配置仍供局部修改和实体拆层使用。OCR 使用独立方舟或 OpenAI 兼容视觉模型，超分使用火山 CVProcess，抠图继续使用 tools 服务，视频继续使用 ARK 部署配置。
 
 升级会执行 `20260928090000_tool_routing`：为工具增加路由配置，并把已启用的旧 `chatModel` 规划配置复制成独立后台大语言模型。密钥仍为密文，旧图像通道保留。Web 和 Worker 必须同时升级。
 
 ## Tool implementation
 
 - 新工具：无痕改字（需要蒙版）、图片翻译、细节增强、多图融合和焦点编辑走图像编辑通道；提取风格配方走后台视觉通道。焦点识别需要用户主动点击，按后台语言价格幂等计费。
-- 调色是本地免费操作；应用会创建原尺寸的新图片资产，保留原图，后续AI编辑可引用真实调色结果。细节增强是生成式修复，与工具服务的2倍/4倍超分分开配置。
+- 调色是本地免费操作；应用会创建原尺寸的新图片资产，保留原图，后续AI编辑可引用真实调色结果。细节增强是生成式修复，与火山原生2倍超分分开配置。
 - 活跃任务通过 `/api/studio/events?documentId=...` 获取SSE完整状态快照，断流回退查询。反向代理应允许 `text/event-stream` 并关闭缓冲，连接会定期轮换；Worker持续运行，不依赖SSE连接存在。
 
 - 物体移动：源区/目标区坐标在原图像素空间保存，旋转以区域左上角为原点；客户端约束边界，服务端再次检查四角。前端操作不发送分割请求。

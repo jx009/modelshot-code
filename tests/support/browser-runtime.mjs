@@ -11,6 +11,15 @@ const supplier = http.createServer(async (req, res) => {
   for await (const chunk of req) chunks.push(chunk);
   const payload = Buffer.concat(chunks), body = payload.toString();
   const dataURL = bytes => `data:image/png;base64,${bytes.toString("base64")}`;
+  if (req.url === "/cloud?Action=CVProcess&Version=2022-08-31") {
+    const input = JSON.parse(body);
+    if (input.req_key !== "lens_vida_nnsr") { res.writeHead(422); res.end("{}"); return; }
+    const source = Buffer.from(input.binary_data_base64[0], "base64");
+    const { width, height } = await sharp(source).metadata();
+    const result = await sharp(source).resize(width * 2, height * 2).png().toBuffer();
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ code: 10000, data: { algorithm_base_resp: { status_code: 0 }, binary_data_base64: [result.toString("base64")] } })); return;
+  }
   if (req.url === "/cloud?Action=EntitySegment&Version=2022-08-31") {
     const source = Buffer.from(JSON.parse(body).binary_data_base64[0], "base64");
     const { width, height } = await sharp(source).metadata();
@@ -42,6 +51,10 @@ const supplier = http.createServer(async (req, res) => {
   }
   if (req.url === "/cloud/chat/completions") {
     const input = JSON.parse(body);
+    if (input.model === "fixture-ocr") {
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ boxes: [{ text: "TEST 123", bbox: [80, 300, 800, 600] }] }) } }] })); return;
+    }
     if (input.model !== "fixture-language") { res.writeHead(422); res.end("{}"); return; }
     res.setHeader("Content-Type", "application/json");
     if (input.messages[0].content.startsWith("You are a commerce visual director")) {

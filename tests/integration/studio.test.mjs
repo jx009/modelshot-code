@@ -26,6 +26,34 @@ async function setup() {
 describe("studio documents and task ledger", () => {
   beforeAll(async () => { f = await domainFixture(); });
   afterAll(async () => { await f?.cleanup(); });
+  it("pins dedicated OCR and upscale models and charges each completed job only once", async () => {
+    for (const tool of ["ocr", "upscale"]) {
+      const { user, input } = await setup();
+      const channel = { name: `fixture-${tool}`, kind: tool === "ocr" ? "volcengine" : "volc-visual", model: tool === "ocr" ? "ep-dedicated" : "lens_vida_nnsr", baseURL: "https://example.com" };
+      const dedicated = { ...config, [`${tool}Channel`]: channel };
+      const job = await submitStudioJob(user.id, { ...input, tool, params: { scale: 2 } }, randomUUID(), f.db, { ...deps, config: dedicated });
+      const snapshot = (await f.db.tryOn.findUnique({ where: { id: job.id } })).snapshot;
+      expect(snapshot).toMatchObject({ provider: channel.name, providerKind: channel.kind, imageModel: channel.model });
+      let calls = 0;
+      const adapters = {
+        ocr: async actual => { calls++; expect(actual.model).toBe(channel.model); return { text: "TEST", boxes: [{ text: "TEST", rect: null }] }; },
+        upscale: async (actual, image) => { calls++; expect(actual.model).toBe(channel.model); return sharp(image).resize(user.asset.width * 2, user.asset.height * 2).png().toBuffer(); },
+      };
+      await executeStudio(job.id, { db: f.db, store: f.store, config: dedicated, adapters });
+      await executeStudio(job.id, { db: f.db, store: f.store, config: dedicated, adapters });
+      const row = await f.db.tryOn.findUnique({ where: { id: job.id } });
+      expect(row.status, row.errorCode).toBe("succeeded"); expect(calls).toBe(1);
+      expect((await usageSummary(user.id, f.db)).credits).toBe(tool === "ocr" ? 99 : 96);
+      if (tool === "ocr") expect(row.resultData.ocr.text).toBe("TEST");
+      else expect(row.resultData.assets[0]).toMatchObject({ width: user.asset.width * 2, height: user.asset.height * 2 });
+    }
+  });
+  it("rejects 4x upscale before reserving credits or creating a job", async () => {
+    const { user, input } = await setup();
+    await expect(submitStudioJob(user.id, { ...input, tool: "upscale", params: { scale: 4 } }, randomUUID(), f.db, deps)).rejects.toThrow("UPSCALE_SCALE_UNSUPPORTED");
+    expect(await f.db.tryOn.count({ where: { userId: user.id } })).toBe(0);
+    expect((await usageSummary(user.id, f.db)).reservedCredits).toBe(0);
+  });
   it("persists wide resolution choices and rejects unsupported dimensions before credit reservation", async () => {
     const {user,doc,input}=await setup();
     const request={...input,params:{prompt:"Wide scene",size:"21:9@4K"}};

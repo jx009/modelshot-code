@@ -1,6 +1,8 @@
+import { chooseImageTool as tool } from "./helpers/image-tool.mjs";
 import { test, expect } from "@playwright/test";
 import sharp from "sharp";
 import { TOOLS } from "../../src/lib/studio/tool-catalog.js";
+import { IMAGE_RATIOS } from "../../src/lib/studio/image-size.js";
 
 async function fixture(page) {
   const png = await sharp({ create: { width: 600, height: 450, channels: 4, background: "#c6a67d" } }).png().toBuffer();
@@ -30,7 +32,40 @@ async function select(page,name="参考图片 1") {
   await page.locator(".ms-layer-select").filter({hasText:name}).click();
   await page.getByRole("button",{name:"图层",exact:true}).click();
 }
-async function tool(page,name) { await page.locator(".ms-context-scroll").getByRole("button",{name,exact:true}).click(); }
+
+for (const width of [1440,390]) test(`ratio grid sends wide 4K and persists in the canvas at ${width}px`,async({page},info)=>{
+  const f=await fixture(page);
+  await page.setViewportSize({width,height:960});
+  await page.goto("/zh");
+  await expect(page.getByRole("button",{name:/生图模型：Fixture image/})).toBeVisible();
+  await page.getByRole("button",{name:"图片比例",exact:true}).click();
+  const panel=page.getByRole("dialog",{name:"比例与分辨率",exact:true});
+  for (const ratio of IMAGE_RATIOS) {
+    const button=panel.getByRole("button",{name:ratio==="auto"?"智能":ratio,exact:true});
+    await button.click(); await expect(button).toHaveAttribute("aria-pressed","true");
+  }
+  await panel.getByRole("button",{name:"4K",exact:true}).click();
+  await expect(panel).toContainText("8192 × 1024 px");
+  const box=await panel.boundingBox(); expect(box.x).toBeGreaterThanOrEqual(0); expect(box.x+box.width).toBeLessThanOrEqual(width);
+  await page.screenshot({path:info.outputPath(`ratio-picker-${width}.png`)});
+  await panel.getByRole("button",{name:"完成",exact:true}).click();
+  const trigger=page.getByRole("button",{name:"图片比例",exact:true});
+  await expect(trigger).toContainText("8:1"); await expect(trigger).toContainText("4K");
+  await page.getByLabel("描述你的创意").fill("全景产品海报");
+  await page.getByLabel("描述你的创意").press("Enter");
+  await expect(page).toHaveURL(/studio-v2\?document=/);
+  expect(f.posted).toHaveLength(1); expect(f.posted[0].params.size).toBe("8:1@4K");
+  await expect(page.getByLabel("创作描述",{exact:true})).toBeEnabled();
+  await expect(trigger).toContainText("8:1");
+  await trigger.click();
+  await panel.getByRole("button",{name:"9:16",exact:true}).click();
+  await panel.getByRole("button",{name:"2K",exact:true}).click();
+  await page.keyboard.press("Escape");
+  await expect(panel).toHaveCount(0); await expect(trigger).toBeFocused();
+  await expect.poll(()=>f.getDoc().content.composer.size).toBe("9:16@2K");
+  await page.reload(); await expect(trigger).toContainText("9:16"); await expect(trigger).toContainText("2K");
+  expect(f.errors).toEqual([]);
+});
 
 test("homepage retains references and submits chosen ratio, fixed prompt and batch",async({page})=>{
   const f=await fixture(page);
@@ -43,12 +78,14 @@ test("homepage retains references and submits chosen ratio, fixed prompt and bat
   await page.getByLabel("描述你的创意").fill("自然光商品海报");
   await page.getByLabel("设置固定提示词").click();
   await page.getByLabel("固定提示词",{exact:true}).fill("保留产品外观");
-  await page.getByLabel("图片比例").selectOption("1024x1536");
+  await page.getByRole("button",{name:"图片比例",exact:true}).click();
+  await page.getByRole("dialog",{name:"比例与分辨率"}).getByRole("button",{name:"2:3",exact:true}).click();
+  await page.getByRole("button",{name:"完成",exact:true}).click();
   await page.getByLabel("生成张数").selectOption("2");
   await page.getByLabel("开始创作",{exact:true}).click();
   await expect(page).toHaveURL(/studio-v2\?document=/);
   expect(f.posted).toHaveLength(2);
-  expect(f.posted[0]).toMatchObject({tool:"edit",assetId:"uploaded-1",params:{prompt:"保留产品外观\n自然光商品海报",size:"1024x1536"}});
+  expect(f.posted[0]).toMatchObject({tool:"edit",assetId:"uploaded-1",params:{prompt:"保留产品外观\n自然光商品海报",size:"2:3@1K"}});
   expect(f.errors).toEqual([]);
 });
 for (const mode of ["对话", "快速"]) test(`homepage ${mode} Enter submits once without another canvas confirmation`,async({page})=>{
@@ -214,4 +251,40 @@ test("guest prompt is editable after session resolution and cannot submit a paid
   await page.getByRole("button",{name:"生成 · 18 积分",exact:true}).click();
   await expect(page.getByText("请先登录，素材和作品会保存到你的账户。",{exact:true})).toBeVisible();
   expect(f.posted).toHaveLength(0);
+});
+
+for (const width of [1440, 390]) test(`grouped image tools hover and keyboard at ${width}px`, async ({ page }, info) => {
+  const f = await fixture(page);
+  await page.setViewportSize({ width, height: 960 });
+  await page.goto("/zh/studio-v2?document=creative-doc");
+  if (width < 760) await page.getByRole("button", { name: "画布", exact: true }).click();
+  await select(page);
+  const toolbar = page.getByRole("group", { name: "图片工具", exact: true });
+  await expect(toolbar.locator(".ms-context-scroll>button")).toHaveCount(8);
+  const box = await toolbar.boundingBox();
+  expect(box.x).toBeGreaterThanOrEqual(0); expect(box.x + box.width).toBeLessThanOrEqual(width);
+  expect(box.height).toBeLessThan(140);
+  const prompts = toolbar.getByRole("button", { name: "反推提示词", exact: true });
+  await prompts.hover();
+  const menu = page.getByRole("menu", { name: "反推提示词", exact: true });
+  await expect(menu).toBeVisible();
+  const recipe = menu.getByRole("menuitem", { name: "提取风格配方", exact: true });
+  await recipe.hover(); await page.waitForTimeout(250);
+  await expect(menu).toBeVisible();
+  await page.screenshot({ path: info.outputPath(`grouped-toolbar-${width}.png`) });
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0); await expect(prompts).toBeFocused();
+  await prompts.press("ArrowDown");
+  await expect(menu.getByRole("menuitem", { name: "反推提示词", exact: true })).toBeFocused();
+  await page.keyboard.press("ArrowDown"); await expect(recipe).toBeFocused();
+  await page.keyboard.press("Escape");
+  await toolbar.getByRole("button", { name: "文字编辑", exact: true }).dispatchEvent("click");
+  const text = page.getByRole("menu", { name: "文字编辑", exact: true });
+  await expect(text.getByRole("menuitem")).toHaveCount(3);
+  const menuBox = await text.boundingBox();
+  expect(menuBox.x).toBeGreaterThanOrEqual(0); expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(width);
+  await text.getByRole("menuitem", { name: "图片翻译", exact: true }).click();
+  await expect(page.getByLabel("翻译语言")).toBeVisible();
+  await expect(page.getByRole("menu")).toHaveCount(0);
+  expect(f.errors).toEqual([]);
 });

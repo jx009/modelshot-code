@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { IMAGE_SIZES } from "./image-size.js";
 import { commerceSchema } from "../commerce/schema.js";
 import { TOOLS, getTool } from "./tool-catalog.js";
 import { ADJUSTMENT_KEYS } from "./adjustments.js";
@@ -11,7 +12,7 @@ const boundsSchema = z.object({ left: z.number().int().min(0).max(8192), top: z.
 export const adjustmentsSchema = z.object(Object.fromEntries(ADJUSTMENT_KEYS.map(key => [key, z.number().min(-100).max(100).optional()]))).strict();
 export const paramsSchema = z.object({
   prompt: z.string().trim().max(4000).default(""),
-  size: z.enum(["1024x1024", "1024x1536", "1536x1024"]).default("1024x1024"),
+  size: z.enum(IMAGE_SIZES).default("1024x1024"),
   scale: z.union([z.literal(2), z.literal(4)]).default(2),
   rect: z.object({ left: z.number().int().min(0).max(8192), top: z.number().int().min(0).max(8192), width: positive, height: positive }).strict().optional(),
   cropShape: z.enum(["rectangle", "ellipse", "triangle", "heart", "grid"]).default("rectangle"),
@@ -61,7 +62,7 @@ const layer = z.object({
 export const contentSchema = z.object({
   schemaVersion: z.literal(1), layers: z.array(layer).max(1000),
   commerce: commerceSchema.optional(),
-  composer: z.object({ size: z.enum(["1024x1024", "1024x1536", "1536x1024"]).optional(), text: z.string().max(4000).default(""), fixedPrompt: z.string().max(2000).default(""), referenceIds: z.array(id).max(3).default([]), outputCount: z.number().int().min(1).max(4).default(1) }).strict().optional(),
+  composer: z.object({ size: z.enum(IMAGE_SIZES).optional(), text: z.string().max(4000).default(""), fixedPrompt: z.string().max(2000).default(""), referenceIds: z.array(id).max(3).default([]), outputCount: z.number().int().min(1).max(4).default(1) }).strict().optional(),
   messages: z.array(z.object({ id, role: z.enum(["user", "assistant"]), text: z.string().max(8000), assetId: id.optional() }).strict()).max(20000),
   jobs: z.array(id).max(100),
   appliedJobs: z.array(id).max(20000).default([]),

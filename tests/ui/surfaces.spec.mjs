@@ -1,3 +1,4 @@
+import { chooseImageTool } from "./helpers/image-tool.mjs";
 import { test, expect } from "@playwright/test";
 import sharp from "sharp";
 
@@ -281,7 +282,7 @@ for (const theme of ["dark", "light"]) {
     await picker.getByRole("button", { name: "确认", exact: true }).click();
     await expect(picker).toHaveCount(0);
     for (const name of ["局部修改", "物体移动", "AI 智能消除", "AI 扩图", "图片裁剪", "AI 超清放大", "图层拆分", "生成视频", "文字识别", "一键抠图", "反推提示词"]) {
-      await page.locator(".ms-context-scroll").getByRole("button", { name, exact: true }).click();
+      await chooseImageTool(page, name);
       const panel = page.locator(".ms-editor");
       await expectContained(panel, page);
       await expectOpaque(panel.locator(".ms-editor-card"));

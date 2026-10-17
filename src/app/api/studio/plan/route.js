@@ -7,7 +7,8 @@ import { rateLimit } from "@/lib/domain/identity/rate-limit";
 import { readOwnedImage } from "@/lib/domain/assets/service";
 import { studioConfig, capabilities, vision } from "@/lib/domain/studio/providers";
 import { validatePlan } from "@/lib/studio/tools";
-const inputSchema = z.object({ provider: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/).optional(), prompt: z.string().trim().min(1).max(4000), assetId: z.string().max(128).optional(), messages: z.array(z.object({ role: z.enum(["user", "assistant"]), text: z.string().max(2000) }).strict()).max(8).default([]) }).strict();
+import { IMAGE_SIZES } from "@/lib/studio/image-size";
+const inputSchema = z.object({ size: z.enum(IMAGE_SIZES).optional(), provider: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/).optional(), prompt: z.string().trim().min(1).max(4000), assetId: z.string().max(128).optional(), messages: z.array(z.object({ role: z.enum(["user", "assistant"]), text: z.string().max(2000) }).strict()).max(8).default([]) }).strict();
 export async function POST(request) {
   try {
     const user = await requireUser();
@@ -23,6 +24,7 @@ export async function POST(request) {
       json: true, signal: AbortSignal.timeout(45000) });
     let decoded;
     try { decoded = validatePlan(JSON.parse(text), allowed, Boolean(data.assetId), Object.fromEntries(caps.tools.map(tool => [tool.id, tool.cost]))); } catch { throw new AppError("INVALID_AGENT_PLAN", 502); }
+    if (data.size) decoded.steps = decoded.steps.map(step => ({ ...step, params: { ...step.params, size: data.size } }));
     return decoded;
     });
     return Response.json(result);

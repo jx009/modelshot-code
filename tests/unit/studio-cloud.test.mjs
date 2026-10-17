@@ -38,6 +38,16 @@ afterAll(async () => new Promise(resolve => server.close(resolve)));
 afterEach(() => vi.unstubAllEnvs());
 
 describe("cloud protocol contracts", () => {
+  it("passes explicit wide 4K dimensions to Ali and Ark without upgrading or replacing them", async () => {
+    for (const imageKind of ["dashscope", "volcengine"]) {
+      await generateCloudImage({ imageKind, apiKey: "fixture", baseURL: base, imageModel: "fixture-image" }, { prompt: "Wide scene", size: "8:1@4K" });
+      const body = calls.at(-1).body;
+      expect(imageKind === "dashscope" ? body.parameters.size : body.size).toBe(imageKind === "dashscope" ? "8192*1024" : "8192x1024");
+    }
+    const count = calls.length;
+    await expect(generateCloudImage({ imageKind:"volcengine", apiKey:"fixture", baseURL:base }, { prompt:"Small",size:"16:9@1K" })).rejects.toThrow("IMAGE_RESOLUTION_UNSUPPORTED");
+    expect(calls).toHaveLength(count);
+  });
   it("uses native DashScope multimodal input with explicit region guidance", async () => {
     const providerMask = await sharp({ create: { width: 20, height: 12, channels: 4, background: { r: 255, g: 255, b: 255, alpha: 0 } } }).png().toBuffer();
     expect(await generateCloudImage({ imageKind: "dashscope", apiKey: "ali-key", baseURL: base, imageModel: "qwen-image-edit-max" }, { image: png, mask: providerMask, references: [foreground], prompt: "Raise paw", size: "1024x1536" })).toEqual(png);

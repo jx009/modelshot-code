@@ -1,3 +1,4 @@
+import { chooseImageTool } from "./helpers/image-tool.mjs";
 import { test, expect } from "@playwright/test";
 import sharp from "sharp";
 
@@ -59,11 +60,11 @@ test("64-layer canvas prompt editing retains all layers", async ({ page }, info)
   const toolBox = await disabledTool.boundingBox();
   await page.mouse.move(toolBox.x + toolBox.width / 2, toolBox.y + toolBox.height / 2, { steps: 12 });
   await page.mouse.up();
-  await expect.poll(() => saved?.content.layers[0].x).toBeGreaterThan(0);
+  await expect.poll(() => Math.abs(saved?.content.layers[0].x || 0)).toBeGreaterThan(0);
   expect(saved.content.layers).toHaveLength(64);
   await page.keyboard.press("Control+z");
   await expect.poll(() => saved?.content.layers[0].x).toBe(0);
-  await page.locator(".ms-context-scroll").getByRole("button", { name: "局部修改", exact: true }).click();
+  await chooseImageTool(page, "局部修改");
   await expect(stage).toHaveAttribute("data-mode", "mask");
   await expect(stage).toHaveAttribute("data-camera-moving", "false");
   const selection = JSON.parse(await stage.getAttribute("data-selection-frame"));

@@ -26,6 +26,13 @@ beforeAll(async () => {
 afterAll(async () => { await new Promise(resolve => server.close(resolve)); });
 
 describe("studio real HTTP protocol against isolated fixture", () => {
+  it("sends explicit ratio/resolution as pixels in generation JSON and edit multipart", async () => {
+    await generateImage({apiKey:"fixture",baseURL:`${base}/v1`,imageModel:"image-model"},{prompt:"Portrait",size:"1:4@2K"});
+    expect(JSON.parse(calls.at(-1).body).size).toBe("1024x4096");
+    const image = await sharp({create:{width:160,height:90,channels:3,background:"red"}}).png().toBuffer();
+    await generateImage({apiKey:"fixture",baseURL:`${base}/v1`,imageModel:"image-model"},{image,prompt:"Keep source ratio",size:"auto@2K"});
+    expect(calls.at(-1).body.toString()).toContain('name="size"\r\n\r\n2736x1536');
+  });
   it("loads one routing snapshot per capability request and sees subsequent admin changes", async () => {
     vi.stubEnv("STUDIO_TOOLS_URL", "");
     vi.stubEnv("OPENAI_API_KEY", "fixture-key");

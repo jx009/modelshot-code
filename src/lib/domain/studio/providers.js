@@ -1,4 +1,6 @@
 import OpenAI, { toFile } from "openai";
+import sharp from "sharp";
+import { imageSizeError, resolveImageSize } from "../../studio/image-size.js";
 import { prisma } from "../../prisma.js";
 import { decryptSecret } from "../../crypto.js";
 import { AppError } from "../../http.js";
@@ -128,6 +130,10 @@ export async function generateImage(config, { image, references = [], mask, prom
   if (!config.apiKey) throw new AppError("PROVIDER_UNAVAILABLE", 503);
   if (!supportsImageTask(config, image ? "edit" : "generate")) throw new AppError("PROVIDER_CAPABILITY_UNSUPPORTED", 422);
   if (["dashscope", "volcengine"].includes(config.imageKind)) return generateCloudImage(config, { image, references, mask, prompt, size, signal });
+  const source = image && size?.includes("@") ? await sharp(image).metadata() : null;
+  const sizeError = imageSizeError(config, size, source);
+  if (sizeError) throw new AppError(sizeError, 422);
+  size = resolveImageSize(size, source);
   const client = imageClient(config);
   let result;
   if (image) {

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { IMAGE_SIZES } from "@/lib/studio/image-size";
 import sharp from "sharp";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/require-user";
@@ -17,7 +18,7 @@ import { digestJson } from "@/lib/domain/generation/contracts";
 const input = z.object({
   documentId: z.string().max(128).optional(), version: z.number().int().positive().optional(),
   brief: briefSchema, productAssetId: z.string().max(128), referenceAssetId: z.string().max(128).optional(),
-  provider: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/).optional(), size: z.enum(["1024x1024", "1024x1536", "1536x1024"]).default("1024x1536"),
+  provider: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/).optional(), size: z.enum(IMAGE_SIZES).default("1024x1536"),
   message: z.string().trim().min(1).max(2400), targetSectionId: z.string().max(128).optional(), reviewJobId: z.string().max(128).optional(),
 }).strict();
 

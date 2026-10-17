@@ -1,5 +1,6 @@
 import { setTimeout as delay } from "node:timers/promises";
 import sharp from "sharp";
+import { imageSizeError, resolveImageSize, LEGACY_IMAGE_SIZES } from "../../studio/image-size.js";
 import { AppError } from "../../http.js";
 import { downloadProviderImage } from "../../infra/storage/download.js";
 import { maskPixels } from "./pixels.js";
@@ -39,6 +40,11 @@ export async function regionGuide(image, mask) {
 
 export async function generateCloudImage(config, { image, references = [], mask, prompt, size = "1024x1024", signal }) {
   const kind = config.imageKind;
+  const legacySize = LEGACY_IMAGE_SIZES.includes(size);
+  const source = image && !legacySize ? await sharp(image).metadata() : null;
+  const sizeError = imageSizeError(config, size, source);
+  if (sizeError) throw new AppError(sizeError, 422);
+  size = resolveImageSize(size, source);
   let inputs = image ? [image, ...references] : [];
   if (mask && image) {
     inputs = [image, ...references.slice(0, 1), await regionGuide(image, mask)];
@@ -58,7 +64,9 @@ export async function generateCloudImage(config, { image, references = [], mask,
     const base = (config.baseURL || "https://ark.cn-beijing.volces.com/api/v3").replace(/\/$/, "").replace(/\/images\/generations$/, "");
     // Use a 2K-class canvas suitable for recent Seedream image-edit endpoints.
     const [width, height] = size.split("x").map(Number);
-    const scale = Math.max(1, Math.sqrt(3686400 / (width * height)));
+    // Preserve the old implicit 2K upgrade only for saved legacy requests.
+    // Explicit resolution choices are validated and sent unchanged.
+    const scale = legacySize ? Math.max(1, Math.sqrt(3686400 / (width * height))) : 1;
     const outputSize = `${Math.ceil(width * scale / 16) * 16}x${Math.ceil(height * scale / 16) * 16}`;
     const data = await jsonRequest(`${base}/images/generations`, { apiKey: config.apiKey, signal, body: {
       model: config.imageModel, prompt, size: outputSize, response_format: "b64_json", watermark: false,

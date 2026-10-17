@@ -6,7 +6,7 @@ import { documentContent } from "@/lib/studio/project-title";
 import { activeProject, rememberProject, readProjectDraft, writeProjectDraft } from "@/lib/studio/project-storage";
 
 export const emptyProject = () => ({ id: null, version: null, name: "Untitled", nameSource: "fallback", createKey: requestKey(), layers: [], messages: [], jobs: [], appliedJobs: [], plan: null });
-const meaningful = draft => draft.layers.length || draft.messages.length || draft.plan;
+const meaningful = draft => draft.id || draft.layers.length || draft.messages.length || draft.plan;
 function projectURL(id, createKey, push = false) {
   const url = new URL(window.location.href);
   url.searchParams.delete("prompt"); url.searchParams.delete("document"); url.searchParams.delete("draft");

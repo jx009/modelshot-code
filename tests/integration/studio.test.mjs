@@ -26,6 +26,18 @@ async function setup() {
 describe("studio documents and task ledger", () => {
   beforeAll(async () => { f = await domainFixture(); });
   afterAll(async () => { await f?.cleanup(); });
+  it("persists wide resolution choices and rejects unsupported dimensions before credit reservation", async () => {
+    const {user,doc,input}=await setup();
+    const request={...input,params:{prompt:"Wide scene",size:"21:9@4K"}};
+    const saved=await saveDocument(user.id,{id:doc.id,version:doc.version,name:doc.name,content:{...doc.content,composer:{size:request.params.size}}},f.db);
+    request.documentVersion=saved.version;
+    const job=await submitStudioJob(user.id,request,randomUUID(),f.db,deps);
+    expect((await f.db.tryOn.findUnique({where:{id:job.id}})).snapshot.params.size).toBe("21:9@4K");
+    const balance=await usageSummary(user.id,f.db);
+    await expect(submitStudioJob(user.id,{...request,params:{prompt:"Small",size:"1:4@1K"}},randomUUID(),f.db,{...deps,config:{...config,imageKind:"volcengine"}})).rejects.toThrow("IMAGE_RESOLUTION_UNSUPPORTED");
+    expect(await f.db.tryOn.count({where:{userId:user.id}})).toBe(1);
+    expect((await usageSummary(user.id,f.db)).reservedCredits).toBe(balance.reservedCredits);
+  });
   it("new creative tools preserve billing, references and pinned language channels", async () => {
     for (const tool of ["enhance", "translate", "merge", "focus", "template"]) {
       const { user, input } = await setup();

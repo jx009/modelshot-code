@@ -1,3 +1,5 @@
+import { createImageQueue } from "./image-queue.js";
+const queueImage = createImageQueue(4);
 /**
  * Process large images to prevent memory issues
  * @param {HTMLImageElement} image - Source image
@@ -35,22 +37,33 @@ const images = new Map();
 export function loadImage(src, { signal, timeoutMs = 25000 } = {}) {
   if (signal?.aborted) return Promise.reject(new DOMException("Aborted", "AbortError"));
   if (!images.has(src)) {
-    const task = new Promise((resolve, reject) => {
+    const task = queueImage(() => new Promise((resolve, reject) => {
       let attempt = 0;
       function start() {
         const image = new window.Image();
+        image.decoding = "async";
+        let settled = false;
         const timer = setTimeout(() => fail("IMAGE_LOAD_TIMEOUT"), timeoutMs);
         const cleanup = () => { clearTimeout(timer); image.onload = null; image.onerror = null; };
         function fail(code) {
+          if (settled) return;
+          settled = true;
           cleanup(); image.src = "";
           if (++attempt < 2) start(); else reject(new Error(code));
         }
-        image.onload = () => { cleanup(); if (image.naturalWidth) resolve(image); else reject(new Error("IMAGE_LOAD_FAILED")); };
+        image.onload = async () => {
+          try {
+            if (typeof image.decode === "function") await image.decode();
+            if (settled) return;
+            if (!image.naturalWidth) { fail("IMAGE_LOAD_FAILED"); return; }
+            settled = true; cleanup(); resolve(image);
+          } catch { fail("IMAGE_LOAD_FAILED"); }
+        };
         image.onerror = () => fail("IMAGE_LOAD_FAILED");
         image.src = src;
       }
       start();
-    });
+    }));
     images.set(src, task);
     task.catch(() => { if (images.get(src) === task) images.delete(src); });
     while (images.size > 32) images.delete(images.keys().next().value);

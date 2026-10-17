@@ -4,6 +4,7 @@ import { defineConfig } from "@playwright/test";
 // Run `npm run build` first, then `npm run test:ui`.
 export default defineConfig({
   testDir: "./tests/ui",
+  outputDir: "test-results-ui",
   workers: 2,
   timeout: 60_000,
   expect: { timeout: 10_000 },

@@ -31,6 +31,7 @@ export function getCursorForMode(mode, brushSize = 8, color = "#30ed19") {
       return "grab";
     case "mask":
       return generateBrushCursor(brushSize, color);
+    case "focus":
     case "crop":
     case "object-select-rect":
     case "object-select-lasso":

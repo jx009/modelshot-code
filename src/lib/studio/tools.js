@@ -1,12 +1,14 @@
 import { z } from "zod";
 import { commerceSchema } from "../commerce/schema.js";
 import { TOOLS, getTool } from "./tool-catalog.js";
+import { ADJUSTMENT_KEYS } from "./adjustments.js";
 
 export { TOOLS, getTool } from "./tool-catalog.js";
 const id = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
 const positive = z.number().int().min(1).max(8192);
 const edgePadding = z.number().int().min(0).max(1024);
 const boundsSchema = z.object({ left: z.number().int().min(0).max(8192), top: z.number().int().min(0).max(8192), width: positive, height: positive }).strict();
+export const adjustmentsSchema = z.object(Object.fromEntries(ADJUSTMENT_KEYS.map(key => [key, z.number().min(-100).max(100).optional()]))).strict();
 export const paramsSchema = z.object({
   prompt: z.string().trim().max(4000).default(""),
   size: z.enum(["1024x1024", "1024x1536", "1536x1024"]).default("1024x1024"),
@@ -27,16 +29,25 @@ export const paramsSchema = z.object({
   editPadding: z.number().min(0.05).max(0.5).default(0.25),
   duration: z.union([z.literal(5), z.literal(10)]).default(5),
   numLayers: z.number().int().min(2).max(8).default(4),
+  newText: z.string().trim().max(1000).optional(),
+  language: z.enum(["zh", "en", "ja", "ko", "fr", "de", "es", "pt", "ru", "th"]).optional(),
+  focusPoints: z.array(z.object({ id, x: z.number().min(0).max(1), y: z.number().min(0).max(1), label: z.string().trim().min(1).max(100) }).strict()).min(1).max(10).optional(),
 }).strict();
 export const jobSchema = z.object({ tool: z.enum(TOOLS.map(tool => tool.id)), provider: id.optional(), documentId: id, documentVersion: z.number().int().positive(), targetId: id.optional(), assetId: id.optional(), maskId: id.optional(), moveBundle: z.object({ objectAssetId: id, holeAssetId: id, bounds: boundsSchema }).strict().optional(), referenceAssetIds: z.array(id).max(2).optional(), sectionId: id.optional(), sectionAttempt: z.number().int().min(0).max(50).optional(), params: paramsSchema.prefault({}) }).strict().superRefine((data, ctx) => {
   const tool = getTool(data.tool);
+  if (tool.clientOnly) ctx.addIssue({ code: "custom", message: "LOCAL_TOOL_ONLY" });
+  if (data.tool === "text-edit" && !data.params.newText) ctx.addIssue({ code: "custom", message: "REPLACEMENT_TEXT_REQUIRED" });
+  if (data.tool === "translate" && !data.params.language) ctx.addIssue({ code: "custom", message: "LANGUAGE_REQUIRED" });
+  if (data.tool === "merge" && !data.referenceAssetIds?.length) ctx.addIssue({ code: "custom", message: "REFERENCES_REQUIRED" });
+  if (data.tool === "focus" && (data.referenceAssetIds?.length || 0) > 1) ctx.addIssue({ code: "custom", message: "TOO_MANY_FOCUS_REFERENCES" });
+  if (data.tool === "focus" && !data.params.focusPoints?.length) ctx.addIssue({ code: "custom", message: "FOCUS_POINTS_REQUIRED" });
   if (data.moveBundle && data.tool !== "move") ctx.addIssue({ code: "custom", message: "INVALID_MOVE_BUNDLE" });
   if (tool.source && !data.assetId) ctx.addIssue({ code: "custom", message: "SOURCE_REQUIRED", path: ["assetId"] });
   if (data.params.selectionMode === "region" && (data.tool !== "move" || !data.params.moveSource || !data.params.moveTarget)) ctx.addIssue({ code: "custom", message: "MOVE_REGIONS_REQUIRED" });
   if (data.params.selectionMode === "region" && data.params.moveSource && data.params.moveTarget && JSON.stringify(data.params.moveSource) === JSON.stringify(data.params.moveTarget)) ctx.addIssue({ code: "custom", message: "MOVE_DESTINATION_REQUIRED" });
   if (tool.mask && !data.maskId && !(data.tool === "move" && data.params.selectionMode === "region")) ctx.addIssue({ code: "custom", message: "MASK_REQUIRED", path: ["maskId"] });
   if (data.tool === "crop" && !data.params.rect) ctx.addIssue({ code: "custom", message: "CROP_REQUIRED", path: ["params"] });
-  if (["generate", "edit", "inpaint", "video"].includes(data.tool) && !data.params.prompt) ctx.addIssue({ code: "custom", message: "PROMPT_REQUIRED", path: ["params", "prompt"] });
+  if (["generate", "edit", "inpaint", "video", "focus", "merge"].includes(data.tool) && !data.params.prompt) ctx.addIssue({ code: "custom", message: "PROMPT_REQUIRED", path: ["params", "prompt"] });
 });
 
 const layer = z.object({
@@ -45,11 +56,12 @@ const layer = z.object({
   rotation: z.number().finite().min(-360).max(360).default(0), visible: z.boolean().default(true), opacity: z.number().min(0).max(1).default(1),
   pixelWidth: positive.optional(), pixelHeight: positive.optional(), text: z.string().max(4000).optional(), fontSize: z.number().min(8).max(512).optional(), fill: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(), sourceJobId: id.optional(),
   groupId: id.optional(), layerRole: z.enum(["background", "object", "decomposed"]).optional(), repairJobId: id.optional(),
+  selectionGroup: id.optional(), locked: z.boolean().optional(), adjustments: adjustmentsSchema.optional(),
 }).strict();
 export const contentSchema = z.object({
   schemaVersion: z.literal(1), layers: z.array(layer).max(1000),
   commerce: commerceSchema.optional(),
-  composer: z.object({ text: z.string().max(4000).default(""), fixedPrompt: z.string().max(2000).default(""), referenceIds: z.array(id).max(3).default([]), outputCount: z.number().int().min(1).max(4).default(1) }).strict().optional(),
+  composer: z.object({ size: z.enum(["1024x1024", "1024x1536", "1536x1024"]).optional(), text: z.string().max(4000).default(""), fixedPrompt: z.string().max(2000).default(""), referenceIds: z.array(id).max(3).default([]), outputCount: z.number().int().min(1).max(4).default(1) }).strict().optional(),
   messages: z.array(z.object({ id, role: z.enum(["user", "assistant"]), text: z.string().max(8000), assetId: id.optional() }).strict()).max(20000),
   jobs: z.array(id).max(100),
   appliedJobs: z.array(id).max(20000).default([]),

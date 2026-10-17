@@ -35,7 +35,7 @@ export async function submitStudioJob(userId, input, key, db = prisma, deps = {}
     if (data.sectionId) {
       const commerce = document.content.commerce;
       const section = commerce?.sections.find(s => s.id === data.sectionId);
-      if (!section || data.tool !== "edit" || section.attempt !== data.sectionAttempt || commerce.productAssetId !== data.assetId || section.prompt !== data.params.prompt || JSON.stringify(data.referenceAssetIds || []) !== JSON.stringify(commerceReferences(commerce, section)) || data.provider !== commerce.provider || data.params.size !== (commerce.size || "1024x1536")) throw new AppError("STORYBOARD_CHANGED", 409);
+      if (!section || data.tool !== "edit" || section.attempt !== data.sectionAttempt || commerce.productAssetId !== data.assetId || section.prompt !== data.params.prompt || JSON.stringify(data.referenceAssetIds || []) !== JSON.stringify(commerceReferences(commerce, section)) || data.provider !== commerce.provider || data.params.size !== (section.size || commerce.size || "1024x1536")) throw new AppError("STORYBOARD_CHANGED", 409);
     }
     for (const ref of data.referenceAssetIds || []) {
       const asset = await ownedAsset(userId, ref, tx);
@@ -60,7 +60,7 @@ export async function submitStudioJob(userId, input, key, db = prisma, deps = {}
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended('queue-admission', 0))::text`;
     if (await tx.tryOn.count({ where: { status: { in: ACTIVE } } }) >= LIMITS.queue) throw new AppError("QUEUE_FULL", 503);
     if (await tx.tryOn.count({ where: { userId, status: { in: ACTIVE } } }) >= 20) throw new AppError("USER_QUEUE_FULL", 429);
-    const channel = data.tool === "split" ? config.splitChannel : data.tool === "describe" ? { name: config.plannerProvider, kind: config.plannerKind, model: config.chatModel, baseURL: config.visionBaseURL } : null;
+    const channel = data.tool === "split" ? config.splitChannel : getTool(data.tool).dependency === "vision" ? { name: config.plannerProvider, kind: config.plannerKind, model: config.chatModel, baseURL: config.visionBaseURL } : null;
     const output = await tx.tryOn.create({ data: { id: randomUUID(), userId, requestId, personImage: "", clothesImage: inputAsset ? `/api/assets/${inputAsset.id}` : "", prompt: data.params.prompt, provider: data.tool === "video" ? "ark" : channel?.name || config.imageProvider || "studio", creditCost: tool.cost, billingType: "credits",
       snapshot: { kind: "studio", ...data, provider: channel?.name || config.imageProvider, providerKind: channel?.kind || config.imageKind || "openai", providerBaseURL: (channel ? channel.baseURL : config.baseURL) || null, digest, checksum: inputAsset?.checksum || null, price: tool.cost, priceVersion: "studio-2026-09-v1", imageModel: channel?.model || config.imageModel, chatModel: config.chatModel || null, videoModel: config.videoModel || null } } });
     if (tool.cost) {

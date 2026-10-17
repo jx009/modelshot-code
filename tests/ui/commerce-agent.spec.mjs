@@ -119,3 +119,30 @@ for (const [theme, width] of [["light", 1440], ["dark", 390]]) {
     await page.screenshot({ path: info.outputPath(`commerce-${theme}-${width}.png`), fullPage: true });
   });
 }
+
+test("scene selection, editable ratio and reusable recipe retain the product source", async ({ page }) => {
+  const f = await fixture(page);
+  await page.goto("/zh/commerce");
+  await page.getByLabel("上传商品原图", { exact: true }).setInputFiles("public/inspiration/chair.webp");
+  await page.getByLabel("产品名称", { exact: true }).fill(brief.product);
+  await page.getByLabel("产品事实与要求").fill(brief.description);
+  await page.getByRole("button", { name: "开始策划", exact: true }).click();
+  await expect(page.locator(".ca-card")).toHaveCount(3);
+  const cards = page.locator(".ca-card");
+  await cards.nth(1).getByRole("checkbox").uncheck();
+  await cards.nth(2).getByRole("checkbox").uncheck();
+  await cards.first().getByRole("button", { name: "编辑方案", exact: true }).click();
+  const modal = page.getByRole("dialog", { name: "编辑单图方案", exact: true });
+  await modal.getByLabel("生成描述").fill("Keep the product. Soft daylight, space for copy.");
+  await modal.getByLabel("这张图的比例").selectOption("1536x1024");
+  await modal.getByRole("button", { name: "保存方案", exact: true }).click();
+  await expect(modal).toHaveCount(0);
+  expect(f.getDoc().content.commerce.sections[0].size).toBe("1536x1024");
+  await page.getByRole("button", { name: /生成待办 1 张/ }).click();
+  await expect(page.locator(".ca-card-image img")).toHaveCount(1);
+  await expect.poll(() => f.getDoc().content.layers.length).toBe(2);
+  await page.getByRole("button", { name: "复用整套方案", exact: true }).click();
+  await expect.poll(() => f.getDoc().content.layers.length).toBe(1);
+  expect(f.getDoc().content.jobs).toEqual([]);
+  expect(f.getDoc().content.commerce.sections[0]).toMatchObject({ attempt: 0, size: "1536x1024" });
+});

@@ -8,16 +8,18 @@ import { getTestEnvironment } from "../support/environment.mjs";
 import { E2E_PASSWORD } from "../support/e2e-users.mjs";
 
 async function login(page, email) {
-  await page.goto("/en/login?callbackUrl=/en/studio");
+  await page.goto("/en/login?callbackUrl=/en/studio-v2");
   await page.getByRole("button", { name: "Email", exact: true }).click();
   await page.getByLabel("Email", { exact: true }).fill(email);
   await page.getByLabel("Password", { exact: true }).fill(E2E_PASSWORD);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await expect(page).toHaveURL(/\/en\/studio$/);
+  await expect(page).toHaveURL(/\/en\/studio-v2$/);
   await expect.poll(async () => (await (await page.request.get("/api/auth/session")).json()).user?.email).toBe(email);
 }
 
-test("product brief, private references, agent plan, durable worker and ZIP delivery", async ({ page }, info) => {
+// Compatibility API coverage remains valuable after the old studio/gallery UI
+// was retired. Current commerce UI planning is covered in creative-commerce.
+test("legacy private draft, durable worker and ZIP delivery remain compatible", async ({ page }, info) => {
   const errors = [];
   page.on("pageerror", error => errors.push(error.message));
   const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: getTestEnvironment().databaseUrl }) });
@@ -26,36 +28,29 @@ test("product brief, private references, agent plan, durable worker and ZIP deli
     await db.user.create({ data: { email, passwordHash: await bcrypt.hash(E2E_PASSWORD, 10), credits: 100, emailVerified: new Date() } });
     await login(page, email);
     const image = await sharp({ create: { width: 120, height: 160, channels: 3, background: "#df586c" } }).png().toBuffer();
-    await page.locator('.asset-panel input[type="file"]').first().setInputFiles({ name: "product.png", mimeType: "image/png", buffer: image });
-    await expect(page.locator(".asset-list img").first()).toBeVisible();
-    await page.locator('.asset-panel input[type="file"]').nth(1).setInputFiles({ name: "detail.png", mimeType: "image/png", buffer: image });
-    await expect(page.locator(".reference-item img")).toBeVisible();
-    if (info.project.name === "mobile") await page.locator('.mobile-workspace-tabs button').nth(1).click();
-    await page.locator('.workflow-picker summary').click();
-    await page.locator('.workflow-options button').filter({ hasText: "Product polish" }).click();
-    await expect(page.locator('.custom-model')).toHaveCount(0);
-    await page.getByLabel("Creative brief", { exact: true }).fill("Clean the background and preserve every product detail.");
-    await page.getByLabel("SKU", { exact: true }).fill("SKU-BROWSER");
-    await page.getByRole("button", { name: "Save draft", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Saved", exact: true })).toBeVisible();
+    const assets = [];
+    for (const name of ["product.png", "detail.png"]) {
+      const response = await page.request.post("/api/upload", { multipart: { file: { name, mimeType: "image/png", buffer: image } } });
+      expect(response.ok(), await response.text()).toBe(true);
+      assets.push((await response.json()).assetId);
+    }
+    const config = { images: [assets[0]], referenceImages: [{ id: assets[1], role: "detail" }], workflowId: "product-polish", provider: "openai", prompt: "Clean the background and preserve every product detail.", sku: "SKU-BROWSER" };
+    const saved = await page.request.post("/api/drafts", { data: { name: "Compatibility draft", config } });
+    expect(saved.ok(), await saved.text()).toBe(true);
+    const draft = await saved.json();
     await page.reload();
-    await page.getByLabel("Open draft", { exact: true }).selectOption({ index: 1 });
-    await expect(page.getByLabel("SKU", { exact: true })).toHaveValue("SKU-BROWSER");
-    if (info.project.name === "mobile") await page.locator('.mobile-workspace-tabs button').first().click();
-    await expect(page.locator(".reference-item img")).toBeVisible();
-    if (info.project.name === "mobile") await page.locator('.mobile-workspace-tabs button').nth(1).click();
-    await page.locator(".generate-button").click();
-    await expect(page.locator(".workflow-dialog")).toBeVisible();
-    await expect(page.locator(".workflow-dialog")).toContainText("Product polish");
-    const submitted = page.waitForResponse(response => response.url().endsWith("/api/tryon") && response.request().method() === "POST");
-    await page.locator(".workflow-dialog .primary").click();
-    const result = await (await submitted).json();
+    expect((await (await page.request.get(`/api/drafts?id=${draft.id}`)).json()).config).toEqual(config);
+    const quoted = await page.request.post("/api/quotes", { data: config });
+    expect(quoted.ok(), await quoted.text()).toBe(true);
+    const quote = await quoted.json();
+    const submitted = await page.request.post("/api/tryon", { headers: { "Idempotency-Key": crypto.randomUUID() }, data: { quoteId: quote.quoteId, digest: quote.digest } });
+    expect(submitted.ok(), await submitted.text()).toBe(true);
+    const result = await submitted.json();
     expect(result.tryonId).toBeTruthy();
     await page.reload();
     await expect.poll(async () => (await (await page.request.get(`/api/tryons?id=${result.tryonId}`)).json()).exportStatus, { timeout: 45000 }).toBe("ready");
     await page.goto(`/en/gallery?id=${result.tryonId}`);
-    await expect(page.locator(".detail-dialog")).toBeVisible();
-    await page.screenshot({ path: info.outputPath("result-detail.png"), fullPage: true });
+    await expect(page).toHaveURL(/\/en\/projects$/);
     const record = await (await page.request.get(`/api/tryons?id=${result.tryonId}`)).json();
     expect(record.qaStatus).toBe("skipped");
     expect((await page.request.patch("/api/tryons", { data: { id: record.id, decision: "approved" } })).ok()).toBeTruthy();
@@ -67,21 +62,24 @@ test("product brief, private references, agent plan, durable worker and ZIP deli
     const zip = await JSZip.loadAsync(await download.body());
     expect(Object.keys(zip.files).some(name => name.endsWith(".png"))).toBeTruthy();
     await page.goto("/en/account");
-    await expect(page.locator(".usage-metrics")).toBeVisible();
+    expect((await page.request.get("/api/account")).ok()).toBe(true);
     expect(errors).toEqual([]);
   } finally { await db.$disconnect(); }
 });
 
 test("workspace controls fit six viewport widths in both languages", async ({ page }, info) => {
-  if (info.project.name !== "desktop") return;
-  for (const theme of ["dark", "light"]) for (const locale of ["en", "zh"]) for (const width of [360, 390, 768, 810, 1280, 1440]) {
+  test.setTimeout(150000);
+  const widths = info.project.name === "desktop" ? [768, 810, 1280, 1440] : [360, 390];
+  for (const theme of ["dark", "light"]) for (const locale of ["en", "zh"]) for (const width of widths) {
     await page.setViewportSize({ width, height: 900 });
-    await page.goto(`/${locale}/studio`);
+    await page.goto(`/${locale}/studio-v2`);
+    await expect(page.getByLabel(locale === "en" ? "Creative prompt" : "创作描述", { exact: true })).toBeEnabled();
     await page.evaluate(value => { localStorage.setItem("theme", value); }, theme);
     await page.reload();
     await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
-    await expect(page.locator(".cost-summary")).toBeVisible();
-    await expect(page.locator(".studio-heading .mode-switch")).toBeVisible();
+    await expect(page.locator(".ms-composer-hint")).toBeVisible();
+    await expect(page.getByRole("tab", { name: locale === "en" ? "Chat" : "对话", exact: true })).toBeVisible();
+    await expect(page.getByLabel(locale === "en" ? "Creative prompt" : "创作描述", { exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
     await page.screenshot({ path: info.outputPath(`${theme}-${locale}-${width}.png`) });
   }
@@ -102,7 +100,8 @@ test("batch failure, queued cancellation, ownership and configuration reuse", as
     expect(submitted.batchJobId, JSON.stringify(submitted)).toBeTruthy();
     await expect.poll(async () => (await (await page.request.get(`/api/batch?id=${submitted.batchJobId}`)).json()).status, { timeout: 45000 }).toBe("failed");
     await page.goto(`/en/studio?id=${submitted.tryonId}&retry=1`);
-    await expect(page.locator('.asset-list img').first()).toHaveAttribute("src", /api\/assets/);
+    await expect(page).toHaveURL(/\/en\/studio-v2/);
+    expect((await page.request.get(`/api/assets/${asset.assetId}`)).ok()).toBe(true);
     const nextQuote = await (await page.request.post("/api/quotes", { data: { images: [asset.assetId], personImage: asset.assetId, workflowId: "single-shot", provider: "openai", retryOfId: submitted.tryonId } })).json();
     const retried = await (await page.request.post("/api/tryon", { headers: { "Idempotency-Key": crypto.randomUUID() }, data: { quoteId: nextQuote.quoteId, digest: nextQuote.digest } })).json();
     const cancelled = await page.request.post(`/api/jobs/${retried.tryonId}/cancel`);
@@ -118,7 +117,7 @@ test("batch failure, queued cancellation, ownership and configuration reuse", as
   } finally { await db.$disconnect(); }
 });
 
-test("worker restart delivers a persisted job once and gallery selection survives pagination", async ({ page }, info) => {
+test("worker restart delivers once and legacy pagination exports selected records", async ({ page }, info) => {
   test.setTimeout(150000);
   const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: getTestEnvironment().databaseUrl }) });
   const email = `restart-${info.project.name}@modelshot.test`;
@@ -141,19 +140,15 @@ test("worker restart delivers a persisted job once and gallery selection survive
     // Synthetic completed records exercise cursor pagination without additional supplier calls.
     await db.tryOn.createMany({ data: Array.from({ length: 24 }, (_, index) => ({ userId: user.id, personImage: source.personImage, clothesImage: source.clothesImage, prompt: "Pagination fixture", requestId: crypto.randomUUID(), status: "succeeded", originalAssetId: source.originalAssetId, deliveryAssetId: source.deliveryAssetId, snapshot: { ...source.snapshot, variant: index + 1 }, qaStatus: "skipped", exportStatus: "ready", sku: `PAGINATION-${index}` })) });
     await page.goto("/en/gallery");
-    await expect(page.locator(".shot-checkbox input")).toHaveCount(24);
-    await page.locator(".shot-checkbox input").first().check();
-    await page.locator(".pagination button").last().click();
-    await expect(page.locator(".shot-checkbox input")).toHaveCount(1);
-    await page.locator(".shot-checkbox input").first().check();
-    await page.locator(".pagination button").first().click();
-    await expect(page.locator(".shot-checkbox input")).toHaveCount(24);
-    await expect(page.locator(".shot-checkbox input").first()).toBeChecked();
-    const pending = page.waitForResponse(response => response.url().endsWith("/api/exports") && response.request().method() === "POST");
-    await page.locator(".library-heading button").click();
-    const response = await pending;
+    await expect(page).toHaveURL(/\/en\/projects$/);
+    const firstPage = await (await page.request.get("/api/tryons?limit=24")).json();
+    expect(firstPage.items).toHaveLength(24); expect(firstPage.nextCursor).toBeTruthy();
+    const secondPage = await (await page.request.get(`/api/tryons?limit=24&cursor=${firstPage.nextCursor}`)).json();
+    expect(secondPage.items).toHaveLength(1); expect(secondPage.nextCursor).toBeNull();
+    expect(new Set([...firstPage.items, ...secondPage.items].map(row => row.id)).size).toBe(25);
+    const outputIds = [firstPage.items[0].id, secondPage.items[0].id];
+    const response = await page.request.post("/api/exports", { headers: { "Idempotency-Key": crypto.randomUUID() }, data: { outputIds, mode: "original" } });
     expect(response.ok()).toBeTruthy();
-    expect(response.request().postDataJSON().outputIds).toHaveLength(2);
     const job = await response.json();
     await expect.poll(async () => (await (await page.request.get(`/api/exports/${job.id}`)).json()).status, { timeout: 60000 }).toBe("succeeded");
     const zip = await JSZip.loadAsync(await (await page.request.get(`/api/exports/${job.id}/download`)).body());

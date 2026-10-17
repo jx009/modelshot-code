@@ -76,9 +76,10 @@ test("admin owns tool models, has no page scrollbar, and decomposition remains e
     await page.screenshot({ path: info.outputPath("admin-independent-scroll.png"), fullPage: true });
     if (info.project.name === "desktop") await page.setViewportSize({ width: 1440, height: 960 });
     await page.goto("/en/studio-v2");
-    await expect(page.getByLabel("Image model")).toHaveValue(channels[1].name);
-    await page.getByLabel("Image model").selectOption(channels[1].name);
-    await expect(page.getByLabel("Image model")).toHaveValue(channels[1].name);
+    await expect(page.getByRole("button", { name: /^Image model/ })).toContainText("Fixture Ark Edit");
+    await page.getByRole("button", { name: /^Image model/ }).click();
+    await page.getByRole("option").filter({ hasText: "Fixture Ark Edit" }).click();
+    await expect(page.getByRole("button", { name: /^Image model/ })).toContainText("Fixture Ark Edit");
     const source = await sharp({ create: { width: 320, height: 480, channels: 3, background: "#879d8f" } }).png().toBuffer();
     await page.getByLabel("Upload image files").setInputFiles({ name: "cloud-source.png", mimeType: "image/png", buffer: source });
     await expect(page.locator(".ms-image-menu")).toBeVisible();

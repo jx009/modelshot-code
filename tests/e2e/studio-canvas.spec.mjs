@@ -227,9 +227,9 @@ test("canvas upload, crop through durable worker, layers, export and cloud resto
     if (info.project.name === "mobile" && await page.getByRole("button", { name: "Canvas", exact: true }).isVisible()) await page.getByRole("button", { name: "Canvas", exact: true }).click();
     await page.getByRole("button", { name: "Undo", exact: true }).click();
     await expect(page.locator(".ms-canvas-label")).toContainText("3 layers");
-    const replayPoll = page.waitForResponse(r => r.url().includes("/api/studio/jobs?"));
+    const replaySave = page.waitForResponse(r => r.url().endsWith("/api/studio/documents") && r.request().method() === "POST");
     await page.keyboard.press("Control+s");
-    await replayPoll;
+    await replaySave;
     await expect(page.locator(".ms-canvas-label")).toContainText("3 layers");
     await page.getByRole("button", { name: "Redo", exact: true }).click();
     await expect(page.locator(".ms-canvas-label")).toContainText("4 layers");

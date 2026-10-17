@@ -1,12 +1,12 @@
 # Canvas configuration and operation
 
-Read `jiaotu-development-plan.md` for the implementation and acceptance plan.
+Read `jiaotu-parity-2026-10-17.md` for the current implementation, source map and acceptance results; `jiaotu-development-plan.md` retains the earlier plan.
 
 ## Start
 
 1. `npm install` (Node 22.14 / npm 10.9).
 2. `npm run setup:local` preserves existing `.env`, validates the local database target, starts Docker services, deploys migrations and creates the storage bucket.
-3. Run `npm run studio:dev` and `npm run worker` in separate terminals. Open `http://127.0.0.1:3210/zh/studio-v2`. This launcher sets the matching authentication origin; the current Windows machine reserves port 3000. `STUDIO_PORT` can override 3210. Sign in with the existing account flow. The old commerce workbench remains at `/zh/studio`.
+3. Run `npm run studio:dev` and `npm run worker` in separate terminals. Open `http://127.0.0.1:3210/zh` for the homepage, `/zh/commerce` for the commerce agent, or `/zh/studio-v2` for the canvas. This launcher sets the matching authentication origin; the current Windows machine reserves port 3000. `STUDIO_PORT` can override 3210. Sign in with the existing account flow. `/zh/studio` redirects to the current canvas; `/zh/gallery` redirects to projects.
 4. For the installed local cutout engine run `npm run studio:tools`. Its Python virtual environment is isolated under `services/image-tools/.venv`, and the authentication key stays in ignored `.env`. `npm run test:studio-tools` runs a real cutout smoke check on a bundled sample without a paid API call.
 5. For production use `npm run build`, then `npm start`, plus a separately supervised worker.
 
@@ -49,6 +49,10 @@ Base URL 支持官方服务和管理员配置的任意 HTTPS OpenAI 兼容网关
 
 ## Tool implementation
 
+- 新工具：无痕改字（需要蒙版）、图片翻译、细节增强、多图融合和焦点编辑走图像编辑通道；提取风格配方走后台视觉通道。焦点识别需要用户主动点击，按后台语言价格幂等计费。
+- 调色是本地免费操作；应用会创建原尺寸的新图片资产，保留原图，后续AI编辑可引用真实调色结果。细节增强是生成式修复，与工具服务的2倍/4倍超分分开配置。
+- 活跃任务通过 `/api/studio/events?documentId=...` 获取SSE完整状态快照，断流回退查询。反向代理应允许 `text/event-stream` 并关闭缓冲，连接会定期轮换；Worker持续运行，不依赖SSE连接存在。
+
 - 物体移动：源区/目标区坐标在原图像素空间保存，旋转以区域左上角为原点；客户端约束边界，服务端再次检查四角。前端操作不发送分割请求。
 - 移动生成：源区和目标区各扩展 20% 并羽化，保留场景上下文；多图编辑模型同时接收原图、位置引导图，以及原生 mask 或供应商适配的范围引导。结果校验比例并还原原尺寸，范围外像素保持原图，范围内的物体身份、遮挡与阴影质量取决于实际模型。过长的旧阴影或大幅移动仍需真实案例验收。
 - 局部修改：点击、矩形或套索提供云端分割提示。编辑模型接收原图上下文、物体参考和可扩展编辑区域；范围外保留原像素。
@@ -66,7 +70,7 @@ Creation, reservation and Outbox commit together. Provider results are stored as
 
 ## Known product boundaries
 
-- Frontend follows Lovart-style canvas-first interaction with ModelShot branding; it is not a claim that every private Lovart behavior or model capability is replicated.
+- Frontend now includes a Jiaotu-inspired creation homepage, inspiration recipes, commerce agent and canvas under ModelShot branding. This does not claim pixel-identical private behavior or matching upstream model quality.
 - Local-edit segmentation and decomposition require configured API channels. Region movement only requires the image-edit model. Model generation remains asynchronous; no first-call one-second SLA is promised.
 - OCR replacement creates a movable text layer after background repair; original font matching, perspective and complex typography require manual adjustments.
 - Video currently implements one explicit Ark content-generation contract; other providers require separate adapters and real credentials.

@@ -58,7 +58,7 @@ test("one EntitySegment channel can be saved for splitting and produces aligned,
     await page.getByLabel("Upload image files").setInputFiles({ name: "entity-source.png", mimeType: "image/png", buffer: source });
     await expect(page.locator(".ms-image-menu")).toBeVisible();
     await page.getByRole("button", { name: /Split layers/ }).click();
-    await expect(page.getByText(/Automatically separate detected regions/)).toBeVisible();
+    await expect(page.getByText(/Detect objects and separate them/)).toBeVisible();
     await expect(page.getByLabel("Layers", { exact: true })).toHaveCount(0);
     const submitted = page.waitForResponse(r => r.url().endsWith("/api/studio/jobs") && r.request().method() === "POST");
     await page.getByRole("button", { name: "Apply 20 credits", exact: true }).click({ force: true });

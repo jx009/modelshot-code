@@ -15,7 +15,7 @@ import { createImage } from "../../src/lib/domain/assets/service.js";
 import { extractObject } from "../../src/lib/domain/studio/segmentation.js";
 
 let f;
-const config = { imageModel: "fixture", chatModel: "fixture-vision", videoModel: "fixture-video" };
+const config = { imageModel: "fixture", chatModel: "fixture-vision", plannerKind: "openai", videoModel: "fixture-video" };
 const deps = { config, capabilities: { tools: TOOLS.map(t => ({ ...t, available: true })) } };
 async function setup() {
   const user = await f.user(100);
@@ -26,6 +26,24 @@ async function setup() {
 describe("studio documents and task ledger", () => {
   beforeAll(async () => { f = await domainFixture(); });
   afterAll(async () => { await f?.cleanup(); });
+  it("new creative tools preserve billing, references and pinned language channels", async () => {
+    for (const tool of ["enhance", "translate", "merge", "focus", "template"]) {
+      const { user, input } = await setup();
+      const extra = tool === "merge" ? { referenceAssetIds: [user.asset.id] } : {};
+      const params = { prompt: "Edit @1", ...(tool === "translate" ? { language: "en" } : {}), ...(tool === "focus" ? { focusPoints: [{ id: "point", x: .5, y: .5, label: "product" }] } : {}) };
+      const request = { ...input, ...extra, tool, params }, key = randomUUID();
+      const job = await submitStudioJob(user.id, request, key, f.db, deps);
+      expect((await submitStudioJob(user.id, request, key, f.db, deps)).id).toBe(job.id);
+      let calls = 0;
+      await executeStudio(job.id, { db: f.db, store: f.store, config, adapters: { generate: async (_config, args) => { calls++; if (tool === "focus") expect(args.references).toHaveLength(1); return f.image; }, vision: async () => { calls++; return "Soft light, editorial composition"; } } });
+      await executeStudio(job.id, { db: f.db, store: f.store, config });
+      const row = await f.db.tryOn.findUnique({ where: { id: job.id } });
+      expect(row.status, `${tool}: ${row.errorCode}`).toBe("succeeded"); expect(calls).toBe(1);
+      expect((await usageSummary(user.id, f.db)).credits).toBe(tool === "template" ? 99 : 82);
+      if (tool === "template") expect(row.resultData.text).toContain("Soft light");
+      else expect(row.resultData.assets).toHaveLength(1);
+    }
+  });
   it("uses document CAS and rejects another user's private assets", async () => {
     const { user, doc } = await setup(), other = await f.user();
     const outcomes = await Promise.allSettled([1, 2].map(n => saveDocument(user.id, { id: doc.id, version: 1, name: `Edit ${n}`, content: doc.content }, f.db)));

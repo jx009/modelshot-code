@@ -1,5 +1,6 @@
 import { loadImage } from "./image-processor.js";
 import { imageUrl } from "./image-url.js";
+import { adjustedImage } from "./adjustments.js";
 
 const xml = value => String(value).replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" })[char]);
 export function layeredSVG(layers, images, bounds) {
@@ -27,7 +28,7 @@ export async function exportCanvas(artwork, layers, { format = "png", scope = "a
     if (bounds.width * bounds.height > 40000000 || Math.max(bounds.width, bounds.height) > 16000) throw new Error("导出范围过大 / Export area is too large");
     const byAsset = new Map();
     for (const item of uniqueImages) byAsset.set(item.assetId, await loadImage(imageUrl(item.assetId)));
-    const originals = new Map(items.filter(item => item.type === "image").map(item => [item.id, byAsset.get(item.assetId)]));
+    const originals = new Map(items.filter(item => item.type === "image").map(item => [item.id, adjustedImage(byAsset.get(item.assetId), item.adjustments)]));
     clone.find("Image").forEach(node => node.image(originals.get(node.id())));
     const composite = clone.toCanvas({ ...bounds, pixelRatio: 1 });
     let blob, extension = format;
@@ -45,7 +46,7 @@ export async function exportCanvas(artwork, layers, { format = "png", scope = "a
       const images = new Map();
       for (const item of items.filter(layer => layer.type === "image")) {
         const original = originals.get(item.id), canvas = document.createElement("canvas");
-        canvas.width = original.naturalWidth; canvas.height = original.naturalHeight;
+        canvas.width = original.naturalWidth || original.width; canvas.height = original.naturalHeight || original.height;
         canvas.getContext("2d").drawImage(original, 0, 0); images.set(item.id, canvas.toDataURL("image/png"));
       }
       const svg = format === "svg-layers" ? layeredSVG(items, images, bounds) : `<svg xmlns="http://www.w3.org/2000/svg" width="${bounds.width}" height="${bounds.height}"><image width="100%" height="100%" href="${composite.toDataURL("image/png")}"/></svg>`;

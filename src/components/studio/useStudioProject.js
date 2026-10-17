@@ -15,7 +15,7 @@ function projectURL(id, createKey, push = false) {
   window.history[push ? "pushState" : "replaceState"](null, "", url);
 }
 
-export function useStudioProject({ userId, initialDocument, initialPrompt = "", paused, onError }) {
+export function useStudioProject({ userId, sessionLoading = false, initialDocument, initialPrompt = "", initialSize = "1024x1024", initialCount = 1, initialFixed = "", paused, onError }) {
   const [draft, setDraft] = useState(emptyProject), draftRef = useRef(draft);
   const [saveState, setSaveState] = useState("loading"), [ready, setReady] = useState(false);
   const revision = useRef(0), savedRevision = useRef(0), epoch = useRef(0), queue = useRef(Promise.resolve()), localWrite = useRef(Promise.resolve());
@@ -86,7 +86,7 @@ export function useStudioProject({ userId, initialDocument, initialPrompt = "", 
         }
       } catch { /* The cloud copy remains the fallback for invalid legacy drafts. */ }
     }
-    let value = cached || { ...emptyProject(), ...(initialPrompt ? { composer: { text: initialPrompt } } : {}), ...(token ? { createKey: token } : {}) };
+    let value = cached || { ...emptyProject(), ...(initialPrompt ? { composer: { text: initialPrompt, size: initialSize, outputCount: initialCount, fixedPrompt: initialFixed } } : {}), ...(token ? { createKey: token } : {}) };
     let conflict = false;
     if (id) {
       try {
@@ -108,12 +108,18 @@ export function useStudioProject({ userId, initialDocument, initialPrompt = "", 
     persist(value);
     if (conflict) errorRef.current("DOCUMENT_VERSION_CONFLICT");
     return value;
-  }, [userId, initialPrompt, persist]);
+  }, [userId, initialPrompt, initialSize, initialCount, initialFixed, persist]);
 
   useEffect(() => {
     if (!userId) {
-      Promise.resolve().then(() => { epoch.current++; const empty = emptyProject(); draftRef.current = empty; setDraft(empty); setReady(false); });
-      return;
+      let active = true;
+      Promise.resolve().then(() => {
+        if (!active) return;
+        epoch.current++;
+        const empty = { ...emptyProject(), composer: { text: initialPrompt, size: initialSize, outputCount: initialCount, fixedPrompt: initialFixed } };
+        draftRef.current = empty; setDraft(empty); setReady(!sessionLoading); setSaveState(sessionLoading ? "loading" : "local");
+      });
+      return () => { active = false; };
     }
     const query = new URL(window.location.href).searchParams;
     const current = !initialDocument && !initialPrompt && !query.has("draft") && query.get("new") !== "1" ? activeProject(userId) : null;
@@ -134,15 +140,15 @@ export function useStudioProject({ userId, initialDocument, initialPrompt = "", 
     window.addEventListener("popstate", pop);
     const invalidate = () => { epoch.current++; };
     return () => { active = false; invalidate(); window.removeEventListener("popstate", pop); };
-  }, [userId, initialDocument, initialPrompt, load]);
+  }, [userId, sessionLoading, initialDocument, initialPrompt, initialSize, initialCount, initialFixed, load]);
 
   useEffect(() => {
-    if (!ready || paused || !draft._dirty || saveState === "conflict" || !meaningful(draft)) return;
+    if (!userId || !ready || paused || !draft._dirty || saveState === "conflict" || !meaningful(draft)) return;
     const timer = setTimeout(() => save().catch(error => errorRef.current(error)), 800);
     return () => clearTimeout(timer);
     // Saving/error state alone must not start an automatic retry loop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draft, paused, ready, save]);
+  }, [draft, paused, ready, save, userId]);
   useEffect(() => {
     const online = () => { if (draftRef.current._dirty) save().catch(error => errorRef.current(error)); };
     window.addEventListener("online", online);

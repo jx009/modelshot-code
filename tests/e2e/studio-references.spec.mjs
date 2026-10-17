@@ -30,7 +30,13 @@ test("home uploads, project references, fixed prompt and multi-output retry keep
     await page.screenshot({ path: info.outputPath("creation-home.png"), fullPage: true, animations: "disabled" });
     const image = await sharp({ create: { width: 200, height: 240, channels: 3, background: "#d49e80" } }).png().toBuffer();
     await page.getByLabel("Upload reference images").setInputFiles([{ name: "cat.png", mimeType: "image/png", buffer: image }, { name: "style.png", mimeType: "image/png", buffer: image }]);
+    await expect(page.locator(".cr-attachments img")).toHaveCount(2);
+    await expect(page).toHaveURL(/\/en$/);
+    // Uploading keeps the references in the composer; an empty prompt opens the canvas without charging.
+    await page.getByLabel("Describe your idea").fill("");
+    await page.getByRole("button", { name: "Start creating", exact: true }).click();
     await expect(page).toHaveURL(/document=/);
+    await page.getByLabel("Creative prompt").fill("Two images, preserve the cat");
     await expect(page.getByLabel("Creative prompt")).toHaveValue("Two images, preserve the cat");
     await expect(page.locator(".ms-reference-list .ms-reference")).toHaveCount(2);
     await page.getByRole("button", { name: "Fixed prompt", exact: true }).click();

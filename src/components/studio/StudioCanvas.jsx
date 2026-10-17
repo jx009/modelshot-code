@@ -1,8 +1,11 @@
 "use client";
 
 import { forwardRef, startTransition, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
-import { Stage, Layer, Image as CanvasImage, Transformer, Text, Group, Line, Rect } from "react-konva";
+import { Stage, Layer, Image as CanvasImage, Transformer, Text, Group, Line, Rect, Circle } from "react-konva";
 import CanvasArtwork from "./canvas/CanvasArtwork";
+import MultiSelectionTransform from "./canvas/MultiSelectionTransform";
+import CanvasContextMenu from "./canvas/CanvasContextMenu";
+import { layersInRect } from "@/lib/studio/layer-operations";
 import CropOverlay from "./canvas/CropOverlay";
 import { exportCanvas } from "@/lib/studio/canvas-export";
 import MoveRegions from "./canvas/MoveRegions";
@@ -81,11 +84,14 @@ function ExpansionBox({ value, width, height, accent, onChange }) {
       enabledAnchors={["top-left", "top-center", "top-right", "middle-left", "middle-right", "bottom-left", "bottom-center", "bottom-right"]} /></>;
 }
 
-const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSelect, onChange, mode, onMaskChange, panning: requestedPanning = false, moveRegions, onMoveRegions, onPreview, onViewport, onCamera, zh, selectionTool, editPadding = 0.25, brushSize = 35, moveOffset = { dx: 0, dy: 0 }, onMoveOffset, onMovePreparing, onMoveReady, onMoveFailed, onCrop, cropRect, cropShape, cropGrid, onCropGrid, expandPadding = 256, onExpandPadding, onZoom, onUpload, onError, label }, ref) {
+const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, selectedIds = [], focusPoints = [], onFocusPoint, adjustmentPreview, onSelect, onChange, mode, onMaskChange, panning: requestedPanning = false, moveRegions, onMoveRegions, onPreview, onViewport, onCamera, zh, selectionTool, editPadding = 0.25, brushSize = 35, moveOffset = { dx: 0, dy: 0 }, onMoveOffset, onMovePreparing, onMoveReady, onMoveFailed, onCrop, cropRect, cropShape, cropGrid, onCropGrid, expandPadding = 256, onExpandPadding, onZoom, onUpload, onError, label }, ref) {
   const [middleHeld, setMiddleHeld] = useState(false);
   const panning = requestedPanning || middleHeld;
   const container = useRef(null), stage = useRef(null), artwork = useRef(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
+  const [marquee, setMarquee] = useState(null), [contextMenu, setContextMenu] = useState(null);
+  const marqueeStart = useRef(null), marqueeRect = useRef(null);
+  const closeContextMenu = useCallback(() => setContextMenu(null), []);
   const selectionInk = "#30ed19";
 
   // Use custom hooks for state management
@@ -236,6 +242,19 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
   function handleMouseDown(e) {
     if (panning) return;
     if (e.evt?.button && e.evt.button !== 0) return;
+    if (mode === "select" && e.target === stage.current) {
+      const p = stage.current.getRelativePointerPosition();
+      marqueeStart.current = { ...p, base: e.evt?.shiftKey ? selectedIds : [] };
+      marqueeRect.current = null;
+      if (!e.evt?.shiftKey) onSelect(null);
+      return;
+    }
+    if (mode === "focus") {
+      if (e.target !== artwork.current?.findOne(`#${selectedId}`)) return;
+      const p = point();
+      if (p) onFocusPoint?.({ x: p.x / selection.pixelWidth, y: p.y / selection.pixelHeight });
+      return;
+    }
     if (mode.startsWith("object-select-")) {
       const imageNode = artwork.current?.findOne(`#${selectedId}`);
       if (e.target !== imageNode) return;
@@ -264,6 +283,11 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
   }
 
   function handleMouseMove() {
+    if (marqueeStart.current && !panning) {
+      const p = stage.current.getRelativePointerPosition(), start = marqueeStart.current;
+      const rect = { x: Math.min(p.x, start.x), y: Math.min(p.y, start.y), width: Math.abs(p.x - start.x), height: Math.abs(p.y - start.y) };
+      marqueeRect.current = rect; setMarquee(rect); return;
+    }
     if (panning || !drawing.current) return;
     const p = point(); if (!p) return;
     if (mode === "crop" || mode === "object-select-rect") {
@@ -289,6 +313,12 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
   }
 
   async function finishDrawing() {
+    if (marqueeStart.current) {
+      const rect = marqueeRect.current, start = marqueeStart.current;
+      marqueeStart.current = null; marqueeRect.current = null; setMarquee(null);
+      if (rect && Math.max(rect.width, rect.height) * camera.scale > 4) onSelect([...new Set([...start.base, ...layersInRect(layers, rect)])]);
+      return;
+    }
     if (panning || !drawing.current) return;
     drawing.current = false;
     setDrawingActive(false);
@@ -321,7 +351,7 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
   // card can sit over the lower edge of the artwork, so finish only when the
   // pointer is released (including when release happens over that card).
   useEffect(() => {
-    const release = () => { if (drawing.current) finishDrawing(); };
+    const release = () => { if (drawing.current || marqueeStart.current) finishDrawing(); };
     document.addEventListener("mouseup", release);
     document.addEventListener("pointerup", release);
     document.addEventListener("touchend", release);
@@ -331,14 +361,14 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
       document.removeEventListener("touchend", release);
     };
   });
-  const editing = selection?.type === "image" && ["mask", "crop", "move", "object-edit", "object-preparing", "object-select-rect", "object-select-lasso", "expand"].includes(mode);
+  const editing = selection?.type === "image" && ["mask", "crop", "move", "object-edit", "object-preparing", "object-select-rect", "object-select-lasso", "expand", "focus", "adjust"].includes(mode);
   // Stable callbacks let unchanged artwork skip brush and composer updates.
   // Read the latest committed layers so an async result is never lost on drag end.
   const actions = useRef(null);
-  useLayoutEffect(() => { actions.current = { layers, onSelect, onChange, onPreview, onError, editing, panning }; });
-  const selectPicture = useCallback(id => {
+  useLayoutEffect(() => { actions.current = { layers, selectedIds, onSelect, onChange, onPreview, onError, editing, panning }; });
+  const selectPicture = useCallback((id, additive) => {
     const current = actions.current;
-    if (!current.panning && !current.editing) current.onSelect(id);
+    if (!current.panning && !current.editing) current.onSelect(id, additive);
   }, []);
   const previewPicture = useCallback(item => {
     const current = actions.current;
@@ -346,8 +376,28 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
   }, []);
   const changePicture = useCallback((id, patch) => {
     const current = actions.current;
-    try { current.onChange(current.layers.map(layer => layer.id === id ? { ...layer, ...patch } : layer)); }
+    try {
+      const source = current.layers.find(layer => layer.id === id);
+      if (!source || source.locked) return;
+      const moving = Object.keys(patch).every(key => ["x", "y"].includes(key));
+      current.onChange(current.layers.map(layer => {
+        if (layer.locked) return layer;
+        if (layer.id === id) return { ...layer, ...patch };
+        if (moving && (source.selectionGroup && layer.selectionGroup === source.selectionGroup || current.selectedIds.includes(id) && current.selectedIds.includes(layer.id))) return { ...layer, x: layer.x + (patch.x ?? source.x) - source.x, y: layer.y + (patch.y ?? source.y) - source.y };
+        return layer;
+      }));
+    }
     catch (error) { current.onError(error); }
+  }, []);
+  const transformSelection = useCallback(patches => {
+    const current = actions.current;
+    // Reject out-of-contract group transforms as a whole instead of clipping
+    // individual layers and breaking their shared geometry.
+    if (patches.some(p => p.width > 8192 || p.height > 8192 || Math.abs(p.x) > 100000 || Math.abs(p.y) > 100000)) {
+      current.onChange([...current.layers]); return;
+    }
+    const changes = new Map(patches.map(p => [p.id, p]));
+    current.onChange(current.layers.map(layer => changes.has(layer.id) && !layer.locked ? { ...layer, ...changes.get(layer.id) } : layer));
   }, []);
   const cursorStyle = getCursorForMode(panning ? "hand" : mode, brushSize, selectionInk);
 
@@ -361,6 +411,17 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
     onDragOver={e => e.preventDefault()}
     onDrop={e => { e.preventDefault(); onUpload(e.dataTransfer.files); }}>
     <Stage onDblClick={e => { if (e.target === stage.current) fit(); }} onDblTap={e => { if (e.target === stage.current) fit(); }} ref={stage} {...dimensions} x={camera.x} y={camera.y} scaleX={camera.scale} scaleY={camera.scale} draggable={panning}
+      onContextMenu={event => {
+        event.evt.preventDefault();
+        if (mode !== "select" || panning) return;
+        let node = event.target;
+        while (node && !layers.some(layer => layer.id === node.id())) node = node.getParent();
+        const id = node?.id();
+        if (id && !selectedIds.includes(id)) onSelect(id);
+        else if (!id && event.target === stage.current) onSelect(null);
+        const p = stage.current.getPointerPosition();
+        setContextMenu({ x: Math.max(8, Math.min(p.x, dimensions.width - 180)), y: Math.max(8, Math.min(p.y, dimensions.height - 300)) });
+      }}
       onDragStart={e => { if (e.target !== stage.current) setDraggingArtwork(true); }}
       onDragEnd={e => { setDraggingArtwork(false); if (e.target === stage.current) updateCamera({ x: e.target.x(), y: e.target.y() }); }}
       onWheel={e => {
@@ -376,7 +437,9 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
       onMouseDown={handleMouseDown} onTouchStart={handleMouseDown}
       onMouseMove={handleMouseMove} onTouchMove={handleMouseMove}
       onMouseUp={finishDrawing} onTouchEnd={finishDrawing}>
-      <CanvasArtwork ref={artwork} layers={layers} camera={camera} dimensions={dimensions} selectedId={selectedId} interactive={!panning && mode === "select"} accent={color} onError={onError} onPreview={previewPicture} onSelect={selectPicture} onChange={changePicture} />
+      <CanvasArtwork selectedIds={selectedIds} adjustmentPreview={adjustmentPreview} ref={artwork} layers={layers} camera={camera} dimensions={dimensions} selectedId={selectedId} interactive={!panning && mode === "select"} accent={color} onError={onError} onPreview={previewPicture} onSelect={selectPicture} onChange={changePicture} />
+      {!panning && mode === "select" && selectedIds.length > 1 && <MultiSelectionTransform stage={stage} layers={layers} ids={selectedIds.filter(id => layers.some(layer => layer.id === id && layer.visible && !layer.locked))} accent={color} onCommit={transformSelection} />}
+      {marquee && <Layer listening={false}><Rect {...marquee} stroke={color} strokeWidth={1 / camera.scale} fill={`${color}22`} /></Layer>}
       {editing && !["crop", "expand", "move", "object-edit"].includes(mode) && <Layer listening={false}><Group x={selection.x} y={selection.y} rotation={selection.rotation} scaleX={selection.width / selection.pixelWidth} scaleY={selection.height / selection.pixelHeight} clipWidth={selection.pixelWidth} clipHeight={selection.pixelHeight}>
         {mode === "mask" && strokes.filter(s => s.target === maskKey).map((s, i, lines) => <Line key={i} points={s.points} stroke={selectionInk} strokeWidth={s.width} closed={!isDrawing || i < lines.length - 1} lineCap="round" lineJoin="round" />)}
         {mode === "object-select-rect" && moveSelection?.rectangle && <>
@@ -390,6 +453,7 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
           <Line points={moveSelection.polygon} stroke="#ffffff" strokeWidth={1.5 / (camera.scale * selection.width / selection.pixelWidth)} opacity={0.6} closed lineCap="round" lineJoin="round" />
         </>}
       </Group></Layer>}
+      {mode === "focus" && selection && <Layer listening={false}><Group x={selection.x} y={selection.y} rotation={selection.rotation}>{focusPoints.map((p, i) => <Group key={p.id} x={p.x * selection.width} y={p.y * selection.height}><Circle radius={13 / camera.scale} fill="#ff6933" stroke="white" strokeWidth={2 / camera.scale} /><Text text={String(i + 1)} x={-12 / camera.scale} y={-7 / camera.scale} width={24 / camera.scale} align="center" fill="white" fontSize={14 / camera.scale} /></Group>)}</Group></Layer>}
       {mode === "crop" && selection && <Layer listening={!panning}><Group x={selection.x} y={selection.y} rotation={selection.rotation} scaleX={selection.width / selection.pixelWidth} scaleY={selection.height / selection.pixelHeight} clipWidth={selection.pixelWidth} clipHeight={selection.pixelHeight}>
         {cropShape !== "grid" && <CropOverlay rect={cropRect || crop || { left: 0, top: 0, width: selection.pixelWidth, height: selection.pixelHeight }} shape={cropShape} grid={cropGrid || { x: [.5], y: [.5] }} onGrid={onCropGrid} scale={camera.scale * selection.width / selection.pixelWidth} accent="#ffffff" canvasWidth={selection.pixelWidth} canvasHeight={selection.pixelHeight} />}
         <CropBox value={cropRect || crop || { left: 0, top: 0, width: selection.pixelWidth, height: selection.pixelHeight }} width={selection.pixelWidth} height={selection.pixelHeight} scale={camera.scale * selection.width / selection.pixelWidth} onChange={rect => { updateCrop(rect); onCrop(rect); }} />
@@ -419,6 +483,7 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, onSe
           width={movePreview.bounds.width + 6} height={movePreview.bounds.height + 6} stroke={color} strokeWidth={1.5 / (camera.scale * selection.width / selection.pixelWidth)} dash={[7, 5]} cornerRadius={3} listening={false} />
       </Group></Layer>}
     </Stage>
+    {contextMenu && <CanvasContextMenu position={contextMenu} layers={layers} ids={selectedIds} onChange={onChange} onSelect={onSelect} onClose={closeContextMenu} onFit={fit} zh={zh} />}
   </div>;
 });
 export default StudioCanvas;

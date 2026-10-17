@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import { E2E_PASSWORD, E2E_USERS } from "../support/e2e-users.mjs";
 import { getTestEnvironment } from "../support/environment.mjs";
 
-async function signIn(page, email, destination = "/en/studio") {
+async function signIn(page, email, destination = "/en/studio-v2") {
   await page.goto(`/en/login?callbackUrl=${encodeURIComponent(destination)}`);
   await page.getByRole("button", { name: "Email", exact: true }).click();
   await page.getByLabel("Email", { exact: true }).fill(email);
@@ -22,10 +22,10 @@ for (const locale of ["en", "zh"]) {
     page.on("pageerror", error => errors.push(error.message));
     const response = await page.goto(`/${locale}/studio`);
     expect(response.status()).toBe(200);
-    await expect(page.locator("h1")).toContainText(locale === "en" ? "Commerce visual studio" : "电商视觉工作台");
+    await expect(page.locator("h1")).toContainText(locale === "en" ? "Imagine it. Make it real." : "想象一下，然后实现它。");
     await expect(page.locator("html")).toHaveAttribute("lang", locale);
     // Language names in the navigation remain in their native language.
-    if (locale === "en") expect(await page.locator(".studio-shell").innerText()).not.toMatch(/\p{Script=Han}/u);
+    if (locale === "en") expect(await page.locator(".ms-studio").innerText()).not.toMatch(/\p{Script=Han}/u);
     expect(errors).toEqual([]);
   });
 }
@@ -40,7 +40,8 @@ test("email sign-in restores the workspace and exposes no credential", async ({ 
   expect((await (await page.request.get("/api/auth/session")).json()).user.email).toBe(E2E_USERS[0].email);
   await page.screenshot({ path: testInfo.outputPath("studio.png"), fullPage: true });
   await page.goto("/en/gallery");
-  await expect(page.getByText("No shots yet", { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/\/en\/projects$/);
+  await expect(page.getByText("Start a project. Your work saves automatically.", { exact: true })).toBeVisible();
 });
 
 test("a normal account cannot access admin data", async ({ page }) => {

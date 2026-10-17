@@ -8,6 +8,7 @@ import { Aperture, Compass, House, Images, LayoutGrid, ShoppingBag, ArrowUpRight
 import "./discover.css";
 import "./creative-direction.css";
 import "./parity.css";
+import "./atelier.css";
 import UserMenu from "@/components/UserMenu";
 import RecentProjects from "@/components/studio/RecentProjects";
 export default function CreativeShell({ children }) {

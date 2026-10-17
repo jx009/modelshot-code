@@ -23,6 +23,8 @@ test("story preview rendering workload", async ({ page }, info) => {
   // Copy is below the fold; invoke through the visible control after scrolling.
   await page.getByRole("button", { name: "复制", exact: true }).scrollIntoViewIfNeeded();
   await page.waitForLoadState("networkidle");
+  // Network idle does not wait for the bounded image decode queue or intersection callbacks.
+  await expect.poll(() => page.locator(".cm-preview-render").evaluateAll(canvases => canvases.every(canvas => { const r = canvas.getBoundingClientRect(); return r.bottom < -200 || r.top > innerHeight + 200 || canvas.dataset.rendered === "true"; }))).toBe(true);
   const beforeCopy = await page.evaluate(() => window.previewDraws);
   await page.getByRole("button", { name: "复制", exact: true }).click();
   await page.waitForTimeout(200);

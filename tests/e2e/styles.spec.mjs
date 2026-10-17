@@ -58,9 +58,10 @@ test("a failed global stylesheet recovers without reloading or losing input", as
 
 test("slow navigation reports progress and repeated clicks share one request", async ({ page }) => {
   let count = 0, release;
+  const requests = new Set();
   const gate = new Promise(resolve => { release = resolve; });
   await page.route("**/en/projects?*", async route => {
-    count++;
+    requests.add(route.request().url()); count++;
     await gate;
     await route.continue();
   });
@@ -71,7 +72,9 @@ test("slow navigation reports progress and repeated clicks share one request", a
     await link.click();
     await expect(page.getByRole("status").filter({ hasText: "Opening" })).toBeVisible();
     await link.click(); await link.click();
-    await expect.poll(() => count).toBe(1);
+    // Next may fetch a route tree and its dynamic payload; duplicate clicks must not repeat either request.
+    await expect.poll(() => count).toBe(requests.size);
+    expect(count).toBeLessThanOrEqual(2);
   } finally { release(); }
   await expect(page).toHaveURL(/\/en\/projects$/);
   await expect(page.getByRole("heading", { name: "My projects", exact: true })).toBeVisible();

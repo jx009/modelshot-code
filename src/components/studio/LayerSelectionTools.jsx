@@ -1,0 +1,9 @@
+"use client";
+import { alignLayers, distributeLayers } from "@/lib/studio/layer-operations";
+import { requestKey } from "@/lib/client-api";
+export default function LayerSelectionTools({ layers, ids, onChange, zh, disabled }) {
+  const selected = layers.filter(l => ids.includes(l.id));
+  if (!selected.length) return null;
+  const allLocked = selected.every(l => l.locked);
+  return <fieldset disabled={disabled} className="ms-selection-tools" aria-label={zh ? "图层排列" : "Arrange layers"}><span>{selected.length} {zh ? "个图层" : "layers"}</span>{selected.length > 1 && <><select aria-label={zh ? "对齐图层" : "Align layers"} value="" onChange={e => onChange(alignLayers(layers, ids, e.target.value))}><option value="" disabled>{zh ? "对齐" : "Align"}</option>{[["left","左对齐","Left"],["center","水平居中","Center"],["right","右对齐","Right"],["top","顶对齐","Top"],["middle","垂直居中","Middle"],["bottom","底对齐","Bottom"]].map(([value,cn,en]) => <option key={value} value={value}>{zh ? cn : en}</option>)}</select><button onClick={() => { const selectionGroup = requestKey(); onChange(layers.map(l => ids.includes(l.id) && !l.locked ? { ...l, selectionGroup } : l)); }}>{zh ? "组合" : "Group"}</button><button onClick={() => onChange(layers.map(l => ids.includes(l.id) && !l.locked ? { ...l, selectionGroup: undefined } : l))}>{zh ? "解组" : "Ungroup"}</button>{selected.length > 2 && <button onClick={() => onChange(distributeLayers(layers, ids))}>{zh ? "等距排列" : "Distribute"}</button>}</>}<button onClick={() => onChange(layers.map(l => ids.includes(l.id) ? { ...l, locked: !allLocked } : l))}>{allLocked ? zh ? "解锁" : "Unlock" : zh ? "锁定" : "Lock"}</button><button disabled={selected.every(l => l.locked)} onClick={() => onChange(layers.filter(l => !ids.includes(l.id) || l.locked))}>{zh ? "删除" : "Delete"}</button></fieldset>;
+}

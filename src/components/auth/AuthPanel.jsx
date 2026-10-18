@@ -1,5 +1,4 @@
 "use client";
-import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { getProviders, getSession, signIn, useSession } from "next-auth/react";
 import { useLocale, useTranslations } from "next-intl";
@@ -69,14 +68,8 @@ export default function AuthPanel({ request, onClose, onSuccess }) {
   }
   const title = mode === "register" ? zh ? "开启你的创作之旅" : "Make room for your ideas" : mode === "reset" ? zh ? "找回密码" : "Reset your password" : zh ? "欢迎回来" : "Welcome back";
   return <div className={styles.panel}>
-    <aside className={styles.art} aria-hidden="true">
-      <Image src="/inspiration/perfume.webp" alt="" fill sizes="340px" className={styles.artImage} />
-      <div className={styles.artShade} /><div className={styles.artTop}><span>LETAI / CREATIVE STUDIO</span><ArrowUpRight size={18} /></div>
-      <div className={styles.artCopy}><span className={styles.artLabel}><i />IMAGINATION, MADE VISIBLE</span><p>{zh ? <>好想法，<br />值得被看见。</> : <>Good ideas.<br />Beautifully made.</>}</p><span>{zh ? "从一束灵感，到一幅作品。" : "From a spark of inspiration to your next creation."}</span></div>
-      <div className={styles.artBottom}><span>IMAGE · DESIGN · MOTION</span><span>01 / ∞</span></div>
-    </aside>
     <section className={styles.formPanel}>
-      <header className={styles.header}><span className={styles.brand}><BrandMark size={25} /><strong>来塔AI</strong></span><button className={styles.close} onClick={onClose} aria-label={zh ? "关闭登录" : "Close sign in"}><X size={18} /></button></header>
+      <header className={styles.header}><span className={styles.brand}><BrandMark size={30} /><span className={styles.wordmark}><strong>来塔AI</strong><small>letaidraw</small></span></span><button className={styles.close} onClick={onClose} aria-label={zh ? "关闭登录" : "Close sign in"}><X size={18} /></button></header>
       <div className={styles.content}>
         <div className={styles.intro}><span className={styles.eyebrow}>{mode === "register" ? "YOUR NEXT CHAPTER" : mode === "reset" ? "ACCOUNT RECOVERY" : "YOUR CREATIVE SPACE"}</span><h1>{title}</h1><p>{mode === "reset" ? zh ? "验证邮箱后，为账号设置一个新密码。" : "Verify your email to set a new password." : zh ? "让下一份灵感，成为作品。" : "Turn your next inspiration into something beautiful."}</p></div>
         {google && mode !== "reset" && <><button className={styles.google} disabled={busy} onClick={() => signIn("google", { callbackUrl: callbackUrl || window.location.href })}><GoogleIcon />{t("googleBtn")}</button><div className={styles.divider}><span>{zh ? "或使用邮箱" : "or continue with email"}</span></div></>}

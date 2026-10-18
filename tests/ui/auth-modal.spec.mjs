@@ -18,13 +18,15 @@ for (const theme of ["dark", "light"]) test(`login stays over the current creati
   await page.evaluate(theme => document.documentElement.setAttribute("data-theme", theme), theme);
   const prompt = page.getByRole("textbox", { name: "描述你的创意", exact: true });
   await prompt.fill("一张有呼吸感的产品海报");
+  await page.screenshot({ path: info.outputPath(`home-brand-${theme}.png`), animations: "disabled" });
   const trigger = page.locator(".cr-top-cta");
   await trigger.click();
   const dialog = page.getByRole("dialog", { name: "登录来塔AI" });
   await expect(dialog.getByLabel("邮箱", { exact: true })).toBeVisible();
   await expect(dialog.getByRole("button", { name: /Google/ })).toHaveCount(0);
   await expect(page).toHaveURL(/\/zh\?source=preview$/);
-  await expect.poll(() => dialog.locator("img").evaluate(el => el.naturalWidth)).toBeGreaterThan(0);
+  await expect(dialog.locator("img")).toHaveCount(0);
+  expect((await dialog.boundingBox()).width).toBeLessThanOrEqual(440);
   await page.screenshot({ path: info.outputPath(`auth-${theme}.png`), animations: "disabled" });
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
@@ -32,6 +34,8 @@ for (const theme of ["dark", "light"]) test(`login stays over the current creati
   await expect(trigger).toBeFocused();
   const icon = page.locator(".cr-recharge-trigger svg");
   expect(await icon.evaluate(el => getComputedStyle(el).fill)).not.toBe("none");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: info.outputPath(`home-brand-mobile-${theme}.png`), animations: "disabled" });
 });
 
 test("legacy login opens a dismissible modal and keeps invitation registration", async ({ page }) => {

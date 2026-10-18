@@ -1,7 +1,9 @@
 import OpenAI, { toFile } from "openai";
 import sharp from "sharp";
 import { imageSizeError, resolveImageSize } from "../../studio/image-size.js";
+import { imageBillingResolutions } from "../../studio/image-pricing.js";
 import { prisma } from "../../prisma.js";
+import { getResolutionSurcharges } from "../billing/resolution-pricing.js";
 import { decryptSecret } from "../../crypto.js";
 import { AppError } from "../../http.js";
 import { editThroughCompatibleGateway } from "../../ai/adapters/openai.js";
@@ -86,7 +88,8 @@ export async function capabilities(db = prisma, config, channelName) {
   // One request-local snapshot: no duplicated queries or stale shared credentials.
   const { rows, settings } = await routingSnapshot(db);
   const c = config || resolveStudioConfig(rows, settings, channelName);
-  const imageModels = rows.filter(row => channelScope(row) === "public" && channelCapability(row) === "image").filter(row => { const parsed = JSON.parse(row.config || "{}"); return Boolean(parsed.apiKeyEnc || row.kind === "openai" && (process.env.OPENAI_API_KEY || process.env.STUDIO_API_KEY)); }).map(row => ({ id: row.name, label: row.displayName, creditCost: row.creditCost ?? 18, maxReferenceImages: supportsImageTask(JSON.parse(row.config || "{}"), "edit") ? 3 : 0 }));
+  const surcharges = await getResolutionSurcharges(db);
+  const imageModels = rows.filter(row => channelScope(row) === "public" && channelCapability(row) === "image").filter(row => { const parsed = JSON.parse(row.config || "{}"); return Boolean(parsed.apiKeyEnc || row.kind === "openai" && (process.env.OPENAI_API_KEY || process.env.STUDIO_API_KEY)); }).map(row => ({ id: row.name, label: row.displayName, creditCost: row.creditCost ?? 18, resolutionSurcharges: surcharges, maxReferenceImages: supportsImageTask(JSON.parse(row.config || "{}"), "edit") ? 3 : 0 }));
   let external = [];
   if (c.toolsURL && c.toolsKey) {
     try {
@@ -103,9 +106,10 @@ export async function capabilities(db = prisma, config, channelName) {
         if (!("requestedProvider" in c) && !setting?.routing) chosen = { ...chosen, ...c }; }
       catch (e) { error = e.code; chosen = {}; }
       const ready = { local: true, image: Boolean(chosen.apiKey) && supportsImageTask(chosen, tool.id === "generate" ? "generate" : "edit"), vision: Boolean(chosen.visionApiKey && chosen.chatModel), video: Boolean(chosen.videoKey && chosen.videoModel), segment: segmentChannelReady(chosen.segmentChannel), split: splitChannelReady(chosen.splitChannel), "remove-bg": external.includes("remove-bg"), upscale: upscaleChannelReady(chosen.upscaleChannel), ocr: ocrChannelReady(chosen.ocrChannel) };
-      const cost = tool.dependency === "vision" ? c.plannerCreditCost : ["generate", "edit"].includes(tool.id) ? chosen.imageCreditCost ?? 18 : setting?.creditCost ?? tool.cost;
+      const prices = tool.dependency === "image" ? surcharges : null;
+      const cost = tool.dependency === "image" ? chosen.imageCreditCost ?? 18 : tool.dependency === "vision" ? c.plannerCreditCost : setting?.creditCost ?? tool.cost;
       const dependencyReady = !error && ready[tool.dependency], previewReady = !tool.preview || tool.previewOptional || ready[tool.preview];
-      return { ...tool, cost, enabled, ...(tool.id === "inpaint" ? { maxUserReferences: chosen.imageKind === "dashscope" ? 1 : 2 } : {}), ...(tool.id === "upscale" ? { supportedScales: [2] } : {}), ...(tool.preview ? { objectSelectionAvailable: Boolean(enabled && ready[tool.preview]) } : {}), ...(tool.id === "split" ? { layerCountMode: chosen.splitChannel?.kind === "volc-visual" ? "auto" : "custom" } : {}), available: Boolean(enabled && dependencyReady && previewReady), reason: !enabled ? "TOOL_DISABLED" : !dependencyReady ? error || "SERVICE_NOT_CONFIGURED" : !previewReady ? "SEGMENTATION_NOT_CONFIGURED" : null };
+      return { ...tool, cost, resolutionSurcharges: prices, billingResolutions: imageBillingResolutions(tool.id, chosen), enabled, ...(tool.id === "inpaint" ? { maxUserReferences: chosen.imageKind === "dashscope" ? 1 : 2 } : {}), ...(tool.id === "upscale" ? { supportedScales: [2] } : {}), ...(tool.preview ? { objectSelectionAvailable: Boolean(enabled && ready[tool.preview]) } : {}), ...(tool.id === "split" ? { layerCountMode: chosen.splitChannel?.kind === "volc-visual" ? "auto" : "custom" } : {}), available: Boolean(enabled && dependencyReady && previewReady), reason: !enabled ? "TOOL_DISABLED" : !dependencyReady ? error || "SERVICE_NOT_CONFIGURED" : !previewReady ? "SEGMENTATION_NOT_CONFIGURED" : null };
     }) };
 }
 

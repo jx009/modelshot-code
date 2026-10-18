@@ -83,7 +83,7 @@ describe("Volcengine EntitySegment", () => {
     expect(splitChannelReady({ kind: "volc-visual", accessKeyId: "ak-private" })).toBe(false);
     expect(validChannel("volc-visual", JSON.parse(row.config))).toBe(true);
     expect(validChannel("volc-visual", { model: "other", scope: "tool", studioCapability: "segment" })).toBe(false);
-    const db = { modelProvider: { findMany: async () => rows }, studioToolConfig: { findMany: async () => settings } };
+    const db = { systemConfig: { findUnique: async () => null }, modelProvider: { findMany: async () => rows }, studioToolConfig: { findMany: async () => settings } };
     const published = await capabilities(db, resolveStudioConfig(rows));
     expect(published.tools.find(tool => tool.id === "move").available).toBe(true);
     expect(published.tools.find(tool => tool.id === "split")).toMatchObject({ available: true, layerCountMode: "auto" });

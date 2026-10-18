@@ -27,6 +27,36 @@ async function setup() {
 describe("studio documents and task ledger", () => {
   beforeAll(async () => { f = await domainFixture(); });
   afterAll(async () => { await f?.cleanup(); });
+  it("reserves, captures and refunds the selected resolution price, with immutable replay after a price change", async () => {
+    const { user, input } = await setup();
+    const priced = (prices, base = 18) => ({ ...deps, capabilities: { tools: deps.capabilities.tools.map(t => ({ ...t, ...(t.dependency === "image" ? { cost: base, resolutionSurcharges: prices } : {}) })) } });
+    const prices = { "1K": 1, "2K": 2, "4K": 4 };
+    const firstInput = { ...input, expectedCost: 22, params: { prompt: "High resolution", size: "16:9@4K" } }, key = randomUUID();
+    const first = await submitStudioJob(user.id, firstInput, key, f.db, priced(prices));
+    expect(first.cost).toBe(22);
+    expect((await usageSummary(user.id, f.db)).reservedCredits).toBe(22);
+    const changedPrices = priced({ "1K": 10, "2K": 20, "4K": 60 });
+    expect(await submitStudioJob(user.id, { ...firstInput, expectedCost: 78 }, key, f.db, changedPrices)).toMatchObject({ id: first.id, cost: 22 });
+    await executeStudio(first.id, { db: f.db, store: f.store, config, adapters: { generate: async () => f.image } });
+    await executeStudio(first.id, { db: f.db, store: f.store, config });
+    expect((await usageSummary(user.id, f.db)).credits).toBe(78);
+    const row = await f.db.tryOn.findUnique({ where: { id: first.id } });
+    expect(row.snapshot).toMatchObject({ price: 22, priceVersion: "studio-base-plus-resolution-v3", pricing: { resolution: "4K", unitPrice: 22, basePrice: 18, resolutionSurcharge: 4 } });
+    expect(await f.db.creditTransaction.count({ where: { tryOnId: first.id, type: "consume" } })).toBe(1);
+    const second = await submitStudioJob(user.id, { ...input, expectedCost: 20, params: { prompt: "Try again", size: "1:1@2K" } }, randomUUID(), f.db, priced(prices));
+    await executeStudio(second.id, { db: f.db, store: f.store, config, adapters: { generate: async () => { throw Object.assign(new Error("rejected"), { status: 400 }); } } });
+    expect((await usageSummary(user.id, f.db)).credits).toBe(78);
+    expect(await f.db.creditReservation.findUnique({ where: { tryOnId: second.id } })).toMatchObject({ amount: 20, state: "released" });
+    await expect(submitStudioJob(user.id, firstInput, randomUUID(), f.db, changedPrices)).rejects.toThrow("PRICE_CHANGED");
+    expect(await f.db.tryOn.count({ where: { userId: user.id } })).toBe(2);
+    expect((await usageSummary(user.id, f.db)).reservedCredits).toBe(0);
+    const free = await submitStudioJob(user.id, { ...input, expectedCost: 0 }, randomUUID(), f.db, priced({ ...prices, "1K": 0 }, 0));
+    expect(free.cost).toBe(0);
+    expect(await f.db.creditReservation.findUnique({ where: { tryOnId: free.id } })).toBeNull();
+    await executeStudio(free.id, { db: f.db, store: f.store, config, adapters: { generate: async () => f.image } });
+    expect((await f.db.tryOn.findUnique({ where: { id: free.id } })).status).toBe("succeeded");
+    expect((await usageSummary(user.id, f.db)).credits).toBe(78);
+  });
   it("delivers complete guided edit results with one image call, no language calls, and unchanged prices", async () => {
     for (const tool of ["inpaint", "expand"]) {
       const { user, input } = await setup();

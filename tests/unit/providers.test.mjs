@@ -7,7 +7,7 @@ afterEach(() => vi.unstubAllEnvs());
 describe("platform provider configuration", () => {
   it("only exposes providers configured by an administrator", async () => {
     vi.stubEnv("ENCRYPTION_KEY", "ab".repeat(32));
-    const db = {
+    const db = { systemConfig: { findUnique: async () => null },
       modelProvider: {
         findMany: vi.fn().mockResolvedValue([
           { name: "openai-pro", kind: "openai", displayName: "ModelShot Pro", isDefault: true, priority: 0, config: JSON.stringify({ apiKeyEnc: encryptSecret("platform-key"), model: "gpt-image-2" }) },
@@ -27,7 +27,7 @@ describe("platform provider configuration", () => {
 
   it("passes the administrator key, model and Base URL to the worker adapter", async () => {
     vi.stubEnv("ENCRYPTION_KEY", "ab".repeat(32));
-    const db = {
+    const db = { systemConfig: { findUnique: async () => null },
       modelProvider: {
         findUnique: vi.fn().mockResolvedValue({
           isActive: true,

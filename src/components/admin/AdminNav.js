@@ -7,6 +7,7 @@ const LINKS = [
   { href: "/admin", label: "数据看板" },
   { href: "/admin/operations", label: "运行与账务" },
   { href: "/admin/providers", label: "模型配置" },
+  { href: "/admin/resolution-pricing", label: "分辨率积分" },
   { href: "/admin/studio-tools", label: "工具配置" },
   { href: "/admin/storage", label: "云存储与图片加速" },
   { href: "/admin/users", label: "用户管理" },

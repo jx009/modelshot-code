@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, Crop, Download, Eraser, Expand, FolderOpen, Layers3, MessageCircle, MoreHorizontal, Move, ScanText, Scissors, SlidersHorizontal, Sparkles, Type, Video, WandSparkles, ZoomIn } from "lucide-react";
+import { imageCreditCost } from "@/lib/studio/image-pricing";
 import { getTool } from "@/lib/studio/tool-catalog";
 import { imageUrl } from "@/lib/studio/image-url";
 import "./image-tool-toolbar.css";
@@ -19,7 +20,7 @@ const GROUPS = [
   { id: "more", zh: "更多", en: "More", icon: MoreHorizontal, items: ["crop", "adjust", "chat", "video", "library", "download"] },
 ];
 
-export default function ImageToolToolbar({ selected, viewport, capabilities, zh, onChoose, onChat, onSave }) {
+export default function ImageToolToolbar({ selected, size, viewport, capabilities, zh, onChoose, onChat, onSave }) {
   const [open, setOpen] = useState(null);
   const [height, setHeight] = useState(56);
   const root = useRef(null), menu = useRef(null), trigger = useRef(null), timer = useRef(null);
@@ -70,7 +71,7 @@ export default function ImageToolToolbar({ selected, viewport, capabilities, zh,
     const unavailable = item && !capability?.available && !item.clientOnly && id !== "crop";
     const label = item ? (zh ? item.zh : item.en) : ({ chat: t("添加到聊天", "Add to chat"), library: t("存入素材库", "Save to library"), download: t("下载原图", "Download image") })[id];
     const Icon = ICONS[id] || WandSparkles;
-    const hint = unavailable ? t("需管理员启用或配置此工具", "An administrator needs to configure or enable this tool") : item ? `${capability?.cost ?? item.cost} ${t("积分", "credits")}` : "";
+    const hint = unavailable ? t("需管理员启用或配置此工具", "An administrator needs to configure or enable this tool") : item ? `${imageCreditCost(capability || item, size, 0)} ${t("积分", "credits")}` : "";
     const content = <><Icon size={17} /><span>{label}</span>{unavailable && <i className="ms-setup-dot" />}{inMenu && id === "adjust" && <small>{t("免费", "Free")}</small>}</>;
     if (id === "download") return <a key={id} role="menuitem" href={imageUrl(selected.assetId)} download={`${selected.name}.png`} onClick={() => setOpen(null)}>{content}</a>;
     return <button key={id} role={inMenu ? "menuitem" : undefined} aria-label={label} disabled={unavailable} title={`${label}${hint ? ` · ${hint}` : ""}`} onPointerEnter={inMenu ? undefined : () => setOpen(null)} onClick={() => {

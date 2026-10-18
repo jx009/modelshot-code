@@ -43,7 +43,7 @@ describe("dedicated OCR and Volcengine upscale", () => {
     expect(config.ocrChannel).toMatchObject({ name: "ocr", apiKey: "ocr-secret", model: "ocr-model" });
     expect(config.segmentChannel).toBeNull();
     const settings = [{ toolId: "ocr", creditCost: 7 }, { toolId: "upscale", creditCost: 9 }];
-    const db = { modelProvider: { findMany: async () => rows }, studioToolConfig: { findMany: async () => settings } };
+    const db = { systemConfig: { findUnique: async () => null }, modelProvider: { findMany: async () => rows }, studioToolConfig: { findMany: async () => settings } };
     const caps = await capabilities(db);
     expect(caps.tools.find(t => t.id === "ocr")).toMatchObject({ available: true, cost: 7 });
     expect(caps.tools.find(t => t.id === "upscale")).toMatchObject({ available: true, cost: 9, supportedScales: [2] });

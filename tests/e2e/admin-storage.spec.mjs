@@ -23,7 +23,7 @@ test("ROOT configures private COS in a responsive admin page without exposing cr
     await page.getByLabel(/^SecretId/).fill("fixture-private-id");
     await page.getByLabel(/^SecretKey/).fill("fixture-private-secret");
     // Disabled synthetic configuration: no external COS requests in this test.
-    await page.getByLabel("启用图片加速").uncheck();
+    await page.getByLabel("启用 COS 长期存储与加速").uncheck();
     const saved = page.waitForResponse(r => r.url().endsWith("/api/admin/storage") && r.request().method() === "PATCH");
     await page.getByRole("button", { name: "保存配置" }).click();
     expect((await saved).ok()).toBe(true);

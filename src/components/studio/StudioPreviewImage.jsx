@@ -3,9 +3,12 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { LoaderCircle, RotateCcw } from "lucide-react";
 import { getCachedImage, loadImage } from "@/lib/studio/image-processor";
 import { imageUrl, previewUrl } from "@/lib/studio/image-url";
+import { DEFAULT_PREVIEW_VIEW, zoomPreview } from "@/lib/studio/preview-transform";
 
-export default function StudioPreviewImage({ assetId, initialImage, zoom, zh }) {
+export default function StudioPreviewImage({ assetId, initialImage, view, onView, zh }) {
   const viewport = useRef(null), content = useRef(null);
+  const drag = useRef(null);
+  const [dragging, setDragging] = useState(false);
   const [display, setDisplay] = useState(() => {
     const original = getCachedImage(imageUrl(assetId));
     return { original: Boolean(original), image: original || getCachedImage(previewUrl(assetId, 1280)) || initialImage || getCachedImage(previewUrl(assetId, 640)) || getCachedImage(previewUrl(assetId, 320)) };
@@ -42,6 +45,19 @@ export default function StudioPreviewImage({ assetId, initialImage, zoom, zh }) 
     return () => observer.disconnect();
   }, []);
 
+  useEffect(() => {
+    const element = viewport.current;
+    const wheel = event => {
+      event.preventDefault();
+      const rect = element.getBoundingClientRect();
+      const delta = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? rect.height : 1);
+      const anchor = { x: event.clientX - rect.left - rect.width / 2, y: event.clientY - rect.top - rect.height / 2 };
+      onView(current => zoomPreview(current, current.zoom * Math.exp(-Math.max(-200, Math.min(200, delta)) * .0025), anchor));
+    };
+    element.addEventListener("wheel", wheel, { passive: false });
+    return () => element.removeEventListener("wheel", wheel);
+  }, [onView]);
+
   useLayoutEffect(() => {
     if (!image) return;
     const host = content.current;
@@ -53,14 +69,30 @@ export default function StudioPreviewImage({ assetId, initialImage, zoom, zh }) 
     return () => { if (image.parentNode === host) host.removeChild(image); };
   }, [image, zh]);
 
-  const fit = image && bounds.width && bounds.height ? Math.min(bounds.width / image.naturalWidth, bounds.height / image.naturalHeight) : 1;
-  const width = image ? Math.max(1, Math.round(image.naturalWidth * fit * zoom)) : 0;
-  const height = image ? Math.max(1, Math.round(image.naturalHeight * fit * zoom)) : 0;
+  const quarterTurn = view.rotation % 180 !== 0;
+  const fit = image && bounds.width && bounds.height ? Math.min(bounds.width / (quarterTurn ? image.naturalHeight : image.naturalWidth), bounds.height / (quarterTurn ? image.naturalWidth : image.naturalHeight)) : 1;
+  const width = image ? Math.max(1, Math.round(image.naturalWidth * fit * view.zoom)) : 0;
+  const height = image ? Math.max(1, Math.round(image.naturalHeight * fit * view.zoom)) : 0;
+  function endDrag(event) {
+    if (drag.current?.id !== event.pointerId) return;
+    drag.current = null; setDragging(false);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+  }
   return <div className="ms-preview-body" data-asset-id={assetId} data-quality={display.original ? "original" : image ? "preview" : "loading"}>
-    <div ref={viewport} className="ms-preview-image">
-      <div className="ms-preview-image-space" style={{ minWidth: width, minHeight: height }}>
-        <div ref={content} className="ms-preview-image-content" style={{ width, height }} />
-      </div>
+    <div ref={viewport} className="ms-preview-image" data-dragging={dragging} onDoubleClick={() => onView({ ...DEFAULT_PREVIEW_VIEW })}
+      onPointerDown={event => {
+        if (!image || event.button !== 0 || !event.isPrimary) return;
+        event.preventDefault();
+        drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY };
+        event.currentTarget.setPointerCapture(event.pointerId); setDragging(true);
+      }}
+      onPointerMove={event => {
+        if (drag.current?.id !== event.pointerId) return;
+        const dx = event.clientX - drag.current.x, dy = event.clientY - drag.current.y;
+        drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY };
+        onView(current => ({ ...current, x: current.x + dx, y: current.y + dy }));
+      }} onPointerUp={endDrag} onPointerCancel={endDrag} onLostPointerCapture={endDrag}>
+      <div ref={content} className="ms-preview-image-content" style={{ width, height, transform: `translate(-50%, -50%) translate(${view.x}px, ${view.y}px) scale(${view.flipX ? -1 : 1}, ${view.flipY ? -1 : 1}) rotate(${view.rotation}deg)` }} />
     </div>
     {!display.original && <div className="ms-preview-status" role="status">
       {failed ? <><span>{image ? zh ? "原图加载失败，已保留预览" : "Original unavailable. Preview preserved." : zh ? "图片加载失败" : "Image failed to load"}</span><button onClick={() => { setFailed(false); setAttempt(value => value + 1); }}><RotateCcw size={13} />{zh ? "重试" : "Retry"}</button></> : <><LoaderCircle className="ms-spin" size={14} /><span>{image ? zh ? "正在加载原图…" : "Loading original…" : zh ? "正在加载预览…" : "Loading preview…"}</span></>}

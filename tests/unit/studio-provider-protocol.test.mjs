@@ -37,7 +37,7 @@ describe("studio real HTTP protocol against isolated fixture", () => {
     vi.stubEnv("STUDIO_TOOLS_URL", "");
     vi.stubEnv("OPENAI_API_KEY", "fixture-key");
     const providers = [{ name: "image", kind: "openai", displayName: "Image", creditCost: 7, config: "{}" }];
-    const db = {
+    const db = { systemConfig: { findUnique: async () => null },
       modelProvider: { findMany: vi.fn().mockResolvedValue(providers) },
       studioToolConfig: { findMany: vi.fn().mockResolvedValue([]) },
     };
@@ -52,14 +52,14 @@ describe("studio real HTTP protocol against isolated fixture", () => {
   });
   it("separates image model aliases from the selected planning model", async () => {
     vi.stubEnv("OPENAI_API_KEY", "fixture-key");
-    const db = { modelProvider: { findMany: vi.fn().mockResolvedValue([
+    const db = { systemConfig: { findUnique: async () => null }, modelProvider: { findMany: vi.fn().mockResolvedValue([
       { name: "image-pro", kind: "openai", displayName: "ModelShot Pro", creditCost: 7, isDefault: true, isPlanner: false, priority: 1, config: JSON.stringify({ model: "gpt-image-2" }) },
       { name: "planner", kind: "openai", displayName: "Visual Director", creditCost: 3, isDefault: false, isPlanner: true, priority: 2, config: JSON.stringify({ model: "gpt-4.1-mini", scope: "language", studioCapability: "language" }) },
     ]), }, studioToolConfig: { findMany: vi.fn().mockResolvedValue([{ toolId: "upscale", creditCost: 9, isEnabled: true }]) } };
     const config = await studioConfig(db);
     expect(config).toMatchObject({ imageProvider: "image-pro", imageModel: "gpt-image-2", imageDisplayName: "ModelShot Pro", chatModel: "gpt-4.1-mini" });
     const caps = await capabilities(db, config);
-    expect(caps.imageModels).toEqual([{ id: "image-pro", label: "ModelShot Pro", creditCost: 7, maxReferenceImages: 3 }]);
+    expect(caps.imageModels).toEqual([{ id: "image-pro", label: "ModelShot Pro", creditCost: 7, resolutionSurcharges: { "1K": 0, "2K": 0, "4K": 0 }, maxReferenceImages: 3 }]);
     expect(caps.planningCost).toBe(3);
     expect(caps.tools.find(tool => tool.id === "describe").cost).toBe(3);
     expect(caps.tools.find(tool => tool.id === "generate").cost).toBe(7);
@@ -79,7 +79,7 @@ describe("studio real HTTP protocol against isolated fixture", () => {
     vi.stubEnv("STUDIO_MASK_ENABLED", undefined);
     vi.stubEnv("STUDIO_TOOLS_URL", base);
     vi.stubEnv("STUDIO_TOOLS_KEY", "fixture-tools-key");
-    const db = { modelProvider: { findMany: vi.fn().mockResolvedValue([
+    const db = { systemConfig: { findUnique: async () => null }, modelProvider: { findMany: vi.fn().mockResolvedValue([
       { name: "gateway", kind: "openai", displayName: "Custom gateway", creditCost: 18, config: JSON.stringify({ model: "image-model", ...(source === "database" ? { baseURL: `${base}/codex` } : {}) }) },
     ]) }, studioToolConfig: { findMany: vi.fn().mockResolvedValue([]) } };
     const config = await studioConfig(db, "gateway");
@@ -98,7 +98,7 @@ describe("studio real HTTP protocol against isolated fixture", () => {
   });
   it("still requires a key, real segmentation, and administrator approval for tools", async () => {
     const pricing = vi.fn().mockResolvedValue([]);
-    const db = { modelProvider: { findMany: vi.fn().mockResolvedValue([]) }, studioToolConfig: { findMany: pricing } };
+    const db = { systemConfig: { findUnique: async () => null }, modelProvider: { findMany: vi.fn().mockResolvedValue([]) }, studioToolConfig: { findMany: pricing } };
     const config = { apiKey: "fixture", baseURL: `${base}/codex`, toolsURL: base, toolsKey: "fixture-tools-key" };
     const withoutKey = await capabilities(db, { ...config, apiKey: undefined });
     expect(withoutKey.tools.find(tool => tool.id === "inpaint")).toMatchObject({ available: false, reason: "SERVICE_NOT_CONFIGURED" });
@@ -109,7 +109,7 @@ describe("studio real HTTP protocol against isolated fixture", () => {
     expect(disabled.tools.find(tool => tool.id === "move")).toMatchObject({ available: false, reason: "TOOL_DISABLED" });
   });
   it("does not mistake a local tool service for cloud object segmentation", async () => {
-    const db = { modelProvider: { findMany: vi.fn().mockResolvedValue([]) }, studioToolConfig: { findMany: vi.fn().mockResolvedValue([]) } };
+    const db = { systemConfig: { findUnique: async () => null }, modelProvider: { findMany: vi.fn().mockResolvedValue([]) }, studioToolConfig: { findMany: vi.fn().mockResolvedValue([]) } };
     const config = { apiKey: "fixture", toolsURL: base, toolsKey: "fixture-tools-key" };
     const caps = await capabilities(db, config);
     expect(caps.tools.find(tool => tool.id === "inpaint")).toMatchObject({ available: true, preview: "segment", previewOptional: true, objectSelectionAvailable: false, reason: null });

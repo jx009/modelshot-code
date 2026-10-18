@@ -43,7 +43,7 @@ export default function StudioToolPricingPage() {
       {reasonPrompt.dialog}
       <div>
         <h1 className="text-base font-medium text-primary-text">工具配置</h1>
-        <p className="text-xs text-secondary-text mt-1 leading-relaxed max-w-4xl">逐个设置工具的执行方式、模型和积分。生图模型由用户选择，大语言模型在后台统一调用。<Link href="/admin/providers?category=tool" className="text-primary">添加工具专用模型 →</Link> 分割预览暂不扣用户积分，上游费用由平台承担；确认工具处理成功后按本页积分扣费。</p>
+        <p className="text-xs text-secondary-text mt-1 leading-relaxed max-w-4xl">逐个设置工具的执行方式、模型和积分。生图模型由用户选择，大语言模型在后台统一调用。<Link href="/admin/providers?category=tool" className="text-primary">添加工具专用模型 →</Link> 分割预览暂不扣用户积分，上游费用由平台承担；确认工具处理成功后结算。图像模型若已启用分辨率计费，优先使用该模型的 1K / 2K / 4K 价格；未启用时使用本页基础积分。</p>
       </div>
       {!data ? (
         <div className="flex items-center gap-2 text-secondary-text text-sm py-10">
@@ -79,7 +79,7 @@ export default function StudioToolPricingPage() {
                 </div>
                 <div className="flex flex-col gap-3 mt-4">
                   <div className="flex items-end gap-3">
-                    <label className="flex-1 text-xs text-secondary-text space-y-1">
+                    {tool.dependency === "image" ? <div className="flex-1 text-xs text-secondary-text py-2">模型基础积分 + 分辨率附加积分</div> : <label className="flex-1 text-xs text-secondary-text space-y-1">
                       <span>{tool.dependency === "vision" ? "积分在后台大语言模型中设置" : "单次处理积分"}</span>
                       <input
                         type="number"
@@ -91,7 +91,7 @@ export default function StudioToolPricingPage() {
                         onChange={event => update(tool.id, { creditCost: event.target.value })}
                         className="w-full bg-bg-page border border-divider rounded-[10px] px-3 py-2 text-primary-text"
                       />
-                    </label>
+                    </label>}
                     <button
                       onClick={() => save(tool)}
                       disabled={saving === tool.id}
@@ -108,6 +108,7 @@ export default function StudioToolPricingPage() {
                     {!data.channels[tool.dependency]?.length && <p className="text-xs text-warning">尚未配置已启用的{tool.dependency === "ocr" ? " OCR 模型" : "超分服务"}。</p>}
                     <Link href={`/admin/providers?category=tool&purpose=${tool.dependency}`} className="text-xs text-primary">配置{tool.dependency === "ocr" ? " OCR 专用模型" : "火山超分 AK/SK"} →</Link>
                   </>}
+                  {tool.dependency === "image" && <p className="text-xs leading-5 text-secondary-text">图片工具按实际调用模型的基础积分 + 全站分辨率附加积分计费；此处固定积分仅用于 OCR、超分等独立工具。<Link href="/admin/resolution-pricing" className="text-primary">设置分辨率附加积分 →</Link></p>}
                   {tool.id === "move" && <p className="text-xs text-secondary-text">框选源区域并调整目标位置后，编辑模型一次生成完整场景，修补原位置并融合新位置的光影。支持阿里、火山或兼容图像编辑接口，不需要先调用物体分割。</p>}
                   {tool.dependency === "split" && <>
                     {!data.channels.split?.length && <div className="rounded-[10px] border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">尚未配置拆层模型。请在 <Link href="/admin/providers?category=tool" className="underline underline-offset-2">工具专用模型</Link> 中启用火山智能视觉 EntitySegment 或 Qwen 图层拆分。</div>}

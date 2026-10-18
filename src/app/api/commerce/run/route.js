@@ -7,7 +7,7 @@ import { studioConfig, capabilities } from "@/lib/domain/studio/providers";
 import { rateLimit } from "@/lib/domain/identity/rate-limit";
 import { commerceReferences } from "@/lib/commerce/project";
 import { digestJson } from "@/lib/domain/generation/contracts";
-const input = z.object({ documentId: z.string().max(128), version: z.number().int().positive(), sectionIds: z.array(z.string().max(128)).min(1).max(10) }).strict();
+const input = z.object({ expectedCosts: z.record(z.string().max(128), z.number().int().min(0).max(200000)).refine(value => Object.keys(value).length <= 10).optional(), documentId: z.string().max(128), version: z.number().int().positive(), sectionIds: z.array(z.string().max(128)).min(1).max(10) }).strict();
 export async function POST(request) {
   try {
     const user = await requireUser(), data = await readJson(request, input);
@@ -26,7 +26,7 @@ export async function POST(request) {
     for (const section of selected) {
       try {
         const key = `commerce_${document.id}_${section.id}_${section.attempt}`;
-        jobs.push(await submitStudioJob(user.id, { tool: "edit", ...(commerce.provider ? { provider: commerce.provider } : {}), documentId: document.id, documentVersion: document.version, targetId: target.id, assetId: commerce.productAssetId, referenceAssetIds: commerceReferences(commerce, section), sectionId: section.id, sectionAttempt: section.attempt, params: { prompt: section.prompt, size: section.size || commerce.size || "1024x1536" } }, key.length <= 128 ? key : `commerce_${digestJson(key)}`, prisma, { config, capabilities: caps }));
+        jobs.push(await submitStudioJob(user.id, { tool: "edit", ...(data.expectedCosts?.[section.id] !== undefined ? { expectedCost: data.expectedCosts[section.id] } : {}), ...(commerce.provider ? { provider: commerce.provider } : {}), documentId: document.id, documentVersion: document.version, targetId: target.id, assetId: commerce.productAssetId, referenceAssetIds: commerceReferences(commerce, section), sectionId: section.id, sectionAttempt: section.attempt, params: { prompt: section.prompt, size: section.size || commerce.size || "1024x1536" } }, key.length <= 128 ? key : `commerce_${digestJson(key)}`, prisma, { config, capabilities: caps }));
       } catch (error) { if (!(error instanceof AppError)) throw error; failure = error.code; break; }
     }
     // Persisted jobs remain discoverable by document + section even if this HTTP

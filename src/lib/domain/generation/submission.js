@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { imageCreditCost } from "../../studio/image-pricing.js";
 import { prisma } from "../../prisma.js";
 import { AppError } from "../../http.js";
 import { buildPrompt, aspectRatioToSize } from "../../prompt-engine.js";
@@ -52,7 +53,7 @@ export async function quoteGeneration(userId, input, db = prisma, dependencies =
   const usage = await usageSummary(userId, db);
   const quotaCount = Math.min(count, usage.remaining);
   const creditCount = count - quotaCount;
-  const unitPrice = provider.creditCost ?? 18;
+  const unitPrice = imageCreditCost(provider, snapshot.nativeSize || "1024x1024");
   const pricing = { version: PRICE_VERSION, count, quotaCount, creditCount, credits: creditCount * unitPrice, unitPrice, channel: "platform", cycleId: usage.cycleId };
   const quote = await db.generationQuote.create({ data: { userId, digest: digestJson(snapshot), snapshot, pricing, expiresAt: new Date(Date.now() + 300_000) } });
   return { quoteId: quote.id, digest: quote.digest, expiresAt: quote.expiresAt, pricing, snapshot };

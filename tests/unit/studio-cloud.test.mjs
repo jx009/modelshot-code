@@ -101,7 +101,7 @@ describe("capability-specific configuration", () => {
       { name: "ark", kind: "volcengine", displayName: "Ark", creditCost: 9, config: JSON.stringify({ apiKeyEnc: encryptSecret("ark-secret"), model: "ep-fixture", imageMode: "both" }) },
       { name: "layers", kind: "fal", displayName: "Layers", creditCost: 25, config: JSON.stringify({ apiKeyEnc: encryptSecret("fal-secret"), model: "fal-ai/qwen-image-layered", studioCapability: "split", studioDefault: true }) },
     ];
-    const db = { modelProvider: { findMany: async () => rows }, studioToolConfig: { findMany: async () => [] } };
+    const db = { systemConfig: { findUnique: async () => null }, modelProvider: { findMany: async () => rows }, studioToolConfig: { findMany: async () => [] } };
     const ali = await studioConfig(db);
     expect(ali).toMatchObject({ imageProvider: "ark", apiKey: "ark-secret", imageKind: "volcengine", baseURL: undefined });
     await expect(studioConfig(db, "ali-edit")).rejects.toThrow("PROVIDER_CAPABILITY_UNSUPPORTED");

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { IMAGE_SIZES } from "./image-size.js";
+import { imageCreditCost } from "./image-pricing.js";
 import { commerceSchema } from "../commerce/schema.js";
 import { TOOLS, getTool } from "./tool-catalog.js";
 import { ADJUSTMENT_KEYS } from "./adjustments.js";
@@ -34,7 +35,7 @@ export const paramsSchema = z.object({
   language: z.enum(["zh", "en", "ja", "ko", "fr", "de", "es", "pt", "ru", "th"]).optional(),
   focusPoints: z.array(z.object({ id, x: z.number().min(0).max(1), y: z.number().min(0).max(1), label: z.string().trim().min(1).max(100) }).strict()).min(1).max(10).optional(),
 }).strict();
-export const jobSchema = z.object({ tool: z.enum(TOOLS.map(tool => tool.id)), provider: id.optional(), documentId: id, documentVersion: z.number().int().positive(), targetId: id.optional(), assetId: id.optional(), maskId: id.optional(), moveBundle: z.object({ objectAssetId: id, holeAssetId: id, bounds: boundsSchema }).strict().optional(), referenceAssetIds: z.array(id).max(2).optional(), sectionId: id.optional(), sectionAttempt: z.number().int().min(0).max(50).optional(), params: paramsSchema.prefault({}) }).strict().superRefine((data, ctx) => {
+export const jobSchema = z.object({ expectedCost: z.number().int().min(0).max(200000).optional(), tool: z.enum(TOOLS.map(tool => tool.id)), provider: id.optional(), documentId: id, documentVersion: z.number().int().positive(), targetId: id.optional(), assetId: id.optional(), maskId: id.optional(), moveBundle: z.object({ objectAssetId: id, holeAssetId: id, bounds: boundsSchema }).strict().optional(), referenceAssetIds: z.array(id).max(2).optional(), sectionId: id.optional(), sectionAttempt: z.number().int().min(0).max(50).optional(), params: paramsSchema.prefault({}) }).strict().superRefine((data, ctx) => {
   const tool = getTool(data.tool);
   if (tool.clientOnly) ctx.addIssue({ code: "custom", message: "LOCAL_TOOL_ONLY" });
   if (data.tool === "text-edit" && !data.params.newText) ctx.addIssue({ code: "custom", message: "REPLACEMENT_TEXT_REQUIRED" });
@@ -82,5 +83,5 @@ export function validatePlan(value, available, hasImage, costs = {}) {
     if (["describe", "ocr", "video"].includes(step.tool) && index !== plan.steps.length - 1) throw new Error("INVALID_AGENT_PLAN");
     if (!["describe", "ocr", "video"].includes(step.tool)) hasImage = true;
   }
-  return { ...plan, credits: plan.steps.reduce((sum, step) => sum + (costs[step.tool] ?? getTool(step.tool).cost), 0) };
+  return { ...plan, credits: plan.steps.reduce((sum, step) => sum + imageCreditCost(typeof costs[step.tool] === "number" ? { cost: costs[step.tool] } : costs[step.tool] || getTool(step.tool), step.params.size, 0), 0) };
 }

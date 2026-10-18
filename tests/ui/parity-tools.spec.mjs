@@ -14,6 +14,7 @@ async function fixture(page) {
     const reply=data => route.fulfill({json:data});
     if(path.startsWith("/api/assets/")) return route.fulfill({body:png,contentType:"image/png"});
     if(path==="/api/auth/session") return reply({user:{id:"parity-user",name:"Creator",email:"parity@example.invalid",credits:500},expires:"2099-01-01"});
+    if(path==="/api/inspiration") return reply({items:[],layout:{mode:"masonry",columns:4,gap:16}});
     if(path==="/api/studio/capabilities") return reply({imageProvider:"fixture",imageModels:[{id:"fixture",label:"Fixture image",maxReferenceImages:3,creditCost:18}],planningAvailable:true,planningCost:1,tools:TOOLS.map(tool => ({...tool,available:true}))});
     if(path==="/api/upload") { uploads.push(request.postDataBuffer()); return reply({assetId:`uploaded-${uploads.length}`,width:600,height:450}); }
     if(path==="/api/studio/documents" && request.method()==="POST") { const body=request.postDataJSON(); doc={...doc,...body,id:"creative-doc",version:doc.version+1}; return reply(doc); }
@@ -195,6 +196,56 @@ for (const mode of ["对话", "快速"]) test(`homepage ${mode} Enter submits on
   } finally {release();}
 });
 
+test("homepage Enter waits for pricing and submits once when model loading is slow",async({page})=>{
+  const f=await fixture(page);
+  let release, pricingRequests=0;
+  const gate=new Promise(resolve=>{release=resolve;});
+  await page.route("**/api/studio/capabilities",async route=>{
+    pricingRequests++;
+    await gate;
+    return route.fulfill({json:{imageProvider:"slow-model",imageModels:[{id:"slow-model",label:"Slow model",creditCost:9,resolutionSurcharges:{"1K":0,"2K":8,"4K":22}}],tools:[]}});
+  });
+  try {
+    await page.goto("/zh");
+    await expect.poll(()=>pricingRequests).toBe(1);
+    await expect(page.locator(".cr-send .generation-price")).toHaveText("—");
+    const prompt=page.getByLabel("描述你的创意");
+    await prompt.fill("自然光商品海报");
+    await prompt.press("Enter");
+    await expect.poll(()=>pricingRequests).toBe(2);
+    expect(f.posted).toHaveLength(0);
+    await prompt.press("Enter");
+    release();
+    await expect(page).toHaveURL(/studio-v2\?document=/);
+    expect(f.posted).toHaveLength(1);
+    expect(f.posted[0]).toMatchObject({expectedCost:9,provider:"slow-model",params:{size:"1024x1024"}});
+    expect(f.errors).toEqual([]);
+  } finally {release();}
+});
+
+test("homepage quotes the routed edit model when references are attached",async({page})=>{
+  const f=await fixture(page);
+  await page.route("**/api/studio/capabilities",route=>route.fulfill({json:{
+    imageProvider:"fixture",imageModels:[{id:"fixture",label:"Fixture image",creditCost:18,maxReferenceImages:3}],
+    tools:[{id:"generate",cost:7,resolutionSurcharges:{"1K":0,"2K":11,"4K":33}},
+      {id:"edit",cost:11,resolutionSurcharges:{"1K":0,"2K":11,"4K":33}}],
+  }}));
+  await page.goto("/zh");
+  await expect(page.locator(".cr-send .generation-price")).toHaveText("7");
+  await page.getByLabel("上传参考图片").setInputFiles("public/inspiration/chair.webp");
+  await expect(page.locator(".cr-send .generation-price")).toHaveText("11");
+  await page.getByRole("button",{name:"图片比例",exact:true}).click();
+  await page.getByRole("button",{name:"2K",exact:true}).click();
+  await page.getByRole("button",{name:"完成",exact:true}).click();
+  await expect(page.locator(".cr-send .generation-price")).toHaveText("22");
+  await page.getByLabel("描述你的创意").fill("自然光商品海报");
+  await page.getByLabel("开始创作",{exact:true}).click();
+  await expect(page).toHaveURL(/studio-v2\?document=/);
+  expect(f.posted).toHaveLength(1);
+  expect(f.posted[0]).toMatchObject({tool:"edit",expectedCost:22,params:{size:"1:1@2K"}});
+  expect(f.errors).toEqual([]);
+});
+
 test("focus points, explicit identification, translation and blend submit real parameters",async({page})=>{
   const f=await fixture(page);
   await page.goto("/zh/studio-v2?document=creative-doc");
@@ -247,7 +298,7 @@ test("local color creates a reusable derivative and retains original; grouping a
 test("case recipe opens a configured canvas document",async({page})=>{
   const f=await fixture(page);
   await page.goto("/zh/explore/quiet-living");
-  await page.getByRole("button",{name:"在画布中使用配方",exact:true}).click();
+  await page.getByRole("button",{name:"以此创作",exact:true}).click();
   await expect(page).toHaveURL(/studio-v2\?document=creative-doc&mode=quick/);
   expect(f.errors).toEqual([]);
 });
@@ -263,6 +314,7 @@ test("marquee, group transformation, context duplication and undo preserve the s
   const a=screen(65,80), b=screen(835,365);
   await page.mouse.move(a.x,a.y); await page.mouse.down(); await page.mouse.move(b.x,b.y,{steps:12}); await page.mouse.up();
   await expect(page.locator(".ms-selection-tools")).toContainText("2 个图层");
+  await expect(page.getByRole("group",{name:"图片工具",exact:true})).toHaveCount(0);
   await page.getByRole("button",{name:"组合",exact:true}).click();
   const dragStart=screen(250,220);
   await page.mouse.move(dragStart.x,dragStart.y); await page.mouse.down(); await page.mouse.move(dragStart.x+25,dragStart.y+12,{steps:8}); await page.mouse.up();

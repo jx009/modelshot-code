@@ -86,7 +86,7 @@ export default function ModelPicker({ models = [], value, onChange, zh, disabled
       <div className="mpk-category"><ImageIcon size={16} /><span>{zh ? "图片" : "Image"}</span><span className="mpk-count">{models.length}</span></div>
       <div id={id} role="listbox" aria-label={label} className="mpk-list">
         {models.map((model, index) => <button key={model.id} ref={element => { options.current[index] = element; }} type="button" role="option" aria-selected={model.id === value} tabIndex={model.id === value || !selected && index === 0 ? 0 : -1} className="mpk-option" onClick={() => { onChange(model.id); close(true); }}>
-          <ModelMark model={model} /><span className="mpk-copy"><span className="mpk-name">{model.label}</span><span className="mpk-description">{model.maxReferenceImages > 0 ? (zh ? `支持生图与参考图编辑 · 最多 ${model.maxReferenceImages} 张参考图` : `Generate & edit · Up to ${model.maxReferenceImages} references`) : (zh ? "根据文字描述生成图片" : "Create images from a text prompt")}</span><span className="mpk-price">{model.creditCost} {zh ? "积分 / 张" : "credits / image"}</span></span>
+          <ModelMark model={model} /><span className="mpk-copy"><span className="mpk-name">{model.label}</span><span className="mpk-description">{model.maxReferenceImages > 0 ? (zh ? `支持生图与参考图编辑 · 最多 ${model.maxReferenceImages} 张参考图` : `Generate & edit · Up to ${model.maxReferenceImages} references`) : (zh ? "根据文字描述生成图片" : "Create images from a text prompt")}</span></span>
           <span className="mpk-check">{model.id === value && <Check size={18} />}</span>
         </button>)}
       </div>

@@ -21,9 +21,9 @@ describe("administrator tool routing", () => {
     const settings = [{ toolId: "move", creditCost: 11, routing: { mode: "dedicated", channelName: "repair", segmentMode: "dedicated", segmentChannelName: "segment" } }];
     const config = resolveStudioConfig(rows, settings, "public", "image", "move");
     expect(config).toMatchObject({ imageProvider: "repair", imageModel: "ep-repair", apiKey: "repair-secret", segmentChannel: { name: "segment", apiKey: "segment-secret" } });
-    const db = { modelProvider: { findMany: async () => rows }, studioToolConfig: { findMany: async () => settings } };
+    const db = { systemConfig: { findUnique: async () => null }, modelProvider: { findMany: async () => rows }, studioToolConfig: { findMany: async () => settings } };
     const caps = await capabilities(db, resolveStudioConfig(rows));
-    expect(caps.tools.find(t => t.id === "move")).toMatchObject({ cost: 11, available: true });
+    expect(caps.tools.find(t => t.id === "move")).toMatchObject({ cost: 50, available: true });
     expect(caps.tools.find(t => t.id === "describe").cost).toBe(3);
     expect(caps.imageModels.map(m => m.id)).toEqual(["public"]);
     expect(JSON.stringify(caps)).not.toMatch(/secret|Private|ep-repair|fal-ai|qwen/);

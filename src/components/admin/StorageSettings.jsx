@@ -73,22 +73,22 @@ export default function StorageSettings() {
   return <div className="max-w-5xl space-y-6">
     {reasonPrompt.dialog}
     <div className="flex flex-wrap items-start justify-between gap-4">
-      <div><h1 className="text-lg font-semibold">云存储与图片加速</h1><p className="mt-2 text-xs leading-6 text-secondary-text">原图保存在现有存储中，腾讯 COS 为画布提供私有图片副本。仅 ROOT 可修改配置。</p></div>
+      <div><h1 className="text-lg font-semibold">云存储与图片加速</h1><p className="mt-2 text-xs leading-6 text-secondary-text">原图与预览图在腾讯 COS 长期保存，美国原库存储保留备份。仅 ROOT 可修改配置。</p></div>
       <span className="rounded-full bg-primary/10 px-3 py-1.5 text-xs text-primary">已同步 {info.mirrored} 张原图</span>
     </div>
     <section className="rounded-2xl border border-divider bg-bg-card p-5 sm:p-6">
-      <div className="flex flex-wrap items-center gap-3 text-sm"><Database size={18} className="text-secondary-text" /><span>美国原库存储</span><ArrowRight size={14} className="text-muted" /><Cloud size={18} className="text-primary" /><span>腾讯 COS 图片副本</span><ArrowRight size={14} className="text-muted" /><span>用户浏览器</span></div>
-      <p className="mt-4 text-xs leading-6 text-secondary-text">浏览器先通过本站权限校验，再直接读取 COS 短期签名图片。后台自动同步新图和 320 / 640 / 1280 像素预览；旧图在画布读取时按需同步。未同步或加载失败时自动回退原库。</p>
+      <div className="flex flex-wrap items-center gap-3 text-sm"><Database size={18} className="text-secondary-text" /><span>美国原库存储</span><ArrowRight size={14} className="text-muted" /><Cloud size={18} className="text-primary" /><span>腾讯 COS 长期图片存储</span><ArrowRight size={14} className="text-muted" /><span>用户浏览器</span></div>
+      <p className="mt-4 text-xs leading-6 text-secondary-text">浏览器通过本站权限校验后直接读取 COS。新图与 320 / 640 / 1280 像素预览自动同步并长期保存，不再因时间到期重新回美国下载；旧图首次读取时按需同步。未同步或加载失败时自动回退原库并修复。</p>
     </section>
     <section className="space-y-5 rounded-2xl border border-divider bg-bg-card p-5 sm:p-6">
-      <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="flex items-center gap-2 font-medium"><Cloud size={18} />腾讯云 COS</h2><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={config.enabled} disabled={!info.canManage || Boolean(busy)} onChange={e => change("enabled", e.target.checked)} />启用图片加速</label></div>
+      <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="flex items-center gap-2 font-medium"><Cloud size={18} />腾讯云 COS</h2><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={config.enabled} disabled={!info.canManage || Boolean(busy)} onChange={e => change("enabled", e.target.checked)} />启用 COS 长期存储与加速</label></div>
       <fieldset disabled={!info.canManage || Boolean(busy)} className="grid gap-5 sm:grid-cols-2">
         <Field label="存储桶名称（Bucket）" hint="复制完整桶名，必须包含末尾 APPID。"><input className={fieldClass} placeholder="letaidraw-1250000000" value={config.bucket} onChange={e => change("bucket", e.target.value)} /></Field>
         <Field label="所属地域（Region）" hint="香港填写 ap-hongkong；已有桶必须填写它的实际地域。"><input className={fieldClass} placeholder="ap-hongkong" value={config.region} onChange={e => change("region", e.target.value)} /></Field>
         <Field label="SecretId" hint={info.credentialsConfigured ? "凭据已配置。留空保留，更新时建议同时填写两项。" : "在腾讯云访问管理 CAM 中创建专用子用户密钥。"}><input className={fieldClass} type="password" autoComplete="new-password" value={config.secretId} onChange={e => change("secretId", e.target.value)} /></Field>
         <Field label="SecretKey" hint="仅在服务端使用，加密保存；不会返回到浏览器。"><input className={fieldClass} type="password" autoComplete="new-password" value={config.secretKey} onChange={e => change("secretKey", e.target.value)} /></Field>
         <Field label="专用目录前缀" hint="建议保留 letaidraw。更换桶或目录后旧副本不会自动搬迁或清除。"><input className={fieldClass} value={config.prefix} onChange={e => change("prefix", e.target.value)} /></Field>
-        <Field label="签名链接有效期（秒）" hint="60–900 秒，默认 300 秒。不要把带签名链接当作永久图片地址。"><input className={fieldClass} type="number" min={60} max={900} step={1} value={config.signedUrlSeconds} onChange={e => change("signedUrlSeconds", Number(e.target.value))} /></Field>
+        <Field label="签名链接有效期（秒）" hint="60–900 秒，默认 300 秒。仅访问链接过期，图片不会过期；再次访问会签发新链接。"><input className={fieldClass} type="number" min={60} max={900} step={1} value={config.signedUrlSeconds} onChange={e => change("signedUrlSeconds", Number(e.target.value))} /></Field>
       </fieldset>
       <p className="flex items-start gap-2 text-xs leading-6 text-secondary-text"><ShieldCheck size={16} className="mt-1 shrink-0 text-primary" />使用私有读写存储桶，保留所有权校验。关闭加速后仍可从原库读取图片；已签发链接在到期前仍然可用。</p>
       {error && <p role="alert" className="rounded-xl border border-error/25 bg-error/5 p-3 text-sm text-error">{error}</p>}
@@ -99,6 +99,7 @@ export default function StorageSettings() {
       <h2 className="font-medium">首次配置</h2>
       <ol className="list-decimal space-y-3 pl-5 text-xs leading-6 text-secondary-text">
         <li>在腾讯 COS 控制台选择香港地域，新建「私有读写」存储桶；也可以使用已有私有桶。</li>
+        <li>检查桶的生命周期规则：项目目录不要设置到期删除或转归档。图片持续保留，用户主动删除并完成回收站清理后才删除对应 COS 对象。</li>
         <li>在访问管理 CAM 创建专用子用户，授权本桶 ACL 读取与专用目录内对象的上传、读取、删除，再创建访问密钥。</li>
         <li>在桶的「安全管理 → 跨域访问 CORS」添加规则：来源 <code>*</code>，方法 GET、HEAD，允许 Headers <code>*</code>，暴露 Headers <code>ETag, Content-Length, Content-Range</code>，缓存 600 秒。私有对象仍必须携带签名才能读取。</li>
         <li>填写配置，先测试连接与跨域，再勾选启用并保存。刷新画布；旧图首次仍可能从美国加载，同步后走 COS。</li>

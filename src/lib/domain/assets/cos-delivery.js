@@ -5,7 +5,6 @@ import { cosStorage } from "../../infra/storage/cos.js";
 import { objectStorage } from "../../infra/storage/s3.js";
 import { imagePreview } from "./preview.js";
 
-export const DELIVERY_MAX_AGE = 24 * 60 * 60 * 1000;
 export const DELIVERY_VARIANTS = [0, 1280, 640, 320];
 export function cosAssetKey(config, asset, variant) {
   const id = createHash("sha256").update(`${asset.userId}:${asset.id}:${asset.checksum}`).digest("hex");
@@ -24,12 +23,14 @@ export async function enqueueCosAsset(assetId, { db = prisma, config, now = Date
 
 // Called only after the route has checked ownership. No COS HEAD roundtrip:
 // local DB receipts identify replicas already uploaded by the durable worker.
-export async function assetDeliveryUrl(asset, variant, { db = prisma, config, store, now = Date.now() } = {}) {
+export async function assetDeliveryUrl(asset, variant, { db = prisma, config, store } = {}) {
   config ||= await getCosConfig(db);
   if (!config.enabled || !asset.contentType.startsWith("image/")) return null;
   const targetId = cosTargetId(config);
   const receipt = await db.assetDelivery.findUnique({ where: { assetId_targetId_variant: { assetId: asset.id, targetId, variant } } });
-  if (!receipt || now - +receipt.readyAt >= DELIVERY_MAX_AGE) return null;
+  // Objects are permanent. Only signed access URLs expire; a successful
+  // receipt stays valid until deletion, content/target changes, or repair.
+  if (!receipt) return null;
   const key = cosAssetKey(config, asset, variant);
   if (receipt.objectKey !== key) return null;
   return (store || cosStorage(config)).signedUrl(key);
@@ -53,8 +54,8 @@ export async function processCosAsset(id, { db = prisma, config, source, target 
   for (const variant of DELIVERY_VARIANTS) {
     const where = { assetId: id, targetId, variant };
     const receipt = await db.assetDelivery.findUnique({ where: { assetId_targetId_variant: where } });
-    if (receipt && Date.now() - +receipt.readyAt < DELIVERY_MAX_AGE) continue;
     const key = cosAssetKey(config, asset, variant);
+    if (receipt?.objectKey === key) continue;
     const bytes = variant ? await imagePreview(asset, variant, source) : await source.get(asset.objectKey);
     await target.put(key, bytes, variant ? "image/webp" : asset.contentType);
     // Handle deletion racing the upload: never publish a ready receipt afterward.

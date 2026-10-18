@@ -8,7 +8,8 @@ import { jobSchema, getTool } from "../../studio/tools.js";
 import { capabilities, studioConfig } from "./providers.js";
 import { ACTIVE, LIMITS, digestJson } from "../generation/contracts.js";
 import { commerceReferences } from "../../commerce/project.js";
-import { imageSizeError } from "../../studio/image-size.js";
+import { imageSizeChoice, imageSizeError } from "../../studio/image-size.js";
+import { imageCreditCost, billingResolution } from "../../studio/image-pricing.js";
 import { upscaleInputError } from "../../studio/upscale.js";
 import { GUIDED_EDIT_TOOLS, editOutputSize, editTargetSize } from "../../studio/edit-geometry.js";
 
@@ -21,7 +22,7 @@ export async function submitStudioJob(userId, input, key, db = prisma, deps = {}
   const requestId = createHash("sha256").update(`studio:${userId}:${key}`).digest("hex");
   // A replay may follow an unrelated document save; the immutable source and
   // actual operation still must match. Document version is an admission check.
-  const digest = digestJson({ ...data, documentVersion: undefined });
+  const digest = digestJson({ ...data, documentVersion: undefined, expectedCost: undefined });
   return db.$transaction(async tx => {
     const user = await lockUser(tx, userId);
     const old = await tx.tryOn.findUnique({ where: { requestId } });
@@ -30,9 +31,11 @@ export async function submitStudioJob(userId, input, key, db = prisma, deps = {}
       return presentJob(old);
     }
     const tool = caps.tools.find(t => t.id === data.tool);
+    const cost = imageCreditCost(tool, data.params.size, 0);
     // Preview availability only gates choosing an object. Once a valid owned
     // mask exists, an outage of the preview service must not block image editing.
     if (!tool?.available && !(tool?.reason === "SEGMENTATION_NOT_CONFIGURED" && data.maskId)) throw new AppError(tool?.reason || "TOOL_UNAVAILABLE", 503);
+    if (data.expectedCost !== undefined && data.expectedCost !== cost) throw new AppError("PRICE_CHANGED", 409);
     const document = await tx.studioDocument.findFirst({ where: { id: data.documentId, userId, deletedAt: null } });
     if (!document) throw new AppError("DOCUMENT_NOT_FOUND", 404);
     if (document.version !== data.documentVersion) throw new AppError("DOCUMENT_VERSION_CONFLICT", 409);
@@ -76,11 +79,11 @@ export async function submitStudioJob(userId, input, key, db = prisma, deps = {}
     if (await tx.tryOn.count({ where: { status: { in: ACTIVE } } }) >= LIMITS.queue) throw new AppError("QUEUE_FULL", 503);
     if (await tx.tryOn.count({ where: { userId, status: { in: ACTIVE } } }) >= 20) throw new AppError("USER_QUEUE_FULL", 429);
     const channel = ["split", "ocr", "upscale"].includes(data.tool) ? config[`${data.tool}Channel`] : getTool(data.tool).dependency === "vision" ? { name: config.plannerProvider, kind: config.plannerKind, model: config.chatModel, baseURL: config.visionBaseURL } : null;
-    const output = await tx.tryOn.create({ data: { id: randomUUID(), userId, requestId, personImage: "", clothesImage: inputAsset ? `/api/assets/${inputAsset.id}` : "", prompt: data.params.prompt, provider: data.tool === "video" ? "ark" : channel?.name || config.imageProvider || "studio", creditCost: tool.cost, billingType: "credits",
-      snapshot: { kind: "studio", ...data, provider: channel?.name || config.imageProvider, providerKind: channel?.kind || config.imageKind || "openai", providerBaseURL: (channel ? channel.baseURL : config.baseURL) || null, digest, checksum: inputAsset?.checksum || null, price: tool.cost, priceVersion: "studio-2026-09-v1", imageModel: channel?.model || config.imageModel, chatModel: config.chatModel || null, videoModel: config.videoModel || null } } });
-    if (tool.cost) {
-      const allocations = await reserveCreditLots(tx, user, tool.cost);
-      await tx.creditReservation.create({ data: { userId, tryOnId: output.id, channel: "credits", amount: tool.cost, allocations } });
+    const output = await tx.tryOn.create({ data: { id: randomUUID(), userId, requestId, personImage: "", clothesImage: inputAsset ? `/api/assets/${inputAsset.id}` : "", prompt: data.params.prompt, provider: data.tool === "video" ? "ark" : channel?.name || config.imageProvider || "studio", creditCost: cost, billingType: "credits",
+      snapshot: { kind: "studio", ...data, provider: channel?.name || config.imageProvider, providerKind: channel?.kind || config.imageKind || "openai", providerBaseURL: (channel ? channel.baseURL : config.baseURL) || null, digest, checksum: inputAsset?.checksum || null, price: cost, priceVersion: "studio-base-plus-resolution-v3", pricing: { mode: tool.resolutionSurcharges ? "base-plus-resolution" : "fixed", basePrice: tool.cost, resolutionSurcharge: cost - tool.cost, resolution: billingResolution(tool, data.params.size), requestedResolution: imageSizeChoice(data.params.size).resolution, unitPrice: cost }, imageModel: channel?.model || config.imageModel, chatModel: config.chatModel || null, videoModel: config.videoModel || null } } });
+    if (cost) {
+      const allocations = await reserveCreditLots(tx, user, cost);
+      await tx.creditReservation.create({ data: { userId, tryOnId: output.id, channel: "credits", amount: cost, allocations } });
     }
     for (const assetId of new Set([data.assetId, data.maskId, data.moveBundle?.objectAssetId, data.moveBundle?.holeAssetId, ...(data.referenceAssetIds || [])].filter(Boolean))) await tx.assetReference.create({ data: { assetId, entityId: output.id, kind: "generation_input" } });
     await tx.outboxEvent.create({ data: { businessKey: `generate:${output.id}:0`, kind: "generate", entityId: output.id } });

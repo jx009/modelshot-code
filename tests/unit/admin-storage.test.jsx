@@ -10,7 +10,7 @@ it("saves edited COS settings with blank credentials preserved and an idempotenc
   const fetch = vi.fn(async (_url, init) => ({ ok: true, json: async () => init?.method ? { ok: true } : { config, canManage: true, mirrored: 12 } }));
   vi.stubGlobal("fetch", fetch);
   render(<StorageSettings />);
-  fireEvent.click(await screen.findByLabelText("启用图片加速"));
+  fireEvent.click(await screen.findByLabelText("启用 COS 长期存储与加速"));
   expect(screen.getByLabelText(/^SecretKey/).value).toBe("");
   fireEvent.click(screen.getByRole("button", { name: "保存配置" }));
   await waitFor(() => expect(fetch.mock.calls.some(([, init]) => init?.method === "PATCH")).toBe(true));
@@ -23,5 +23,5 @@ it("allows ordinary admins to inspect but disables credential changes and tests"
   render(<StorageSettings />);
   expect((await screen.findByRole("button", { name: "保存配置" })).disabled).toBe(true);
   expect(screen.getByRole("button", { name: "测试连接与跨域" }).disabled).toBe(true);
-  expect(screen.getByLabelText("启用图片加速").disabled).toBe(true);
+  expect(screen.getByLabelText("启用 COS 长期存储与加速").disabled).toBe(true);
 });

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import sharp from "sharp";
 import { COS_DEFAULTS, cosConfigSchema, cosConfigView, cosTargetId, mergeCosConfig } from "../../src/lib/infra/storage/cos-config.js";
 import { cosStorage, testCosConnection } from "../../src/lib/infra/storage/cos.js";
-import { assetDeliveryUrl, cosAssetKey, DELIVERY_MAX_AGE, enqueueCosAsset, processCosAsset, removeCosAsset } from "../../src/lib/domain/assets/cos-delivery.js";
+import { assetDeliveryUrl, cosAssetKey, enqueueCosAsset, processCosAsset, removeCosAsset } from "../../src/lib/domain/assets/cos-delivery.js";
 
 const config = { ...COS_DEFAULTS, enabled: true, bucket: "fixture-1250000000", secretId: "fixture-id", secretKey: "fixture-secret" };
 const asset = { id: "asset-fixture-0001", userId: "owner", checksum: "checksum", objectKey: "owner/upload/fixture.png", contentType: "image/png", status: "active" };
@@ -42,13 +42,11 @@ describe("COS configuration and credentials", () => {
 });
 
 describe("private replica delivery", () => {
-  it("returns no URL when disabled, cold, expired, or when the receipt key is wrong", async () => {
+  it("returns no URL when disabled, cold, or when the receipt key is wrong", async () => {
     const db = { assetDelivery: { findUnique: vi.fn(async () => null) } };
     const store = { signedUrl: vi.fn() };
     expect(await assetDeliveryUrl(asset, 320, { config: { ...config, enabled: false }, db, store })).toBeNull();
     expect(db.assetDelivery.findUnique).not.toHaveBeenCalled();
-    expect(await assetDeliveryUrl(asset, 320, { config, db, store })).toBeNull();
-    db.assetDelivery.findUnique.mockResolvedValue({ readyAt: new Date(Date.now() - DELIVERY_MAX_AGE - 1), objectKey: cosAssetKey(config, asset, 320) });
     expect(await assetDeliveryUrl(asset, 320, { config, db, store })).toBeNull();
     db.assetDelivery.findUnique.mockResolvedValue({ readyAt: new Date(), objectKey: "wrong/user/key" });
     expect(await assetDeliveryUrl(asset, 320, { config, db, store })).toBeNull();
@@ -56,7 +54,7 @@ describe("private replica delivery", () => {
   });
   it("signs a ready replica using a local receipt without a COS HEAD request", async () => {
     const key = cosAssetKey(config, asset, 1280);
-    const db = { assetDelivery: { findUnique: vi.fn(async () => ({ readyAt: new Date(), objectKey: key })) } };
+    const db = { assetDelivery: { findUnique: vi.fn(async () => ({ readyAt: new Date("2020-01-01"), objectKey: key })) } };
     const store = { signedUrl: vi.fn(async () => "https://fixture/signed") };
     expect(await assetDeliveryUrl(asset, 1280, { config, db, store })).toBe("https://fixture/signed");
     expect(store.signedUrl).toHaveBeenCalledWith(key);
@@ -83,6 +81,7 @@ describe("private replica delivery", () => {
     await processCosAsset(asset.id, { config, db, source, target });
     expect(replicas.size).toBe(4); expect(originals.size).toBe(4); expect(receipts.size).toBe(4);
     expect(await sharp(replicas.get(cosAssetKey(config, asset, 320))).metadata()).toMatchObject({ width: 320, height: 160, format: "webp" });
+    for (const receipt of receipts.values()) receipt.readyAt = new Date("2020-01-01");
     await processCosAsset(asset.id, { config, db, source, target });
     expect(target.put).toHaveBeenCalledTimes(4);
     const failedDb = { ...db, assetDelivery: { findUnique: vi.fn(async () => null), upsert: vi.fn() } };

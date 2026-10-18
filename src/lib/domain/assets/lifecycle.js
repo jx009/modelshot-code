@@ -1,6 +1,8 @@
 import { prisma } from "../../prisma.js";
 import { AppError } from "../../http.js";
 import { objectStorage } from "../../infra/storage/s3.js";
+import { previewKey } from "./preview.js";
+import { scheduleCosRemoval } from "./cos-delivery.js";
 
 export async function deleteAsset(userId, id, db = prisma) {
   return db.$transaction(async tx => {
@@ -23,7 +25,14 @@ export async function cleanupStorage({ db = prisma, store = objectStorage(), now
     if (!await tx.assetReference.count({ where: { assetId: item.assetId } })) await tx.asset.updateMany({ where: { id: item.assetId, status: "active" }, data: { status: "deleted", deletedAt: now } });
   });
   const assets = await db.asset.findMany({ where: { status: "deleted", deletedAt: { lt: new Date(+now - 7 * 86400_000) }, references: { none: {} } }, take: 100 });
-  for (const asset of assets) { await store.delete(asset.objectKey); await db.asset.update({ where: { id: asset.id }, data: { status: "purged" } }); }
+  for (const asset of assets) {
+    // COS deletes run in the mirror queue; an overseas outage must not stall
+    // the scheduler that dispatches model generation work.
+    await scheduleCosRemoval(asset, { db });
+    if (asset.contentType.startsWith("image/")) for (const size of [320, 640, 1280]) await store.delete(previewKey(asset, size));
+    await store.delete(asset.objectKey);
+    await db.asset.update({ where: { id: asset.id }, data: { status: "purged" } });
+  }
   const exports = await db.exportJob.findMany({ where: { OR: [{ expiresAt: { lt: now }, objectKey: { not: null } }, { status: { in: ["failed", "cancelled"] }, updatedAt: { lt: new Date(+now - 86400_000) } }] }, take: 100 });
   for (const job of exports) {
     if (job.objectKey) await store.delete(job.objectKey);

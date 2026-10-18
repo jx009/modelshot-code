@@ -6,6 +6,7 @@ import { readOwnedImage, assetUrl } from "../assets/service.js";
 import { injectMetadataBuffer } from "../../compliance.js";
 import { runQA } from "../../qa-pipeline.js";
 import { claimStep, completeStep } from "./steps.js";
+import { enqueueCosAsset } from "../assets/cos-delivery.js";
 
 export async function renderDelivery(original, profile) {
   if (!Number.isInteger(profile.width) || !Number.isInteger(profile.height) || profile.width < 64 || profile.height < 64 || profile.width > 4096 || profile.height > 4096 || profile.fit !== "contain") throw new Error("Unsupported delivery profile");
@@ -32,6 +33,7 @@ export async function processDelivery(id, { db = prisma, store = objectStorage()
       await tx.assetReference.create({ data: { assetId, entityId: id, kind: "delivery" } });
       await tx.tryOn.update({ where: { id }, data: { deliveryAssetId: assetId, resultImage: assetUrl(assetId), exportStatus: "ready", metadataStatus: annotated.status } });
     }, db);
+    await enqueueCosAsset(assetId, { db });
   } catch (error) {
     await completeStep(step, { state: "error", errorCode: "DELIVERY_ERROR" }, tx => tx.tryOn.update({ where: { id }, data: { exportStatus: "error", metadataStatus: "error" } }), db);
     throw error;

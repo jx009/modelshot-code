@@ -278,7 +278,20 @@ model Asset {
   user User @relation(fields: [userId], references: [id], onDelete: Restrict)
   references AssetReference[]
   libraryItems LibraryItem[]
+  deliveries AssetDelivery[]
   @@index([userId, createdAt])
+}
+
+// Disposable private COS replicas. Asset.objectKey remains the canonical MinIO copy.
+model AssetDelivery {
+  assetId String
+  targetId String
+  variant Int
+  objectKey String
+  readyAt DateTime @default(now())
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  @@id([assetId, targetId, variant])
+  @@index([targetId, readyAt])
 }
 
 model LibraryCategory {

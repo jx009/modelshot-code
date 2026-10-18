@@ -73,3 +73,14 @@ it("cancels the timeout retry without leaving the replacement request running", 
   expect(started.every(image => image.url === "")).toBe(true);
   expect(vi.getTimerCount()).toBe(0);
 });
+
+it("loads private canvas images with CORS and falls back to same-origin on COS failure", async () => {
+  const owner = controller();
+  const task = loadImage("/api/assets/fixture-00000001?preview=320", { signal: owner.signal });
+  await flush();
+  expect(started[0].crossOrigin).toBe("anonymous");
+  expect(started[0].url).toBe("/api/assets/fixture-00000001?preview=320&delivery=auto");
+  started[0].onerror(); await flush();
+  expect(started[1].url).toBe("/api/assets/fixture-00000001?preview=320&delivery=proxy");
+  await started[1].onload(); expect(await task).toBe(started[1]);
+});

@@ -5,6 +5,7 @@ import sharp from "sharp";
 import { prisma } from "../../prisma.js";
 import { AppError } from "../../http.js";
 import { objectStorage } from "../../infra/storage/s3.js";
+import { enqueueCosAsset } from "./cos-delivery.js";
 
 export const IMAGE_LIMITS = Object.freeze({ bytes: 10 * 1024 * 1024, pixels: 40_000_000 });
 const formats = { png: "image/png", jpeg: "image/jpeg", webp: "image/webp" };
@@ -54,7 +55,9 @@ export async function createImage(userId, bytes, { kind = "upload", id = randomU
   // Stable object keys allow a worker to recover an upload whose DB write failed.
   await store.put(objectKey, normalized.data, normalized.contentType);
   const { data: _data, ...metadata } = normalized;
-  return db.asset.create({ data: { id, userId, objectKey, kind, ...metadata } });
+  const asset = await db.asset.create({ data: { id, userId, objectKey, kind, ...metadata } });
+  await enqueueCosAsset(asset.id, { db });
+  return asset;
 }
 
 export async function readPreset(reference) {

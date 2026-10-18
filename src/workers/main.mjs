@@ -1,7 +1,8 @@
 import "dotenv/config";
-import { Worker } from "bullmq";
+import { Queue, Worker } from "bullmq";
 import { prisma } from "../lib/prisma.js";
-import { queueConnection, workQueue, QUEUE_NAME, dispatchOutbox } from "../lib/infra/queue/index.js";
+import { queueConnection, workQueue, QUEUE_NAME, MIRROR_QUEUE_NAME, dispatchOutbox } from "../lib/infra/queue/index.js";
+import { processCosAsset, processCosRemoval } from "../lib/domain/assets/cos-delivery.js";
 import { executeOutput } from "../lib/domain/generation/execution.js";
 import { recoverWork } from "../lib/domain/generation/recovery.js";
 import { processDelivery, processQuality } from "../lib/domain/generation/delivery.js";
@@ -16,6 +17,14 @@ import { processSubscriptionChange } from "../lib/domain/billing/subscription-ch
 validateEnvironment();
 const connection = queueConnection();
 const queue = workQueue(connection);
+const mirrorQueue = new Queue(MIRROR_QUEUE_NAME, { connection });
+// Independent concurrency: COS traffic must not occupy model generation slots.
+const mirrorWorker = new Worker(MIRROR_QUEUE_NAME, async job => {
+  if (!["asset-mirror", "asset-mirror-delete"].includes(job.name) || job.data.version !== 1 || typeof job.data.id !== "string") throw new Error("Unsupported mirror payload");
+  await (job.name === "asset-mirror-delete" ? processCosRemoval : processCosAsset)(job.data.id);
+}, { connection, concurrency: 2 });
+mirrorWorker.on("failed", job => console.error(JSON.stringify({ code: "COS_MIRROR_RETRY", assetId: job?.data?.id })));
+mirrorWorker.on("error", () => console.error(JSON.stringify({ code: "COS_WORKER_ERROR" })));
 const handlers = { generate: executeOutput, delivery: processDelivery, qa: processQuality, export: processExport, payment: async id => processPaymentEvent(id, { stripe: await getStripe() }), refund: async id => processRefundRequest(id, { stripe: await getStripe() }) };
 handlers.subscription = async id => processSubscriptionChange(id, { stripe: await getStripe() });
 const worker = new Worker(QUEUE_NAME, async job => {
@@ -44,7 +53,7 @@ async function tick() {
       await recoverWork(prisma);
     }
     if (iteration % 1800 === 1) await cleanupStorage();
-    await dispatchOutbox(prisma, queue);
+    await dispatchOutbox(prisma, queue, 100, mirrorQueue);
     await prisma.serviceHeartbeat.upsert({ where: { id: "worker" }, create: { id: "worker", details: { queue: QUEUE_NAME } }, update: { updatedAt: new Date() } });
   } catch { console.error(JSON.stringify({ code: "DISPATCH_RETRY_PENDING" })); }
   finally { dispatching = false; }
@@ -61,14 +70,17 @@ async function shutdown() {
     // BullMQ's forced close releases the Redis connection and lets the queue
     // recovery loop reclaim a job whose provider call outlived the container.
     worker.close(true).catch(() => {});
+    mirrorWorker.close(true).catch(() => {});
   }, shutdownTimeoutMs);
   forceAt.unref();
   console.log(JSON.stringify({ code: "WORKER_STOPPING", stage: "drain_active_jobs" }));
   clearInterval(timer);
   try {
     await worker.close();
+    await mirrorWorker.close();
     while (dispatching) await new Promise(resolve => setTimeout(resolve, 100));
     await queue.close();
+    await mirrorQueue.close();
     await connection.quit();
     await prisma.$disconnect();
     console.log(JSON.stringify({ code: "WORKER_STOPPED", durationMs: Date.now() - started }));

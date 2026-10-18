@@ -9,6 +9,7 @@ import { encryptSecret, decryptSecret, maskSecret } from "./crypto.js";
 
 // key 常量 + 元信息（env 兜底名 + 是否敏感）
 export const CONFIG_KEYS = {
+  cos_delivery:          { env: "COS_DELIVERY_CONFIG", sensitive: true },
   announcements:         { env: "SITE_ANNOUNCEMENTS", sensitive: false },
   google_login_enabled:  { env: "GOOGLE_LOGIN_ENABLED", sensitive: false },
   registration_credits:  { env: "REGISTRATION_CREDITS", sensitive: false },

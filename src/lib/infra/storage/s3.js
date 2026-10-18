@@ -21,6 +21,10 @@ export function objectStorage() {
       const response = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }), { abortSignal: AbortSignal.timeout(30_000) });
       return Buffer.from(await response.Body.transformToByteArray());
     },
+    async getOptional(key) {
+      try { return await this.get(key); }
+      catch (error) { if (error.name === "NoSuchKey" || error.$metadata?.httpStatusCode === 404) return null; throw error; }
+    },
     async stream(key, range, signal) {
       const response = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key, ...(range ? { Range: range } : {}) }), { abortSignal: signal });
       return response.Body.transformToWebStream();

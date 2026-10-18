@@ -5,6 +5,8 @@ import { ownedAsset } from "../../../../lib/domain/assets/service.js";
 import { objectStorage } from "../../../../lib/infra/storage/s3.js";
 import { byteRange } from "../../../../lib/domain/assets/range.js";
 import { imagePreview, previewSize } from "../../../../lib/domain/assets/preview.js";
+import { after } from "next/server";
+import { assetDeliveryUrl, enqueueCosAsset, repairCosAsset } from "../../../../lib/domain/assets/cos-delivery.js";
 
 export async function GET(request, context) {
   try {
@@ -14,7 +16,19 @@ export async function GET(request, context) {
     const asset = await ownedAsset(user.id, id);
     const video = asset.contentType === "video/mp4";
     const authorized = performance.now();
-    const size = previewSize(new URL(request.url).searchParams.get("preview"));
+    const params = new URL(request.url).searchParams;
+    const size = previewSize(params.get("preview"));
+    const delivery = params.get("delivery");
+    if (!video && delivery === "auto") {
+      // Ownership is checked above, including for cached replica URLs.
+      try {
+        const url = await assetDeliveryUrl(asset, size || 0);
+        if (url) return new Response(null, { status: 307, headers: { Location: url, "Cache-Control": "private, no-store", "Referrer-Policy": "no-referrer", "X-Asset-Delivery": "cos" } });
+      } catch { /* An optional accelerator never blocks the original image. */ }
+      after(() => enqueueCosAsset(asset.id));
+    } else if (!video && delivery === "proxy") {
+      after(async () => { try { await repairCosAsset(asset, size || 0); } catch { /* The source remains available. */ } });
+    }
     if (size && !video) {
       const etag = '"' + asset.checksum + '-webp-v1-' + size + '"';
       const previewHeaders = { "Content-Type": "image/webp", "Cache-Control": "private, max-age=31536000, immutable", "ETag": etag, "X-Content-Type-Options": "nosniff" };

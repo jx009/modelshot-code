@@ -12,12 +12,16 @@ RUN --mount=type=cache,target=/root/.npm NODE_OPTIONS=--use-env-proxy npm ci
 COPY . .
 ARG NEXT_DEPLOYMENT_ID
 ENV NEXT_DEPLOYMENT_ID=$NEXT_DEPLOYMENT_ID
+ARG NEXT_STATIC_ASSET_NAMESPACE
+ENV NEXT_STATIC_ASSET_NAMESPACE=$NEXT_STATIC_ASSET_NAMESPACE
 # Building never needs a live database or deployment credentials.
 RUN npm run build && NODE_OPTIONS=--use-env-proxy npm prune --omit=dev && rm -rf .next/cache
 
 FROM base AS runtime
 ARG NEXT_DEPLOYMENT_ID
 ENV NEXT_DEPLOYMENT_ID=$NEXT_DEPLOYMENT_ID
+ARG NEXT_STATIC_ASSET_NAMESPACE
+ENV NEXT_STATIC_ASSET_NAMESPACE=$NEXT_STATIC_ASSET_NAMESPACE
 ENV NODE_ENV=production PORT=3000 C2PA_ENABLED=0
 COPY --from=build --chown=node:node /app/package.json /app/package-lock.json /app/next.config.js /app/prisma.config.ts ./
 COPY --from=build --chown=node:node /app/node_modules ./node_modules

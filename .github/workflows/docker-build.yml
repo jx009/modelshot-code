@@ -119,6 +119,7 @@ jobs:
           tags: ${{ env.IMAGE }}:${{ env.BUILD_TAG }}-${{ matrix.arch }}
           build-args: |
             NEXT_DEPLOYMENT_ID=${{ env.BUILD_TAG }}
+            NEXT_STATIC_ASSET_NAMESPACE=${{ env.BUILD_TAG }}-${{ matrix.arch }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=modelshot-${{ matrix.arch }}
           cache-to: type=gha,scope=modelshot-${{ matrix.arch }},mode=max
@@ -200,10 +201,12 @@ jobs:
             image="$IMAGE:$BUILD_TAG-$arch"
             docker pull --platform "linux/$arch" "$image"
             container=$(docker create --platform "linux/$arch" "$image")
-            mkdir -p "extracted-$arch"
-            docker cp "$container:/app/.next/static/." "extracted-$arch/"
+            mkdir -p "extracted-$arch/static"
+            docker cp "$container:/app/.next/static/." "extracted-$arch/static/"
+            docker cp "$container:/app/.next/required-server-files.json" "extracted-$arch/required-server-files.json"
             docker rm "$container"
-            python3 scripts/publish-static.py "extracted-$arch" hk-static
+            python3 scripts/prepare-hk-static.py "extracted-$arch" hk-static \
+              --deployment-id "$BUILD_TAG" --namespace "$BUILD_TAG-$arch"
           done
       - name: Upload without replacing or removing live assets
         env:

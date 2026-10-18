@@ -1,6 +1,7 @@
 import createNextIntlPlugin from "next-intl/plugin";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
+import { deploymentAssetConfig } from "./src/lib/deployment-assets.mjs";
 
 const withNextIntl = createNextIntlPlugin("./src/i18n/request.js");
 
@@ -15,7 +16,7 @@ if (signingEnabled) {
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  deploymentId: process.env.NEXT_DEPLOYMENT_ID || undefined,
+  ...deploymentAssetConfig(),
   // c2pa-node 含 napi 原生二进制，不能打包进 ESM chunk，需作为外部依赖
   serverExternalPackages: signingEnabled ? ["c2pa-node"] : [],
 

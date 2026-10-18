@@ -13,7 +13,7 @@ export function layeredSVG(layers, images, bounds) {
   }).join("")}</svg>`;
 }
 
-export async function exportCanvas(artwork, layers, { format = "png", scope = "all", selectedId, name = "modelshot" } = {}) {
+export async function exportCanvas(artwork, layers, { format = "png", scope = "all", selectedId, name = "letai" } = {}) {
   const items = layers.filter(layer => layer.visible && layer.type !== "video" && (scope !== "selected" || layer.id === selectedId));
   if (!items.length) throw new Error("没有可导出的图像 / No images to export");
   const uniqueImages = [...new Map(items.filter(layer => layer.type === "image").map(layer => [layer.assetId, layer])).values()];

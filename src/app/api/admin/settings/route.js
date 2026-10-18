@@ -61,7 +61,7 @@ export async function POST(req) {
       await transporter.sendMail({
         from: from || user,
         to,
-        subject: "ModelShot SMTP test",
+        subject: "来塔AI SMTP test",
         text: "SMTP configuration works. 🎉",
       });
       return NextResponse.json({ ok: true, message: `测试邮件已发送至 ${to}` });

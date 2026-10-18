@@ -1,0 +1,7 @@
+.mark.mark { flex-shrink: 0; color: var(--primary-text, #0B0E16); overflow: visible; }
+.wordmark.wordmark { color: var(--primary-text, #0B0E16); font-family: var(--font-geist), "PingFang SC", "Microsoft YaHei", sans-serif; font-size: 21px; font-weight: 700; line-height: 1.15; letter-spacing: -.5px; white-space: nowrap; }
+.wordmark.wordmark small { display: block; margin-top: 4px; color: var(--secondary-text, #85858F); font-family: var(--font-geist), sans-serif; font-size: 10px; font-weight: 400; line-height: 1; letter-spacing: 2.8px; text-transform: none; }
+@media (max-width: 600px) {
+  .wordmark.wordmark { font-size: 16px; }
+  .wordmark.wordmark small { display: none; }
+}

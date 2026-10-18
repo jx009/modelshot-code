@@ -36,7 +36,7 @@ export async function startCheckout(userId, planId, idempotencyKey, stripe, db =
   const session = await stripe.checkout.sessions.create({
     mode: plan.type === "subscription" ? "subscription" : "payment", client_reference_id: userId, metadata,
     ...(plan.type === "subscription" ? { subscription_data: { metadata } } : { payment_intent_data: { metadata } }),
-    line_items: [{ quantity: 1, price_data: { currency: plan.currency, unit_amount: plan.amountMinor, product_data: { name: `ModelShot ${plan.name}` }, ...(plan.type === "subscription" ? { recurring: { interval: "month" } } : {}) } }],
+    line_items: [{ quantity: 1, price_data: { currency: plan.currency, unit_amount: plan.amountMinor, product_data: { name: `来塔AI ${plan.name}` }, ...(plan.type === "subscription" ? { recurring: { interval: "month" } } : {}) } }],
     success_url: `${root.origin}/en/account?checkout=success`, cancel_url: `${root.origin}/en/account?checkout=cancelled`,
   }, { idempotencyKey: `checkout:${order.id}` });
   await db.order.update({ where: { id: order.id }, data: { stripeSessionId: session.id } });

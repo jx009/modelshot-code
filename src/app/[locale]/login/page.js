@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import toast from "react-hot-toast";
 import ThemedToaster from "@/components/ui/ThemedToaster";
 import ContentShell from "@/components/ContentShell";
+import { BrandMark } from "@/components/BrandLogo";
 import { useTranslations } from "next-intl";
 import { safeNext } from "@/lib/client-api";
 
@@ -150,8 +151,8 @@ function LoginContent() {
       <ThemedToaster />
       <div className="relative bg-bg-card border border-divider w-full max-w-md rounded-xl p-8 space-y-6 shadow-2xl animate-scale-up">
         <div className="flex flex-col items-center text-center space-y-3">
-          <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center text-2xl text-primary font-medium shadow-md shadow-primary/15">
-            👗
+          <div className="w-14 h-14 rounded-2xl bg-bg-elevated border border-divider flex items-center justify-center" aria-label="来塔AI">
+            <BrandMark size={30} />
           </div>
           <h2 className="text-2xl font-medium tracking-tight">{t("title")}</h2>
           <p className="text-xs font-medium text-secondary-text leading-relaxed px-2">

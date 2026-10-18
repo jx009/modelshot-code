@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Aperture, CreditCard, Coins, Menu, X, LogOut } from "lucide-react";
+import { CreditCard, Coins, Menu, X, LogOut } from "lucide-react";
+import BrandLogo from "./BrandLogo";
 import { useSession, signOut } from "next-auth/react";
 import { useTranslations } from "next-intl";
 import { Link, usePathname } from "@/i18n/navigation";
@@ -23,7 +24,7 @@ export default function Navbar() {
   ];
   return (
     <header className="site-nav">
-      <Link href="/" className="brand"><Aperture size={25} className="text-primary" /><span>ModelShot<span className="brand-dot">.</span></span></Link>
+      <Link href="/" className="brand" aria-label="来塔AI"><BrandLogo /></Link>
       <nav className="desktop-nav" aria-label={t("menu")}>
         {links.map(({ href, label, icon: Icon }) => <Link key={href} href={href} aria-current={path === href ? "page" : undefined}><Icon size={16} />{label}</Link>)}
       </nav>

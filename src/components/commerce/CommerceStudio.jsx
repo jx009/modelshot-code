@@ -243,7 +243,7 @@ export default function CommerceStudio({ caseId = "", description = "", document
       }
       zip.file("creative-brief.json", JSON.stringify(commerce, null, 2));
       const url = URL.createObjectURL(await zip.generateAsync({ type: "blob" }));
-      const anchor = document.createElement("a"); anchor.href = url; anchor.download = "modelshot-commerce.zip"; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+      const anchor = document.createElement("a"); anchor.href = url; anchor.download = "letai-commerce.zip"; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
     });
   }
   function newProject() {

@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import Link from "next/link";
 import AdminNav from "@/components/admin/AdminNav";
+import BrandLogo from "@/components/BrandLogo";
 import { ROLE_LEVEL } from "@/lib/admin-auth";
 
 /**
@@ -27,8 +28,8 @@ export default async function AdminLayout({ children }) {
       {/* 侧边栏 */}
       <aside data-admin-sidebar className="relative z-20 w-56 min-h-0 border-r border-divider bg-bg-card/50 flex-shrink-0 hidden md:flex flex-col">
         <div className="p-5 border-b border-divider flex-shrink-0">
-          <div className="text-sm font-black uppercase tracking-wider text-primary">ModelShot</div>
-          <div className="text-[10px] text-secondary-text font-bold mt-0.5">Admin Console</div>
+          <Link href="/" className="flex items-center gap-3" aria-label="来塔AI"><BrandLogo /></Link>
+          <div className="text-[10px] text-secondary-text mt-3">Admin Console</div>
         </div>
         <div className="relative z-10 flex-1 min-h-0 overflow-y-auto overscroll-contain">
           <AdminNav />

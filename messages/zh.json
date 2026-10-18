@@ -409,7 +409,7 @@
     "credits": "积分"
   },
   "login": {
-    "title": "登录 ModelShot",
+    "title": "登录 来塔AI",
     "subtitle": "选择你的登录方式。",
     "googleTab": "Google 账号",
     "googleBtn": "使用 Google 继续",
@@ -441,7 +441,7 @@
     "resetOk": "密码已重置，请用新密码登录"
   },
   "footer": {
-    "copyright": "ModelShot 保留所有权利。",
+    "copyright": "来塔AI 保留所有权利。",
     "terms": "服务条款",
     "privacy": "隐私政策"
   },
@@ -465,7 +465,7 @@
     "INVALID_CREDENTIALS": "邮箱或密码错误"
   },
   "meta": {
-    "title": "ModelShot — AI 图片创作与电商设计",
+    "title": "来塔AI — AI 图片创作与电商设计",
     "description": "从灵感发现、产品摄影到电商套图与自由画布，让想象有形。"
   },
   "landing": {
@@ -484,11 +484,11 @@
     "step2Desc": "八款预设模特（多肤色多体型）、六种场景，各平台尺寸一键适配。",
     "step3Title": "下载上架",
     "step3Desc": "QA 质检通过、自带 AI 生成合规元数据，适配亚马逊、TikTok Shop、淘宝、SHEIN。",
-    "compareTitle": "传统拍摄 vs ModelShot",
+    "compareTitle": "传统拍摄 vs 来塔AI",
     "compareCols": [
       "",
       "传统拍摄",
-      "ModelShot"
+      "来塔AI"
     ],
     "compareRows": [
       [

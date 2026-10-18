@@ -27,7 +27,7 @@ test("real session persists on refresh and navigation; revoked sessions stay on 
     const prompt = page.getByRole("textbox", { name: "Describe your idea", exact: true });
     await prompt.fill("An airy product poster with warm sunlight");
     await page.locator(".cr-top-cta").click();
-    const dialog = page.getByRole("dialog", { name: "Sign in to Letai AI" });
+    const dialog = page.getByRole("dialog", { name: "Sign in to 来塔绘梦" });
     await dialog.getByLabel("Email", { exact: true }).fill(email);
     await dialog.getByLabel("Password", { exact: true }).fill(E2E_PASSWORD);
     await dialog.getByRole("button", { name: "Sign in", exact: true }).click();

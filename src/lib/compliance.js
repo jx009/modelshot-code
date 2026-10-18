@@ -4,7 +4,7 @@ import { readFile, writeFile } from "node:fs/promises";
 
 export async function injectMetadataBuffer(buffer, meta = {}) {
   const disclosed = await sharp(buffer).withExif({
-    IFD0: { Software: "来塔AI", ImageDescription: "AI-generated commerce product image" },
+    IFD0: { Software: "来塔绘梦", ImageDescription: "AI-generated commerce product image" },
   }).png().toBuffer();
   if (process.env.C2PA_ENABLED !== "1" || process.env.C2PA_DISABLED === "1") return { buffer: disclosed, status: "unsigned" };
   if (!process.env.C2PA_CERT_PATH || !process.env.C2PA_KEY_PATH) throw new Error("C2PA signing requires configured credentials");
@@ -12,8 +12,8 @@ export async function injectMetadataBuffer(buffer, meta = {}) {
   const [certificate, privateKey] = await Promise.all([readFile(process.env.C2PA_CERT_PATH), readFile(process.env.C2PA_KEY_PATH)]);
   const c2pa = createC2pa({ signer: { type: "local", certificate, privateKey } });
   const manifest = new ManifestBuilder({
-    claim_generator: `Letai AI/1 (${meta.provider || "ai"})`, format: "image/png", title: "AI-generated commerce image", vendor: "letai",
-    assertions: [{ label: "c2pa.actions", data: { actions: [{ action: "c2pa.created", softwareAgent: "Letai AI", when: new Date().toISOString(), digitalSourceType: "http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia" }] } }],
+    claim_generator: `来塔绘梦/1 (${meta.provider || "ai"})`, format: "image/png", title: "AI-generated commerce image", vendor: "letai",
+    assertions: [{ label: "c2pa.actions", data: { actions: [{ action: "c2pa.created", softwareAgent: "来塔绘梦", when: new Date().toISOString(), digitalSourceType: "http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia" }] } }],
   });
   const { signedAsset } = await c2pa.sign({ manifest, asset: { buffer: disclosed, mimeType: "image/png" } });
   return { buffer: signedAsset.buffer, status: "signed" };

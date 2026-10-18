@@ -11,5 +11,5 @@ export function BrandMark({ size = 32 }) {
 }
 
 export default function BrandLogo() {
-  return <><BrandMark /><span className={styles.wordmark}>来塔AI<small>letaidraw</small></span></>;
+  return <><BrandMark /><span className={styles.wordmark}>来塔绘梦<small>letaidraw</small></span></>;
 }

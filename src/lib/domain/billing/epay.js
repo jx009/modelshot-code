@@ -26,7 +26,7 @@ export function createEpayPurchase(order, cfg, locale) {
   const params = { pid: cfg.merchantId, type: snapshot.method, out_trade_no: order.id,
     notify_url: `${root}/api/payment/epay/callback`,
     return_url: `${root}/api/payment/epay/return?locale=${locale}&orderId=${encodeURIComponent(order.id)}`,
-    name: `来塔AI · ${snapshot.name}`, money: (order.amountMinor / 100).toFixed(2), sitename: "来塔AI" };
+    name: `来塔绘梦 · ${snapshot.name}`, money: (order.amountMinor / 100).toFixed(2), sitename: "来塔绘梦" };
   params.sign = epaySign(params, cfg.merchantKey);
   params.sign_type = "MD5";
   return { orderId: order.id, provider: "epay", url: `${validateGateway(cfg.gateway)}/submit.php`, params };

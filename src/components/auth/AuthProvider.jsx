@@ -55,7 +55,7 @@ export function AuthProvider({ children }) {
   }, [request, locale, router]);
   return <AuthContext.Provider value={{ open, close }}>{children}
     <Suspense fallback={null}><AuthRouteEntry open={open} /></Suspense>
-    {request && <Modal onClose={close} label={locale === "zh" ? "登录来塔AI" : "Sign in to Letai AI"} className={styles.dialog}>
+    {request && <Modal onClose={close} label={locale === "zh" ? "登录来塔绘梦" : "Sign in to 来塔绘梦"} className={styles.dialog}>
       <AuthPanel request={request} onClose={close} onSuccess={complete} />
     </Modal>}
   </AuthContext.Provider>;

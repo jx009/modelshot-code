@@ -19,7 +19,7 @@ function useMounted() {
 /**
  * 用户菜单：头像下拉（仅登录态渲染）
  * 主题跟随系统 / 账户入口 / 退出
- * 语言切换已常驻导航栏（LocaleSwitcher），此处不再重复
+ * 语言切换入口由全站显示开关管理，此处不重复
  */
 export default function UserMenu({ user }) {
   const recharge = useRecharge();

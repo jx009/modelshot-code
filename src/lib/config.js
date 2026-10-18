@@ -1,5 +1,5 @@
 const config = {
-  appName: "来塔AI",
+  appName: "来塔绘梦",
   auth: {
     google: {
       clientId: process.env.GOOGLE_CLIENT_ID,

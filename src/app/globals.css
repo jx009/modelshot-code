@@ -585,7 +585,7 @@ button:disabled, select:disabled, textarea:disabled { cursor: not-allowed; opaci
   background:var(--bg-popover); color:var(--primary-text); box-shadow:var(--depth-4);
   animation:surface-enter 160ms ease-out;
 }
-.user-menu-panel :is([role="menuitem"],[role="menuitemradio"]) { border-radius:8px; min-height:38px; text-align:left; }
+.user-menu-panel :is([role="menuitem"],[role="menuitemradio"]) { display:flex; width:100%; align-items:center; justify-content:flex-start; border-radius:8px; min-height:38px; text-align:left; cursor:pointer; }
 .user-menu-panel :is([role="menuitem"],[role="menuitemradio"]):hover { background:var(--bg-card-hover); }
 .user-menu-panel :is(a,button):focus-visible { outline:2px solid var(--primary-text); outline-offset:-2px; }
 .workflow-dialog { background:var(--bg-popover); border-radius:20px; box-shadow:var(--depth-5); overscroll-behavior:contain; }

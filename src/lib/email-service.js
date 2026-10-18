@@ -27,7 +27,7 @@ export function generateVerificationCode() {
  * @returns {{ sent: boolean }}
  */
 export async function sendVerificationEmail(email, code, purpose) {
-  const subject = purpose === "REGISTER" ? "Your 来塔AI verification code" : "Reset your 来塔AI password";
+  const subject = purpose === "REGISTER" ? "Your 来塔绘梦 verification code" : "Reset your 来塔绘梦 password";
   const text = `Your verification code is: ${code}\nIt expires in 5 minutes.\n\nIf you didn't request this, ignore this email.`;
 
   const smtp = await loadSmtpConfig();

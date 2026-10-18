@@ -5,6 +5,7 @@ async function guest(page, { google = false } = {}) {
   await page.route("**/api/**", route => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/auth/session") return route.fulfill({ json: null });
+    if (url.pathname === "/api/inspiration") return route.fulfill({ json: { items: [], layout: { mode: "masonry", columns: 4, gap: 16 } } });
     if (url.pathname === "/api/auth/providers") return route.fulfill({ json: { email: { id: "email", type: "credentials" }, ...(google ? { google: { id: "google", type: "oauth" } } : {}) } });
     if (url.pathname === "/api/catalog") return route.fulfill({ json: { products: DEFAULT_PACKAGES.map(p => localizePackage(p, "zh")), methods: [{ id: "alipay", provider: "epay" }], paymentsEnabled: true } });
     if (url.pathname === "/api/studio/capabilities") return route.fulfill({ json: { imageModels: [], tools: [] } });
@@ -21,7 +22,7 @@ for (const theme of ["dark", "light"]) test(`login stays over the current creati
   await page.screenshot({ path: info.outputPath(`home-brand-${theme}.png`), animations: "disabled" });
   const trigger = page.locator(".cr-top-cta");
   await trigger.click();
-  const dialog = page.getByRole("dialog", { name: "登录来塔AI" });
+  const dialog = page.getByRole("dialog", { name: "登录来塔绘梦" });
   await expect(dialog.getByLabel("邮箱", { exact: true })).toBeVisible();
   await expect(dialog.getByRole("button", { name: /Google/ })).toHaveCount(0);
   await expect(page).toHaveURL(/\/zh\?source=preview$/);
@@ -46,7 +47,7 @@ test("legacy login opens a dismissible modal and keeps invitation registration",
     return route.fulfill({ status: 400, json: { error: "INVALID_CODE" } });
   });
   await page.goto("/zh/login?ref=ABC123&callbackUrl=%2Fzh%2Fprojects");
-  const dialog = page.getByRole("dialog", { name: "登录来塔AI" });
+  const dialog = page.getByRole("dialog", { name: "登录来塔绘梦" });
   await expect(dialog).toBeVisible();
   await expect(page).toHaveURL(/\/zh\?auth=login&callbackUrl=/);
   await dialog.getByRole("button", { name: "免费注册" }).click();
@@ -66,7 +67,7 @@ for (const viewport of [{ width: 390, height: 700 }, { width: 1024, height: 420 
   await page.setViewportSize(viewport);
   await guest(page, { google: true });
   await page.goto("/zh/login");
-  const dialog = page.getByRole("dialog", { name: "登录来塔AI" });
+  const dialog = page.getByRole("dialog", { name: "登录来塔绘梦" });
   await dialog.getByRole("button", { name: "免费注册" }).click();
   await expect(dialog.getByRole("button", { name: /Google/ })).toBeVisible();
   await dialog.locator("header + div").evaluate(el => { el.scrollTop = el.scrollHeight; });
@@ -85,7 +86,7 @@ test("guest recharge opens login above the recharge selection", async ({ page })
   await page.locator(".cr-recharge-trigger").click();
   const recharge = page.getByRole("dialog", { name: "积分充值" });
   await recharge.getByRole("button", { name: "登录并充值" }).click();
-  const login = page.getByRole("dialog", { name: "登录来塔AI" });
+  const login = page.getByRole("dialog", { name: "登录来塔绘梦" });
   await expect(login).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(login).toHaveCount(0);

@@ -26,7 +26,7 @@ const SECTIONS = [
       { key: "smtp_port", label: "端口", placeholder: "465（SSL）/ 587（STARTTLS）" },
       { key: "smtp_user", label: "账号", placeholder: "noreply@yourdomain.com" },
       { key: "smtp_pass", label: "密码/授权码", sensitive: true, placeholder: "留空 = 不变更" },
-      { key: "smtp_from", label: "发件人（可选）", placeholder: "来塔AI <noreply@yourdomain.com>" },
+      { key: "smtp_from", label: "发件人（可选）", placeholder: "来塔绘梦 <noreply@yourdomain.com>" },
     ],
     test: { target: "smtp", label: "发送测试邮件", extraField: "testEmail", extraLabel: "收件邮箱（可选，默认发件人）" },
   },

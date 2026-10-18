@@ -409,7 +409,7 @@
     "credits": "credits"
   },
   "login": {
-    "title": "Sign in to Letai AI",
+    "title": "Sign in to 来塔绘梦",
     "subtitle": "Choose your preferred sign-in method.",
     "googleTab": "Google Account",
     "googleBtn": "Continue with Google",
@@ -441,7 +441,7 @@
     "resetOk": "Password reset — sign in with your new password"
   },
   "footer": {
-    "copyright": "Letai AI. All rights reserved.",
+    "copyright": "来塔绘梦. All rights reserved.",
     "terms": "Terms of Service",
     "privacy": "Privacy Policy"
   },
@@ -465,7 +465,7 @@
     "INVALID_CREDENTIALS": "Invalid email or password"
   },
   "meta": {
-    "title": "Letai AI — AI Image & Commerce Studio",
+    "title": "来塔绘梦 — AI Image & Commerce Studio",
     "description": "Discover visual inspiration, create product stories, and refine images in a flexible creative canvas."
   },
   "landing": {
@@ -484,11 +484,11 @@
     "step2Desc": "Eight preset models across ethnicities and body types, six scenes, platform sizes included.",
     "step3Title": "Download & list",
     "step3Desc": "QA-checked, AI-disclosure metadata embedded, ready for Amazon, TikTok Shop, Taobao and SHEIN.",
-    "compareTitle": "Photoshoot vs Letai AI",
+    "compareTitle": "Photoshoot vs 来塔绘梦",
     "compareCols": [
       "",
       "Traditional photoshoot",
-      "Letai AI"
+      "来塔绘梦"
     ],
     "compareRows": [
       [

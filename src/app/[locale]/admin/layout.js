@@ -28,7 +28,7 @@ export default async function AdminLayout({ children }) {
       {/* 侧边栏 */}
       <aside data-admin-sidebar className="relative z-20 w-56 min-h-0 border-r border-divider bg-bg-card/50 flex-shrink-0 hidden md:flex flex-col">
         <div className="p-5 border-b border-divider flex-shrink-0">
-          <Link href="/" className="flex items-center gap-3" aria-label="来塔AI"><BrandLogo /></Link>
+          <Link href="/" className="flex items-center gap-3" aria-label="来塔绘梦"><BrandLogo /></Link>
           <div className="text-[10px] text-secondary-text mt-3">Admin Console</div>
         </div>
         <div className="relative z-10 flex-1 min-h-0 overflow-y-auto overscroll-contain">

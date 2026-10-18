@@ -29,7 +29,7 @@ export default function AnnouncementsPage() {
   const current = items?.find(a => a.id === selected);
   function update(key, value) { setMessage(""); setItems(rows => rows.map(a => a.id === selected ? { ...a, [key]: value } : a)); }
   function add() {
-    const item = { id: requestKey(), title: "新的创作，从这里开始", content: "来塔 AI 最新功能现已上线", titleEn: "", contentEn: "", enabled: false, closable: true, priority: 0, style: "info", startAt: null, endAt: null, buttonText: "立即查看", buttonTextEn: "", buttonUrl: "" };
+    const item = { id: requestKey(), title: "新的创作，从这里开始", content: "来塔绘梦 最新功能现已上线", titleEn: "", contentEn: "", enabled: false, closable: true, priority: 0, style: "info", startAt: null, endAt: null, buttonText: "立即查看", buttonTextEn: "", buttonUrl: "" };
     setItems(rows => [...rows, item]); setSelected(item.id); setMessage("");
   }
   async function save(event) {

@@ -29,7 +29,7 @@ export default function Navbar() {
   ];
   return (
     <header className="site-nav">
-      <Link href="/" className="brand" aria-label="来塔AI"><BrandLogo /></Link>
+      <Link href="/" className="brand" aria-label="来塔绘梦"><BrandLogo /></Link>
       <nav className="desktop-nav" aria-label={t("menu")}>
         {links.map(({ href, label, icon: Icon }) => <Link key={href} href={href} aria-current={path === href ? "page" : undefined}><Icon size={16} />{label}</Link>)}
       </nav>

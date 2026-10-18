@@ -42,7 +42,7 @@ export async function startRecharge(userId, input, key, { db = prisma, stripe } 
   const root = validateGateway(cfg.publicUrl);
   const metadata = { orderId: order.id, userId, planId: order.planId };
   const session = await stripe.checkout.sessions.create({ mode: "payment", client_reference_id: userId, metadata, payment_intent_data: { metadata },
-    line_items: [{ quantity: 1, price_data: { currency, unit_amount: order.amountMinor, product_data: { name: `来塔AI · ${JSON.parse(order.metadata).name}` } } }],
+    line_items: [{ quantity: 1, price_data: { currency, unit_amount: order.amountMinor, product_data: { name: `来塔绘梦 · ${JSON.parse(order.metadata).name}` } } }],
     success_url: `${root}/${locale}/pricing?orderId=${encodeURIComponent(order.id)}`, cancel_url: `${root}/${locale}/pricing?checkout=cancelled`,
   }, { idempotencyKey: `checkout:${order.id}` });
   await db.order.update({ where: { id: order.id }, data: { stripeSessionId: session.id } });

@@ -3,6 +3,7 @@
 import { useLocale } from "next-intl";
 import { usePathname, useRouter } from "@/i18n/navigation";
 import clsx from "clsx";
+import { SHOW_LANGUAGE_SWITCHER } from "@/lib/ui-features";
 
 /**
  * 语言切换器 — 切换时保留当前路径，仅替换 locale 前缀
@@ -11,6 +12,7 @@ export default function LocaleSwitcher({ compact = false }) {
   const locale = useLocale();
   const pathname = usePathname();
   const router = useRouter();
+  if (!SHOW_LANGUAGE_SWITCHER) return null;
 
   const switchTo = (next) => {
     if (next === locale) return;

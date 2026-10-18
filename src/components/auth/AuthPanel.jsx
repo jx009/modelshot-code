@@ -69,7 +69,7 @@ export default function AuthPanel({ request, onClose, onSuccess }) {
   const title = mode === "register" ? zh ? "开启你的创作之旅" : "Make room for your ideas" : mode === "reset" ? zh ? "找回密码" : "Reset your password" : zh ? "欢迎回来" : "Welcome back";
   return <div className={styles.panel}>
     <section className={styles.formPanel}>
-      <header className={styles.header}><span className={styles.brand}><BrandMark size={30} /><span className={styles.wordmark}><strong>来塔AI</strong><small>letaidraw</small></span></span><button className={styles.close} onClick={onClose} aria-label={zh ? "关闭登录" : "Close sign in"}><X size={18} /></button></header>
+      <header className={styles.header}><span className={styles.brand}><BrandMark size={30} /><span className={styles.wordmark}><strong>来塔绘梦</strong><small>letaidraw</small></span></span><button className={styles.close} onClick={onClose} aria-label={zh ? "关闭登录" : "Close sign in"}><X size={18} /></button></header>
       <div className={styles.content}>
         <div className={styles.intro}><span className={styles.eyebrow}>{mode === "register" ? "YOUR NEXT CHAPTER" : mode === "reset" ? "ACCOUNT RECOVERY" : "YOUR CREATIVE SPACE"}</span><h1>{title}</h1><p>{mode === "reset" ? zh ? "验证邮箱后，为账号设置一个新密码。" : "Verify your email to set a new password." : zh ? "让下一份灵感，成为作品。" : "Turn your next inspiration into something beautiful."}</p></div>
         {google && mode !== "reset" && <><button className={styles.google} disabled={busy} onClick={() => signIn("google", { callbackUrl: callbackUrl || window.location.href })}><GoogleIcon />{t("googleBtn")}</button><div className={styles.divider}><span>{zh ? "或使用邮箱" : "or continue with email"}</span></div></>}

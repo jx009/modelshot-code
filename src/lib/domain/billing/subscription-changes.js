@@ -37,7 +37,7 @@ export async function processSubscriptionChange(id, { db = prisma, stripe } = {}
     if (input.action === "change") {
       const plan = CATALOG[input.planId];
       const schedule = current.schedule ? await stripe.subscriptionSchedules.retrieve(typeof current.schedule === "string" ? current.schedule : current.schedule.id) : await stripe.subscriptionSchedules.create({ from_subscription: sub.id }, { idempotencyKey: `${key}:schedule` });
-      const price = await stripe.prices.create({ currency: plan.currency, unit_amount: plan.amountMinor, recurring: { interval: "month" }, product_data: { name: `来塔AI ${plan.name}` }, metadata: { planId: plan.id } }, { idempotencyKey: `${key}:price` });
+      const price = await stripe.prices.create({ currency: plan.currency, unit_amount: plan.amountMinor, recurring: { interval: "month" }, product_data: { name: `来塔绘梦 ${plan.name}` }, metadata: { planId: plan.id } }, { idempotencyKey: `${key}:price` });
       await stripe.subscriptionSchedules.update(schedule.id, { end_behavior: "release", phases: [
         { start_date: schedule.current_phase.start_date, end_date: schedule.current_phase.end_date, items: current.items.data.map(item => ({ price: item.price.id, quantity: item.quantity || 1 })), proration_behavior: "none", metadata: current.metadata },
         { items: [{ price: price.id, quantity: 1 }], iterations: 1, proration_behavior: "none", metadata: { ...current.metadata, planId: input.planId } },

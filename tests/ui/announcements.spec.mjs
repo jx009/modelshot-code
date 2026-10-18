@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-const notice = { id: "notice_001", revision: "version1", title: "来塔 AI 全新升级", content: "让每一个灵感，都成为好作品。", titleEn: "Create something remarkable", contentEn: "New tools for your next idea.", buttonText: "立即查看", buttonTextEn: "Explore", buttonUrl: "/explore", style: "info", closable: true };
+const notice = { id: "notice_001", revision: "version1", title: "来塔绘梦 全新升级", content: "让每一个灵感，都成为好作品。", titleEn: "Create something remarkable", contentEn: "New tools for your next idea.", buttonText: "立即查看", buttonTextEn: "Explore", buttonUrl: "/explore", style: "info", closable: true };
 async function fixtures(page, state = { item: notice }) {
   await page.route("**/api/**", route => {
     const url = new URL(route.request().url());

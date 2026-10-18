@@ -15,6 +15,7 @@ const LINKS = [
   { href: "/admin/cost", label: "成本利润" },
   { href: "/admin/commissions", label: "分销佣金" },
   { href: "/admin/settings", label: "系统设置" },
+  { href: "/admin/announcements", label: "公告管理" },
   { href: "/admin/models", label: "模特预设" },
   { href: "/admin/presets", label: "场景预设" },
   { href: "/admin/prompts", label: "Prompt 模板" },

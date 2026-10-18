@@ -9,6 +9,7 @@ import { encryptSecret, decryptSecret, maskSecret } from "./crypto.js";
 
 // key 常量 + 元信息（env 兜底名 + 是否敏感）
 export const CONFIG_KEYS = {
+  announcements:         { env: "SITE_ANNOUNCEMENTS", sensitive: false },
   google_login_enabled:  { env: "GOOGLE_LOGIN_ENABLED", sensitive: false },
   registration_credits:  { env: "REGISTRATION_CREDITS", sensitive: false },
   payments_enabled:      { env: "PAYMENTS_ENABLED", sensitive: false },
@@ -35,7 +36,7 @@ export const CONFIG_KEYS = {
 let cache = new Map();
 let cacheAt = 0;
 const TTL = 60_000;
-const LIVE_KEYS = new Set(["google_login_enabled", "registration_credits", "credit_packages", "payments_enabled", "epay_enabled", "epay_methods"]);
+const LIVE_KEYS = new Set(["announcements", "google_login_enabled", "registration_credits", "credit_packages", "payments_enabled", "epay_enabled", "epay_methods"]);
 
 export function invalidateSiteConfig() {
   cache = new Map();

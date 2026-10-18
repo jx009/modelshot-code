@@ -11,6 +11,7 @@ import { downloadProviderImage } from "../../infra/storage/download.js";
 import { TOOLS } from "../../studio/tools.js";
 import { channelCapability, channelScope, toolRouting, supportsImageTask, supportsChannelCapability, segmentChannelReady, splitChannelReady, ocrChannelReady, upscaleChannelReady } from "../../studio/model-channels.js";
 import { generateCloudImage } from "./cloud.js";
+import { IMAGE_REQUEST_TIMEOUT_MS, imageFetch } from "../../ai/image-request.js";
 
 // Resolve user-visible image selection separately from administrator-owned tool stages.
 export function resolveStudioConfig(rows, toolRows = [], channelName, capability = "image", toolId = null, { pinned = false, skipPreview = false } = {}) {
@@ -127,8 +128,9 @@ export async function toolService(config, tool, image, params = {}, signal, file
   return bytes;
 }
 
-export function imageClient(config) {
-  return new OpenAI({ apiKey: config.apiKey, baseURL: config.baseURL?.replace(/\/images\/(generations|edits)\/?$/, ""), maxRetries: 0, timeout: 150000 });
+export function imageClient(config, { imageRequest = false } = {}) {
+  return new OpenAI({ apiKey: config.apiKey, baseURL: config.baseURL?.replace(/\/images\/(generations|edits)\/?$/, ""), maxRetries: 0,
+    timeout: imageRequest ? IMAGE_REQUEST_TIMEOUT_MS : 150000, ...(imageRequest ? { fetch: imageFetch } : {}) });
 }
 export async function generateImage(config, { image, references = [], mask, prompt, size, signal }) {
   if (!config.apiKey) throw new AppError("PROVIDER_UNAVAILABLE", 503);
@@ -138,7 +140,7 @@ export async function generateImage(config, { image, references = [], mask, prom
   const sizeError = imageSizeError(config, size, source);
   if (sizeError) throw new AppError(sizeError, 422);
   size = resolveImageSize(size, source);
-  const client = imageClient(config);
+  const client = imageClient(config, { imageRequest: true });
   let result;
   if (image) {
     const file = await toFile(image, "image.png", { type: "image/png" });

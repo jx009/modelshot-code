@@ -7,11 +7,12 @@ import { downloadProviderImage } from "../../infra/storage/download.js";
 import { settleReservation } from "../billing/ledger.js";
 import { providerAdapter } from "./providers.js";
 import { ACTIVE, TERMINAL, LIMITS, batchState } from "./contracts.js";
+import { IMAGE_REQUEST_TIMEOUT_MS } from "../../ai/image-request.js";
 
 export function safeProviderError(error, fallback) {
   if (error instanceof AppError) return error.code;
   const status = error?.status || error?.statusCode || error?.response?.status;
-  const providerCode = error?.code || error?.error?.code;
+  const providerCode = error?.code || error?.error?.code || error?.cause?.code;
   const message = error?.error?.message || error?.message;
   const detail = [status && `HTTP ${status}`, providerCode && providerCode !== "Error" && providerCode, message]
     .filter(Boolean)
@@ -123,7 +124,7 @@ export async function cancelOutput(userId, id, db = prisma) {
   return result;
 }
 
-export async function executeOutput(id, { db = prisma, store = objectStorage(), adapterFactory = providerAdapter, timeoutMs = 150_000 } = {}) {
+export async function executeOutput(id, { db = prisma, store = objectStorage(), adapterFactory = providerAdapter, timeoutMs = IMAGE_REQUEST_TIMEOUT_MS } = {}) {
   const kind = await db.tryOn.findUnique({ where: { id }, select: { snapshot: true } });
   if (kind?.snapshot?.kind === "language") {
     const { recoverLanguageCall } = await import("../studio/language.js");

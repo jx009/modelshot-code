@@ -247,11 +247,48 @@ describe("studio documents and task ledger", () => {
     let calls = 0;
     const adapters = { generate: async () => { calls++; throw new Error("connection reset after accept"); } };
     await executeStudio(job.id, { db: f.db, store: f.store, config, adapters });
-    expect((await f.db.tryOn.findUnique({ where: { id: job.id } })).status).toBe("reconciling");
+    const diagnostic = "PROVIDER_RESULT_UNKNOWN: connection reset after accept";
+    expect(await f.db.tryOn.findUnique({ where: { id: job.id } })).toMatchObject({ status: "reconciling", errorCode: diagnostic });
+    await f.db.tryOn.update({ where: { id: job.id }, data: { nextAttemptAt: null } });
+    await executeStudio(job.id, { db: f.db, store: f.store, config, adapters });
+    expect(await f.db.tryOn.findUnique({ where: { id: job.id } })).toMatchObject({ status: "reconciling", errorCode: diagnostic });
     await f.db.tryOn.update({ where: { id: job.id }, data: { nextAttemptAt: null, reconcileUntil: new Date(0) } });
     await recoverLeases(f.db);
     await executeStudio(job.id, { db: f.db, store: f.store, config, adapters });
     expect(calls).toBe(1); expect((await usageSummary(user.id, f.db)).credits).toBe(100);
+    expect(await f.db.tryOn.findUnique({ where: { id: job.id } })).toMatchObject({ status: "failed", errorCode: diagnostic });
+  });
+  it("records a real deadline separately, keeps credits reserved while unknown, and refunds once without resubmitting", async () => {
+    const { user, input } = await setup();
+    const job = await submitStudioJob(user.id, input, randomUUID(), f.db, deps);
+    let calls = 0;
+    const adapters = { generate: async (_config, { signal }) => {
+      calls++;
+      signal.throwIfAborted();
+      return new Promise((_, reject) => signal.addEventListener("abort", () => reject(signal.reason), { once: true }));
+    } };
+    await executeStudio(job.id, { db: f.db, store: f.store, config, adapters, timeoutMs: 250 });
+    expect(calls).toBe(1);
+    expect(await f.db.tryOn.findUnique({ where: { id: job.id } })).toMatchObject({ status: "reconciling", errorCode: "PROVIDER_TIMEOUT" });
+    expect((await f.db.creditReservation.findUnique({ where: { tryOnId: job.id } })).state).toBe("held");
+    await f.db.tryOn.update({ where: { id: job.id }, data: { nextAttemptAt: null, reconcileUntil: new Date(0) } });
+    await executeStudio(job.id, { db: f.db, store: f.store, config, adapters });
+    await executeStudio(job.id, { db: f.db, store: f.store, config, adapters });
+    expect(calls).toBe(1);
+    expect(await f.db.tryOn.findUnique({ where: { id: job.id } })).toMatchObject({ status: "failed", errorCode: "PROVIDER_TIMEOUT" });
+    expect((await f.db.creditReservation.findUnique({ where: { tryOnId: job.id } })).state).toBe("released");
+    expect((await usageSummary(user.id, f.db)).credits).toBe(100);
+  });
+  it("retains sanitized gateway 5xx details while reconciling", async () => {
+    const { user, input } = await setup();
+    const job = await submitStudioJob(user.id, input, randomUUID(), f.db, deps);
+    await executeStudio(job.id, { db: f.db, store: f.store, config, adapters: { generate: async () => {
+      throw Object.assign(new Error("upstream timed out; Bearer fixture-secret sk-fixture-secret"), { status: 504 });
+    } } });
+    const row = await f.db.tryOn.findUnique({ where: { id: job.id } });
+    expect(row.status).toBe("reconciling");
+    expect(row.errorCode).toContain("PROVIDER_RESULT_UNKNOWN: HTTP 504: upstream timed out");
+    expect(row.errorCode).not.toContain("fixture-secret");
   });
   it("persists a video task ID then resumes polling after a worker restart", async () => {
     const { user, input } = await setup();

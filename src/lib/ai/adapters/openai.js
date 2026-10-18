@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { BaseAdapter, toFileObject } from "./base.js";
 import { getModel } from "../model-registry.js";
+import { IMAGE_REQUEST_TIMEOUT_MS, imageFetch } from "../image-request.js";
 
 function normalizeBaseURL(value) {
   if (!value) return undefined;
@@ -24,7 +25,7 @@ function providerError(response, payload) {
   return error;
 }
 
-export async function editThroughCompatibleGateway({ baseURL, apiKey, images, mask, model, prompt, size, quality, signal, fetcher = fetch }) {
+export async function editThroughCompatibleGateway({ baseURL, apiKey, images, mask, model, prompt, size, quality, signal, fetcher = imageFetch }) {
   const form = new FormData();
   form.append("model", model);
   form.append("prompt", prompt);
@@ -36,7 +37,7 @@ export async function editThroughCompatibleGateway({ baseURL, apiKey, images, ma
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" },
     body: form,
-    signal,
+    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(IMAGE_REQUEST_TIMEOUT_MS)]) : AbortSignal.timeout(IMAGE_REQUEST_TIMEOUT_MS),
   });
   const text = await response.text();
   let payload;
@@ -51,7 +52,8 @@ export class OpenAIAdapter extends BaseAdapter {
     // 管理端数据库配置优先，环境变量作为部署兜底；baseURL 支持 OpenAI 兼容中转站。
     this.client = new OpenAI({
       maxRetries: 0,
-      timeout: 120_000,
+      timeout: IMAGE_REQUEST_TIMEOUT_MS,
+      fetch: imageFetch,
       apiKey: config.apiKey || process.env.OPENAI_API_KEY,
       ...(config.baseURL ? { baseURL: normalizeBaseURL(config.baseURL) } : {}),
     });

@@ -74,7 +74,9 @@ export default function GenerationAuditDetail({ id, onClose }) {
           ["画布 ID", data.documentId], ["项目 ID", data.projectId], ["批次 ID", data.batchJobId], ["重试来源", data.retryOfId],
           ["QA / 复核", data.qaStatus], ["QA 评分", data.qaScore],
         ].filter(([, value]) => value != null && value !== "").map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
-        {data.errorCode && <div className={styles.error}><strong>失败原因</strong><code>{data.errorCode}</code></div>}
+        {data.errorCode && <div className={styles.error}><strong>{data.status === "reconciling" ? "结果尚未确认" : "失败原因"}</strong><code>{data.errorCode}</code>
+          {data.status === "reconciling" && <p>请求可能已被模型服务接收，但本站尚未确认结果。为避免重复生成和扣费，不会自动重新提交；核对期结束仍无结果时，将释放本次预留积分。</p>}
+        </div>}
         {data.inputNotRecorded && <p className={styles.notice}>这是一条旧版文字任务，当时未保存原始输入，无法补回；更新后的任务会保留完整输入。</p>}
         <TextBlock title="用户原始提示词" text={data.userPrompt} />
         {data.prompt !== data.userPrompt && <TextBlock title="任务执行提示词" text={data.prompt} />}

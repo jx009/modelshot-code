@@ -18,6 +18,7 @@ import { upscaleVolcImage } from "./upscale.js";
 import { UPSCALE_MAX_NORMALIZED_BYTES } from "../../studio/upscale.js";
 import { runGuidedEdit } from "./guided-edit.js";
 import { GUIDED_EDIT_TOOLS } from "../../studio/edit-geometry.js";
+import { IMAGE_REQUEST_TIMEOUT_MS } from "../../ai/image-request.js";
 
 export async function runImageTool(config, snapshot, image, mask, signal, adapters = {}, references = [], queue = {}) {
   const generate = adapters.generate || generateImage;
@@ -52,13 +53,14 @@ export async function runImageTool(config, snapshot, image, mask, signal, adapte
   return { images: [result], ...(tool === "erase" ? { placement: "replace-source" } : {}) };
 }
 
-export async function executeStudio(id, { db = prisma, store = objectStorage(), timeoutMs = 180000, adapters = {}, config: supplied } = {}) {
+export async function executeStudio(id, { db = prisma, store = objectStorage(), timeoutMs = IMAGE_REQUEST_TIMEOUT_MS, adapters = {}, config: supplied } = {}) {
   const claim = await claimOutput(id, db);
   if (!claim) return;
   const { output, attempt, reconcile } = claim;
   const snapshot = output.snapshot;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const timer = setTimeout(() => controller.abort(new AppError("PROVIDER_TIMEOUT", 504)), timeoutMs);
+  const unresolvedError = output.errorCode || "PROVIDER_RESULT_UNKNOWN";
   const heartbeat = setInterval(() => { db.tryOn.updateMany({ where: { id, fence: output.fence, status: { in: ["running", "reconciling"] } }, data: { leaseUntil: new Date(Date.now() + 90000), heartbeatAt: new Date() } }).catch(() => {}); }, 20000);
   heartbeat.unref();
   try {
@@ -72,10 +74,10 @@ export async function executeStudio(id, { db = prisma, store = objectStorage(), 
     if (modelTool && snapshot.providerKind && (snapshot.providerKind !== channel?.kind || snapshot.providerBaseURL !== (channel?.baseURL || null))) throw new AppError("PROVIDER_CONFIGURATION_CHANGED", 422);
     if (["split", "ocr", "upscale"].includes(dependency) && channel) config[`${dependency}Channel`] = { ...channel, model: snapshot.imageModel };
     const recoverable = ["video", "split"].includes(snapshot.tool) && attempt.requestId;
-    if (reconcile && output.reconcileUntil && output.reconcileUntil <= new Date()) { await finishOutput(id, output.fence, { errorCode: "PROVIDER_RESULT_UNKNOWN" }, db); return; }
+    if (reconcile && output.reconcileUntil && output.reconcileUntil <= new Date()) { await finishOutput(id, output.fence, { errorCode: unresolvedError }, db); return; }
     if (reconcile && snapshot.tool !== "crop" && !recoverable) {
-      if (output.reconcileUntil && output.reconcileUntil <= new Date()) await finishOutput(id, output.fence, { errorCode: "PROVIDER_RESULT_UNKNOWN" }, db);
-      else await deferOutput(claim, "PROVIDER_RESULT_UNKNOWN", false, db);
+      if (output.reconcileUntil && output.reconcileUntil <= new Date()) await finishOutput(id, output.fence, { errorCode: unresolvedError }, db);
+      else await deferOutput(claim, unresolvedError, false, db);
       return;
     }
     const image = snapshot.assetId ? await readOwnedImage(output.userId, snapshot.assetId, db, store) : null;
@@ -128,7 +130,10 @@ export async function executeStudio(id, { db = prisma, store = objectStorage(), 
     const status = error.status || error.statusCode;
     if (stored?.state === "claimed" || [400, 401, 403, 404, 413, 415, 422, 429].includes(status) || error instanceof AppError && ![502, 504].includes(status)) {
       await finishOutput(id, output.fence, { errorCode: safeProviderError(error, "PROVIDER_REJECTED") }, db);
-    } else await deferOutput(claim, "PROVIDER_RESULT_UNKNOWN", false, db);
+    } else {
+      const failure = controller.signal.aborted ? controller.signal.reason : error;
+      await deferOutput(claim, safeProviderError(failure, "PROVIDER_RESULT_UNKNOWN"), false, db);
+    }
   } finally { clearTimeout(timer); clearInterval(heartbeat); }
 }
 function assetSummary(asset) { return { id: asset.id, width: asset.width, height: asset.height, contentType: asset.contentType }; }

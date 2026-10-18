@@ -19,11 +19,7 @@ export async function administerUser(adminId, input, key, db = prisma) {
     for (const id of [...new Set([adminId, data.id])].sort()) await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${id} FOR UPDATE`;
     const actor = await tx.user.findUnique({ where: { id: adminId } });
     const target = await tx.user.findUnique({ where: { id: data.id } });
-    const rootSelfCreditAdjustment = actor?.role === "root" && adminId === data.id
-      && data.creditsDelta !== undefined && data.role === undefined && data.status === undefined;
-    const targetOutsideScope = target && (LEVEL[target.role] >= LEVEL[actor?.role] || adminId === data.id);
-    if (!actor || actor.status !== "active" || LEVEL[actor.role] < 2 || !target || (targetOutsideScope && !rootSelfCreditAdjustment)) throw new AppError("ADMIN_SCOPE_DENIED", 403);
-    if (data.role && (actor.role !== "root" || data.role === "root")) throw new AppError("ADMIN_ROLE_DENIED", 403);
+    if (!actor || actor.status !== "active" || (LEVEL[actor.role] ?? 0) < 2 || !target) throw new AppError("ADMIN_SCOPE_DENIED", 403);
     const businessKey = `admin:${adminId}:${key}`;
     const digest = digestJson(data);
     const old = await tx.adminAuditLog.findUnique({ where: { businessKey } });
@@ -31,6 +27,11 @@ export async function administerUser(adminId, input, key, db = prisma) {
       if (old.digest !== digest) throw new AppError("IDEMPOTENCY_CONFLICT", 409);
       return { ok: true };
     }
+    const rootSelfCreditAdjustment = actor?.role === "root" && adminId === data.id
+      && data.creditsDelta !== undefined && data.role === undefined && data.status === undefined;
+    const targetOutsideScope = target && (LEVEL[target.role] >= LEVEL[actor?.role] || adminId === data.id);
+    if (targetOutsideScope && !rootSelfCreditAdjustment) throw new AppError("ADMIN_SCOPE_DENIED", 403);
+    if (data.role && actor.role !== "root") throw new AppError("ADMIN_ROLE_DENIED", 403);
     const delta = data.creditsDelta || 0;
     if (delta < 0) {
       const allocations = await reserveCreditLots(tx, target, -delta);

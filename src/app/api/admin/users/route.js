@@ -67,6 +67,7 @@ export async function GET(req) {
     const usageMap = Object.fromEntries(usageRows.map(r => [r.userId, Math.abs(r._sum.amount || 0)]));
 
     return NextResponse.json({
+      actor: { id: auth.user.id, role: auth.user.role },
       users: users.map(u => ({
         ...u,
         passwordHash: undefined, // 永不回传 hash；只回是否设置过

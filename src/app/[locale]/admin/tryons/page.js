@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRemoteResource } from "@/hooks/useRemoteResource";
 import clsx from "clsx";
+import GenerationAuditDetail, { AUDIT_STATUS } from "@/components/admin/GenerationAuditDetail";
 import { useAdminReason } from "@/hooks/useAdminReason";
 
 const STATUS_META = {
@@ -19,7 +20,7 @@ export default function AdminTryons() {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
   const [page, setPage] = useState(1);
-  const [zoom, setZoom] = useState(null); // 点击放大的记录
+  const [selectedId, setSelectedId] = useState(null);
 
   const params = new URLSearchParams({ page: String(page), limit: "20", status, q: query });
   const { data: response, loading, error, reload: load } = useRemoteResource(`/api/admin/tryons?${params}`);
@@ -82,7 +83,7 @@ export default function AdminTryons() {
           value={q}
           onChange={e => { setQ(e.target.value); }}
           onKeyDown={e => { if (e.key === "Enter") { setPage(1); setQuery(q.trim()); load(); } }}
-          placeholder="搜索用户邮箱…（回车）"
+          placeholder="搜索邮箱 / 昵称 / 提示词 / 任务 ID（回车）"
           className="bg-bg-card border border-divider rounded-full px-3 py-1.5 text-xs text-primary-text placeholder-secondary-text/50 focus:outline-none focus:border-primary/50"
         />
       </div>
@@ -104,39 +105,37 @@ export default function AdminTryons() {
       ) : data.tryons.length === 0 ? (
         <div className="text-secondary-text text-sm py-8 text-center">暂无记录</div>
       ) : (
-        <div className="bg-bg-card border border-divider rounded-xl overflow-hidden">
+        <div className="bg-bg-card border border-divider rounded-xl overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-divider text-secondary-text">
-                <th className="text-left px-4 py-2.5 font-bold uppercase text-[10px] tracking-wider">结果</th>
+                <th className="text-left px-4 py-2.5 font-bold uppercase text-[10px] tracking-wider">输入 / 结果</th>
+                <th className="text-left px-4 py-2.5 font-bold uppercase text-[10px] tracking-wider">操作 / 提示词</th>
                 <th className="text-left px-4 py-2.5 font-bold uppercase text-[10px] tracking-wider">用户</th>
                 <th className="text-left px-4 py-2.5 font-bold uppercase text-[10px] tracking-wider">状态 / QA</th>
                 <th className="text-left px-4 py-2.5 font-bold uppercase text-[10px] tracking-wider">通道/成本</th>
-                <th className="text-left px-4 py-2.5 font-bold uppercase text-[10px] tracking-wider">时间</th>
+                <th className="text-left px-4 py-2.5 font-bold uppercase text-[10px] tracking-wider">时间 / 详情</th>
               </tr>
             </thead>
             <tbody>
               {data.tryons.map(t => {
-                const sm = STATUS_META[t.status] || { label: t.status, cls: "bg-bg-page text-secondary-text border-divider" };
+                const sm = STATUS_META[t.status] || { label: AUDIT_STATUS[t.status] || t.status, cls: "bg-bg-page text-secondary-text border-divider" };
                 return (
                   <tr key={t.id} className="border-b border-divider/50 last:border-0 hover:bg-bg-page/40 transition-colors">
                     <td className="px-4 py-3">
-                      {t.resultImage ? (
-                        <button onClick={() => setZoom(t)} className="cursor-pointer group relative" title="点击放大">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={t.resultImage} alt="result" className="w-12 h-16 object-cover rounded border border-divider group-hover:border-primary/50 transition-colors" />
-                        </button>
-                      ) : (
-                        <div className="w-12 h-16 rounded border border-dashed border-divider flex flex-col items-center justify-center gap-1 text-[8px] text-secondary-text">
-                          无图
-                          {["queued", "running", "provider_pending", "reconciling"].includes(t.status) && (
-                            <button
-                              onClick={() => retry(t.id)}
-                              className="px-1.5 py-0.5 rounded border border-primary/40 text-primary text-[9px] hover:bg-primary-muted cursor-pointer"
-                            >重试</button>
-                          )}
-                        </div>
-                      )}
+                      <div className="flex gap-1.5">
+                        {[{ url: t.clothesImage, label: "输入" }, { url: t.resultImage, label: "结果" }].map(item => <button key={item.label} onClick={() => setSelectedId(t.id)} className="cursor-pointer" title={`查看${item.label}与任务详情`}>
+                          {item.url ? <>
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={item.url} alt={item.label} loading="lazy" className="w-12 h-14 object-cover rounded border border-divider" />
+                          </> : <span className="w-12 h-14 rounded border border-dashed border-divider flex items-center justify-center text-[10px] text-secondary-text">无{item.label}图</span>}
+                        </button>)}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 min-w-[180px] max-w-[260px]">
+                      <div className="font-bold">{t.toolLabel}</div>
+                      <p className="line-clamp-2 mt-1 text-secondary-text break-words">{t.userPrompt || t.prompt || "无文字输入"}</p>
+                      <div className="text-[10px] text-secondary-text mt-1">输入 {t.inputs?.length || 0} · 结果 {t.outputs?.length || 0}</div>
                     </td>
                     <td className="px-4 py-3">
                       <div className="font-bold max-w-[160px] truncate">{t.userName || "—"}</div>
@@ -144,16 +143,20 @@ export default function AdminTryons() {
                     </td>
                     <td className="px-4 py-3">
                       <span className={clsx("px-2 py-0.5 rounded-full text-[10px] font-bold border", sm.cls)}>{sm.label}</span>
+                      {t.errorCode && <div className="text-[10px] text-danger mt-1 max-w-[180px] break-words">{t.errorCode}</div>}
                       {t.qaScore !== null && t.qaScore !== undefined && (
-                        <div className="text-[10px] text-secondary-text mt-1">QA {t.qaScore}{t.qaFlags && t.qaFlags !== "[]" ? ` · ${JSON.parse(t.qaFlags).join(",")}` : ""}</div>
+                        <div className="text-[10px] text-secondary-text mt-1">QA {t.qaScore}</div>
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      <div className="font-bold">{t.provider || "—"}</div>
+                      <div className="font-bold max-w-[180px] break-words">{t.provider || "—"}</div>
+                      <div className="text-[10px] text-secondary-text max-w-[180px] break-words">{t.model || "—"}</div>
                       <div className="text-[10px] text-secondary-text">{t.costUsd ? `$${t.costUsd}` : "—"}{t.platformSpec ? ` · ${t.platformSpec}` : ""}</div>
                     </td>
                     <td className="px-4 py-3 text-secondary-text">
-                      {new Date(t.createTime).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                      <div className="whitespace-nowrap">{new Date(t.createTime).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}</div>
+                      <button onClick={() => setSelectedId(t.id)} className="mt-2 text-primary underline underline-offset-4 cursor-pointer">查看详情</button>
+                      {["queued", "running", "provider_pending", "reconciling"].includes(t.status) && <button onClick={() => retry(t.id)} className="ml-3 text-secondary-text cursor-pointer">恢复任务</button>}
                     </td>
                   </tr>
                 );
@@ -183,46 +186,7 @@ export default function AdminTryons() {
         </div>
       )}
 
-      {/* 放大查看 */}
-      {zoom && (
-        <div
-          className="fixed inset-0 bg-bg-page/80 z-50 flex items-center justify-center p-8"
-          onClick={() => setZoom(null)}
-        >
-          <div className="max-w-3xl w-full bg-bg-card border border-divider rounded-xl p-4 space-y-3" onClick={e => e.stopPropagation()}>
-            <div className="flex justify-between items-start gap-3">
-              <div className="text-xs text-secondary-text">
-                <div className="font-bold text-primary-text text-sm">{zoom.userEmail}</div>
-                <div className="mt-0.5">{zoom.provider} · ${zoom.costUsd || 0} · {zoom.platformSpec || "通用"}</div>
-                {zoom.qaFlags && zoom.qaFlags !== "[]" && (
-                  <div className="mt-1 text-warning">QA 标记：{JSON.parse(zoom.qaFlags).join(", ")}</div>
-                )}
-              </div>
-              <button onClick={() => setZoom(null)} className="text-secondary-text hover:text-primary-text cursor-pointer text-sm">✕</button>
-            </div>
-            <div className="grid grid-cols-[1fr_2fr] gap-3">
-              <div>
-                <div className="text-[10px] uppercase font-bold text-secondary-text mb-1.5">服装输入</div>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={zoom.clothesImage} alt="garment" className="w-full rounded border border-divider object-cover" />
-              </div>
-              <div>
-                <div className="text-[10px] uppercase font-bold text-secondary-text mb-1.5">生成结果</div>
-                {zoom.resultImage ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={zoom.resultImage} alt="result" className="w-full rounded border border-divider object-cover" />
-                ) : (
-                  <div className="aspect-[3/4] rounded border border-dashed border-divider flex items-center justify-center text-xs text-secondary-text">无结果图</div>
-                )}
-              </div>
-            </div>
-            <div>
-              <div className="text-[10px] uppercase font-bold text-secondary-text mb-1">Prompt</div>
-              <div className="text-[10px] text-secondary-text bg-bg-page rounded p-2.5 max-h-24 overflow-y-auto leading-relaxed">{zoom.prompt}</div>
-            </div>
-          </div>
-        </div>
-      )}
+      {selectedId && <GenerationAuditDetail key={selectedId} id={selectedId} onClose={() => setSelectedId(null)} />}
     </div>
   );
 }

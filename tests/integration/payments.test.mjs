@@ -187,3 +187,19 @@ it("allows a root user to adjust only their own credits", async () => {
   await expect(administerUser(root.id, { id: root.id, status: "banned", reason: "Reject self ban" }, randomUUID(), f.db)).rejects.toThrow("ADMIN_SCOPE_DENIED");
   await expect(administerUser(root.id, { id: root.id, role: "user", reason: "Reject self demotion" }, randomUUID(), f.db)).rejects.toThrow("ADMIN_SCOPE_DENIED");
 });
+
+it("lets root promote lower roles to root exactly once and blocks peer or self changes", async () => {
+  const root = await f.user(), target = await f.user(), peer = await f.user();
+  await f.db.user.updateMany({ where: { id: { in: [root.id, peer.id] } }, data: { role: "root" } });
+  await f.db.user.update({ where: { id: target.id }, data: { role: "admin" } });
+  const key = randomUUID(), input = { id: target.id, role: "root", reason: "Assign new root administrator" };
+  await administerUser(root.id, input, key, f.db);
+  await administerUser(root.id, input, key, f.db);
+  expect(await f.db.user.findUnique({ where: { id: target.id } })).toMatchObject({ role: "root", sessionVersion: 1 });
+  const audits = await f.db.adminAuditLog.findMany({ where: { businessKey: `admin:${root.id}:${key}` } });
+  expect(audits).toHaveLength(1);
+  expect(JSON.parse(audits[0].detail)).toMatchObject({ before: { role: "admin" }, after: { role: "root", reason: input.reason } });
+  await expect(administerUser(root.id, { ...input, role: "user" }, key, f.db)).rejects.toThrow("IDEMPOTENCY_CONFLICT");
+  await expect(administerUser(root.id, { id: peer.id, role: "user", reason: "Reject peer change" }, randomUUID(), f.db)).rejects.toThrow("ADMIN_SCOPE_DENIED");
+  await expect(administerUser(root.id, { id: root.id, role: "user", reason: "Reject self change" }, randomUUID(), f.db)).rejects.toThrow("ADMIN_SCOPE_DENIED");
+});

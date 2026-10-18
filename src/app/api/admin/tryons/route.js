@@ -4,6 +4,7 @@ import { requireAdmin } from "../../../../lib/admin-auth";
 import { z } from "zod";
 import { readJson, AppError, errorResponse } from "../../../../lib/http.js";
 import { auditedOperation } from "../../../../lib/domain/identity/admin-operation.js";
+import { auditSummary } from "../../../../lib/domain/identity/generation-audit.js";
 
 /**
  * 生成记录审计
@@ -23,9 +24,9 @@ export async function GET(req) {
     const q = searchParams.get("q")?.trim();
 
     const where = {
-      ...(status === "needs_review" ? { qaStatus: "needs_review", reviewDecision: null } : status === "processing" ? { status: { in: ["queued", "running", "provider_pending", "reconciling"] } } : status ? { status: status === "completed" ? "succeeded" : status } : {}),
+      ...(status === "needs_review" ? { qaStatus: "needs_review", reviewDecision: null } : status === "processing" ? { status: { in: ["queued", "running", "provider_pending", "reconciling", "cancel_requested"] } } : status ? { status: status === "completed" ? "succeeded" : status } : {}),
       ...(provider && { provider }),
-      ...(q && { User: { OR: [{ email: { contains: q } }, { name: { contains: q } }] } }),
+      ...(q && { OR: [{ User: { OR: [{ email: { contains: q, mode: "insensitive" } }, { name: { contains: q, mode: "insensitive" } }] } }, { prompt: { contains: q, mode: "insensitive" } }, { id: q }] }),
     };
 
     const [tryons, total, statusCounts, costAgg, avgDuration, succeeded, reviews] = await Promise.all([
@@ -51,26 +52,7 @@ export async function GET(req) {
     tryons.sort((a, b) => (priority[a.status] ?? 9) - (priority[b.status] ?? 9));
 
     return NextResponse.json({
-      tryons: tryons.map(t => ({
-        id: t.id,
-        userEmail: t.User?.email,
-        userName: t.User?.name,
-        resultImage: t.deliveryAssetId || t.originalAssetId ? `/api/admin/assets/${t.deliveryAssetId || t.originalAssetId}` : null,
-        clothesImage: t.snapshot?.garment?.id ? `/api/admin/assets/${t.snapshot.garment.id}` : null,
-        prompt: t.prompt.slice(0, 200),
-        status: t.status,
-        qaStatus: t.qaStatus,
-        provider: t.provider,
-        costUsd: t.costUsd,
-        qaScore: t.qaScore,
-        qaFlags: t.qaFlags,
-        platformSpec: t.platformSpec,
-        pose: t.pose,
-        camera: t.camera,
-        lighting: t.lighting,
-        durationMs: t.durationMs,
-        createTime: t.createTime,
-      })),
+      tryons: tryons.map(auditSummary),
       total,
       // 当前筛选口径的聚合（成本/成功率/平均耗时）
       summary: {
@@ -83,7 +65,7 @@ export async function GET(req) {
       page,
       limit,
       statusCounts: [...statusCounts.map(s => ({ status: s.status, count: s._count._all })), { status: "needs_review", count: reviews }, { status: "completed", count: statusCounts.find(s => s.status === "succeeded")?._count._all || 0 }, { status: "processing", count: statusCounts.filter(s => ["queued", "running", "provider_pending", "reconciling", "cancel_requested"].includes(s.status)).reduce((sum, s) => sum + s._count._all, 0) }],
-    });
+    }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     console.error("[ADMIN_TRYONS_GET]", error);
     return new NextResponse("Internal Error", { status: 500 });
@@ -91,7 +73,7 @@ export async function GET(req) {
 }
 
 /**
- * 失败重试（管理员）— 用原始参数重跑，不重复计费（audit 留痕）
+ * 恢复活动任务（管理员），通过现有任务状态机核对和继续执行（audit 留痕）
  * POST /api/admin/tryons { id }
  */
 export async function POST(req) {

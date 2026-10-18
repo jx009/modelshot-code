@@ -21,11 +21,17 @@ export async function languageCall(userId, purpose, input, key, config, invoke, 
       throw new AppError(old.errorCode || "REQUEST_IN_PROGRESS", 409);
     }
     const output = await tx.tryOn.create({ data: {
-      id: randomUUID(), userId, requestId, personImage: "", clothesImage: "", prompt: purpose,
+      id: randomUUID(), userId, requestId, personImage: "", clothesImage: "", prompt: input.prompt || input.message || purpose,
       provider: config.plannerProvider || "language-env", creditCost: cost, billingType: "credits", status: "running", fence: 1,
       leaseUntil: new Date(Date.now() + 120000),
-      snapshot: { kind: "language", purpose, digest, model: config.chatModel, price: cost },
+      snapshot: { kind: "language", purpose, input, digest, model: config.chatModel, price: cost },
     } });
+    // Keep the original reference images available for later audit, even if the canvas changes.
+    for (const assetId of new Set([input.assetId, input.productAssetId, input.referenceAssetId].filter(Boolean))) {
+      const asset = await tx.asset.findFirst({ where: { id: assetId, userId, status: "active" }, select: { id: true } });
+      if (!asset) throw new AppError("ASSET_NOT_FOUND", 404);
+      await tx.assetReference.create({ data: { assetId, entityId: output.id, kind: "generation_input" } });
+    }
     if (cost) {
       const allocations = await reserveCreditLots(tx, user, cost);
       await tx.creditReservation.create({ data: { userId, tryOnId: output.id, channel: "credits", amount: cost, allocations } });

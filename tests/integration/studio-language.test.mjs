@@ -22,6 +22,19 @@ it("charges once for validated language output and replays without invoking agai
   await expect(languageCall(user.id, "plan", { prompt: "changed" }, key, config, invoke, f.db)).rejects.toThrow("IDEMPOTENCY_CONFLICT");
 });
 
+it("preserves the full language input and retains owned reference images for audit", async () => {
+  const user = await f.user(20);
+  const input = { message: "为商品设计一组有自然光的视觉方案", productAssetId: user.asset.id, referenceAssetId: user.asset.id, brief: { style: "自然光" } };
+  await languageCall(user.id, "commerce-agent", input, randomUUID(), config, async () => ({ summary: "方案已生成" }), f.db);
+  const row = await f.db.tryOn.findFirst({ where: { userId: user.id } });
+  expect(row.prompt).toBe(input.message);
+  expect(row.snapshot.input).toEqual(input);
+  expect(await f.db.assetReference.findMany({ where: { entityId: row.id, kind: "generation_input" } })).toMatchObject([{ assetId: user.asset.id }]);
+  const stranger = await f.user(20);
+  await expect(languageCall(stranger.id, "commerce-agent", input, randomUUID(), config, async () => { throw new Error("must not invoke"); }, f.db)).rejects.toThrow("ASSET_NOT_FOUND");
+  expect(await f.db.tryOn.count({ where: { userId: stranger.id } })).toBe(0);
+});
+
 it("reserves before invocation, rejects concurrent replay and releases failures", async () => {
   const user = await f.user(20), key = randomUUID();
   await expect(languageCall(user.id, "plan", {}, key, config, async () => {

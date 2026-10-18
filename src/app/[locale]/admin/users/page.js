@@ -203,9 +203,10 @@ export default function AdminUsers() {
                         >{acting === u.id ? <LoaderCircle size={12} className="animate-spin" /> : <ArrowRight size={12} />}</button>
                         <button
                           type="button"
-                          onClick={() => patch(u.id, { role: u.role === "user" ? "agent" : "user" }, u.role === "user" ? "已升为流量手" : "已降为普通用户")}
-                          disabled={acting === u.id}
-                          title="user ↔ agent 切换（admin/root 变更仅 ROOT）"
+                          onClick={() => patch(u.id, { role: u.role }, `变更 ${u.name || u.email} 的角色`, { originalRole: u.role })}
+                          disabled={acting === u.id || data.actor?.role !== "root" || u.role === "root" || data.actor?.id === u.id}
+                          aria-label={`修改 ${u.name || u.email} 的角色`}
+                          title={data.actor?.role !== "root" ? "只有 root 可以设置角色" : u.role === "root" ? "不能修改同级 root 的角色" : "设置 user / agent / admin / root"}
                           className="px-2 py-1 rounded border border-divider text-secondary-text hover:text-primary-text text-xs cursor-pointer disabled:opacity-40"
                         ><ShieldCheck size={12} /></button>
                         <button
@@ -236,7 +237,9 @@ export default function AdminUsers() {
           </div>
         </>
       )}
-      {operation && <Modal label="确认用户变更" onClose={() => { if (!acting) setOperation(null); }}><form onSubmit={confirm}><h2>确认用户变更</h2><p>{operation.note}</p><label htmlFor="admin-reason">操作原因</label><input id="admin-reason" required minLength={3} maxLength={500} autoFocus value={reason} onChange={e => setReason(e.target.value)} /><div className="dialog-actions"><button type="button" className="button" disabled={!!acting} onClick={() => setOperation(null)}>取消</button><button type="submit" className="button primary" disabled={!!acting}>{acting && <LoaderCircle size={14} className="animate-spin" />}确认</button></div></form></Modal>}
+      {operation && <Modal label="确认用户变更" onClose={() => { if (!acting) setOperation(null); }}><form onSubmit={confirm}><h2>确认用户变更</h2><p>{operation.note}</p>
+        {operation.body.role !== undefined && <><label htmlFor="admin-user-role">用户角色</label><select id="admin-user-role" disabled={!!acting} value={operation.body.role} onChange={event => setOperation(current => ({ ...current, body: { ...current.body, role: event.target.value } }))}>{ROLES.filter(Boolean).map(value => <option key={value} value={value}>{value}</option>)}</select><p>当前：{operation.originalRole} → {operation.body.role}。{operation.body.role === "root" ? "root 拥有全部管理权限，包括配置密钥和授权其他管理员。" : "角色变更后，该用户需要重新登录。"}</p></>}
+        <label htmlFor="admin-reason">操作原因</label><input id="admin-reason" required minLength={3} maxLength={500} autoFocus value={reason} onChange={e => setReason(e.target.value)} /><div className="dialog-actions"><button type="button" className="button" disabled={!!acting} onClick={() => setOperation(null)}>取消</button><button type="submit" className="button primary" disabled={!!acting || (operation.body.role !== undefined && operation.body.role === operation.originalRole)}>{acting && <LoaderCircle size={14} className="animate-spin" />}确认</button></div></form></Modal>}
     </div>
   );
 }

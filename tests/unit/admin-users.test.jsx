@@ -26,10 +26,38 @@ beforeEach(() => {
   HTMLDialogElement.prototype.showModal = vi.fn(function showModal() { this.open = true; });
   HTMLDialogElement.prototype.close = vi.fn(function close() { this.open = false; });
   useRemoteResource.mockReturnValue({
-    data: { users: [user], total: 1, page: 1, limit: 20 },
+    data: { actor: { id: "root-actor", role: "root" }, users: [user], total: 1, page: 1, limit: 20 },
     loading: false,
     error: null,
     reload: vi.fn(),
+  });
+});
+
+describe("admin role selection", () => {
+  it("lets root select root with an explicit reason and submit it", async () => {
+    const fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true }) });
+    vi.stubGlobal("fetch", fetch);
+    render(<AdminUsers />);
+    fireEvent.click(screen.getByRole("button", { name: "修改 测试用户 的角色" }));
+    const select = screen.getByLabelText("用户角色");
+    expect([...select.options].map(option => option.value)).toEqual(["user", "agent", "admin", "root"]);
+    expect(screen.getByRole("button", { name: "确认" }).disabled).toBe(true);
+    fireEvent.change(select, { target: { value: "root" } });
+    fireEvent.change(screen.getByLabelText("操作原因"), { target: { value: "指定新的超级管理员" } });
+    fireEvent.click(screen.getByRole("button", { name: "确认" }));
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/admin/users", expect.objectContaining({
+      method: "PATCH", body: JSON.stringify({ id: user.id, role: "root", reason: "指定新的超级管理员" }),
+    })));
+  });
+
+  it.each([
+    [{ id: "admin-actor", role: "admin" }, user],
+    [{ id: "root-actor", role: "root" }, { ...user, role: "root" }],
+    [{ id: user.id, role: "root" }, user],
+  ])("disables role changes outside the actor's scope", (actor, target) => {
+    useRemoteResource.mockReturnValue({ data: { actor, users: [target], total: 1, page: 1, limit: 20 }, reload: vi.fn() });
+    render(<AdminUsers />);
+    expect(screen.getByRole("button", { name: "修改 测试用户 的角色" }).disabled).toBe(true);
   });
 });
 

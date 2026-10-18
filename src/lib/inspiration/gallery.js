@@ -11,6 +11,7 @@ export const inspirationItemSchema = z.object({
   category: z.enum(INSPIRATION_CATEGORIES.slice(1).map(c => c[0])),
   description: z.string().trim().max(1000).default(""), descriptionEn: z.string().trim().max(1500).default(""),
   prompt: z.string().trim().min(1).max(4000),
+  promptZh: z.string().trim().max(4000).optional(),
   model: z.string().trim().max(150).default(""),
   size: z.enum(["1024x1024", "1024x1536", "1536x1024"]).default("1024x1024"),
   quality: z.enum(["low", "medium", "high", "auto"]).default("medium"),
@@ -30,6 +31,16 @@ export const gallerySchema = z.object({
   layout: z.object({ mode: z.enum(["masonry", "grid"]), columns: z.number().int().min(3).max(5), gap: z.number().int().min(8).max(40) }).strict(),
 }).strict();
 export const defaultGallery = { items: DEFAULT_ITEMS, layout: DEFAULT_LAYOUT };
+export function inspirationPromptZh(item) {
+  if (typeof item.promptZh === "string") return item.promptZh.trim();
+  // Previously saved galleries lack translations. Only reuse a built-in
+  // translation when its original prompt still matches the published text.
+  const builtin = item.cover?.type === "builtin" && DEFAULT_ITEMS.find(i => i.id === item.cover.file);
+  return builtin && builtin.prompt === item.prompt ? builtin.promptZh || "" : "";
+}
+export function inspirationPrompt(item, locale = "zh") {
+  return locale === "zh" ? inspirationPromptZh(item) || item.prompt : item.prompt;
+}
 export function inspirationImage(item) {
   return item.cover.type === "builtin" ? `/inspiration/generated/${item.cover.file}${item.imageVersion ? `.${item.imageVersion}` : ""}.webp` : `/api/inspiration/${encodeURIComponent(item.id)}/image`;
 }

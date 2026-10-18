@@ -65,8 +65,13 @@ test("double-click shows a complete preview during a partial original download a
     await expect.poll(() => fixture.pending.has("first")).toBe(true);
     const box = await image.boundingBox(), viewport = await page.locator(".ms-preview-image").boundingBox();
     expect(box.width / box.height).toBeCloseTo(4 / 3, 2);
-    expect(box.height).toBeGreaterThan(600);
+    expect(box.height).toBeGreaterThan(400);
     expect(box.height).toBeLessThanOrEqual(viewport.height + 1);
+    await expect(page.locator(".ms-preview-controls")).toContainText("75%");
+    expect(box.height / viewport.height).toBeCloseTo(.75, 2);
+    expect(Math.abs(box.x + box.width / 2 - viewport.x - viewport.width / 2)).toBeLessThan(1);
+    expect(Math.abs(box.y + box.height / 2 - viewport.y - viewport.height / 2)).toBeLessThan(1);
+    expect(await page.locator(".ms-preview-image").evaluate(el => el.scrollHeight <= el.clientHeight && el.scrollWidth <= el.clientWidth)).toBe(true);
     await expect(body.getByRole("status")).toContainText("正在加载原图");
     await page.screenshot({ path: info.outputPath("preview-during-slow-original.png") });
     fixture.pending.get("first")();
@@ -78,6 +83,7 @@ test("double-click shows a complete preview during a partial original download a
     await page.getByTitle("关闭预览", { exact: true }).click();
     await openFirst(page);
     await expect(body).toHaveAttribute("data-quality", "original");
+    await expect(page.locator(".ms-preview-controls")).toContainText("75%");
     expect(fixture.requests.filter(r => !r.preview)).toHaveLength(1);
     await page.setViewportSize({ width: 390, height: 844 });
     await expect.poll(async () => (await image.boundingBox()).width).toBeLessThanOrEqual(350);
@@ -107,6 +113,7 @@ test("switching and closing cancel obsolete downloads without displaying the pre
     await openFirst(page);
     await expect.poll(() => fixture.pending.has("first")).toBe(true);
     await page.getByRole("button", { name: "Image second", exact: true }).click();
+    await expect(page.locator(".ms-preview-controls")).toContainText("75%");
     await expect(page.locator(".ms-preview-body")).toHaveAttribute("data-asset-id", "second");
     await expect(page.locator(".ms-preview-body img")).toHaveAttribute("src", /\/second\?preview=/);
     await expect.poll(() => fixture.aborted).toContain("first");

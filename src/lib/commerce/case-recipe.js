@@ -1,5 +1,7 @@
+import { inspirationPrompt } from "../inspiration/gallery.js";
+
 export function caseRecipe(item, locale = "zh") {
-  if (item.cover) return { prompt: item.prompt, fixedPrompt: "", size: item.size, outputCount: 1, mode: "quick", reference: null };
+  if (item.cover) return { prompt: inspirationPrompt(item, locale), fixedPrompt: "", size: item.size, outputCount: 1, mode: "quick", reference: null };
   const zh = locale === "zh";
   return {
     prompt: zh ? item.brief : item.briefEn,

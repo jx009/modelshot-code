@@ -158,7 +158,7 @@
   .ms-canvas-label { display:none; }
 }
 
-.ms-image-preview { width:100vw; max-width:none; height:100dvh; max-height:none; margin:0; border:0; color:var(--primary-text); }
+.ms-image-preview { width:100vw; max-width:none; height:100dvh; max-height:none; margin:0; border:0; overflow:hidden; box-sizing:border-box; color:var(--primary-text); }
 
 /* Keep OCR controls outside the scrolling text list. */
 .ms-tool-panel.ms-ocr-panel{display:flex;flex-direction:column;width:min(334px,calc(100% - 32px));padding:0;overflow:hidden;z-index:30}

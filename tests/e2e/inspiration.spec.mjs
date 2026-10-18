@@ -46,8 +46,35 @@ test("curates generated inspiration, publishes a site output and reuses its full
     await expect(page.locator(".ig-card")).toHaveCount(1);
     await page.locator(".ig-card").click();
     await expect(page.getByRole("heading", { name: "玻璃引力", exact: true })).toBeVisible();
-    await expect(page.locator(".ig-prompt p")).toHaveText(DEFAULT_ITEMS.find(i => i.id === "glass-orbit").prompt);
+    await expect(page.locator(".ig-prompt p")).toHaveText(DEFAULT_ITEMS.find(i => i.id === "glass-orbit").promptZh);
     await page.screenshot({ path: info.outputPath("inspiration-detail.png"), fullPage: true });
+
+    const initialViewport = page.viewportSize();
+    for (const viewport of [initialViewport, { width: 1366, height: 768 }]) {
+      await page.setViewportSize(viewport);
+      for (const id of ["noir-portrait", "glass-orbit", "midnight-train"]) {
+        await page.goto(`/zh/explore/${id}`);
+        const image = page.locator(".ig-full-image > img");
+        await expect.poll(() => image.evaluate(img => img.complete && img.naturalWidth > 0)).toBe(true);
+        const layout = await image.evaluate(img => {
+          const rect = img.getBoundingClientRect();
+          return { top: rect.top, bottom: rect.bottom, ratio: rect.width / rect.height, naturalRatio: img.naturalWidth / img.naturalHeight, width: rect.width };
+        });
+        expect(layout.top).toBeGreaterThanOrEqual(0);
+        expect(layout.bottom).toBeLessThanOrEqual(viewport.height);
+        expect(layout.width).toBeGreaterThan(200);
+        expect(layout.ratio).toBeCloseTo(layout.naturalRatio, 2);
+        await expect(page.locator(".ig-prompt p")).toHaveText(DEFAULT_ITEMS.find(i => i.id === id).promptZh);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
+        await page.screenshot({ path: info.outputPath(`detail-${id}-${viewport.width}.png`) });
+      }
+    }
+    await page.setViewportSize(initialViewport);
+    await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+    await page.locator(".ig-prompt button").click();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(DEFAULT_ITEMS.find(i => i.id === "midnight-train").promptZh);
+    await page.goto("/en/explore/noir-portrait");
+    await expect(page.locator(".ig-prompt p")).toHaveText(DEFAULT_ITEMS.find(i => i.id === "noir-portrait").prompt);
 
     await page.goto("/en/login?callbackUrl=/en/admin/inspiration");
     await page.getByLabel("Email", { exact: true }).fill(admin.email);
@@ -69,6 +96,8 @@ test("curates generated inspiration, publishes a site output and reuses its full
     await expect(picker).not.toBeVisible();
     await page.getByLabel("作品标题", { exact: true }).fill("站内创作示例");
     await expect(page.getByLabel("完整提示词（会公开展示，用户可一键带入画布）", { exact: true })).toHaveValue(prompt);
+    const promptZh = "精致的杂志风格玻璃雕塑，柔和蓝色摄影棚灯光。原创构图，干净通透的光学玻璃，不要文字。";
+    await page.getByLabel("中文提示词（中文页面展示、复制及带入画布）", { exact: true }).fill(promptZh);
     await expect(page.getByLabel("生成尺寸", { exact: true })).toHaveValue("1024x1536");
     await page.getByLabel("发布到前台", { exact: true }).check();
     const publish = page.waitForResponse(r => r.url().endsWith("/api/admin/inspiration") && r.request().method() === "PATCH");
@@ -81,6 +110,7 @@ test("curates generated inspiration, publishes a site output and reuses its full
     expect(publicData.layout).toMatchObject({ mode: "masonry", columns: 5 });
     expect(publicData.items.slice(1, 3).map(i => i.id)).toEqual(["citrus-burst", "rainy-comic"]);
     const custom = publicData.items[0];
+    expect(custom.promptZh).toBe(promptZh);
     expect((await request.get(`/api/inspiration/${custom.id}/image`)).status()).toBe(200);
     expect((await request.get(`/api/assets/${asset.id}`)).status()).toBe(401);
     await page.goto("/zh/explore");
@@ -90,12 +120,13 @@ test("curates generated inspiration, publishes a site output and reuses its full
     await page.screenshot({ path: info.outputPath("inspiration-gallery.png"), fullPage: true });
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
     await page.goto(`/zh/explore/${custom.id}`);
+    await expect(page.locator(".ig-prompt p")).toHaveText(promptZh);
     const create = page.waitForResponse(r => r.url().endsWith("/api/studio/cases") && r.request().method() === "POST");
     await page.getByRole("button", { name: "以此创作", exact: true }).click();
     const created = await create; expect(created.status()).toBe(200);
     const { documentId } = await created.json();
     const doc = await db.studioDocument.findUnique({ where: { id: documentId } });
-    expect(doc.content.composer.text).toBe(prompt);
+    expect(doc.content.composer.text).toBe(promptZh);
     expect(doc.content.composer.size).toBe("1024x1536");
     expect(doc.content.layers).toEqual([]);
     expect(await db.tryOn.count({ where: { userId: admin.id } })).toBe(0);
@@ -126,10 +157,14 @@ test("curates generated inspiration, publishes a site output and reuses its full
 });
 
 async function assertNativeImages(page) {
-  const images = await page.locator(".ig-card img").evaluateAll(images => images.map(image => {
+  const images = await page.locator(".ig-card img").evaluateAll(async images => Promise.all(images.map(async image => {
     const box = image.getBoundingClientRect(), cover = image.parentElement.getBoundingClientRect();
-    return { ratio: image.naturalWidth / image.naturalHeight, rendered: box.width / box.height, full: Math.abs(box.height - cover.height) < 1 };
-  }));
+    // Responsive srcset density correction rounds naturalWidth/naturalHeight on
+    // high-DPR phones. Compare with decoded bitmap dimensions instead.
+    const bitmap = await createImageBitmap(image), ratio = bitmap.width / bitmap.height;
+    bitmap.close();
+    return { ratio, rendered: box.width / box.height, full: Math.abs(box.height - cover.height) < 1 };
+  })));
   for (const image of images) {
     expect(image.rendered).toBeCloseTo(image.ratio, 2);
     expect(image.full).toBe(true);

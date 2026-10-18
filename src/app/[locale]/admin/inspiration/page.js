@@ -3,7 +3,7 @@ import Image from "next/image";
 import { cloneElement, useEffect, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, Check, ImagePlus, Images, Plus, Save, Search, Trash2, Upload, X } from "lucide-react";
 import { api, requestKey } from "@/lib/client-api";
-import { gallerySchema, INSPIRATION_CATEGORIES, inspirationImage } from "@/lib/inspiration/gallery";
+import { gallerySchema, INSPIRATION_CATEGORIES, inspirationImage, inspirationPromptZh } from "@/lib/inspiration/gallery";
 import { useAdminReason } from "@/hooks/useAdminReason";
 import Modal from "@/components/ui/Modal";
 import InspirationCover from "@/components/discover/InspirationCover";
@@ -40,7 +40,7 @@ export default function InspirationAdminPage() {
     applyLoaded(data);
   }
   function applyLoaded(data) {
-    setGallery({ items: data.items, layout: data.layout }); setVersion(data.version); setDirty(false);
+    setGallery({ items: data.items.map(item => ({ ...item, promptZh: inspirationPromptZh(item) })), layout: data.layout }); setVersion(data.version); setDirty(false);
     setSelected(id => data.items.some(i => i.id === id) ? id : data.items[0]?.id || "");
   }
   useEffect(() => {
@@ -107,6 +107,7 @@ export default function InspirationAdminPage() {
       <div className="ig-admin-edit-grid"><div><InspirationCover item={current} src={previewImage(current)} className="ig-admin-cover" unoptimized /><button type="button" className="button compact ig-admin-replace" onClick={() => { setReplaceCover(true); setPicker(true); }}><ImagePlus size={14} />替换封面</button><p className="ig-admin-note">按图片真实比例完整展示。生成尺寸仅用于创作配方，不会改变封面构图。</p></div>
       <div className="ig-admin-fields"><Field label="作品标题"><input required maxLength={100} value={current.title} onChange={e => update("title",e.target.value)} /></Field><Field label="作品分类"><select value={current.category} onChange={e => update("category",e.target.value)}>{INSPIRATION_CATEGORIES.slice(1).map(([v,t]) => <option key={v} value={v}>{t}</option>)}</select></Field><Field label="创作说明"><textarea rows={3} maxLength={1000} value={current.description} onChange={e => update("description",e.target.value)} /></Field><Field label="生成模型"><input maxLength={150} value={current.model} onChange={e => update("model",e.target.value)} /></Field><div className="ig-admin-field-pair"><Field label="生成尺寸"><select value={current.size} onChange={e => update("size",e.target.value)}>{["1024x1024","1024x1536","1536x1024"].map(v => <option key={v}>{v}</option>)}</select></Field><Field label="生成质量"><select value={current.quality} onChange={e => update("quality",e.target.value)}>{["low","medium","high","auto"].map(v => <option key={v}>{v}</option>)}</select></Field></div></div></div>
       <Field label="完整提示词（会公开展示，用户可一键带入画布）"><textarea required rows={9} maxLength={4000} value={current.prompt} onChange={e => update("prompt",e.target.value)} /></Field>
+      <Field label="中文提示词（中文页面展示、复制及带入画布）"><textarea rows={7} maxLength={4000} value={inspirationPromptZh(current)} onChange={e => update("promptZh",e.target.value)} placeholder="填写完整中文版本，保留构图、光影、材质及限制条件。原提示词已是中文时可留空。" /></Field>
       <details><summary>来源署名与英文信息</summary><div className="ig-admin-more">{[["sourceUrl","提示词来源链接",1000],["sourceName","来源项目",200],["sourceAuthor","原作者",200],["sourceLicense","来源许可",100],["titleEn","英文标题",150],["descriptionEn","英文说明",1500]].map(([key,label,max]) => <Field key={key} label={label}><input maxLength={max} value={current[key]} onChange={e => update(key,e.target.value)} /></Field>)}</div></details>
     </section> : <section className="ig-admin-empty">选择一件作品，或新增一张站内生成图。</section>}</fieldset>
     <section className="ig-admin-preview"><div><h2>画廊预览</h2><p>只展示已启用的作品。瀑布流保留原图比例，自然错落，不裁图、不强制底边对齐。</p></div><div className={`ig-admin-preview-grid ${gallery.layout.mode}`} style={{"--preview-columns":gallery.layout.columns,"--preview-gap":`${gallery.layout.gap}px`}}>{gallery.items.filter(i => i.enabled).map(i => <button type="button" key={i.id} onClick={() => setSelected(i.id)}><InspirationCover item={i} src={previewImage(i)} mode={gallery.layout.mode} unoptimized /></button>)}</div></section>

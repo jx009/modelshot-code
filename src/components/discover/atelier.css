@@ -1,7 +1,7 @@
 .cr-shell .cr-creation-hero{position:relative;padding-top:56px;padding-bottom:40px;background:radial-gradient(ellipse at 50% 0,color-mix(in srgb,var(--primary) 5%,transparent),transparent 60%)}
 .cr-shell .cr-creation-hero h1.cr-hero-brand{display:flex;align-items:center;justify-content:center;gap:22px;margin:0 0 22px;font-size:38px;font-weight:700;letter-spacing:-1px;line-height:1.15}
 .cr-hero-brand-copy{text-align:left;white-space:nowrap}
-.cr-hero-brand-copy small{display:block;margin-top:9px;font-family:var(--font-geist),sans-serif;font-size:14px;font-weight:400;line-height:1;letter-spacing:3px;color:var(--secondary-text)}
+.cr-hero-brand-copy small{display:block;margin-top:9px;text-align:center;font-family:var(--font-geist),sans-serif;font-size:14px;font-weight:400;line-height:1;letter-spacing:3px;color:var(--secondary-text)}
 .cr-shell .cr-creation-hero .cr-home-composer{border-radius:20px;box-shadow:0 18px 55px var(--shadow-soft);padding:16px}
 .cr-shell .cr-creation-hero .cr-mode-tabs button[aria-selected=true]{background:var(--bg-page);color:var(--primary-text);box-shadow:0 1px 5px var(--shadow-soft);border:1px solid var(--divider-strong)}
 .cr-shell .cr-creation-hero .cr-mode-tabs button{border:1px solid transparent}

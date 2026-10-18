@@ -8,9 +8,9 @@ export const DEFAULT_ITEMS = [
     "category": "manga",
     "description": "原创双格漫画，用稳定的人设讲一个小故事。",
     "descriptionEn": "Before the rain stops",
-    "prompt": "A complete vertical 2:3 comic page, original quiet urban short story called AFTER THE RAIN. Four carefully paced panels in black ink and pale watercolor, subtle printed paper texture. Top panel spans the page: a narrow Japanese shopping street after a shower, power lines leading into the distance. Second row two small panels: a hand opening a clear umbrella; rain droplets on a vending machine. Bottom large panel: a young adult cyclist in a mustard raincoat rides away beneath a glowing shop awning, seen from behind. The vertical page creates a readable top-to-bottom narrative with thin ivory gutters. Cinematic perspective, beautifully observed everyday objects, indigo shadows, tiny vermilion accents. Only text is the small English title AFTER THE RAIN in the upper margin, no speech bubbles, no random lettering, no existing characters, no watermark.",
+    "prompt": "Create an original Japanese two-panel manga, two equally sized panels side by side in a square composition. A young adult woman with a short black bob, an ochre raincoat and a transparent umbrella waits outside a tiny flower shop in rainy Kyoto. First panel: she looks disappointed at the heavy rain, blue gray watercolor city and fine ink hatching. Second panel: a small white cat shelters under her umbrella, her expression softens into a smile, reflected warm shop light on wet pavement. Maintain exactly the same character design and outfit in both panels. Elegant hand-drawn panel borders, cinematic close and medium framing, muted indigo, ochre and warm ivory palette, detailed shoujo ink linework, gentle paper grain. No speech bubbles, no captions, no logos, no watermark. Beautiful finished comic page, nuanced expressions and clean anatomy.",
     "model": "gpt-image-2.5-flare",
-    "size": "1024x1536",
+    "size": "1024x1024",
     "quality": "medium",
     "sourceUrl": "https://github.com/jamez-bondos/awesome-gpt4o-images#cases-40",
     "sourceAuthor": "@hellokaton",
@@ -23,7 +23,7 @@ export const DEFAULT_ITEMS = [
     "aspect": "original",
     "position": 50,
     "enabled": true,
-    "imageVersion": "bb9c1ac13d3a"
+    "imageVersion": "646316969015"
   },
   {
     "id": "citrus-burst",

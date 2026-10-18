@@ -3,7 +3,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ArrowUpRight, Search, Sparkles } from "lucide-react";
 import Link from "@/components/ui/NavigationLink";
-import { INSPIRATION_CATEGORIES, inspirationImage, inspirationLabel } from "@/lib/inspiration/gallery";
+import { INSPIRATION_CATEGORIES, inspirationImage } from "@/lib/inspiration/gallery";
 import InspirationCover from "./InspirationCover";
 
 export default function InspirationGallery(props) {
@@ -25,9 +25,8 @@ function Gallery({ zh, explore }) {
   if (!gallery) return <section className="ig-section"><p role={error ? "alert" : "status"}>{zh ? (error ? "灵感库暂时无法加载。" : "正在加载灵感作品…") : (error ? "The gallery is unavailable." : "Loading inspiration…")}</p>{error && <button onClick={() => setReload(v => v + 1)}>{zh ? "重试" : "Try again"}</button>}</section>;
   const visible = gallery.items.filter(i => (category === "all" || i.category === category) && `${i.title} ${i.titleEn} ${i.description} ${i.prompt}`.toLowerCase().includes(query.toLowerCase().trim()));
   const { layout } = gallery;
-  const renderCard = (item, index) => <Link key={item.id} href={`/explore/${item.id}`} className="ig-card" aria-label={zh ? item.title : item.titleEn || item.title}>
+  const renderCard = item => <Link key={item.id} href={`/explore/${item.id}`} className="ig-card" aria-label={zh ? item.title : item.titleEn || item.title}>
     <InspirationCover item={item} src={inspirationImage(item)} mode={layout.mode} className="ig-cover" unoptimized={item.cover.type === "asset"} alt={zh ? item.title : item.titleEn || item.title}><span className="ig-use">{zh ? "以此创作" : "Create with this"}<ArrowUpRight size={14} /></span></InspirationCover>
-    <div className="ig-caption"><div><h3>{zh ? item.title : item.titleEn || item.title}</h3><p>{inspirationLabel(item, zh)}</p></div><span>{String(index + 1).padStart(2, "0")}</span></div>
   </Link>;
   return <section className="cr-inspiration ig-section">
     <div className="cr-section-heading"><div><h2><Sparkles size={19} />{zh ? "灵感发现" : "Discover inspiration"}<span>{zh ? "让好想法，成为下一件作品" : "Find your next creative direction"}</span></h2></div>{!explore && <Link href="/explore">{zh ? "探索全部" : "Explore all"}<ArrowUpRight size={15} /></Link>}</div>

@@ -1,22 +1,22 @@
 {
   "generatedAt": "2026-10-18",
   "endpoint": "https://api.callyouai.com/codex/images/generations",
-  "note": "Final selection: 8 original square works, 8 newly generated portrait works (1024x1536) and 4 newly generated landscape works (1536x1024). All 12 new outputs match requested dimensions. Preserved entire image; WebP quality 90, no cropping or stretching. Two new initial requests failed; comic succeeded on retry, travel poster succeeded after simplifying its prompt. See defaults.js for the exact successful prompts. CLI fallback used with the user-specified provider/model. Original PNG files remain local.",
+  "note": "Final selection: 9 square works, 7 native portrait works and 4 native landscape works. User-selected original two-panel umbrella-and-cat comic restored with its original prompt. Twelve alternate compositions were generated; eleven remain selected. Prior versioned asset retained for previously saved gallery references. Images preserve full composition, no cropping or stretching. CLI fallback used with the user-specified provider/model. Original PNGs remain local.",
   "images": [
     {
       "id": "rainy-comic",
       "title": "雨停之前",
       "model": "gpt-image-2.5-flare",
-      "requestedSize": "1024x1536",
+      "requestedSize": "1024x1024",
       "quality": "medium",
-      "originalSize": "1024x1536",
-      "publishedSize": "1024x1536",
-      "publishedBytes": 551908,
-      "sha256": "bb9c1ac13d3a86f5590187cfece8ead4cded432ed205f7b46a026d0f279a841c",
+      "originalSize": "1254x1254",
+      "publishedSize": "1024x1024",
+      "publishedBytes": 474734,
+      "sha256": "64631696901584c4ea918bfec154615a69cc565b1492aff8f31962450b2f8dbc",
       "sourceUrl": "https://github.com/jamez-bondos/awesome-gpt4o-images#cases-40",
       "sourceAuthor": "@hellokaton",
       "sourceLicense": "CC BY 4.0",
-      "publishedFile": "public/inspiration/generated/rainy-comic.bb9c1ac13d3a.webp"
+      "publishedFile": "public/inspiration/generated/rainy-comic.646316969015.webp"
     },
     {
       "id": "citrus-burst",

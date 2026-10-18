@@ -4,9 +4,9 @@
 
 20 个完整提示词、20 张实际调用 `gpt-image-2.5-flare` 生成的图片，替换首页和独立灵感页的默认案例。分类包含漫画叙事、创意海报、产品广告、人像时尚、艺术插画、3D 实验、空间场景。没有复制参考网站的图片，也没有使用源仓库的示例图片。
 
-生成接口为用户指定的 `https://api.callyouai.com/codex/images/generations`，模型 `gpt-image-2.5-flare`、质量 `medium`，通过 imagegen 技能的 CLI fallback 实际调用。最终精选 **8 张方图 + 8 张竖图 + 4 张横图**。方图保留原批次的优秀作品；另外 12 张针对竖版漫画、时尚封面、产品叙事、旅行海报及横向场景重新编写提示词并生成，实际返回尺寸全部为请求的 `1024x1536` / `1536x1024`。未将方图裁切、拉伸或加边冒充其他比例。新批次 2 张初次失败，漫画重试成功，旅行海报简化提示词后成功。
+生成接口为用户指定的 `https://api.callyouai.com/codex/images/generations`，模型 `gpt-image-2.5-flare`、质量 `medium`，通过 imagegen 技能的 CLI fallback 实际调用。首页与灵感列表仅展示图片，移除卡片下的标题、分类与编号；标题只用于后台检索及详情信息。用户指定的撑伞女孩与猫双格原图已恢复，使用原来的完整构图和提示词。新生成的竖版漫画退出默认精选，旧版本文件保留以兼容已有配置。最终精选 **9 张方图 + 7 张竖图 + 4 张横图**。方图保留原批次的优秀作品；另外 12 张针对竖版漫画、时尚封面、产品叙事、旅行海报及横向场景重新编写提示词并生成，实际返回尺寸全部为请求的 `1024x1536` / `1536x1024`。未将方图裁切、拉伸或加边冒充其他比例。新批次 2 张初次失败，漫画重试成功，旅行海报简化提示词后成功。
 
-发布文件转换为质量 90 的 WebP，保留完整构图，总计约 5.30 MB。旧方图中部分供应商返回 `1254x1254`，此前等比缩为 `1024x1024`。原始 PNG 保留在本地 `output/imagegen/inspiration/` 和 `output/imagegen/inspiration-native/`，不进入 Git；部署图片位于 `public/inspiration/generated/`。
+发布文件转换为质量 90 的 WebP，保留完整构图，总计约 5.22 MB。旧方图中部分供应商返回 `1254x1254`，此前等比缩为 `1024x1024`。原始 PNG 保留在本地 `output/imagegen/inspiration/` 和 `output/imagegen/inspiration-native/`，不进入 Git；部署图片位于 `public/inspiration/generated/`。
 
 逐图生成参数、实际返回尺寸、发布文件大小与 SHA-256 见 [generation-manifest.json](generation-manifest.json)。完整改编提示词见 `src/lib/inspiration/defaults.js`，前台作品详情也可查看、复制并以此创作。原始生成模型作为作品参数展示；复用时由用户在画布选择本站可用模型，不会假装已经配置此模型，也不会在打开案例时扣费生成。
 
@@ -63,7 +63,7 @@ npx playwright test tests/e2e/inspiration.spec.mjs
 
 | 作品 | 方向 / 原生尺寸 | 来源案例 / 原作者 |
 | --- | --- | --- |
-| 雨停之前 | manga · 1024x1536 | [awesome-gpt4o-images](https://github.com/jamez-bondos/awesome-gpt4o-images#cases-40) · @hellokaton |
+| 雨停之前 | manga · 1024x1024 | [awesome-gpt4o-images](https://github.com/jamez-bondos/awesome-gpt4o-images#cases-40) · @hellokaton |
 | 一口夏日 | commerce · 1024x1024 | [awesome-gpt4o-images](https://github.com/jamez-bondos/awesome-gpt4o-images#cases-100) · @azed_ai |
 | 开往夏夜的列车 | manga · 1536x1024 | [awesome-gpt4o-images](https://github.com/jamez-bondos/awesome-gpt4o-images#cases-76) · photis (Sora) |
 | 玻璃引力 | threeD · 1024x1024 | [awesome-gpt4o-images](https://github.com/jamez-bondos/awesome-gpt4o-images#cases-93) · @egeberkina |

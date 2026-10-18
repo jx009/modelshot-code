@@ -9,14 +9,14 @@ import { objectStorage } from "../../infra/storage/s3.js";
 export const IMAGE_LIMITS = Object.freeze({ bytes: 10 * 1024 * 1024, pixels: 40_000_000 });
 const formats = { png: "image/png", jpeg: "image/jpeg", webp: "image/webp" };
 
-export async function normalizeImage(bytes, declaredType) {
+export async function normalizeImage(bytes, declaredType, { maxOutputBytes = IMAGE_LIMITS.bytes } = {}) {
   if (!Buffer.isBuffer(bytes) || !bytes.length || bytes.length > IMAGE_LIMITS.bytes) throw new AppError("INVALID_IMAGE_SIZE", 413);
   try {
     const image = sharp(bytes, { limitInputPixels: IMAGE_LIMITS.pixels, failOn: "warning", animated: false });
     const meta = await image.metadata();
     if (!formats[meta.format] || (meta.pages || 1) !== 1 || (declaredType && declaredType !== formats[meta.format])) throw new AppError("INVALID_IMAGE_TYPE", 415);
     const { data, info } = await image.rotate().png().toBuffer({ resolveWithObject: true });
-    if (data.length > IMAGE_LIMITS.bytes) throw new AppError("INVALID_IMAGE_SIZE", 413);
+    if (data.length > maxOutputBytes) throw new AppError("INVALID_IMAGE_SIZE", 413);
     return { data, width: info.width, height: info.height, contentType: "image/png", bytes: data.length, checksum: createHash("sha256").update(data).digest("hex") };
   } catch (error) {
     if (error instanceof AppError) throw error;
@@ -43,8 +43,8 @@ export async function readOwnedImage(userId, reference, db = prisma, store = obj
   return store.get(asset.objectKey);
 }
 
-export async function createImage(userId, bytes, { kind = "upload", id = randomUUID(), declaredType } = {}, db = prisma, store = objectStorage()) {
-  const normalized = await normalizeImage(bytes, declaredType);
+export async function createImage(userId, bytes, { kind = "upload", id = randomUUID(), declaredType, maxOutputBytes } = {}, db = prisma, store = objectStorage()) {
+  const normalized = await normalizeImage(bytes, declaredType, { maxOutputBytes });
   const objectKey = `${userId}/${kind}/${id}.png`;
   const old = await db.asset.findUnique({ where: { id } });
   if (old) {

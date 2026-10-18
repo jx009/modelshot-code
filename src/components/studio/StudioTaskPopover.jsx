@@ -7,6 +7,7 @@ import { api } from "@/lib/client-api";
 import { getTool } from "@/lib/studio/tool-catalog";
 import { previewUrl } from "@/lib/studio/image-url";
 import { taskPhase, taskSummary } from "@/lib/studio/task-presentation";
+import { imageToolErrorMessage } from "@/lib/studio/image-tool-errors";
 import "./task-popover.css";
 
 export default function StudioTaskPopover({ documentId, jobs, pending, appliedJobs, resultStates, zh, onRetry, onCancel, onLocate }) {
@@ -48,7 +49,7 @@ export default function StudioTaskPopover({ documentId, jobs, pending, appliedJo
         const asset = job.assetId || job.resultData?.assets?.find(item => item.contentType?.startsWith("image/"))?.id;
         return <article key={job.id} className="ms-task-card" data-state={phase}>
           <div className="ms-task-thumb">{asset ? <Image unoptimized src={previewUrl(asset, 320)} width={96} height={96} alt="" /> : <Sparkles size={25} />}<span>{active ? <LoaderCircle size={16} className="ms-spin" /> : complete ? <CheckCircle2 size={16} /> : failed ? <CircleAlert size={16} /> : <X size={16} />}</span></div>
-          <div className="ms-task-details"><strong>{zh ? getTool(job.tool)?.zh : getTool(job.tool)?.en}</strong><p role="status">{labels[phase] || labels.processing}</p>{failed && job.errorCode && <small>{job.errorCode}</small>}<time dateTime={job.createdAt}>{job.createdAt ? (now - new Date(job.createdAt) < 60000 ? zh ? "刚刚" : "Just now" : now - new Date(job.createdAt) < 3600000 ? zh ? `${Math.floor((now - new Date(job.createdAt)) / 60000)} 分钟前` : `${Math.floor((now - new Date(job.createdAt)) / 60000)} min ago` : new Date(job.createdAt).toLocaleTimeString(zh ? "zh-CN" : "en-US", { hour: "2-digit", minute: "2-digit" })) : zh ? "刚刚" : "Just now"}</time>
+          <div className="ms-task-details"><strong>{zh ? getTool(job.tool)?.zh : getTool(job.tool)?.en}</strong><p role="status">{labels[phase] || labels.processing}</p>{failed && job.errorCode && <small title={job.errorCode}>{imageToolErrorMessage(job.errorCode, zh)}</small>}<time dateTime={job.createdAt}>{job.createdAt ? (now - new Date(job.createdAt) < 60000 ? zh ? "刚刚" : "Just now" : now - new Date(job.createdAt) < 3600000 ? zh ? `${Math.floor((now - new Date(job.createdAt)) / 60000)} 分钟前` : `${Math.floor((now - new Date(job.createdAt)) / 60000)} min ago` : new Date(job.createdAt).toLocaleTimeString(zh ? "zh-CN" : "en-US", { hour: "2-digit", minute: "2-digit" })) : zh ? "刚刚" : "Just now"}</time>
             <div className="ms-task-card-actions">{phase === "load-failed" && <button onClick={() => onRetry(job)}>{zh ? "重试加载" : "Retry loading"}</button>}{complete && job.resultData?.assets?.length > 0 && <button onClick={() => onLocate(job)}><LocateFixed size={13} />{zh ? "定位结果" : "Locate result"}</button>}{active && job.status !== "submitting" && phase !== "loading" && <button disabled={job.cancelRequested} onClick={() => onCancel(job)}>{job.cancelRequested ? zh ? "正在取消…" : "Cancelling…" : zh ? "取消" : "Cancel"}</button>}</div>
           </div>
         </article>;

@@ -7,6 +7,8 @@ import { toFileObject, toInlineData } from "../../src/lib/ai/adapters/base.js";
 import { passwordSchema } from "../../src/lib/domain/identity/verification.js";
 import { readJson } from "../../src/lib/http.js";
 import { z } from "zod";
+import { randomBytes } from "node:crypto";
+import { UPSCALE_MAX_NORMALIZED_BYTES } from "../../src/lib/studio/upscale.js";
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -36,6 +38,21 @@ it("validates actual image bytes, strips metadata and rejects forged MIME", asyn
   const tooManyPixels = await sharp({ create: { width: 7000, height: 7000, channels: 3, background: "white" } }).png().toBuffer();
   await expect(normalizeImage(tooManyPixels)).rejects.toThrow("INVALID_IMAGE");
 });
+
+it("allows lossless upscale PNG expansion while keeping upload and pixel limits", async () => {
+  const width = 2560, height = 2560;
+  const jpeg = await sharp(randomBytes(width * height * 3), { raw: { width, height, channels: 3 } }).jpeg({ quality: 75 }).toBuffer();
+  expect(jpeg.length).toBeLessThan(10 * 1024 * 1024);
+  await expect(normalizeImage(jpeg)).rejects.toThrow("INVALID_IMAGE_SIZE");
+  const normalized = await normalizeImage(jpeg, "image/jpeg", { maxOutputBytes: UPSCALE_MAX_NORMALIZED_BYTES });
+  expect(normalized.bytes).toBeGreaterThan(10 * 1024 * 1024);
+  expect([normalized.width, normalized.height, normalized.contentType]).toEqual([width, height, "image/png"]);
+  const decoded = await sharp(jpeg).raw().toBuffer();
+  expect((await sharp(normalized.data).raw().toBuffer()).equals(decoded)).toBe(true);
+  await expect(normalizeImage(normalized.data, undefined, { maxOutputBytes: UPSCALE_MAX_NORMALIZED_BYTES })).rejects.toThrow("INVALID_IMAGE_SIZE");
+  const tooManyPixels = await sharp({ create: { width: 7000, height: 7000, channels: 3, background: "white" } }).png().toBuffer();
+  await expect(normalizeImage(tooManyPixels, undefined, { maxOutputBytes: UPSCALE_MAX_NORMALIZED_BYTES })).rejects.toThrow("INVALID_IMAGE");
+}, 15000);
 
 it.each(["/../../.env", "/uploads/image.png", "https://example.com/x.png", "http://127.0.0.1/x", "data:image/png;base64,aGVsbG8="])("blocks unowned image reference %s", async value => {
   expect(() => assetId(value)).toThrow();

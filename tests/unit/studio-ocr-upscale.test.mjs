@@ -8,6 +8,7 @@ import { runImageTool } from "../../src/lib/domain/studio/execution.js";
 import { upscaleInputError } from "../../src/lib/studio/upscale.js";
 import { validChannel, supportsChannelCapability, toolRouting } from "../../src/lib/studio/model-channels.js";
 import { encryptSecret } from "../../src/lib/crypto.js";
+import { imageToolErrorMessage } from "../../src/lib/studio/image-tool-errors.js";
 
 const png = (width = 80, height = 60) => sharp({ create: { width, height, channels: 3, background: "white" } }).png().toBuffer();
 const upscale = { kind: "volc-visual", model: "lens_vida_nnsr", accessKeyId: "fixture-ak", secretAccessKey: "fixture-sk" };
@@ -24,6 +25,12 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 describe("dedicated OCR and Volcengine upscale", () => {
+  it("explains upscale failures in both languages and preserves unknown errors", () => {
+    expect(imageToolErrorMessage("INVALID_IMAGE_SIZE")).toContain("PNG");
+    expect(imageToolErrorMessage("UPSCALE_INPUT_DIMENSIONS")).toContain("2128");
+    expect(imageToolErrorMessage("UPSCALE_SIZE_MISMATCH", false)).toContain("2×");
+    expect(imageToolErrorMessage("CUSTOM_PROVIDER_ERROR")).toBe("CUSTOM_PROVIDER_ERROR");
+  });
   it.each(["volcengine", "openai"])("isolates %s OCR from planning and upscale from segmentation, without publishing secrets", async kind => {
     rows[1].kind = kind;
     expect(validChannel(kind, JSON.parse(rows[1].config))).toBe(true);

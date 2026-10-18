@@ -15,6 +15,7 @@ import { splitCloudImage } from "./cloud.js";
 import { creativeInstruction, focusGuide } from "./creative-tools.js";
 import { recognizeText } from "./ocr.js";
 import { upscaleVolcImage } from "./upscale.js";
+import { UPSCALE_MAX_NORMALIZED_BYTES } from "../../studio/upscale.js";
 
 export async function runImageTool(config, snapshot, image, mask, signal, adapters = {}, references = [], queue = {}) {
   const generate = adapters.generate || generateImage;
@@ -106,7 +107,7 @@ export async function executeStudio(id, { db = prisma, store = objectStorage(), 
       const modelMs = Math.round(performance.now() - modelStarted), persistStarted = performance.now();
       const assets = [];
       for (const [index, bytes] of (response.images || []).entries()) {
-        const asset = await createImage(output.userId, bytes, { id: `${id}_studio_${index}`, kind: "original" }, db, store);
+        const asset = await createImage(output.userId, bytes, { id: `${id}_studio_${index}`, kind: "original", ...(snapshot.tool === "upscale" ? { maxOutputBytes: UPSCALE_MAX_NORMALIZED_BYTES } : {}) }, db, store);
         assets.push({ ...assetSummary(asset), ...(response.labels?.[index] ? { label: response.labels[index] } : {}) });
       }
       result = { assets, timings: { modelMs, persistMs: Math.round(performance.now() - persistStarted) }, ...(response.placement ? { placement: response.placement } : {}), ...(response.text ? { text: response.text.slice(0, 8000) } : {}), ...(response.ocr ? { ocr: response.ocr } : {}) };

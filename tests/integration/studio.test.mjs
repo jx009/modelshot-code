@@ -1,5 +1,5 @@
 import { beforeAll, afterAll, describe, it, expect } from "vitest";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import sharp from "sharp";
 import { domainFixture } from "../support/domain-fixture.mjs";
 import { saveDocument } from "../../src/lib/domain/studio/documents.js";
@@ -53,6 +53,28 @@ describe("studio documents and task ledger", () => {
     await expect(submitStudioJob(user.id, { ...input, tool: "upscale", params: { scale: 4 } }, randomUUID(), f.db, deps)).rejects.toThrow("UPSCALE_SCALE_UNSUPPORTED");
     expect(await f.db.tryOn.count({ where: { userId: user.id } })).toBe(0);
     expect((await usageSummary(user.id, f.db)).reservedCredits).toBe(0);
+  });
+  it("persists a compressed upscale result whose lossless PNG exceeds 10 MB and charges once", async () => {
+    const user = await f.user(100), width = 1280, height = 1280;
+    const source = await createImage(user.id, await sharp({ create: { width, height, channels: 3, background: "white" } }).png().toBuffer(), {}, f.db, f.store);
+    const doc = await saveDocument(user.id, { name: "Large upscale", content: { schemaVersion: 1, layers: [{ id: "selected", type: "image", name: "source", assetId: source.id, x: 0, y: 0, width, height, pixelWidth: width, pixelHeight: height }], messages: [], jobs: [] } }, f.db);
+    const channel = { name: "fixture-upscale", kind: "volc-visual", model: "lens_vida_nnsr", baseURL: "https://example.com" };
+    const dedicated = { ...config, upscaleChannel: channel };
+    const job = await submitStudioJob(user.id, { tool: "upscale", documentId: doc.id, documentVersion: doc.version, targetId: "selected", assetId: source.id, params: { scale: 2 } }, randomUUID(), f.db, { ...deps, config: dedicated });
+    const jpeg = await sharp(randomBytes(width * height * 4 * 3), { raw: { width: width * 2, height: height * 2, channels: 3 } }).jpeg({ quality: 75 }).toBuffer();
+    let calls = 0;
+    const adapters = { upscale: async () => { calls++; return jpeg; } };
+    await executeStudio(job.id, { db: f.db, store: f.store, config: dedicated, adapters });
+    await executeStudio(job.id, { db: f.db, store: f.store, config: dedicated, adapters });
+    const row = await f.db.tryOn.findUnique({ where: { id: job.id } });
+    expect(row.status, row.errorCode).toBe("succeeded");
+    const asset = await f.db.asset.findUnique({ where: { id: row.resultData.assets[0].id } });
+    expect(asset).toMatchObject({ width: width * 2, height: height * 2, contentType: "image/png" });
+    expect(asset.bytes).toBeGreaterThan(10 * 1024 * 1024);
+    expect((await f.store.get(asset.objectKey)).length).toBe(asset.bytes);
+    expect(calls).toBe(1);
+    expect((await usageSummary(user.id, f.db)).credits).toBe(96);
+    expect((await f.db.creditReservation.findUnique({ where: { tryOnId: job.id } })).state).toBe("captured");
   });
   it("persists wide resolution choices and rejects unsupported dimensions before credit reservation", async () => {
     const {user,doc,input}=await setup();

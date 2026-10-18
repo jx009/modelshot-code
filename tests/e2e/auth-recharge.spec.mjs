@@ -66,7 +66,8 @@ test("root configures recharge and Google; signed HTTP callback fulfills a CNY o
     await signIn(page, email, "/en/admin/billing");
     await expect(page.getByRole("heading", { name: "充值与支付", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "添加套餐", exact: true }).click();
-    await expect(page.getByRole("textbox", { name: "中文名称", exact: true }).last()).toHaveValue("新套餐");
+    await expect(page.getByRole("textbox", { name: "中文名称", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("spinbutton", { name: "积分数", exact: true })).toHaveCount(5);
     const config = { payments_enabled: "true", epay_enabled: "true", epay_gateway: "https://gateway.example.invalid", epay_merchant_id: "fixture-pid", epay_merchant_key: key, epay_methods: ["alipay", "wxpay"], payment_public_url: baseURL };
     const saved = await page.request.patch("/api/admin/billing", { headers: headers(), data: { config, packages: DEFAULT_PACKAGES, reason } });
     expect(await saved.json()).toMatchObject({ ok: true });
@@ -85,9 +86,20 @@ test("root configures recharge and Google; signed HTTP callback fulfills a CNY o
     expect(en.products[0]).toMatchObject({ currency: "usd", amountMinor: 500 });
     expect(en.methods.some(m => m.provider === "epay")).toBe(false);
 
-    customer = await browser.newPage({ baseURL });
+    customer = await browser.newPage({ baseURL, viewport: info.project.use.viewport });
     await signIn(customer, E2E_USERS[0].email);
     expect((await customer.request.patch("/api/admin/billing", { headers: headers(), data: { config, packages: DEFAULT_PACKAGES, reason } })).status()).toBe(403);
+    await customer.goto("/zh");
+    await expect(customer.locator(".cr-logo small")).toHaveText("letaidraw");
+    await customer.locator(".cr-recharge-trigger").click();
+    const recharge = customer.getByRole("dialog");
+    await expect(recharge.getByRole("heading", { name: "积分充值", exact: true })).toBeVisible();
+    await expect(recharge.getByRole("button", { name: "1,000 积分 · ¥19.90", exact: true })).toBeVisible();
+    await expect(recharge.getByText("灵感起步", { exact: true })).toHaveCount(0);
+    await expect(recharge.getByRole("button", { name: "立即充值", exact: true })).toBeEnabled();
+    await customer.screenshot({ path: info.outputPath("recharge-amounts.png"), fullPage: true });
+    await recharge.getByRole("button", { name: "关闭充值", exact: true }).click();
+    await customer.screenshot({ path: info.outputPath("brand-navigation.png"), fullPage: false });
     const before = (await (await customer.request.get("/api/auth/session")).json()).user.credits;
     const input = { planId: "basic", locale: "zh", method: "alipay", expectedAmountMinor: 1990, expectedCredits: 1000 };
     const checkoutHeaders = headers();

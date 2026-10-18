@@ -1,0 +1,28 @@
+/* A readable brand lockup, shared with the admin console. */
+@media(min-width:901px){
+  .cr-shell .cr-sidebar{width:208px;padding:28px 18px}
+  .cr-shell .cr-main{margin-left:208px}
+  .cr-shell .cr-logo{justify-content:flex-start;gap:13px;padding:0 8px}
+  .cr-shell .cr-logo>span{display:block;font-size:23px;line-height:1.15}
+  .cr-shell .cr-logo small{display:block;font-size:10px;letter-spacing:2px;margin-top:7px}
+  .cr-shell .cr-logo svg{width:35px;height:auto}
+  .cr-shell .cr-sidebar nav{gap:8px;margin-top:40px}
+  .cr-shell .cr-sidebar nav a{flex-direction:row;justify-content:flex-start;padding:13px 12px;gap:12px;border-radius:10px}
+  .cr-shell .cr-sidebar nav a>span{width:auto;max-width:none;text-align:left;font-size:12px;white-space:nowrap}
+  .cr-shell .cr-sidebar nav svg{width:19px;height:19px;flex-shrink:0}
+}
+.cr-shell .cr-workspace-title{font-size:12px;letter-spacing:.4px;color:var(--secondary-text)}
+@media(min-width:601px) and (max-width:900px){
+  .cr-shell .cr-sidebar{width:112px;padding-inline:9px}
+  .cr-shell .cr-main{margin-left:112px}
+  .cr-shell .cr-logo{flex-direction:column;gap:10px}
+  .cr-shell .cr-logo>span{display:block;font-size:17px;text-align:center}
+  .cr-shell .cr-logo small{display:block;font-size:8px;letter-spacing:1px;margin-top:5px}
+}
+@media(max-width:600px){
+  .cr-shell .cr-logo{gap:8px}
+  .cr-shell .cr-logo>span{display:block;font-size:16px;line-height:1.1}
+  .cr-shell .cr-logo small{display:block;font-size:7px;letter-spacing:1.3px;margin-top:4px}
+  .cr-shell .cr-logo svg{width:25px;height:auto}
+  .cr-shell .cr-workspace-title{display:none}
+}

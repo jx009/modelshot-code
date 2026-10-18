@@ -6,10 +6,16 @@ import { startRecharge } from "../../src/lib/domain/billing/recharge.js";
 import { allocateInviteCode, findInviter, generateInviteCode } from "../../src/lib/domain/identity/invite-codes.js";
 import { createRegisteredUser, registrationCredits } from "../../src/lib/domain/identity/registration.js";
 import { ensureInviteCode, settleCommission } from "../../src/lib/invite-service.js";
-import { DEFAULT_PACKAGES } from "../../src/lib/domain/billing/recharge-config.js";
+import { DEFAULT_PACKAGES, packagesSchema, localizePackage } from "../../src/lib/domain/billing/recharge-config.js";
 import { billingOperation } from "../../src/lib/domain/billing/operations.js";
 
 let f, original;
+it("accepts unnamed packs and derives payment labels from credits for legacy packs too", () => {
+  const [pack] = packagesSchema.parse([DEFAULT_PACKAGES[0]]);
+  expect(localizePackage(pack, "zh")).toMatchObject({ name: "1,000 积分", amountMinor: 1990, currency: "cny" });
+  const [legacy] = packagesSchema.parse([{ ...pack, name: "Old label", nameEn: "Legacy", description: "Old copy" }]);
+  expect(localizePackage(legacy, "en")).toMatchObject({ name: "1,000 credits", description: "", amountMinor: 500, currency: "usd" });
+});
 const settings = { payments_enabled: "true", epay_enabled: "true", epay_gateway: "https://pay.example.com", epay_merchant_id: "fixture", epay_methods: "alipay,wxpay", payment_public_url: "https://studio.example.com", credit_packages: JSON.stringify(DEFAULT_PACKAGES), registration_credits: "125" };
 const cfg = { merchantKey: "fixture-merchant-key", merchantId: "fixture", enabled: false };
 const bonusUsers = [];

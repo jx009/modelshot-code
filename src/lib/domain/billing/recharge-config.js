@@ -4,7 +4,8 @@ import { AppError } from "../../http.js";
 
 export const packageSchema = z.object({
   id: z.string().regex(/^[a-zA-Z0-9_-]{1,40}$/),
-  name: z.string().trim().min(1).max(40), nameEn: z.string().trim().max(60).default(""),
+  // Legacy labels remain readable; new fixed-credit packs need only quantity and price.
+  name: z.string().trim().max(40).default(""), nameEn: z.string().trim().max(60).default(""),
   description: z.string().trim().max(180).default(""), descriptionEn: z.string().trim().max(180).default(""),
   credits: z.number().int().min(1).max(100_000_000),
   cnyMinor: z.number().int().min(1).max(100_000_000), usdMinor: z.number().int().min(1).max(100_000_000),
@@ -12,10 +13,10 @@ export const packageSchema = z.object({
 }).strict();
 export const packagesSchema = z.array(packageSchema).min(1).max(12).refine(rows => new Set(rows.map(row => row.id)).size === rows.length);
 export const DEFAULT_PACKAGES = [
-  { id: "basic", name: "灵感起步", nameEn: "Starter", credits: 1000, cnyMinor: 1990, usdMinor: 500, description: "给新灵感一次轻盈的开始", descriptionEn: "A little room for your next idea", active: true, recommended: false, sort: 0 },
-  { id: "standard", name: "日常创作", nameEn: "Creator", credits: 3000, cnyMinor: 4900, usdMinor: 1500, description: "为持续的创作留足空间", descriptionEn: "Keep your creative rhythm going", active: true, recommended: true, sort: 1 },
-  { id: "pro", name: "专业进阶", nameEn: "Professional", credits: 7000, cnyMinor: 9900, usdMinor: 3000, description: "从一张好图到一整套作品", descriptionEn: "From one great image to a complete collection", active: true, recommended: false, sort: 2 },
-  { id: "business", name: "工作室之选", nameEn: "Studio", credits: 24000, cnyMinor: 29900, usdMinor: 9000, description: "让团队的好想法持续发生", descriptionEn: "More possibilities for ambitious teams", active: true, recommended: false, sort: 3 },
+  { id: "basic", credits: 1000, cnyMinor: 1990, usdMinor: 500, active: true, recommended: false, sort: 0 },
+  { id: "standard", credits: 3000, cnyMinor: 4900, usdMinor: 1500, active: true, recommended: true, sort: 1 },
+  { id: "pro", credits: 7000, cnyMinor: 9900, usdMinor: 3000, active: true, recommended: false, sort: 2 },
+  { id: "business", credits: 24000, cnyMinor: 29900, usdMinor: 9000, active: true, recommended: false, sort: 3 },
 ];
 
 export async function getCreditPackages(db) {
@@ -27,7 +28,7 @@ export async function getCreditPackages(db) {
 
 export function localizePackage(row, locale) {
   const zh = ["zh", "cn", "zh-CN"].includes(locale);
-  return { ...row, name: zh ? row.name : row.nameEn || row.name, description: zh ? row.description : row.descriptionEn || row.description,
+  return { ...row, name: `${row.credits.toLocaleString(zh ? "zh-CN" : "en-US")} ${zh ? "积分" : "credits"}`, description: "",
     type: "credits", currency: zh ? "cny" : "usd", amountMinor: zh ? row.cnyMinor : row.usdMinor };
 }
 

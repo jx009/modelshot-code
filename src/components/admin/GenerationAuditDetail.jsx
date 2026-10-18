@@ -55,6 +55,7 @@ function JsonSection({ title, value }) {
 export default function GenerationAuditDetail({ id, onClose }) {
   const { data, error, loading, reload } = useRemoteResource(`/api/admin/tryons/${encodeURIComponent(id)}`);
   const result = data?.resultData;
+  const imageRequest = data?.steps?.find(step => step.kind === "studio-image-request")?.report;
   const recognizedText = result?.text || result?.ocr?.boxes?.map(box => box.text).join("\n");
   return <Modal label="生成任务审计详情" onClose={onClose} className={styles.dialog}>
     <header className={styles.header}><div><h2>生成任务审计详情</h2><p>{data ? `${data.toolLabel} · ${data.userEmail || data.userName || data.userId}` : id}</p></div>
@@ -70,7 +71,7 @@ export default function GenerationAuditDetail({ id, onClose }) {
           ["创建时间", time(data.createTime)], ["更新时间", time(data.updateTime)],
           ["耗时", data.durationMs != null ? `${(data.durationMs / 1000).toFixed(1)} 秒` : null],
           ["画面规格", data.params?.size || data.aspectRatio || data.platformSpec],
-          ["任务 ID", data.id], ["用户 ID", data.userId], ["请求 ID", data.requestId],
+          ["任务 ID", data.id], ["用户 ID", data.userId], ["本站请求 ID", data.requestId], ["上游请求 ID", imageRequest?.response?.requestId], ["上游 HTTP 状态", imageRequest?.response?.status],
           ["画布 ID", data.documentId], ["项目 ID", data.projectId], ["批次 ID", data.batchJobId], ["重试来源", data.retryOfId],
           ["QA / 复核", data.qaStatus], ["QA 评分", data.qaScore],
         ].filter(([, value]) => value != null && value !== "").map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
@@ -79,7 +80,7 @@ export default function GenerationAuditDetail({ id, onClose }) {
         </div>}
         {data.inputNotRecorded && <p className={styles.notice}>这是一条旧版文字任务，当时未保存原始输入，无法补回；更新后的任务会保留完整输入。</p>}
         <TextBlock title="用户原始提示词" text={data.userPrompt} />
-        {data.prompt !== data.userPrompt && <TextBlock title="任务执行提示词" text={data.prompt} />}
+        {(imageRequest?.instruction || data.prompt !== data.userPrompt) && <TextBlock title="任务执行提示词" text={imageRequest?.instruction || data.prompt} />}
         <MediaGallery title="输入与参考图" items={data.inputs || []} />
         <MediaGallery title="生成结果" items={data.outputs || []} />
         {recognizedText && <TextBlock title={data.tool === "ocr" ? "识别文字" : "文字结果"} text={recognizedText} />}

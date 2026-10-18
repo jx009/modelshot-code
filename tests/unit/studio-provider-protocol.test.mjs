@@ -1,6 +1,8 @@
 import { beforeAll, afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import http from "node:http";
 import sharp from "sharp";
+import { runImageTool } from "../../src/lib/domain/studio/execution.js";
+import { expansionPadding } from "../../src/lib/studio/edit-geometry.js";
 import { capabilities, generateImage, studioConfig, videoRequest, vision } from "../../src/lib/domain/studio/providers.js";
 
 afterEach(() => vi.unstubAllEnvs());
@@ -17,7 +19,7 @@ beforeAll(async () => {
     res.setHeader("Content-Type", "application/json");
     if (req.url.endsWith("/tasks/remote-id")) return res.end(JSON.stringify({ status: "succeeded", content: { video_url: "https://example.com/result.mp4" } }));
     if (req.url.endsWith("/tasks")) return res.end(JSON.stringify({ id: "remote-id" }));
-    if (req.url.endsWith("/chat/completions")) return res.end(JSON.stringify({ choices: [{ message: { content: "Image description" } }] }));
+    if (req.url.endsWith("/chat/completions")) return res.end(JSON.stringify({ choices: [{ message: { content: body.toString().includes("简体中文") ? "红色主体，简洁构图，柔和自然光。" : "Image description" } }] }));
     res.end(JSON.stringify({ data: [{ b64_json: png.toString("base64") }] }));
   });
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
@@ -26,6 +28,35 @@ beforeAll(async () => {
 afterAll(async () => { await new Promise(resolve => server.close(resolve)); });
 
 describe("studio real HTTP protocol against isolated fixture", () => {
+  it.each(["expand", "inpaint"])("sends %s as one ordinary image edit without a hidden guide or mask", async tool => {
+    const image = await sharp({ create: { width: 90, height: 90, channels: 3, background: "red" } }).png().toBuffer();
+    const mask = await sharp({ create: { width: 90, height: 90, channels: 3, background: "white" } }).png().toBuffer();
+    const start = calls.length;
+    const output = await runImageTool({ apiKey: "fixture", baseURL: `${base}/v1`, imageModel: "gpt-image-2.5-flare" },
+      { tool, params: { prompt: "删除花盆，补全背景", size: "1:1@1K", padding: expansionPadding(90, 90, "16:9") } }, image, mask);
+    const sent = calls.slice(start);
+    expect(sent).toHaveLength(1);
+    expect(sent[0].path).toBe("/v1/images/edits");
+    const body = sent[0].body.toString();
+    expect(body.match(/name="image";/g)).toHaveLength(1);
+    expect(body).toContain('filename="image.jpg"');
+    expect(body).toContain('Content-Type: image/jpeg');
+    expect(body).not.toContain('name="mask"');
+    expect(body).not.toContain("style-reference");
+    expect(body).toContain(`name="size"\r\n\r\n${tool === "expand" ? "1360x768" : "1024x1024"}`);
+    expect(output.images[0]).toEqual(png); // Successful native result is not cropped or rejected.
+  });
+  it("requires Chinese in both the system instruction and final vision message even with an English request", async () => {
+    const start = calls.length;
+    const result = await runImageTool({ apiKey: "fixture", baseURL: `${base}/v1`, chatModel: "vision-model" },
+      { tool: "describe", params: { prompt: "Describe this photo in English" } }, png);
+    expect(result.text).toBe("红色主体，简洁构图，柔和自然光。");
+    expect(calls.slice(start)).toHaveLength(1);
+    const { messages } = JSON.parse(calls.at(-1).body);
+    expect(messages[0].content).toContain("最终提示词必须使用简体中文");
+    expect(messages.at(-1).content[0].text).toContain("请用简体中文");
+    expect(messages).toHaveLength(2);
+  });
   it("sends explicit ratio/resolution as pixels in generation JSON and edit multipart", async () => {
     await generateImage({apiKey:"fixture",baseURL:`${base}/v1`,imageModel:"image-model"},{prompt:"Portrait",size:"1:4@2K"});
     expect(JSON.parse(calls.at(-1).body).size).toBe("1024x4096");

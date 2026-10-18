@@ -7,7 +7,7 @@ import { maskPixels } from "./pixels.js";
 import { segmentMaskScore } from "./segmentation.js";
 import { segmentVolcImage, splitVolcImage } from "./volc-visual.js";
 
-const dataURL = bytes => `data:image/png;base64,${bytes.toString("base64")}`;
+const dataURL = bytes => `data:image/${bytes[0] === 0xff && bytes[1] === 0xd8 ? "jpeg" : "png"};base64,${bytes.toString("base64")}`;
 const maxImageBytes = 10 * 1024 * 1024;
 
 export async function providerImage(value) {
@@ -38,10 +38,10 @@ export async function regionGuide(image, mask) {
   return sharp(image).composite([{ input: rgba, raw: { width, height, channels: 4 } }]).png().toBuffer();
 }
 
-export async function generateCloudImage(config, { image, references = [], mask, prompt, size = "1024x1024", signal }) {
+export async function generateCloudImage(config, { image, references = [], mask, prompt, size = "1024x1024", sizeSource, signal }) {
   const kind = config.imageKind;
   const legacySize = LEGACY_IMAGE_SIZES.includes(size);
-  const source = image && !legacySize ? await sharp(image).metadata() : null;
+  const source = sizeSource || (image && !legacySize ? await sharp(image).metadata() : null);
   const sizeError = imageSizeError(config, size, source);
   if (sizeError) throw new AppError(sizeError, 422);
   size = resolveImageSize(size, source);

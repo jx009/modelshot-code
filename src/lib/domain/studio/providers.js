@@ -132,22 +132,23 @@ export function imageClient(config, { imageRequest = false } = {}) {
   return new OpenAI({ apiKey: config.apiKey, baseURL: config.baseURL?.replace(/\/images\/(generations|edits)\/?$/, ""), maxRetries: 0,
     timeout: imageRequest ? IMAGE_REQUEST_TIMEOUT_MS : 150000, ...(imageRequest ? { fetch: imageFetch } : {}) });
 }
-export async function generateImage(config, { image, references = [], mask, prompt, size, signal }) {
+export async function generateImage(config, { image, references = [], mask, prompt, size, sizeSource, signal, onResponse }) {
   if (!config.apiKey) throw new AppError("PROVIDER_UNAVAILABLE", 503);
   if (!supportsImageTask(config, image ? "edit" : "generate")) throw new AppError("PROVIDER_CAPABILITY_UNSUPPORTED", 422);
-  if (["dashscope", "volcengine"].includes(config.imageKind)) return generateCloudImage(config, { image, references, mask, prompt, size, signal });
-  const source = image && size?.includes("@") ? await sharp(image).metadata() : null;
+  if (["dashscope", "volcengine"].includes(config.imageKind)) return generateCloudImage(config, { image, references, mask, prompt, size, sizeSource, signal });
+  const source = sizeSource || (image && size?.includes("@") ? await sharp(image).metadata() : null);
   const sizeError = imageSizeError(config, size, source);
   if (sizeError) throw new AppError(sizeError, 422);
   size = resolveImageSize(size, source);
   const client = imageClient(config, { imageRequest: true });
   let result;
   if (image) {
-    const file = await toFile(image, "image.png", { type: "image/png" });
+    const format = (await sharp(image).metadata()).format;
+    const file = await toFile(image, format === "jpeg" ? "image.jpg" : "image.png", { type: format === "jpeg" ? "image/jpeg" : "image/png" });
     const files = [file, ...await Promise.all(references.map((ref, i) => toFile(ref, `style-reference-${i + 1}.png`, { type: "image/png" })))];
     const maskFile = mask ? await toFile(mask, "mask.png", { type: "image/png" }) : undefined;
     result = config.baseURL
-      ? await editThroughCompatibleGateway({ baseURL: config.baseURL, apiKey: config.apiKey, images: files, mask: maskFile, model: config.imageModel, prompt, size, signal })
+      ? await editThroughCompatibleGateway({ baseURL: config.baseURL, apiKey: config.apiKey, images: files, mask: maskFile, model: config.imageModel, prompt, size, signal, onResponse })
       : await client.images.edit({ model: config.imageModel, image: files.length === 1 ? file : files, ...(maskFile ? { mask: maskFile } : {}), prompt, size }, { signal });
   } else result = await client.images.generate({ model: config.imageModel, prompt, size, n: 1 }, { signal });
   const data = result.data?.[0];

@@ -22,6 +22,21 @@ it("does not add vertical margins when the source already fits an exact landscap
   expect(padding).toEqual({ left: 350, right: 350, top: 0, bottom: 0 });
 });
 
+it.each(["expand", "inpaint"])("bounds the %s reference input at 3072px and exports a JPEG without changing the requested output size", async tool => {
+  const image = await solid("red", 3200, 1800);
+  const mask = tool === "inpaint" ? await solid("white", 3200, 1800) : null;
+  const generate = vi.fn(async () => solid("blue", 120, 60));
+  const result = await runGuidedEdit({}, { tool, params: { size: "auto@2K", padding: { left: 100, right: 100, top: 0, bottom: 0 }, prompt: "补全" } }, image, mask, undefined, generate);
+  const request = generate.mock.calls[0][1], input = await sharp(request.image).metadata();
+  expect(input.format).toBe("jpeg");
+  expect(input.width).toBe(3072);
+  expect(input.height).toBeLessThanOrEqual(3072);
+  expect(request.sizeSource).toEqual({ width: tool === "expand" ? 3400 : 3200, height: 1800 });
+  expect(request.mask).toBeUndefined();
+  expect(result.edit.inputMode).toBe(tool === "expand" ? "green-expansion-canvas" : "single-green-guide");
+  expect(generate).toHaveBeenCalledTimes(1);
+});
+
 it("marks only the selected pixels green without replacing the original input", async () => {
   const image = await solid("red");
   const mask = await sharp(await solid("black")).composite([{ input: await solid("white", 20, 20), left: 30, top: 30 }]).png().toBuffer();
@@ -35,9 +50,17 @@ it("expansion ignores the composer's square ratio and never pastes the old cente
   const image = await solid("red", 90, 90), padding = expansionPadding(90, 90, "16:9");
   let request;
   const result = await runGuidedEdit({ baseURL: "https://example.invalid/v1" }, { tool: "expand", params: { size: "1024x1024", padding, prompt: "Extend the garden" } }, image, null, undefined,
-    async (_config, args) => { request = args; const { width, height } = await sharp(args.image).metadata(); return solid("blue", width, height); });
+    async (_config, args) => { request = args; return solid("blue", 160, 90); });
   const frame = await sharp(request.image).metadata();
-  expect(frame.width / frame.height).toBeCloseTo(16 / 9, 1);
+  expect(frame).toMatchObject({ width: 160, height: 90, format: "jpeg" });
+  const sample = async (left, top) => [...await sharp(request.image).extract({ left, top, width: 1, height: 1 }).removeAlpha().raw().toBuffer()];
+  const margin = await sample(5, 45), source = await sample(80, 45);
+  expect(margin[1]).toBeGreaterThan(250); expect(margin[0]).toBeLessThan(5);
+  expect(source[0]).toBeGreaterThan(250); expect(source[1]).toBeLessThan(5);
+  expect(request.sizeSource).toEqual({ width: 160, height: 90 });
+  expect(request.mask).toBeUndefined();
+  expect(request.references).toHaveLength(0);
+  expect(request.prompt).toContain("16:9");
   expect(request.size).toBe("auto@1K");
   expect(await sharp(result.images[0]).metadata()).toMatchObject({ width: 160, height: 90 });
   expect([...await sharp(result.images[0]).raw().toBuffer()].slice(0, 4)).toEqual([0, 0, 255, 255]);
@@ -46,16 +69,16 @@ it("expansion ignores the composer's square ratio and never pastes the old cente
   expect(result.edit.instruction).toContain("Extend the garden");
 });
 
-it("rejects an incompatible provider aspect ratio rather than stretching it", async () => {
-  await expect(runGuidedEdit({}, { tool: "expand", params: { size: "1024x1024", padding: { left: 40, right: 40, top: 0, bottom: 0 }, prompt: "Expand" } },
-    await solid("red"), null, undefined, () => solid("blue"))).rejects.toThrow("EDIT_GEOMETRY_MISMATCH");
+it("preserves a valid provider image despite a different ratio, without stretching or discarding it", async () => {
+  const generated = await solid("blue", 1536, 1024);
+  const result = await runGuidedEdit({}, { tool: "expand", params: { size: "1024x1024", padding: { left: 40, right: 40, top: 0, bottom: 0 }, prompt: "Expand" } },
+    await solid("red"), null, undefined, () => generated);
+  expect(result.images[0]).toEqual(generated);
+  expect(result.edit.warning).toBe("PROVIDER_ASPECT_RATIO_DIFFERENT");
 });
-it("does not deliver a transparent unfilled expansion as a successful result", async () => {
+it("rejects corrupt bytes instead of declaring an image successful", async () => {
   await expect(runGuidedEdit({}, { tool: "expand", params: { size: "1024x1024", padding: 32, prompt: "Expand" } },
-    await solid("red"), null, undefined, async (_config, args) => {
-      const { width, height } = await sharp(args.image).metadata();
-      return solid({ r: 0, g: 0, b: 0, alpha: 0 }, width, height);
-    })).rejects.toThrow("EDIT_INCOMPLETE");
+    await solid("red"), null, undefined, async () => Buffer.from("not an image"))).rejects.toThrow();
 });
 
 it("adapts cloud edits to a visual guide without adding a second conflicting mask guide", async () => {
@@ -64,13 +87,15 @@ it("adapts cloud edits to a visual guide without adding a second conflicting mas
     await solid("red"), await solid("white"), undefined, generate);
   const request = generate.mock.calls[0][1];
   expect(request.mask).toBeUndefined();
-  expect(request.references).toHaveLength(1);
+  expect(request.references).toHaveLength(0);
   expect(request.size).toBe("auto@2K");
-  expect(request.prompt).toContain("do not blur");
+  expect(request.prompt).toContain("不能用模糊");
+  const selected = [...await sharp(request.image).raw().toBuffer()].slice(0, 3);
+  expect(selected[0]).toBeLessThan(5); expect(selected[1]).toBeGreaterThan(250); expect(selected[2]).toBeLessThan(5);
   expect(result.edit.originalPrompt).toBe("删除花盆");
 });
 
-it("uses a legal letterbox frame for older official image models", () => {
+it("uses a legal output size for older official image models", () => {
   const resolved = editOutputSize({ imageModel: "gpt-image-1" }, "1:1@1K", { width: 1600, height: 900 });
   expect(resolved).toEqual({ choice: "1536x1024", dimensions: "1536x1024", error: null });
 });

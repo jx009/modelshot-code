@@ -25,7 +25,7 @@ function providerError(response, payload) {
   return error;
 }
 
-export async function editThroughCompatibleGateway({ baseURL, apiKey, images, mask, model, prompt, size, quality, signal, fetcher = imageFetch }) {
+export async function editThroughCompatibleGateway({ baseURL, apiKey, images, mask, model, prompt, size, quality, signal, onResponse, fetcher = imageFetch }) {
   const form = new FormData();
   form.append("model", model);
   form.append("prompt", prompt);
@@ -42,6 +42,10 @@ export async function editThroughCompatibleGateway({ baseURL, apiKey, images, ma
   const text = await response.text();
   let payload;
   try { payload = text ? JSON.parse(text) : {}; } catch { payload = { message: text }; }
+  const candidate = response.headers.get("x-request-id") || response.headers.get("request-id") || payload?.request_id;
+  const requestId = typeof candidate === "string" && /^[a-zA-Z0-9_.:-]{1,256}$/.test(candidate) ? candidate : null;
+  await onResponse?.({ status: response.status, requestId, hasImage: Boolean(payload?.data?.[0]?.b64_json || payload?.data?.[0]?.url),
+    responseType: payload?.data?.[0]?.b64_json ? "base64" : payload?.data?.[0]?.url ? "url" : "no-image" });
   if (!response.ok) throw providerError(response, payload);
   return payload;
 }

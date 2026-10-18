@@ -1,6 +1,7 @@
 import { beforeAll, afterAll, describe, it, expect } from "vitest";
 import { randomBytes, randomUUID } from "node:crypto";
 import sharp from "sharp";
+import http from "node:http";
 import { domainFixture } from "../support/domain-fixture.mjs";
 import { saveDocument } from "../../src/lib/domain/studio/documents.js";
 import { submitStudioJob } from "../../src/lib/domain/studio/jobs.js";
@@ -27,6 +28,51 @@ async function setup() {
 describe("studio documents and task ledger", () => {
   beforeAll(async () => { f = await domainFixture(); });
   afterAll(async () => { await f?.cleanup(); });
+  it("persists real gateway edit success and correlates rejected requests without losing prompts", async () => {
+    const calls = [];
+    let reject = false;
+    const server = http.createServer(async (request, response) => {
+      const parts = []; for await (const part of request) parts.push(part);
+      calls.push(Buffer.concat(parts).toString());
+      response.setHeader("content-type", "application/json");
+      response.setHeader("x-request-id", `gateway-${calls.length}`);
+      response.statusCode = reject ? 400 : 200;
+      response.end(JSON.stringify(reject ? { error: { code: "request_failed", message: "Unable to generate result" } } : { data: [{ b64_json: f.image.toString("base64") }] }));
+    });
+    await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+    const gateway = { ...config, apiKey: "fixture-only", baseURL: `http://127.0.0.1:${server.address().port}/v1` };
+    try {
+      for (const tool of ["expand", "inpaint"]) {
+        for (const rejected of [false, true]) {
+          reject = rejected;
+          const { user, input } = await setup();
+          const mask = await createImage(user.id, await sharp({ create: { width: user.asset.width, height: user.asset.height, channels: 3, background: "white" } }).png().toBuffer(), {}, f.db, f.store);
+          const job = await submitStudioJob(user.id, { ...input, tool, ...(tool === "inpaint" ? { maskId: mask.id } : {}),
+            params: { prompt: "删除花盆", padding: expansionPadding(user.asset.width, user.asset.height, "16:9") } }, randomUUID(), f.db, { ...deps, config: gateway });
+          const before = calls.length;
+          await executeStudio(job.id, { db: f.db, store: f.store, config: gateway });
+          await executeStudio(job.id, { db: f.db, store: f.store, config: gateway });
+          expect(calls).toHaveLength(before + 1);
+          expect(calls.at(-1).match(/name="image";/g)).toHaveLength(1);
+          expect(calls.at(-1)).not.toContain('name="mask"');
+          const row = await f.db.tryOn.findUnique({ where: { id: job.id }, include: { attempts: true } });
+          const report = (await f.db.processingStep.findUnique({ where: { entityId_kind: { entityId: job.id, kind: "studio-image-request" } } })).report;
+          expect(report.instruction).toContain("删除花盆");
+          expect(report.maskSent).toBe(false);
+          expect(report.response).toMatchObject({ status: rejected ? 400 : 200, requestId: `gateway-${calls.length}`, hasImage: !rejected });
+          expect(JSON.stringify(report)).not.toContain("fixture-only");
+          expect(row.attempts[0].requestId).toBe(`gateway-${calls.length}`);
+          expect(row.status).toBe(rejected ? "failed" : "succeeded");
+          if (rejected) expect(row.errorCode).toContain("HTTP 400: request_failed");
+          else {
+            const result = await f.db.asset.findUnique({ where: { id: row.resultData.assets[0].id } });
+            expect(result.checksum).toBe(user.asset.checksum);
+          }
+          expect((await usageSummary(user.id, f.db)).credits).toBe(rejected ? 100 : 82);
+        }
+      }
+    } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
+  });
   it("persists chat versus canvas origin and rejects changing origin on an idempotent retry", async () => {
     const { user, input } = await setup();
     for (const origin of ["chat", "canvas"]) {
@@ -81,8 +127,9 @@ describe("studio documents and task ledger", () => {
         vision: async () => { languageCalls++; throw new Error("Must not call a language model"); },
         generate: async (_config, args) => {
           imageCalls++;
-          expect(args.references).toHaveLength(1);
-          const { width, height } = await sharp(args.image).metadata();
+          expect(args.references).toHaveLength(0);
+          expect(args.mask).toBeUndefined();
+          const { width, height } = args.sizeSource;
           return sharp({ create: { width, height, channels: 4, background: "blue" } }).png().toBuffer();
         },
       };
@@ -221,7 +268,8 @@ describe("studio documents and task ledger", () => {
     await executeStudio(job.id, { db: f.db, store: f.store, config: gateway, adapters: { generate: async (actual, request) => {
       calls++;
       expect(actual.baseURL).toBe(gateway.baseURL);
-      expect(Buffer.isBuffer(request.mask)).toBe(true);
+      expect(request.mask).toBeUndefined();
+      expect(await sharp(request.image).metadata()).toMatchObject({ format: "jpeg" });
       return f.image;
     } } });
     expect(calls).toBe(1);

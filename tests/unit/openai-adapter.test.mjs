@@ -49,13 +49,16 @@ describe("OpenAI-compatible image edits", () => {
   });
 
   it("preserves provider status and message on rejection", async () => {
+    const onResponse = vi.fn();
     await expect(editThroughCompatibleGateway({
       baseURL: "https://gateway.example/v1",
       apiKey: "platform-key",
       images: [new File([pixel], "image.png", { type: "image/png" })],
       model: "gpt-image-2",
       prompt: "Fashion photo",
-      fetcher: async () => new Response(JSON.stringify({ error: { code: "blocked", message: "Request blocked" } }), { status: 403 }),
+      onResponse,
+      fetcher: async () => new Response(JSON.stringify({ error: { code: "blocked", message: "Request blocked" } }), { status: 403, headers: { "x-request-id": "upstream-error-123" } }),
     })).rejects.toMatchObject({ status: 403, code: "blocked", message: "Request blocked" });
+    expect(onResponse).toHaveBeenCalledWith({ status: 403, requestId: "upstream-error-123", hasImage: false, responseType: "no-image" });
   });
 });

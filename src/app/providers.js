@@ -3,18 +3,13 @@
 import { SessionProvider, getSession } from "next-auth/react";
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
-import { usePathname } from "next/navigation";
 import { AuthProvider } from "@/components/auth/AuthProvider";
 import { RechargeProvider } from "@/components/billing/RechargeProvider";
 
 function SessionRefresh({ onRecovered }) {
   const { data: session, status, update } = useSession();
-  const pathname = usePathname();
-  useEffect(() => {
-    if (session?.user?.id) void update();
-    // update changes after fetching; navigation is the intended trigger.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname]);
+  // SessionProvider already refreshes on focus and its interval. Calling update()
+  // on every navigation adds a CSRF round trip and temporarily sets loading.
   useEffect(() => {
     const refresh = () => { if (session?.user?.id) void update(); };
     window.addEventListener("online", refresh);
@@ -40,7 +35,7 @@ function SessionRefresh({ onRecovered }) {
     window.addEventListener("focus", probe);
     void probe();
     return () => { active = false; clearInterval(timer); window.removeEventListener("online", probe); window.removeEventListener("focus", probe); };
-  }, [status, pathname, onRecovered]);
+  }, [status, onRecovered]);
   return null;
 }
 

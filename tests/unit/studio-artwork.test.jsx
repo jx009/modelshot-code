@@ -1,7 +1,10 @@
 // @vitest-environment jsdom
-import { render, waitFor } from "@testing-library/react";
-import { expect, it, vi } from "vitest";
+import { act, cleanup, render, waitFor } from "@testing-library/react";
+import { afterEach, expect, it, vi } from "vitest";
 import CanvasArtwork from "../../src/components/studio/canvas/CanvasArtwork";
+import { loadImage } from "@/lib/studio/image-processor";
+
+afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 const nodes = vi.hoisted(() => ({ image: vi.fn() }));
 vi.mock("react-konva", () => ({
@@ -11,6 +14,24 @@ vi.mock("react-konva", () => ({
   Group: ({ children }) => <div>{children}</div>,
 }));
 vi.mock("@/lib/studio/image-processor", () => ({ loadImage: vi.fn().mockResolvedValue({ naturalWidth: 200, naturalHeight: 150 }) }));
+
+it("browses with previews and fetches an original only for a sustained selected zoom", async () => {
+  vi.useFakeTimers();
+  const props = { layers: [{ id: "large", type: "image", assetId: "large-photo", visible: true, x: 0, y: 0, width: 800, height: 600, pixelWidth: 4096, pixelHeight: 3072 }], camera: { x: 0, y: 0, scale: 1 }, dimensions: { width: 800, height: 600 }, selectedId: "large", interactive: false, accent: "#fff", onError: vi.fn(), onPreview: vi.fn(), onSelect: vi.fn(), onChange: vi.fn() };
+  const view = render(<CanvasArtwork {...props} />);
+  await act(async () => vi.advanceTimersByTimeAsync(1000));
+  expect(loadImage.mock.calls.map(([url]) => url)).toEqual(["/api/assets/large-photo?preview=1280"]);
+  view.rerender(<CanvasArtwork {...props} camera={{ x: 0, y: 0, scale: 2 }} />);
+  await act(async () => vi.advanceTimersByTimeAsync(400));
+  expect(loadImage).toHaveBeenCalledTimes(1);
+  view.rerender(<CanvasArtwork {...props} />);
+  await act(async () => vi.advanceTimersByTimeAsync(1000));
+  expect(loadImage).toHaveBeenCalledTimes(1);
+  view.rerender(<CanvasArtwork {...props} camera={{ x: 0, y: 0, scale: 2 }} />);
+  await act(async () => vi.advanceTimersByTimeAsync(700));
+  expect(loadImage.mock.calls.map(([url]) => url)).toEqual(["/api/assets/large-photo?preview=1280", "/api/assets/large-photo"]);
+  expect(props.onError).not.toHaveBeenCalled();
+});
 
 it("skips unchanged image nodes while retaining individual selection and geometry updates", async () => {
   const layers = Array.from({ length: 64 }, (_, i) => ({ id: `layer-${i}`, type: "image", assetId: "fixture", visible: true, x: i % 8 * 20, y: Math.floor(i / 8) * 20, width: 20, height: 20 }));

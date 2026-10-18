@@ -48,7 +48,7 @@ export default function AnnouncementBanner() {
     window.addEventListener("focus", refresh);
     window.addEventListener("announcements-updated", refresh);
     return () => { active = false; controller?.abort(); clearInterval(timer); window.removeEventListener("focus", refresh); window.removeEventListener("announcements-updated", refresh); };
-  }, [pathname, admin]);
+  }, [admin]);
 
   useLayoutEffect(() => {
     const root = document.documentElement;

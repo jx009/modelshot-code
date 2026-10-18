@@ -17,8 +17,11 @@ function projectURL(id, createKey, push = false) {
 }
 
 export function useStudioProject({ userId, sessionLoading = false, initialDocument, initialPrompt = "", initialSize = "1024x1024", initialCount = 1, initialFixed = "", paused, onError }) {
+  // A background session refresh must not reload an already authenticated canvas.
+  const awaitingSession = !userId && sessionLoading;
   const [draft, setDraft] = useState(emptyProject), draftRef = useRef(draft);
   const [saveState, setSaveState] = useState("loading"), [ready, setReady] = useState(false);
+  const loadController = useRef(null), loadTarget = useRef(null), editingReady = useRef(false);
   const revision = useRef(0), savedRevision = useRef(0), epoch = useRef(0), queue = useRef(Promise.resolve()), localWrite = useRef(Promise.resolve());
   const errorRef = useRef(onError); useEffect(() => { errorRef.current = onError; }, [onError]);
   const persist = useCallback(value => {
@@ -28,6 +31,7 @@ export function useStudioProject({ userId, sessionLoading = false, initialDocume
     localWrite.current.catch(() => errorRef.current("LOCAL_SAVE_FAILED"));
   }, [userId]);
   const update = useCallback(next => {
+    if (!editingReady.current) return draftRef.current;
     const value = typeof next === "function" ? next(draftRef.current) : next;
     if (value === draftRef.current) return value;
     revision.current++;
@@ -37,6 +41,7 @@ export function useStudioProject({ userId, sessionLoading = false, initialDocume
   }, [persist]);
 
   const save = useCallback((copy = false) => {
+    if (!editingReady.current) return Promise.reject(new Error("DOCUMENT_LOADING"));
     const scope = epoch.current;
     const task = async () => {
       if (scope !== epoch.current) throw new Error("SESSION_CLOSED");
@@ -98,6 +103,9 @@ export function useStudioProject({ userId, sessionLoading = false, initialDocume
 
   const load = useCallback(async (id, token, push = false, remoteOnly = false) => {
     const scope = ++epoch.current;
+    editingReady.current = false;
+    loadTarget.current = { id, token, push, remoteOnly };
+    loadController.current?.abort();
     setReady(false); setSaveState("loading");
     let cached = remoteOnly ? null : await readProjectDraft(userId, id || token).catch(() => null);
     if (!cached && !remoteOnly) {
@@ -111,26 +119,38 @@ export function useStudioProject({ userId, sessionLoading = false, initialDocume
       } catch { /* The cloud copy remains the fallback for invalid legacy drafts. */ }
     }
     let value = cached || { ...emptyProject(), ...(initialPrompt ? { composer: { text: initialPrompt, size: initialSize, outputCount: initialCount, fixedPrompt: initialFixed } } : {}), ...(token ? { createKey: token } : {}) };
+    if (scope !== epoch.current) return;
+    // Paint the user's local copy while cloud validation is pending. Editing and
+    // saving stay gated by ready until versions and pending writes are reconciled.
+    draftRef.current = value; setDraft(value);
     let conflict = false;
     if (id) {
+      const controller = new AbortController();
+      loadController.current = controller;
+      const timeout = setTimeout(() => controller.abort(new Error("DOCUMENT_LOAD_TIMEOUT")), 15000);
       try {
-        const remote = await api(`/api/studio/documents/${encodeURIComponent(id)}?pagedLayers=1`);
+        const remote = await api(`/api/studio/documents/${encodeURIComponent(id)}?pagedLayers=1`, { signal: controller.signal });
         const pending = cached?._pendingSave;
         if (pending?.saveKey && remote.lastSaveKey === pending.saveKey && remote.version === (pending.id ? pending.version + 1 : 1)) {
           cached = { ...cached, version: remote.version, _pendingSave: undefined };
           value = cached;
         }
         if (!cached?._dirty && remote.layerCount > remote.content.layers.length) {
-          const chunks = await Promise.all(Array.from({ length: Math.ceil(remote.layerCount / 100) - 1 }, (_, index) => api(`/api/studio/documents/${encodeURIComponent(id)}/layers?offset=${(index + 1) * 100}&version=${remote.version}`)));
+          const chunks = await Promise.all(Array.from({ length: Math.ceil(remote.layerCount / 100) - 1 }, (_, index) => api(`/api/studio/documents/${encodeURIComponent(id)}/layers?offset=${(index + 1) * 100}&version=${remote.version}`, { signal: controller.signal })));
           remote.content.layers = [...remote.content.layers, ...chunks.flatMap(chunk => chunk.items)];
           if (remote.content.layers.length !== remote.layerCount) throw new Error("DOCUMENT_INCOMPLETE");
         }
         if (cached?._dirty && cached.version !== remote.version) conflict = true;
         if (!cached?._dirty) value = { ...emptyProject(), ...remote.content, id: remote.id, version: remote.version, name: remote.name, nameSource: remote.nameSource, _dirty: false };
-      } catch (error) { if (!cached || error.code === "DOCUMENT_NOT_FOUND") throw error; errorRef.current(error); }
+      } catch (error) {
+        if (scope !== epoch.current) return;
+        if (!cached || ["DOCUMENT_NOT_FOUND", "UNAUTHORIZED", "FORBIDDEN"].includes(error.code)) { setSaveState("load-error"); throw error; }
+        errorRef.current(error);
+      } finally { clearTimeout(timeout); }
     }
     if (scope !== epoch.current) return;
     revision.current = value._dirty ? 1 : 0; savedRevision.current = 0;
+    editingReady.current = true;
     draftRef.current = value; setDraft(value); setReady(true);
     setSaveState(conflict ? "conflict" : value._dirty ? "local" : value.id ? "saved" : "local");
     projectURL(value.id, value.createKey, push);
@@ -146,7 +166,8 @@ export function useStudioProject({ userId, sessionLoading = false, initialDocume
         if (!active) return;
         epoch.current++;
         const empty = { ...emptyProject(), composer: { text: initialPrompt, size: initialSize, outputCount: initialCount, fixedPrompt: initialFixed } };
-        draftRef.current = empty; setDraft(empty); setReady(!sessionLoading); setSaveState(sessionLoading ? "loading" : "local");
+        editingReady.current = !awaitingSession;
+        draftRef.current = empty; setDraft(empty); setReady(!awaitingSession); setSaveState(awaitingSession ? "loading" : "local");
       });
       return () => { active = false; };
     }
@@ -161,15 +182,15 @@ export function useStudioProject({ userId, sessionLoading = false, initialDocume
         if (current && error.code === "DOCUMENT_NOT_FOUND") return load(null, requestKey());
         throw error;
       }
-    }).catch(error => { if (active) { setSaveState("error"); errorRef.current(error); } });
+    }).catch(error => { if (active) { setSaveState("load-error"); errorRef.current(error); } });
     const pop = () => {
       const url = new URL(window.location.href);
       load(url.searchParams.get("document"), url.searchParams.get("draft") || requestKey()).catch(error => errorRef.current(error));
     };
     window.addEventListener("popstate", pop);
-    const invalidate = () => { epoch.current++; };
+    const invalidate = () => { epoch.current++; editingReady.current = false; loadController.current?.abort(); };
     return () => { active = false; invalidate(); window.removeEventListener("popstate", pop); };
-  }, [userId, sessionLoading, initialDocument, initialPrompt, initialSize, initialCount, initialFixed, load]);
+  }, [userId, awaitingSession, initialDocument, initialPrompt, initialSize, initialCount, initialFixed, load]);
 
   useEffect(() => {
     if (!userId || !ready || paused || !draft._dirty || saveState === "conflict" || !meaningful(draft)) return;
@@ -199,5 +220,9 @@ export function useStudioProject({ userId, sessionLoading = false, initialDocume
     const loaded = await load(value.id, null, false, true);
     if (loaded) persist(loaded);
   }, [userId, load, persist]);
-  return { draft, draftRef, update, save, saveState, ready, open, create, flushLocal, reloadCloud };
+  const retryLoad = useCallback(() => {
+    const target = loadTarget.current;
+    if (target) return load(target.id, target.token, target.push, target.remoteOnly).catch(error => errorRef.current(error));
+  }, [load]);
+  return { draft, draftRef, update, save, saveState, ready, open, create, flushLocal, reloadCloud, retryLoad };
 }

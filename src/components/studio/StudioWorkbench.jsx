@@ -57,6 +57,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
       LOCAL_SAVE_FAILED: t("本地保存失败，请保持页面打开并重试云端保存。", "Local save failed. Keep this page open and retry saving to the cloud."),
       DOCUMENT_SAVE_UNAVAILABLE: t("画布暂未同步到云端，已自动重试。请保留当前页面，稍后点击保存重试。", "Canvas sync is temporarily unavailable after automatic retries. Keep this page open and retry saving shortly."),
       DOCUMENT_SAVE_TOO_LARGE: t("画布保存请求超过服务器大小限制，请保留当前页面并联系管理员检查上传限制。", "The canvas exceeds the server request size limit. Keep this page open and ask an admin to check upload limits."),
+      DOCUMENT_LOAD_TIMEOUT: t("项目加载超时，可以重试打开；此设备上的草稿会保留。", "Project loading timed out. Retry opening it; drafts on this device are preserved."),
       DOCUMENT_VERSION_CONFLICT: t("云端版本已更新。本地修改仍在，请另存为新项目或打开云端版本。", "Cloud version changed. Save as a new project or open the cloud version."),
       INSUFFICIENT_CREDITS: t("可用积分不足，请补充积分后重试。", "Not enough available credits."),
       UNAUTHORIZED: t("请先登录，素材和作品会保存到你的账户。", "Sign in to save assets and projects."),
@@ -91,7 +92,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
       : "";
     setNotice((descriptions[code] || imageToolErrorMessage(code, zh)) + detail);
   }, [t, zh]);
-  const { draft, draftRef, update, save, saveState, ready, open: loadProject, create: createProject, flushLocal, reloadCloud } = useStudioProject({ userId: session?.user?.id, sessionLoading: status === "loading", initialDocument, initialPrompt, initialSize, initialCount, initialFixed, paused: busy, onError: error => notify(error) });
+  const { draft, draftRef, update, save, saveState, ready, open: loadProject, create: createProject, flushLocal, reloadCloud, retryLoad } = useStudioProject({ userId: session?.user?.id, sessionLoading: status === "loading", initialDocument, initialPrompt, initialSize, initialCount, initialFixed, paused: busy, onError: error => notify(error) });
   const [selectionIds, setSelectionIds] = useState([]);
   const [selectedId, setSelected] = useState(null), [tab, setTab] = useState(initialMode === "quick" ? "quick" : "chat"), [mode, setMode] = useState("select");
   const [toolId, setTool] = useState(null), [toolParams, setParams] = useState({ size: initialSize, scale: 2, padding: 256, dx: 100, dy: 0, duration: 5, editPadding: 0.25, numLayers: 4 });
@@ -162,24 +163,24 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
   const loadedProvider = useRef(undefined);
   useEffect(() => {
     const abort = new AbortController(); life.current = abort;
-    if (status === "authenticated") {
+    if (session?.user?.id) {
       api("/api/usage", { signal: abort.signal }).then(setUsage).catch(e => { if (!abort.signal.aborted) notify(e); });
     } else loadedProvider.current = undefined;
     return () => { abort.abort(); clearTimeout(fitTimer.current); };
-  }, [status, session?.user?.id, session?.user?.credits, notify]);
+  }, [session?.user?.id, session?.user?.credits, notify]);
   useEffect(() => {
-    if (status !== "authenticated" || loadedProvider.current === modelProvider) return;
+    if (!session?.user?.id || loadedProvider.current?.userId === session.user.id && loadedProvider.current?.provider === modelProvider) return;
     const abort = new AbortController();
     const query = new URLSearchParams(modelProvider ? { imageProvider: modelProvider } : {});
     api(`/api/studio/capabilities?${query}`, { signal: abort.signal }).then(caps => {
       if (abort.signal.aborted) return;
       const selected = modelProvider || caps.imageProvider || caps.imageModels?.[0]?.id || "";
-      loadedProvider.current = selected;
+      loadedProvider.current = { userId: session.user.id, provider: selected };
       setCapabilities(caps);
       setModelProvider(selected);
     }).catch(e => { if (!abort.signal.aborted) notify(e); });
     return () => abort.abort();
-  }, [modelProvider, status, notify]);
+  }, [modelProvider, session?.user?.id, notify]);
   useEffect(() => {
     const handler = e => {
       if (["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName) || e.target.isContentEditable) return;
@@ -233,7 +234,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
     return task;
   }, [update, draftRef, zh, t, notify]);
   useEffect(() => {
-    if (!draft.id || !ready || status !== "authenticated") return;
+    if (!draft.id || !ready || !session?.user?.id) return;
     const abort = new AbortController();
     let timer, stream, streamActive = false, signature = "";
     function receive(rows) {
@@ -266,7 +267,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
       } catch { if (!abort.signal.aborted) timer = setTimeout(poll, 4000); }
     }
     start(); return () => { abort.abort(); stream?.close(); clearTimeout(timer); };
-  }, [draft.id, ready, draft.jobs?.length, projectLoad, status, collectResult, notify]);
+  }, [draft.id, ready, draft.jobs?.length, projectLoad, session?.user?.id, collectResult, notify]);
 
   async function uploadFile(file) {
     if (!session?.user) throw new Error("UNAUTHORIZED");
@@ -523,7 +524,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
       <RecentProjects zh={zh} onChoose={openProject} disabled={busy || !ready} />
       <button className="ms-icon ms-new" title={t("新建项目", "New project")} disabled={busy || !ready} onClick={newProject}><Plus size={19} /></button>
       <div className="ms-top-actions">
-        <button className="ms-button ms-save" data-action="save-studio" onClick={() => save().catch(notify)} disabled={busy}><Save size={15} />{t("保存", "Save")}</button>
+        <button className="ms-button ms-save" data-action="save-studio" onClick={() => save().catch(notify)} disabled={busy || !ready}><Save size={15} />{t("保存", "Save")}</button>
         <button className="ms-button ms-export" onClick={() => setExportOpen(true)}><Download size={15} />{t("导出", "Export")}</button>
         <button onClick={recharge.open} className="ms-credit"><CreditIcon />{usage?.credits ?? "—"}<span>{t("积分", "credits")}</span></button>
         {session?.user ? <UserMenu user={session.user} /> : <Link href="/login" className="ms-button ms-primary">{t("登录", "Sign in")}</Link>}
@@ -557,6 +558,8 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
         </div>
       </aside>
       <main className="ms-canvas-space">
+        {!ready && saveState === "loading" && <div className="ms-project-loading" role="status"><span><LoaderCircle className="ms-spin" size={16} />{t("正在打开项目…", "Opening project…")}</span></div>}
+        {saveState === "load-error" && <div className="ms-save-conflict" role="alert"><span>{t("项目暂时无法打开，已有草稿仍保留在此设备", "The project could not be opened. Existing drafts remain on this device.")}</span><button onClick={retryLoad}>{t("重试打开", "Retry opening")}</button></div>}
         <button className="ms-icon ms-library-trigger" title={t("素材库", "Asset library")} onClick={() => setLibraryOpen(true)}><FolderOpen size={19} /></button>
         {saveState === "conflict" && <div className="ms-save-conflict" role="alert"><span>{t("云端项目已更新，本地修改已保留", "The cloud project changed. Your local edits are preserved.")}</span><button onClick={() => save(true).catch(notify)}>{t("另存为新项目", "Save as new project")}</button><button onClick={() => reloadCloud().catch(notify)}>{t("打开云端版本", "Open cloud version")}</button></div>}
         <StudioTaskPopover documentId={draft.id} key={draft.createKey || draft.id} jobs={jobs} pending={pendingTask} appliedJobs={draft.appliedJobs} resultStates={resultStates} zh={zh} onViewText={openOcr}

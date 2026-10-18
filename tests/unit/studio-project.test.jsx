@@ -14,9 +14,63 @@ vi.mock("@/lib/studio/project-storage", () => ({
   writeProjectDraft: mocks.write,
 }));
 beforeEach(() => { mocks.api.mockReset(); mocks.read.mockReset().mockResolvedValue(null); mocks.write.mockReset().mockResolvedValue(); window.history.replaceState(null, "", "/en/studio-v2"); });
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.useRealTimers(); });
 const message = { id: "first-message", role: "user", text: "生成一只猫" };
 describe("project lifecycle", () => {
+  it("does not reload or reset an authenticated canvas during session refresh", async () => {
+    mocks.api.mockResolvedValue({ id: "project-a", version: 1, name: "Cloud", content: { layers: [], messages: [], jobs: [] } });
+    const { result, rerender } = renderHook(({ sessionLoading }) => useStudioProject({ userId: "user", sessionLoading, initialDocument: "project-a", paused: true, onError: vi.fn() }), { initialProps: { sessionLoading: false } });
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    act(() => result.current.update(d => ({ ...d, name: "Unsaved edit" })));
+    rerender({ sessionLoading: true });
+    expect(result.current.ready).toBe(true);
+    rerender({ sessionLoading: false });
+    await act(async () => {});
+    expect(mocks.api).toHaveBeenCalledTimes(1);
+    expect(result.current.draft.name).toBe("Unsaved edit");
+  });
+  it("shows the local draft while reconciling but keeps editing gated", async () => {
+    let resolve;
+    mocks.read.mockResolvedValue({ id: "project-a", version: 1, name: "Cached", layers: [], messages: [message], jobs: [], appliedJobs: [] });
+    mocks.api.mockImplementation(() => new Promise(done => { resolve = done; }));
+    const { result } = renderHook(() => useStudioProject({ userId: "user", initialDocument: "project-a", paused: true, onError: vi.fn() }));
+    await waitFor(() => expect(result.current.draft.name).toBe("Cached"));
+    expect(result.current.ready).toBe(false);
+    act(() => result.current.update(d => ({ ...d, name: "Must not edit an unvalidated snapshot" })));
+    expect(result.current.draft.name).toBe("Cached");
+    await expect(result.current.save()).rejects.toThrow("DOCUMENT_LOADING");
+    await act(async () => resolve({ id: "project-a", version: 2, name: "Updated", content: { layers: [], messages: [], jobs: [] } }));
+    expect(result.current.ready).toBe(true);
+    expect(result.current.draft.name).toBe("Updated");
+  });
+  it("offers a retry after loading fails and can open the same project", async () => {
+    mocks.api.mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce({ id: "project-a", version: 1, name: "Recovered", content: { layers: [], messages: [], jobs: [] } });
+    const { result } = renderHook(() => useStudioProject({ userId: "user", initialDocument: "project-a", paused: true, onError: vi.fn() }));
+    await waitFor(() => expect(result.current.saveState).toBe("load-error"));
+    expect(result.current.ready).toBe(false);
+    await act(() => result.current.retryLoad());
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    expect(result.current.draft.name).toBe("Recovered");
+  });
+  it("bounds stalled cloud reads and aborts reads when leaving the project", async () => {
+    vi.useFakeTimers();
+    let signal;
+    mocks.api.mockImplementation((_url, options) => new Promise((_resolve, reject) => {
+      signal = options.signal;
+      signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+    }));
+    const onError = vi.fn();
+    const { result, unmount } = renderHook(() => useStudioProject({ userId: "user", initialDocument: "project-a", paused: true, onError }));
+    await act(async () => {});
+    await act(async () => vi.advanceTimersByTimeAsync(15000));
+    expect(result.current.saveState).toBe("load-error");
+    expect(onError.mock.calls[0][0].message).toBe("DOCUMENT_LOAD_TIMEOUT");
+    act(() => { void result.current.retryLoad(); });
+    await act(async () => {});
+    expect(signal.aborted).toBe(false);
+    unmount();
+    expect(signal.aborted).toBe(true);
+  });
   it("preserves grapheme clusters in prompt titles", () => {
     expect(promptTitle(" \n 生成一只猫   在窗边 ")).toBe("生成一只猫 在窗边");
     expect(promptTitle("👨‍👩‍👧‍👦猫咪", 2)).toBe("👨‍👩‍👧‍👦猫…");

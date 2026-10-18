@@ -171,3 +171,5 @@
 @media(min-width:761px) { .ms-canvas-space:has(.ms-editor) .ms-canvas-top-right { top:12px; right:320px; } }
 
 @media(max-width:600px){.ms-topbar .ms-top-actions{flex-shrink:0}.ms-topbar .ms-top-actions .ms-button{white-space:nowrap;padding:9px 10px}}
+.ms-project-loading { position:absolute; inset:0; z-index:100; display:flex; justify-content:center; align-items:flex-start; padding-top:64px; cursor:progress; }
+.ms-project-loading>span { display:flex; align-items:center; gap:8px; padding:10px 16px; border:1px solid var(--divider); border-radius:12px; background:var(--bg-card); color:var(--secondary-text); font-size:12px; }

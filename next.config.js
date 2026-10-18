@@ -22,6 +22,9 @@ const nextConfig = {
   // 优化 chunk 分割，减少首屏加载体积
   experimental: {
     optimizePackageImports: ["lucide-react", "framer-motion"],
+    // Reuse recently visited page shells on this browser. User data is still
+    // loaded through authenticated APIs; this is not shared server caching.
+    staleTimes: { dynamic: 30, static: 300 },
   },
 
   turbopack: {

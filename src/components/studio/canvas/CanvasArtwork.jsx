@@ -6,24 +6,32 @@ import { imageUrl, previewUrl } from "@/lib/studio/image-url";
 import { adjustedImage } from "@/lib/studio/adjustments";
 
 const Picture = memo(function Picture({ item, shouldLoad = true, highResolution, previewSize = 1280, adjustmentPreview, selected, multiSelected = false, onSelect, onChange, interactive, accent, onError, previewImage, onPreview }) {
-  const [image, setImage] = useState(null);
+  const [preview, setPreview] = useState(null), [original, setOriginal] = useState(null);
+  const image = !shouldLoad ? null : highResolution && original?.assetId === item.assetId ? original.image : preview?.assetId === item.assetId ? preview.image : null;
   const shape = useRef(null), transformer = useRef(null);
   useEffect(() => {
     if (item.type !== "image") return;
     let live = true;
-    if (!shouldLoad) { Promise.resolve().then(() => { if (live) setImage(null); }); return () => { live = false; }; }
+    if (!shouldLoad) return;
     const abort = new AbortController();
     loadImage(previewUrl(item.assetId, previewSize), { signal: abort.signal })
-      .then(async preview => {
-        if (!live) return;
-        setImage(preview);
-        if (highResolution) {
-          try { const original = await loadImage(imageUrl(item.assetId), { signal: abort.signal }); if (live) setImage(original); }
-          catch { /* Retain the usable preview when optional full-resolution loading fails. */ }
-        }
-      }).catch(error => { if (live) onError(error); });
+      .then(image => { if (live) setPreview({ assetId: item.assetId, image }); })
+      .catch(error => { if (live) onError(error); });
     return () => { live = false; abort.abort(); };
-  }, [item.assetId, item.type, onError, shouldLoad, highResolution, previewSize]);
+  }, [item.assetId, item.type, onError, shouldLoad, previewSize]);
+  // Browsing uses bounded previews. Load the original only after the selected
+  // image stays zoomed in long enough to need more than 1280 display pixels.
+  useEffect(() => {
+    if (!shouldLoad || !highResolution || preview?.assetId !== item.assetId || original?.assetId === item.assetId) return;
+    let live = true;
+    const abort = new AbortController();
+    const timer = setTimeout(() => {
+      loadImage(imageUrl(item.assetId), { signal: abort.signal })
+        .then(image => { if (live) setOriginal({ assetId: item.assetId, image }); })
+        .catch(() => { /* Keep the preview if optional full-resolution loading fails. */ });
+    }, 700);
+    return () => { live = false; clearTimeout(timer); abort.abort(); };
+  }, [item.assetId, shouldLoad, highResolution, preview?.assetId, original?.assetId]);
   const rendered = useMemo(() => image ? adjustedImage(image, adjustmentPreview ?? item.adjustments, 1600) : null, [image, adjustmentPreview, item.adjustments]);
   useEffect(() => { if (selected && transformer.current && shape.current) { transformer.current.nodes([shape.current]); transformer.current.getLayer().batchDraw(); } }, [selected, interactive]);
   const props = { ref: shape, id: item.id, x: item.x, y: item.y, width: item.width, height: item.height, rotation: item.rotation || 0, opacity: item.opacity ?? 1, draggable: interactive,
@@ -40,9 +48,9 @@ const CanvasArtwork = memo(forwardRef(function CanvasArtwork({ layers, camera, d
     const extent = Math.max(item.width, item.height) * camera.scale;
     const x = camera.x + item.x * camera.scale, y = camera.y + item.y * camera.scale;
     const shouldLoad = x + extent > -200 && y + extent > -200 && x - extent < dimensions.width + 200 && y - extent < dimensions.height + 200;
-    const visibleArea = Math.max(0, Math.min(dimensions.width, x + item.width * camera.scale) - Math.max(0, x)) * Math.max(0, Math.min(dimensions.height, y + item.height * camera.scale) - Math.max(0, y));
-    const highResolution = shouldLoad && Math.max(item.pixelWidth || 0, item.pixelHeight || 0) > 1280 && visibleArea >= dimensions.width * dimensions.height * .4;
-    const previewSize = extent * Math.min(globalThis.devicePixelRatio || 1, 2) <= 320 ? 320 : extent * Math.min(globalThis.devicePixelRatio || 1, 2) <= 640 ? 640 : 1280;
+    const displayPixels = extent * Math.min(globalThis.devicePixelRatio || 1, 2);
+    const highResolution = shouldLoad && selectedId === item.id && displayPixels > 1280 && Math.max(item.pixelWidth || 0, item.pixelHeight || 0) > 1280;
+    const previewSize = displayPixels <= 320 ? 320 : displayPixels <= 640 ? 640 : 1280;
     return <Picture key={item.id} item={item} shouldLoad={shouldLoad} highResolution={highResolution} previewSize={previewSize} adjustmentPreview={selectedId === item.id ? adjustmentPreview : null} selected={selectedIds.includes(item.id) || selectedId === item.id} multiSelected={selectedIds.length > 1 && selectedIds.includes(item.id)} interactive={interactive && !item.locked} accent={accent} onError={onError} onPreview={onPreview} onSelect={onSelect} onChange={onChange} />;
   })}</Layer>;
 }));

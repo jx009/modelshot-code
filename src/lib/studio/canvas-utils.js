@@ -1,5 +1,6 @@
 // Adapted from fancyboi999/Loomic apps/web/src/lib/canvas-elements.ts.
 // Copyright (c) 2026 Xinmin Zeng. MIT; see THIRD_PARTY_NOTICES.md.
+import { textLayerHeight } from "./text-layer.js";
 export function scaleToFit(width, height, maxSize) {
   if (width <= maxSize && height <= maxSize) return { width, height };
   const ratio = Math.min(maxSize / width, maxSize / height);
@@ -13,7 +14,19 @@ export function isVideoUrl(url) {
 }
 
 export function appendResult(layers, job, target) {
+  if (job.tool === "ocr" && job.resultData?.ocr) {
+    // Keep the result linked to its image across project reloads, even when
+    // this job no longer appears in the most recent job snapshot.
+    return layers.map(layer => layer.id === target?.id && layer.ocrJobId !== job.id ? { ...layer, ocrJobId: job.id } : layer);
+  }
   if (job.resultData?.placement !== "repair-background" && layers.some(layer => layer.sourceJobId === job.id)) return layers;
+  if (["describe", "template"].includes(job.tool) && job.resultData?.text) {
+    const text = job.resultData.text, width = 440, fontSize = 24;
+    const right = Math.max(80, ...layers.filter(layer => layer.visible).map(layer => layer.x + layer.width)) + 48;
+    return [...layers, { id: `${job.id}-text`, type: "text", name: job.tool === "describe" ? "反推提示词" : "风格配方", textKind: "prompt", text,
+      x: right, y: target?.y ?? 100, width, height: textLayerHeight(text, width, fontSize), fontSize,
+      rotation: 0, visible: true, opacity: 1, sourceJobId: job.id }];
+  }
   const placement = job.resultData?.placement;
   const outputs = job.resultData?.assets || [];
   if (placement === "repair-background") {

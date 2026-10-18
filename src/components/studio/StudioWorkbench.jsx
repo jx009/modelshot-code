@@ -15,13 +15,14 @@ import BrandLogo, { BrandMark } from "@/components/BrandLogo";
 import ModelPicker from "@/components/ui/ModelPicker";
 import ImageSizePicker from "@/components/ui/ImageSizePicker";
 import { getTool } from "@/lib/studio/tool-catalog";
+import { textLayerHeight } from "@/lib/studio/text-layer";
 import { appendResult, scaleToFit } from "@/lib/studio/canvas-utils";
 import { imageUrl, previewUrl } from "@/lib/studio/image-url";
 import { loadImage } from "@/lib/studio/image-processor";
 import { maskHash as hashMask } from "@/lib/studio/mask-hash";
 import { promptTitle } from "@/lib/studio/project-title";
 import { useStudioProject } from "./useStudioProject";
-import StudioTaskPopover from "./StudioTaskPopover";
+import StudioActivity from "./StudioActivity";
 import StudioMessageHistory from "./StudioMessageHistory";
 import StudioImageViewer from "./StudioImageViewer";
 import "./generation-price.css";
@@ -217,7 +218,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
     if (job.documentId !== current.id || life.current?.signal.aborted || current.appliedJobs?.includes(job.id)) { resultLoads.current.delete(job.id); return; }
     const layers = appendResult(current.layers, job, current.layers.find(l => l.id === job.targetId));
     const messages = [...current.messages];
-    if (!messages.some(m => m.id === job.id)) messages.push({ id: job.id, role: "assistant", text: job.resultData?.text || `${zh ? getTool(job.tool)?.zh : getTool(job.tool)?.en} · ${t("已完成", "Complete")}`, ...(job.resultData?.assets?.[0]?.contentType?.startsWith("image/") ? { assetId: job.resultData.assets[0].id } : {}) });
+    if (job.origin === "chat" && !messages.some(m => m.id === job.id)) messages.push({ id: job.id, role: "assistant", text: job.resultData?.text || `${zh ? getTool(job.tool)?.zh : getTool(job.tool)?.en} · ${t("已完成", "Complete")}`, ...(job.resultData?.assets?.[0]?.contentType?.startsWith("image/") ? { assetId: job.resultData.assets[0].id } : {}) });
     if (job.resultData?.placement === "repair-background") {
       history.current.past = history.current.past.map(snapshot => appendResult(snapshot, job));
       history.current.future = history.current.future.map(snapshot => appendResult(snapshot, job));
@@ -230,7 +231,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
     const result = layers.find(layer => layer.sourceJobId === job.id && layer.visible);
     if (result && !current.composer?.text?.trim() && !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName) && !draftRef.current.pendingBatch && !interaction.current.editing && !interaction.current.navigating) {
       setSelected(result.id); setPanning(false); setTool(null); setMode("select"); setObjectSelection(null); canvas.current?.clearMask(); setMobileChat(false);
-      clearTimeout(fitTimer.current); fitTimer.current = setTimeout(() => canvas.current?.fit(), 100);
+      clearTimeout(fitTimer.current); fitTimer.current = setTimeout(() => result.type === "text" ? canvas.current?.focusLayer(result.id) : canvas.current?.fit(), 100);
     }
     })().catch(error => {
       if (job.documentId === draftRef.current.id && error.name !== "AbortError") { setResultStates(s => ({ ...s, [job.id]: "failed" })); notify(error); }
@@ -364,16 +365,18 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
       setSelected(id); closeTool(); scheduleFit(100);
     } catch (error) { notify(error); } finally { submission.current = false; setBusy(false); }
   }
-  async function submit(id, target, text, options = {}, maskBlob, key = requestKey(), extracted, referenceAssetIds = []) {
+  async function submit(id, target, text, options = {}, maskBlob, key = requestKey(), extracted, referenceAssetIds = [], origin = "canvas") {
     const projectKey = draftRef.current.createKey;
     const assertCurrent = () => { if (draftRef.current.createKey !== projectKey) throw new Error("SESSION_CLOSED"); };
-    const temporary = { id: `submit-${key}`, tool: id, assetId: target?.assetId, status: "submitting", createdAt: new Date().toISOString() };
+    const temporary = { id: `submit-${key}`, tool: id, assetId: target?.assetId, status: "submitting", origin, createdAt: new Date().toISOString() };
     setPendingTask(temporary);
     try {
     const saved = await save();
     assertCurrent();
     const maskHash = maskBlob ? await hashMask(maskBlob) : null;
     const provider = modelProvider;
+    // Keep the intent signature compatible with pre-origin pending requests.
+    // A retry reuses the original body/key instead of charging for a new job.
     const signature = JSON.stringify({ id, provider, extracted, referenceAssetIds, target: target?.id, asset: target?.assetId, text, options, maskHash, documentId: saved.id });
     const pending = draftRef.current.pendingSubmit;
     let body;
@@ -382,7 +385,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
     else {
       if (maskBlob && !maskId) maskId = (await uploadFile(new File([maskBlob], "mask.png", { type: "image/png" }))).assetId;
       assertCurrent();
-      body = { tool: id, ...(capabilities?.tools.find(tool => tool.id === id) ? { expectedCost: imageCreditCost(capabilities.tools.find(tool => tool.id === id), options.size, 0) } : {}), ...(referenceAssetIds.length ? { referenceAssetIds } : {}), ...(provider ? { provider } : {}), ...(id === "move" && extracted?.objectAssetId ? { moveBundle: { objectAssetId: extracted.objectAssetId, holeAssetId: extracted.holeAssetId, bounds: extracted.bounds } } : {}), documentId: saved.id, documentVersion: saved.version, ...(target ? { targetId: target.id, assetId: target.assetId } : {}), ...(maskId ? { maskId } : {}), params: { ...options, prompt: text } };
+      body = { tool: id, origin, ...(capabilities?.tools.find(tool => tool.id === id) ? { expectedCost: imageCreditCost(capabilities.tools.find(tool => tool.id === id), options.size, 0) } : {}), ...(referenceAssetIds.length ? { referenceAssetIds } : {}), ...(provider ? { provider } : {}), ...(id === "move" && extracted?.objectAssetId ? { moveBundle: { objectAssetId: extracted.objectAssetId, holeAssetId: extracted.holeAssetId, bounds: extracted.bounds } } : {}), documentId: saved.id, documentVersion: saved.version, ...(target ? { targetId: target.id, assetId: target.assetId } : {}), ...(maskId ? { maskId } : {}), params: { ...options, prompt: text } };
       update(d => ({ ...d, pendingSubmit: { signature, key, body } }));
       await flushLocal();
     }
@@ -407,7 +410,6 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
       nameFromFirstPrompt(prompt);
       const options = { ...params, focusPoints: toolId === "focus" ? params.focusPoints?.map(({ id, x, y, label }) => ({ id, x, y, label })) : undefined, selectionMode: objectSelection?.region ? "region" : objectSelection ? "object" : "mask" };
       await submit(toolId, target, prompt, options, mask, requestKey(), objectSelection, ["merge", "inpaint"].includes(toolId) ? toolReferences : []);
-      message("user", prompt || (zh ? tool.zh : tool.en), target?.assetId);
       setPanning(false); setTool(null); setMode("select"); setPrompt(""); setObjectSelection(null); canvas.current?.clearMask();
       await save();
     } catch (e) { notify(e); } finally { submission.current = false; setBusy(false); }
@@ -434,7 +436,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
         for (let i = batch.index; i < batch.keys.length; i++) {
           const previousText = tab === "chat" ? draftRef.current.messages.filter(m => m.role === "user" && m.id !== messageId).slice(-3).map(m => m.text).join("\n").slice(-Math.max(0, Math.min(1200, 3800 - text.length))) : "";
           const imagePrompt = previousText && text.length < 3800 ? `Conversation context (apply the latest request):\n${previousText}\nLatest request:\n${text}` : text;
-          await submit(target ? "edit" : "generate", target, imagePrompt, { size: params.size }, null, batch.keys[i], null, extraReferences);
+          await submit(target ? "edit" : "generate", target, imagePrompt, { size: params.size }, null, batch.keys[i], null, extraReferences, "chat");
           update(d => ({ ...d, pendingBatch: { ...batch, index: i + 1 } }));
         }
         update(d => ({ ...d, pendingBatch: null }));
@@ -470,7 +472,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
         if (getTool(step.tool).source && !target) throw new Error("TARGET_CHANGED");
         submission.current = true; setBusy(true);
         let job;
-        try { job = p.activeJob ? { id: p.activeJob } : await submit(step.tool, target, step.params.prompt || "", step.params, null, `${planId}-${index}-${p.attempt || 0}`); }
+        try { job = p.activeJob ? { id: p.activeJob } : await submit(step.tool, target, step.params.prompt || "", step.params, null, `${planId}-${index}-${p.attempt || 0}`, null, [], "chat"); }
         finally { submission.current = false; setBusy(false); }
         p = { ...p, activeJob: job.id, status: "running", index }; update(d => ({ ...d, plan: p }));
         const result = await waitJob(job.id);
@@ -486,7 +488,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
     finally { planExecution.current = false; setPlanRunning(false); }
   }
   function textLayer(text = t("双击创意，开始表达", "Make room for an idea"), placement) {
-    const id = requestKey(); commitLayers([...draftRef.current.layers, { id, name: t("文字", "Text"), type: "text", x: 150, y: 180, width: 400, height: 80, rotation: 0, visible: true, opacity: 1, text, fontSize: 36, fill: "#fafaf8", ...placement }]); setSelected(id); setPanning(false); setTool(null); setMode("select");
+    const id = requestKey(); commitLayers([...draftRef.current.layers, { id, name: t("文字", "Text"), type: "text", x: 150, y: 180, width: 400, height: textLayerHeight(text, 400, 36), rotation: 0, visible: true, opacity: 1, text, fontSize: 36, ...placement }]); setSelected(id); setPanning(false); setTool(null); setMode("select");
   }
   async function openProject(id) {
     try {
@@ -506,8 +508,12 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
     } catch (error) { notify(error); }
   }
   const closeOcr = useCallback(() => setOcr(null), [setOcr]);
-  function openOcr(job) {
-    if (!job.resultData?.ocr) return;
+  async function openOcr(value) {
+    const projectKey = draftRef.current.createKey;
+    let job = typeof value === "string" ? jobs.find(row => row.id === value && row.resultData?.ocr) : value;
+    try { if (!job) job = await api(`/api/studio/jobs/${encodeURIComponent(value)}`); }
+    catch (error) { notify(error); return; }
+    if (!job.resultData?.ocr || draftRef.current.createKey !== projectKey) return;
     setSelected(job.targetId); setTool(null); setShowLayers(false); setMobileChat(false);
     setPanning(false); setMode("select"); setObjectSelection(null); canvas.current?.clearMask();
     setOcr({ ...job.resultData.ocr, targetId: job.targetId });
@@ -530,6 +536,16 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
     focusSession.current++; setCompareOriginal(false);
     setPanning(false); setTool(null); setMode("select"); setObjectSelection(null); canvas.current?.clearMask();
   };
+  function useTextPrompt(layer) {
+    const text = [draftRef.current.composer?.text?.trim(), layer.text].filter(Boolean).join("\n");
+    if (text.length > 4000) { notify(t("合并后超过 4000 字，请先精简画布文字或输入框内容。", "The combined prompt exceeds 4,000 characters. Shorten the canvas text or current prompt first.")); return; }
+    setPrompt(text); setMobileChat(true); setChatCollapsed(false);
+    requestAnimationFrame(() => document.querySelector(".ms-composer > textarea:not(.ms-fixed-prompt)")?.focus());
+  }
+  const ocrEntries = draft.layers.filter(layer => layer.type === "image" && layer.visible).flatMap(layer => {
+    const jobId = layer.ocrJobId || jobs.find(job => job.tool === "ocr" && job.targetId === layer.id && job.resultData?.ocr)?.id;
+    return jobId ? [{ layerId: layer.id, jobId }] : [];
+  });
   const ActiveToolIcon = toolId ? (ICONS[toolId] || Sparkles) : Sparkles;
   return <div className="ms-studio" data-history={historyCount.past}>
     <header className="ms-topbar">
@@ -561,7 +577,6 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
           </div>}
           {draft.messages.map(m => <div className={`ms-message ${m.role}`} key={m.id}>{m.role === "assistant" && <span className="ms-speaker"><BrandMark size={17} />来塔绘梦</span>}<p>{m.text}</p>{jobs.find(job => job.id === m.id && job.resultData?.ocr) && <button className="ms-text-button ms-ocr-result-link" onClick={() => openOcr(jobs.find(job => job.id === m.id))}><ScanText size={14} />{t("查看文字", "View text")}</button>}{m.assetId && <button className="ms-message-image" onClick={() => { const layer = draft.layers.find(l => l.assetId === m.assetId); if (layer) { setSelected(layer.id); setMobileChat(false); setTimeout(() => canvas.current?.fit(), 100); } }}><Image unoptimized width={480} height={480} loading="lazy" src={previewUrl(m.assetId, 320)} alt={t("对话引用的图片", "Image referenced in conversation")} /></button>}</div>)}
           {draft.plan && <div className="ms-plan"><span className="ms-eyebrow"><Sparkles size={13} />{t("创作计划", "CREATIVE PLAN")}</span><p>{draft.plan.summary}</p>{draft.plan.steps.map((step, i) => <div className="ms-plan-step" key={i}><span>{i < draft.plan.index ? <Check size={13} /> : i + 1}</span><div>{zh ? getTool(step.tool)?.zh : getTool(step.tool)?.en}<small>{step.explanation}</small></div></div>)}<button className="ms-button ms-primary" disabled={busy || planRunning || !pricesReady || draft.plan.status === "complete"} onClick={runPlan}>{draft.plan.status === "complete" ? t("已完成", "Complete") : draft.plan.index ? t("继续执行", "Continue") : t("确认并执行", "Run plan")}<span>{t("剩余预计", "Remaining")} {remainingPlanCost ?? "—"} {t("积分", "credits")}</span></button><button className="ms-text-button" disabled={busy || planRunning} onClick={() => update(d => ({ ...d, plan: null }))}>{t("移除计划", "Dismiss plan")}</button></div>}
-          {jobs.length > 0 && <div className="ms-job-list"><span className="ms-eyebrow">{t("任务记录", "RECENT TASKS")}</span>{jobs.slice(0, 8).map(job => <div className="ms-job" key={job.id}><span className={`ms-job-dot ${job.status}`} /><div>{zh ? getTool(job.tool)?.zh : getTool(job.tool)?.en}<small>{job.status === "succeeded" ? resultStates[job.id] === "failed" ? t("结果加载失败，原图已保留", "Result failed to load; original kept") : !draft.appliedJobs?.includes(job.id) ? t("已生成，正在加载到画布…", "Generated; loading onto canvas…") : t("已完成", "Complete") : job.status === "failed" ? `${t("失败", "Failed")} · ${imageToolErrorMessage(job.errorCode, zh)}` : job.status === "cancelled" ? t("已取消", "Cancelled") : job.status === "reconciling" ? t("正在核对供应商结果…", "Checking provider result…") : t("正在处理…", "Processing…")}</small></div>{resultStates[job.id] === "failed" && <button className="ms-text-button" onClick={() => { setNotice(null); resultLoads.current.delete(job.id); collectResult(job).catch(() => {}); }}>{t("重试加载", "Retry loading")}</button>}{!TERMINAL.includes(job.status) && <button className="ms-icon" title={t("取消任务", "Cancel task")} onClick={() => api(`/api/studio/jobs/${job.id}`, { method: "DELETE" }).catch(notify)}><X size={13} /></button>}{job.resultData?.ocr && <button className="ms-text-button" onClick={() => openOcr(job)}>{t("查看文字", "View text")}</button>}</div>)}</div>}
         </div>
         <div className="ms-composer">
           {references.length > 0 && <div className="ms-reference-list">{references.map((layer, index) => <div key={layer.id} className="ms-reference"><Image unoptimized width={64} height={64} src={previewUrl(layer.assetId, 320)} alt="" /><span>{index + 1} · {layer.name}</span><button className="ms-icon" title={t("取消引用", "Clear reference")} onClick={() => { setComposer({ referenceIds: references.filter(item => item.id !== layer.id).map(item => item.id) }); if (layer.id === selectedId) setSelected(null); }}><X size={13} /></button></div>)}</div>}
@@ -577,20 +592,11 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
         {saveState === "load-error" && <div className="ms-save-conflict" role="alert"><span>{t("项目暂时无法打开，已有草稿仍保留在此设备", "The project could not be opened. Existing drafts remain on this device.")}</span><button onClick={retryLoad}>{t("重试打开", "Retry opening")}</button></div>}
         <button className="ms-icon ms-library-trigger" title={t("素材库", "Asset library")} onClick={() => setLibraryOpen(true)}><FolderOpen size={19} /></button>
         {saveState === "conflict" && <div className="ms-save-conflict" role="alert"><span>{t("云端项目已更新，本地修改已保留", "The cloud project changed. Your local edits are preserved.")}</span><button onClick={() => save(true).catch(notify)}>{t("另存为新项目", "Save as new project")}</button><button onClick={() => reloadCloud().catch(notify)}>{t("打开云端版本", "Open cloud version")}</button></div>}
-        <StudioTaskPopover documentId={draft.id} key={draft.createKey || draft.id} jobs={jobs} pending={pendingTask} appliedJobs={draft.appliedJobs} resultStates={resultStates} zh={zh} onViewText={openOcr}
+        <StudioActivity key={draft.createKey} jobs={jobs} pending={pendingTask} appliedJobs={draft.appliedJobs} resultStates={resultStates} zh={zh}
           onRetry={job => { setNotice(null); resultLoads.current.delete(job.id); collectResult(job).catch(() => {}); }}
-          onCancel={async job => { try { await api(`/api/studio/jobs/${job.id}`, { method: "DELETE" }); setJobs(current => current.map(row => row.id === job.id ? { ...row, cancelRequested: true } : row)); setProjectLoad(value => value + 1); } catch (error) { notify(error); } }}
-          onLocate={job => {
-            let layers = draftRef.current.layers, layer = layers.find(item => item.sourceJobId === job.id);
-            if (!layer && job.resultData?.assets?.length) {
-              const first = job.resultData.assets[0];
-              const target = layers.find(item => item.id === job.targetId) || { id: job.targetId || requestKey(), assetId: job.assetId, name: zh ? getTool(job.tool)?.zh : getTool(job.tool)?.en, type: "image", width: Math.min(first.width, 480), height: Math.min(first.width, 480) * first.height / first.width, x: 0, y: 100, rotation: 0, visible: true, opacity: 1 };
-              layers = appendResult(layers, job, target); commitLayers(layers); layer = layers.find(item => item.sourceJobId === job.id);
-            }
-            if (layer) { if (!layer.visible) commitLayers(layers.map(item => item.id === layer.id ? { ...item, visible: true } : item)); setSelected(layer.id); setMobileChat(false); setTimeout(() => canvas.current?.focusLayer(layer.id), 0); }
-          }} />
+          onCancel={async job => { try { await api(`/api/studio/jobs/${job.id}`, { method: "DELETE" }); setJobs(current => current.map(row => row.id === job.id ? { ...row, cancelRequested: true } : row)); setProjectLoad(value => value + 1); } catch (error) { notify(error); } }} />
         {chatCollapsed && <button className="ms-icon ms-chat-restore" title={t("展开聊天", "Open chat")} onClick={() => { setChatCollapsed(false); setMobileChat(true); }}><PanelLeftOpen size={18} /></button>}
-        <Canvas ref={canvas} layers={draft.layers} selectedId={selectedId} selectedIds={effectiveSelection} onSelect={selectLayer} onChange={commitLayers} mode={mode} brushSize={brush}
+        <Canvas ref={canvas} projectKey={draft.createKey} readOnly={!ready} ocrEntries={ocrEntries} onOpenOcr={openOcr} onUsePrompt={useTextPrompt} layers={draft.layers} selectedId={selectedId} selectedIds={effectiveSelection} onSelect={selectLayer} onChange={commitLayers} mode={mode} brushSize={brush}
           selectionTool={toolId} editPadding={params.editPadding} focusPoints={params.focusPoints || []} onFocusPoint={addFocus} adjustmentPreview={toolId === "adjust" ? (compareOriginal ? {} : adjustments) : null}
           zh={zh} onViewport={setViewport} onCamera={onCamera} onPreview={(assetId, image) => { setPreviewSeed({ assetId, image }); setImagePreview(assetId); }}
           moveRegions={toolId === "move" && objectSelection?.region ? { source: params.moveSource, target: params.moveTarget } : null} onMoveRegions={patch => setParams(p => ({ ...p, ...patch }))}
@@ -600,8 +606,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
         {effectiveSelection.length > 0 && (showLayers || effectiveSelection.length > 1) && !toolId && <LayerSelectionTools layers={draft.layers} ids={effectiveSelection} onChange={commitLayers} zh={zh} disabled={busy} />}
         <div className="ms-canvas-label"><span className="ms-status-dot" />{t("自由画布", "FREE CANVAS")}<span> / </span>{draft.layers.length} {t("个图层", "layers")}</div>
         {selected?.type === "image" && viewport && !toolId && <div className="ms-image-dimensions" style={{ left: Math.max(85, Math.min(viewport.viewportWidth - 85, viewport.left + viewport.width / 2)), top: Math.max(44, Math.min(viewport.viewportHeight - 150, viewport.top + viewport.height + 14)) }}>W {selected.pixelWidth}<span>H {selected.pixelHeight}</span></div>}
-        {jobs.some(job => !TERMINAL.includes(job.status) || job.status === "succeeded" && !draft.appliedJobs?.includes(job.id)) && <div className="ms-task-status" role="status" aria-live="polite">{jobs.filter(job => !TERMINAL.includes(job.status) || job.status === "succeeded" && !draft.appliedJobs?.includes(job.id)).slice(0, 3).map(job => <div key={job.id}><span>{zh ? getTool(job.tool)?.zh : getTool(job.tool)?.en} · {resultStates[job.id] === "failed" ? t("图片加载失败，原图已保留", "Image failed to load; original kept") : job.status === "succeeded" ? t("正在加载结果…", "Loading result…") : t("正在生成，原图已保留…", "Generating; original kept…")}</span>{resultStates[job.id] === "failed" && <button className="ms-text-button" onClick={() => { setNotice(null); resultLoads.current.delete(job.id); collectResult(job).catch(() => {}); }}>{t("重试加载", "Retry loading")}</button>}</div>)}</div>}
-        {!draft.layers.length && <div className="ms-empty-canvas"><div className="ms-empty-art"><div className="ms-art-frame back"><Image unoptimized width={480} height={480} loading="eager" src="/studio/scene-05.webp" alt="" /></div><div className="ms-art-frame front"><Image unoptimized width={480} height={480} loading="eager" src="/studio/scene-03.webp" alt="" /><span><Sparkles size={12} />{t("灵感，正在发生", "A place for possibilities")}</span></div><span className="ms-art-cross one">+</span><span className="ms-art-cross two">+</span></div><h2>{t("你的下一幅作品，从这里开始", "A blank canvas. Endless possibilities.")}</h2><p>{t("拖入图片，或在左侧说出你的想法", "Drop an image here, or start with an idea on the left")}</p><button className="ms-button ms-primary" disabled={busy} onClick={() => fileInput.current.click()}><Plus size={17} />{t("上传第一张图片", "Upload your first image")}</button><small>PNG · JPG · WEBP · 10 MB</small></div>}
+        {!draft.layers.length && <div className="ms-empty-canvas"><div className="ms-empty-art"><div className="ms-art-frame back"><Image unoptimized width={480} height={480} loading="eager" src="/studio/scene-05.webp" alt="" /></div><div className="ms-art-frame front"><Image unoptimized width={480} height={480} loading="eager" src="/studio/scene-03.webp" alt="" /><span><Sparkles size={12} />{t("灵感，正在发生", "A place for possibilities")}</span></div><span className="ms-art-cross one">+</span><span className="ms-art-cross two">+</span></div><h2>{t("你的下一幅作品，从这里开始", "A blank canvas. Endless possibilities.")}</h2><p>{t("拖入图片，或双击空白处写下灵感", "Drop an image, or double-click the canvas to write")}</p><button className="ms-button ms-primary" disabled={busy} onClick={() => fileInput.current.click()}><Plus size={17} />{t("上传第一张图片", "Upload your first image")}</button><small>PNG · JPG · WEBP · 10 MB</small></div>}
         <div className="ms-canvas-top-right"><button className={`ms-icon ${showLayers ? "active" : ""}`} title={t("图层", "Layers")} onClick={() => setShowLayers(!showLayers)}><Layers3 size={18} /></button></div>
         {selected?.type === "image" && effectiveSelection.length === 1 && !showLayers && !toolId && !ocr && <ImageToolToolbar key={selected.id} size={params.size} selected={selected} viewport={viewport} capabilities={capabilities} zh={zh} onChoose={chooseTool}
           onChat={() => { setMobileChat(true); setChatCollapsed(false); setComposer({ referenceIds: [selected.id], text: prompt }); }}
@@ -616,11 +621,10 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
             else if (toolId === "crop") setParams(p => ({ ...p, rect: { left: 0, top: 0, width: selected.pixelWidth, height: selected.pixelHeight }, cropShape: "rectangle", cropGrid: undefined }));
             else if (toolId === "expand") setParams(p => ({ ...p, padding: { left: 256, right: 256, top: 256, bottom: 256 } }));
           }} />}
-        {selected?.type === "text" && <div className="ms-tool-panel"><div className="ms-panel-title">{t("文字编辑", "Edit text")}<Type size={16} /></div><textarea aria-label={t("图层文字", "Layer text")} value={selected.text} onChange={e => commitLayers(draft.layers.map(l => l.id === selectedId ? { ...l, text: e.target.value } : l))} /><label>{t("字号", "Font size")}<input type="number" min="8" max="512" value={selected.fontSize} onChange={e => commitLayers(draft.layers.map(l => l.id === selectedId ? { ...l, fontSize: Number(e.target.value) || 8 } : l))} /></label><label>{t("颜色", "Color")}<input type="color" value={selected.fill} onChange={e => commitLayers(draft.layers.map(l => l.id === selectedId ? { ...l, fill: e.target.value } : l))} /></label></div>}
         {selected?.type === "video" && <div className="ms-tool-panel"><div className="ms-panel-title">{t("视频作品", "Video result")}</div><button className="ms-button ms-primary" onClick={() => setPreview(selected.assetId)}><Play size={15} />{t("播放视频", "Play video")}</button><a className="ms-button" href={imageUrl(selected.assetId)} download="letai-video.mp4"><Download size={15} />{t("下载 MP4", "Download MP4")}</a></div>}
         {ocr && <OcrResultPanel result={ocr} zh={zh} cost={imageCreditCost(capabilities?.tools.find(c => c.id === "erase"), params.size)} canReplace={!busy && selected?.id === ocr.targetId && !!capabilities?.tools.find(c => c.id === "erase")?.available} onChange={setOcr} onReplace={replaceText} onClose={closeOcr} onError={notify} />}
         {showLayers && <div className="ms-layers"><div className="ms-panel-title">{t("图层", "Layers")}<span>{draft.layers.length}</span></div>{draft.layers.toReversed().map(layer => <div className={`ms-layer ${selectedId === layer.id ? "selected" : ""}`} key={layer.id}><button className="ms-layer-select" onClick={e => selectLayer(layer.id, e.shiftKey)}>{layer.type === "image" ? <Image unoptimized width={480} height={480} src={previewUrl(layer.assetId, 320)} alt="" /> : layer.type === "text" ? <Type size={18} /> : <Video size={18} />}<span>{layer.locked ? "▣ " : ""}{layer.name}</span></button><button className="ms-icon" title={t("显示/隐藏", "Show/hide")} onClick={() => commitLayers(draft.layers.map(l => l.id === layer.id ? { ...l, visible: !l.visible } : l))}>{layer.visible ? <Eye size={13} /> : <EyeOff size={13} />}</button></div>)}{selected && <div className="ms-layer-actions"><button className="ms-icon" title={t("上移一层", "Raise layer")} onClick={() => { const list = [...draft.layers], i = list.findIndex(l => l.id === selectedId); if (i < list.length - 1) { [list[i], list[i + 1]] = [list[i + 1], list[i]]; commitLayers(list); } }}><ArrowUp size={15} /></button><button className="ms-icon" title={t("下移一层", "Lower layer")} onClick={() => { const list = [...draft.layers], i = list.findIndex(l => l.id === selectedId); if (i > 0) { [list[i], list[i - 1]] = [list[i - 1], list[i]]; commitLayers(list); } }}><ArrowDown size={15} /></button><button className="ms-icon" title={t("复制图层", "Duplicate layer")} onClick={() => commitLayers([...draft.layers, { ...selected, id: requestKey(), x: selected.x + 24, y: selected.y + 24 }])}><Copy size={15} /></button><button className="ms-icon" title={t("删除图层", "Delete layer")} disabled={selected.locked} onClick={() => { commitLayers(draft.layers.filter(l => l.id !== selectedId)); setSelected(null); }}><Trash2 size={15} /></button></div>}</div>}
-        <div className="ms-bottom-toolbar">{[["select", MousePointer2, t("选择", "Select")], ["hand", Hand, t("平移", "Pan")]].map(([id, Icon, title]) => <button key={id} className={`ms-icon ${(id === "hand" ? panning : !panning) ? "active" : ""}`} title={title} aria-pressed={id === "hand" ? panning : !panning} onClick={() => setPanning(id === "hand")}><Icon size={20} /></button>)}<span /><button className="ms-icon" title={t("上传图片", "Upload image")} disabled={busy} onClick={() => fileInput.current.click()}><ImagePlus size={20} /></button><button className="ms-icon" title={t("添加文字", "Add text")} onClick={() => textLayer()}><Type size={20} /></button><span /><button className="ms-icon" data-action="undo" title={t("撤销", "Undo")} disabled={!historyCount.past} onClick={() => undo()}><Undo2 size={19} /></button><button className="ms-icon" data-action="redo" title={t("重做", "Redo")} disabled={!historyCount.future} onClick={() => undo(true)}><Redo2 size={19} /></button></div>
+        <div className="ms-bottom-toolbar">{[["select", MousePointer2, t("选择", "Select")], ["hand", Hand, t("平移", "Pan")]].map(([id, Icon, title]) => <button key={id} className={`ms-icon ${(id === "hand" ? panning : !panning) ? "active" : ""}`} title={title} aria-pressed={id === "hand" ? panning : !panning} onClick={() => setPanning(id === "hand")}><Icon size={20} /></button>)}<span /><button className="ms-icon" title={t("上传图片", "Upload image")} disabled={busy} onClick={() => fileInput.current.click()}><ImagePlus size={20} /></button><span /><button className="ms-icon" data-action="undo" title={t("撤销", "Undo")} disabled={!historyCount.past} onClick={() => undo()}><Undo2 size={19} /></button><button className="ms-icon" data-action="redo" title={t("重做", "Redo")} disabled={!historyCount.future} onClick={() => undo(true)}><Redo2 size={19} /></button></div>
         <div className="ms-zoom"><button className="ms-icon" title={t("缩小", "Zoom out")} onClick={() => canvas.current.zoom(0.8)}><Minus size={16} /></button><input aria-label={t("画布缩放", "Canvas zoom")} type="range" min="8" max="400" value={Math.round(zoom * 100)} onChange={event => canvas.current.zoom(Number(event.target.value) / 100 / zoom)} /><output>{Math.round(zoom * 100)}%</output><button className="ms-icon" title={t("放大", "Zoom in")} onClick={() => canvas.current.zoom(1.25)}><Plus size={16} /></button><button className="ms-icon" title={t("适应画布", "Fit canvas")} onClick={() => canvas.current.fit()}><Maximize size={16} /></button><button className="ms-icon" title={t("预览图片", "Preview image")} disabled={selected?.type !== "image"} onClick={() => { setImagePreview(selected.assetId); }}><Eye size={17} /></button></div>
       </main>
     </div>

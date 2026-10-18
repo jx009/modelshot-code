@@ -92,7 +92,7 @@ export async function submitStudioJob(userId, input, key, db = prisma, deps = {}
 }
 
 export function presentJob(row) {
-  return { id: row.id, status: row.status, tool: row.snapshot.tool, targetId: row.snapshot.targetId, documentId: row.snapshot.documentId,
+  return { id: row.id, status: row.status, tool: row.snapshot.tool, origin: row.snapshot.origin, targetId: row.snapshot.targetId, documentId: row.snapshot.documentId,
     assetId: row.snapshot.assetId, moveBundle: row.snapshot.moveBundle,
     sectionId: row.snapshot.sectionId, sectionAttempt: row.snapshot.sectionAttempt,
     cost: row.creditCost, errorCode: row.errorCode, resultData: row.resultData, createdAt: row.createTime, cancelRequested: Boolean(row.cancelRequestedAt) };

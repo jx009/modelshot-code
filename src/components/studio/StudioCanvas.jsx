@@ -3,6 +3,10 @@
 import { forwardRef, startTransition, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import { Stage, Layer, Image as CanvasImage, Transformer, Text, Group, Line, Rect, Circle } from "react-konva";
 import CanvasArtwork from "./canvas/CanvasArtwork";
+import CanvasTextEditor from "./canvas/CanvasTextEditor";
+import { ArrowUpRight, Pencil, ScanText } from "lucide-react";
+import { useTheme } from "next-themes";
+import { requestKey } from "@/lib/client-api";
 import MultiSelectionTransform from "./canvas/MultiSelectionTransform";
 import CanvasContextMenu from "./canvas/CanvasContextMenu";
 import { layersInRect } from "@/lib/studio/layer-operations";
@@ -84,7 +88,11 @@ function ExpansionBox({ value, width, height, accent, onChange }) {
       enabledAnchors={["top-left", "top-center", "top-right", "middle-left", "middle-right", "bottom-left", "bottom-center", "bottom-right"]} /></>;
 }
 
-const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, selectedIds = [], focusPoints = [], onFocusPoint, adjustmentPreview, onSelect, onChange, mode, onMaskChange, panning: requestedPanning = false, moveRegions, onMoveRegions, onPreview, onViewport, onCamera, zh, selectionTool, editPadding = 0.25, brushSize = 35, moveOffset = { dx: 0, dy: 0 }, onMoveOffset, onMovePreparing, onMoveReady, onMoveFailed, onCrop, cropRect, cropShape, cropGrid, onCropGrid, expandPadding = 256, onExpandPadding, onZoom, onUpload, onError, label }, ref) {
+const StudioCanvas = forwardRef(function StudioCanvas({ layers, projectKey, readOnly = false, ocrEntries = [], onOpenOcr, onUsePrompt, selectedId, selectedIds = [], focusPoints = [], onFocusPoint, adjustmentPreview, onSelect, onChange, mode, onMaskChange, panning: requestedPanning = false, moveRegions, onMoveRegions, onPreview, onViewport, onCamera, zh, selectionTool, editPadding = 0.25, brushSize = 35, moveOffset = { dx: 0, dy: 0 }, onMoveOffset, onMovePreparing, onMoveReady, onMoveFailed, onCrop, cropRect, cropShape, cropGrid, onCropGrid, expandPadding = 256, onExpandPadding, onZoom, onUpload, onError, label }, ref) {
+  const { resolvedTheme } = useTheme();
+  const textColor = resolvedTheme === "light" ? "#27272a" : "#e8e8e4";
+  const [textEditor, setTextEditor] = useState(null);
+  const editingText = textEditor?.projectKey === projectKey ? textEditor?.layer : null;
   const [middleHeld, setMiddleHeld] = useState(false);
   const panning = requestedPanning || middleHeld;
   const container = useRef(null), stage = useRef(null), artwork = useRef(null);
@@ -209,6 +217,11 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, sele
     focusLayer(id) {
       const item = layers.find(layer => layer.id === id);
       if (!item) return;
+      if (item.type === "text") {
+        const scale = Math.max(.08, Math.min(1, (dimensions.width - 100) / item.width));
+        updateCamera({ scale, x: (dimensions.width - item.width * scale) / 2 - item.x * scale, y: 100 - item.y * scale });
+        return;
+      }
       const scale = Math.max(.08, Math.min(1.5, (dimensions.width - 120) / item.width, (dimensions.height - 180) / item.height));
       updateCamera({ scale, x: dimensions.width / 2 - (item.x + item.width / 2) * scale, y: dimensions.height / 2 - (item.y + item.height / 2) * scale });
     },
@@ -365,15 +378,42 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, sele
   // Stable callbacks let unchanged artwork skip brush and composer updates.
   // Read the latest committed layers so an async result is never lost on drag end.
   const actions = useRef(null);
-  useLayoutEffect(() => { actions.current = { layers, selectedIds, onSelect, onChange, onPreview, onError, editing, panning }; });
+  useLayoutEffect(() => { actions.current = { layers, projectKey, readOnly, selectedIds, onSelect, onChange, onPreview, onError, editing, panning }; });
   const selectPicture = useCallback((id, additive) => {
     const current = actions.current;
     if (!current.panning && !current.editing) current.onSelect(id, additive);
   }, []);
   const previewPicture = useCallback((item, image) => {
     const current = actions.current;
+    if (!current.editing && !current.panning && !current.readOnly && item.type === "text" && !item.locked) {
+      setTextEditor({ layer: item, projectKey: current.projectKey });
+      return;
+    }
     if (!current.editing && item.type === "image") current.onPreview?.(item.assetId, image);
   }, []);
+  function writeAtPointer(event) {
+    if (event.target !== stage.current || mode !== "select" || panning || readOnly || editingText) return;
+    const position = stage.current.getRelativePointerPosition();
+    if (!position) return;
+    stopCamera(); setContextMenu(null); onSelect(null);
+    const screenLeft = Math.max(12, Math.min(dimensions.width - 120, camera.x + position.x * camera.scale));
+    const availableWidth = Math.max(80, Math.min(440, dimensions.width - screenLeft - 16));
+    const fontSize = Math.min(512, Math.max(8, 24 / camera.scale));
+    setTextEditor({ projectKey, layer: { id: requestKey(), type: "text", name: zh ? "文字" : "Text", text: "",
+      x: Math.max(-100000, Math.min(100000, (screenLeft - camera.x) / camera.scale)), y: Math.max(-100000, Math.min(100000, position.y)),
+      width: availableWidth / camera.scale, height: fontSize * 1.5, fontSize,
+      rotation: 0, visible: true, opacity: 1 } });
+  }
+  function commitText(value) {
+    const current = actions.current;
+    if (current.readOnly || textEditor?.projectKey !== current.projectKey) { setTextEditor(null); return; }
+    const existing = current.layers.find(layer => layer.id === value.id);
+    // Merge into the current document: a generation can finish while typing.
+    // Editing text must never replace a stale snapshot of the image layers.
+    if (existing) current.onChange(current.layers.map(layer => layer.id === value.id ? { ...layer, text: value.text, height: value.height } : layer));
+    else current.onChange([...current.layers, value]);
+    current.onSelect(value.id); setTextEditor(null);
+  }
   const changePicture = useCallback((id, patch) => {
     const current = actions.current;
     try {
@@ -410,7 +450,7 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, sele
     }}
     onDragOver={e => e.preventDefault()}
     onDrop={e => { e.preventDefault(); onUpload(e.dataTransfer.files); }}>
-    <Stage onDblClick={e => { if (e.target === stage.current) fit(); }} onDblTap={e => { if (e.target === stage.current) fit(); }} ref={stage} {...dimensions} x={camera.x} y={camera.y} scaleX={camera.scale} scaleY={camera.scale} draggable={panning}
+    <Stage onDblClick={writeAtPointer} onDblTap={writeAtPointer} ref={stage} {...dimensions} x={camera.x} y={camera.y} scaleX={camera.scale} scaleY={camera.scale} draggable={panning}
       onContextMenu={event => {
         event.evt.preventDefault();
         if (mode !== "select" || panning) return;
@@ -437,7 +477,7 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, sele
       onMouseDown={handleMouseDown} onTouchStart={handleMouseDown}
       onMouseMove={handleMouseMove} onTouchMove={handleMouseMove}
       onMouseUp={finishDrawing} onTouchEnd={finishDrawing}>
-      <CanvasArtwork selectedIds={selectedIds} adjustmentPreview={adjustmentPreview} ref={artwork} layers={layers} camera={camera} dimensions={dimensions} selectedId={selectedId} interactive={!panning && mode === "select"} accent={color} onError={onError} onPreview={previewPicture} onSelect={selectPicture} onChange={changePicture} />
+      <CanvasArtwork editingTextId={editingText?.id} textColor={textColor} selectedIds={selectedIds} adjustmentPreview={adjustmentPreview} ref={artwork} layers={layers} camera={camera} dimensions={dimensions} selectedId={selectedId} interactive={!readOnly && !panning && mode === "select"} accent={color} onError={onError} onPreview={previewPicture} onSelect={selectPicture} onChange={changePicture} />
       {!panning && mode === "select" && selectedIds.length > 1 && <MultiSelectionTransform stage={stage} layers={layers} ids={selectedIds.filter(id => layers.some(layer => layer.id === id && layer.visible && !layer.locked))} accent={color} onCommit={transformSelection} />}
       {marquee && <Layer listening={false}><Rect {...marquee} stroke={color} strokeWidth={1 / camera.scale} fill={`${color}22`} /></Layer>}
       {editing && !["crop", "expand", "move", "object-edit"].includes(mode) && <Layer listening={false}><Group x={selection.x} y={selection.y} rotation={selection.rotation} scaleX={selection.width / selection.pixelWidth} scaleY={selection.height / selection.pixelHeight} clipWidth={selection.pixelWidth} clipHeight={selection.pixelHeight}>
@@ -483,6 +523,18 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, sele
           width={movePreview.bounds.width + 6} height={movePreview.bounds.height + 6} stroke={color} strokeWidth={1.5 / (camera.scale * selection.width / selection.pixelWidth)} dash={[7, 5]} cornerRadius={3} listening={false} />
       </Group></Layer>}
     </Stage>
+    {editingText && <CanvasTextEditor key={editingText.id} layer={editingText} camera={camera} color={textColor} zh={zh} onCommit={commitText} onCancel={() => setTextEditor(null)} />}
+    {!editingText && mode === "select" && selection?.type === "text" && selection.visible && <div className="ms-canvas-text-actions" style={{ left: Math.max(12, Math.min(dimensions.width - 240, camera.x + selection.x * camera.scale)), top: Math.max(48, Math.min(dimensions.height - 120, camera.y + selection.y * camera.scale - 48)) }}>
+      <button onClick={() => onUsePrompt?.(selection)}><ArrowUpRight size={15} />{zh ? "作为提示词" : "Use as prompt"}</button>
+      {!selection.locked && <button aria-label={zh ? "编辑画布文字" : "Edit canvas text"} disabled={readOnly} onClick={() => setTextEditor({ projectKey, layer: selection })}><Pencil size={15} /></button>}
+    </div>}
+    {mode === "select" && !editingText && ocrEntries.map(entry => {
+      const layer = layers.find(item => item.id === entry.layerId && item.visible);
+      if (!layer) return null;
+      const left = camera.x + layer.x * camera.scale, top = camera.y + layer.y * camera.scale;
+      if (left > dimensions.width || top > dimensions.height || left + layer.width * camera.scale < 0 || top + layer.height * camera.scale < 0) return null;
+      return <button key={entry.layerId} className="ms-canvas-ocr-entry" aria-label={zh ? `查看文字 · ${layer.name}` : `View text · ${layer.name}`} style={{ left: Math.max(12, Math.min(dimensions.width - 132, left)), top: Math.max(48, Math.min(dimensions.height - 120, top + layer.height * camera.scale + 12)) }} onClick={() => onOpenOcr?.(entry.jobId)}><ScanText size={14} />{zh ? "查看文字" : "View text"}</button>;
+    })}
     {contextMenu && <CanvasContextMenu position={contextMenu} layers={layers} ids={selectedIds} onChange={onChange} onSelect={onSelect} onClose={closeContextMenu} onFit={fit} zh={zh} />}
   </div>;
 });

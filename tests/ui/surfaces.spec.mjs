@@ -11,6 +11,7 @@ test.beforeEach(async ({ page }) => {
       return;
     }
     const fixtures = {
+      "/api/inspiration": { items: [], layout: { mode: "masonry", columns: 4, gap: 16 } },
       "/api/auth/session": { user: { id: "ui-fixture", name: "UI Test", email: "ui@example.invalid", credits: 500 }, expires: "2099-01-01T00:00:00Z" },
       "/api/studio/capabilities": { imageModels: [{ id: "fixture", label: "GPT Image 2", creditCost: 18, maxReferenceImages: 3 }], imageProvider: "fixture", tools: [], planningAvailable: false },
       "/api/studio/documents": { items: [{ id: "example", name: "一只猫在窗边的创作项目", updatedAt: "2026-10-01T00:00:00Z", kind: "canvas", version: 1 }], nextCursor: null },
@@ -71,13 +72,10 @@ for (const intent of ["hover", "focus"]) {
     page.on("request", request => {
       if (new URL(request.url()).pathname === "/zh/commerce") destinationRequests.push(request);
     });
-    await open(page, "");
-    await page.waitForLoadState("networkidle");
-    // Merely displaying the sidebar should not fetch the heavy destination.
-    expect(destinationRequests).toHaveLength(0);
-    const link = page.getByRole("navigation", { name: "创作导航" }).getByRole("link", { name: "电商套图 Agent", exact: true });
-    // Next fetches the route tree first, then the dynamic page payload.
+    // Register before navigation because idle warmup may beat explicit intent.
     const prefetched = page.waitForResponse(response => new URL(response.url()).pathname === "/zh/commerce" && response.request().headers()["next-router-prefetch"] !== "1");
+    await open(page, "");
+    const link = page.getByRole("navigation", { name: "创作导航" }).getByRole("link", { name: "电商套图 Agent", exact: true });
     await link[intent]();
     await prefetched;
     // Wait for browser network quiescence before verifying cache reuse below.
@@ -91,18 +89,32 @@ for (const intent of ["hover", "focus"]) {
   });
 }
 
-test("slow navigation shows a themed loading state until the destination arrives", async ({ page }) => {
+test("core navigation preloads a dynamic module while idle and reuses it on first click", async ({ page }) => {
+  const requests = [];
+  page.on("request", request => { if (new URL(request.url()).pathname === "/zh/commerce") requests.push(request); });
+  const response = page.waitForResponse(response => new URL(response.url()).pathname === "/zh/commerce" && response.request().headers()["next-router-prefetch"] !== "1");
   await open(page, "");
-  const sidebar = await page.locator(".cr-sidebar").elementHandle();
+  await response;
+  await page.waitForLoadState("networkidle");
+  const count = requests.length;
+  expect(count).toBeGreaterThan(0);
+  await page.getByRole("navigation", { name: "创作导航" }).getByRole("link", { name: "电商套图 Agent", exact: true }).click();
+  await expect(page.locator(".cm-workspace")).toBeVisible();
+  expect(requests).toHaveLength(count);
+});
+
+test("slow navigation shows a themed loading state until the destination arrives", async ({ page }) => {
   let release;
   const gate = new Promise(resolve => { release = resolve; });
   await page.route("**/zh/commerce?*", async route => {
     if (route.request().headers()["next-router-prefetch"] !== "1") await gate;
     await route.continue();
   });
+  const dynamicRequest = page.waitForRequest(request => new URL(request.url()).pathname === "/zh/commerce" && request.headers()["next-router-prefetch"] !== "1");
+  await open(page, "");
+  const sidebar = await page.locator(".cr-sidebar").elementHandle();
   try {
     const link = page.getByRole("navigation", { name: "创作导航" }).getByRole("link", { name: "电商套图 Agent", exact: true });
-    const dynamicRequest = page.waitForRequest(request => new URL(request.url()).pathname === "/zh/commerce" && request.headers()["next-router-prefetch"] !== "1");
     await link.hover();
     await dynamicRequest;
     await link.click();
@@ -190,9 +202,8 @@ for (const width of [1440, 390, 320]) {
           expect(box.height).toBeLessThan(60);
         }
         if (path.startsWith("studio")) {
-          const model = await page.locator(".ms-composer-tools .mpk-trigger").boundingBox();
-          const send = await page.locator(".ms-composer-tools > .ms-send").boundingBox();
-          expect(Math.abs(model.y - send.y)).toBeLessThan(10);
+          await expectContained(page.locator(".ms-composer-tools .mpk-trigger"), page);
+          await expectContained(page.locator(".ms-composer-footer > .ms-send"), page);
           expect(await page.locator(".ms-studio").evaluate(el => getComputedStyle(el).getPropertyValue("--primary-text").trim()))
             .toBe(await page.locator("html").evaluate(el => getComputedStyle(el).getPropertyValue("--primary-text").trim()));
         }
@@ -230,10 +241,8 @@ test("menus are opaque, keyboard accessible, and fit on mobile", async ({ page }
   await page.keyboard.press("Escape");
   await open(page, "studio-v2?new=1");
   await page.getByRole("button", { name: "画布", exact: true }).click();
-  const task = page.getByRole("button", { name: "任务列表", exact: true });
-  await task.click();
-  await expectOpaque(page.locator(".ms-task-popover"));
-  await expectContained(page.locator(".ms-task-popover"), page);
+  await expect(page.getByRole("button", { name: "任务列表", exact: true })).toHaveCount(0);
+  await expect(page.locator(".ms-job-list")).toHaveCount(0);
 });
 
 test("project menu Escape, dialog blank space, focus trap and backdrop dismissal", async ({ page }) => {

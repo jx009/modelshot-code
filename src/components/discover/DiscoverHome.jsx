@@ -96,7 +96,7 @@ export default function DiscoverHome({ explore = false }) {
       setResumeDocument(batch.document.id);
       if (prompt.trim()) for (; batch.index < count; batch.index++) {
         const source = attachments[0];
-        await api("/api/studio/jobs", { method: "POST", key: batch.keys[batch.index], body: { expectedCost: imageCreditCost(offer, size), tool: source ? "edit" : "generate", documentId: batch.document.id, documentVersion: batch.document.version, provider: selectedProvider, ...(source ? { assetId: source.assetId, targetId: source.id, referenceAssetIds: attachments.slice(1).map(l => l.assetId) } : {}), params: { prompt: text, size } } });
+        await api("/api/studio/jobs", { method: "POST", key: batch.keys[batch.index], body: { origin: "chat", expectedCost: imageCreditCost(offer, size), tool: source ? "edit" : "generate", documentId: batch.document.id, documentVersion: batch.document.version, provider: selectedProvider, ...(source ? { assetId: source.assetId, targetId: source.id, referenceAssetIds: attachments.slice(1).map(l => l.assetId) } : {}), params: { prompt: text, size } } });
       }
       router.push(`/studio-v2?document=${batch.document.id}&mode=${mode}&provider=${encodeURIComponent(selectedProvider)}`);
     } catch (err) {

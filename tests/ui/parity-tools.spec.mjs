@@ -63,9 +63,11 @@ for (const width of [1440, 390]) test(`OCR result has direct entry points and pe
   await page.route("**/api/studio/jobs?**", route => route.fulfill({ json: [job] }));
   await page.setViewportSize({ width, height: 900 });
   await page.goto("/zh/studio-v2?document=creative-doc");
-  const message = page.locator(".ms-message.assistant").filter({ hasText: "文字识别" });
-  await expect(message.getByRole("button", { name: "查看文字", exact: true })).toBeVisible();
-  await message.getByRole("button", { name: "查看文字", exact: true }).click();
+  if (width < 760) await page.getByRole("button", { name: "画布", exact: true }).click();
+  const entry = page.getByRole("button", { name: "查看文字 · 参考图片 1", exact: true });
+  await expect(entry).toBeVisible();
+  await expect(page.locator(".ms-message")).toHaveCount(0);
+  await entry.click();
   const panel = page.getByRole("dialog", { name: "图片中的文字", exact: true });
   await expect(panel).toBeVisible();
   await expect(panel).toContainText("识别到 45 段文字");
@@ -92,9 +94,9 @@ for (const width of [1440, 390]) test(`OCR result has direct entry points and pe
   await page.screenshot({ path: info.outputPath(`ocr-scrolled-${width}.png`) });
   await close.click();
   await expect(panel).toHaveCount(0);
-  // Completed text tasks expose their result in the task center too.
-  await page.getByRole("button", { name: "任务列表", exact: true }).click();
-  await page.locator(".ms-task-card").getByRole("button", { name: "查看文字", exact: true }).click();
+  // The persistent canvas entry reopens the result, without a task archive.
+  await expect(page.getByRole("button", { name: "任务列表", exact: true })).toHaveCount(0);
+  await entry.click();
   await expect(panel).toBeVisible();
   await expect(page.locator(".ms-task-popover")).toHaveCount(0);
   await panel.getByLabel("第 1 段文字", { exact: true }).fill("修订文字");

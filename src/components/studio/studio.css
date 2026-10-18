@@ -178,3 +178,20 @@
 @media(max-width:600px){.ms-topbar .ms-top-actions{flex-shrink:0}.ms-topbar .ms-top-actions .ms-button{white-space:nowrap;padding:9px 10px}}
 .ms-project-loading { position:absolute; inset:0; z-index:100; display:flex; justify-content:center; align-items:flex-start; padding-top:64px; cursor:progress; }
 .ms-project-loading>span { display:flex; align-items:center; gap:8px; padding:10px 16px; border:1px solid var(--divider); border-radius:12px; background:var(--bg-card); color:var(--secondary-text); font-size:12px; }
+
+/* Canvas text is edited in place; only this text node is hidden while typing. */
+.ms-studio .ms-inline-text-editor{position:absolute;z-index:16;box-sizing:border-box;padding:0;margin:0;border:0;outline:1px solid var(--divider-strong);outline-offset:5px;border-radius:2px;background:transparent;font-family:Arial,sans-serif;transform-origin:top left;resize:none;overflow:hidden;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-all;cursor:text}
+.ms-inline-text-editor::placeholder{color:var(--tertiary-text)}
+.ms-canvas-text-actions{position:absolute;z-index:17;display:flex;align-items:center;gap:2px;padding:4px;border:1px solid var(--divider-strong);border-radius:10px;background:var(--bg-popover);box-shadow:var(--depth-2)}
+.ms-canvas-text-actions button,.ms-canvas-ocr-entry{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:32px;padding:6px 10px;color:var(--primary-text);font-size:12px;font-weight:500;white-space:nowrap;cursor:pointer}
+.ms-canvas-text-actions button{border:0;border-radius:6px;background:transparent}
+.ms-canvas-text-actions button:hover{background:var(--bg-elevated)}
+.ms-canvas-ocr-entry{position:absolute;z-index:14;border:1px solid var(--divider-strong);border-radius:9px;background:var(--bg-popover);box-shadow:var(--depth-1)}
+.ms-canvas-ocr-entry:hover{border-color:var(--tertiary-text)}
+.ms-canvas-space:has(.ms-inline-text-editor) .ms-empty-canvas{visibility:hidden}
+.ms-empty-canvas{pointer-events:none}
+.ms-empty-canvas button{pointer-events:auto}
+.ms-task-status{max-height:180px;overflow:auto}
+.ms-task-status>div+div{margin-top:8px}
+.ms-task-status>div>span{flex:1}
+.ms-task-status>div>svg{flex-shrink:0}

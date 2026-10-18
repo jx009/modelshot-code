@@ -35,7 +35,7 @@ export const paramsSchema = z.object({
   language: z.enum(["zh", "en", "ja", "ko", "fr", "de", "es", "pt", "ru", "th"]).optional(),
   focusPoints: z.array(z.object({ id, x: z.number().min(0).max(1), y: z.number().min(0).max(1), label: z.string().trim().min(1).max(100) }).strict()).min(1).max(10).optional(),
 }).strict();
-export const jobSchema = z.object({ expectedCost: z.number().int().min(0).max(200000).optional(), tool: z.enum(TOOLS.map(tool => tool.id)), provider: id.optional(), documentId: id, documentVersion: z.number().int().positive(), targetId: id.optional(), assetId: id.optional(), maskId: id.optional(), moveBundle: z.object({ objectAssetId: id, holeAssetId: id, bounds: boundsSchema }).strict().optional(), referenceAssetIds: z.array(id).max(2).optional(), sectionId: id.optional(), sectionAttempt: z.number().int().min(0).max(50).optional(), params: paramsSchema.prefault({}) }).strict().superRefine((data, ctx) => {
+export const jobSchema = z.object({ origin: z.enum(["chat", "canvas"]).optional(), expectedCost: z.number().int().min(0).max(200000).optional(), tool: z.enum(TOOLS.map(tool => tool.id)), provider: id.optional(), documentId: id, documentVersion: z.number().int().positive(), targetId: id.optional(), assetId: id.optional(), maskId: id.optional(), moveBundle: z.object({ objectAssetId: id, holeAssetId: id, bounds: boundsSchema }).strict().optional(), referenceAssetIds: z.array(id).max(2).optional(), sectionId: id.optional(), sectionAttempt: z.number().int().min(0).max(50).optional(), params: paramsSchema.prefault({}) }).strict().superRefine((data, ctx) => {
   const tool = getTool(data.tool);
   if (tool.clientOnly) ctx.addIssue({ code: "custom", message: "LOCAL_TOOL_ONLY" });
   if (data.tool === "text-edit" && !data.params.newText) ctx.addIssue({ code: "custom", message: "REPLACEMENT_TEXT_REQUIRED" });
@@ -56,7 +56,8 @@ const layer = z.object({
   id, type: z.enum(["image", "text", "video"]), name: z.string().max(160), assetId: id.optional(),
   x: z.number().finite().min(-100000).max(100000), y: z.number().finite().min(-100000).max(100000), width: z.number().min(1).max(8192), height: z.number().min(1).max(8192),
   rotation: z.number().finite().min(-360).max(360).default(0), visible: z.boolean().default(true), opacity: z.number().min(0).max(1).default(1),
-  pixelWidth: positive.optional(), pixelHeight: positive.optional(), text: z.string().max(4000).optional(), fontSize: z.number().min(8).max(512).optional(), fill: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(), sourceJobId: id.optional(),
+  pixelWidth: positive.optional(), pixelHeight: positive.optional(), text: z.string().max(8000).optional(), fontSize: z.number().min(8).max(512).optional(), fill: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(), sourceJobId: id.optional(),
+  textKind: z.enum(["prompt"]).optional(), ocrJobId: id.optional(),
   groupId: id.optional(), layerRole: z.enum(["background", "object", "decomposed"]).optional(), repairJobId: id.optional(),
   selectionGroup: id.optional(), locked: z.boolean().optional(), adjustments: adjustmentsSchema.optional(),
 }).strict();

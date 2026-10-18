@@ -9,7 +9,7 @@
 .mp-filters button { border:0; border-radius:9px; background:transparent; color:var(--secondary-text); padding:7px 12px; font-size:12px; transition:background 150ms; }
 .mp-filters button[aria-pressed=true] { background:var(--bg-elevated); color:var(--primary-text); }
 .mp-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:28px 22px; }
-.mp-new { aspect-ratio:16/9; border-radius:18px; background:radial-gradient(ellipse at 95% 100%,#69a6a5,transparent 62%),radial-gradient(ellipse at 5% 100%,#ff9020,transparent 70%),linear-gradient(120deg,#ff355e,#d731b4); border:1px solid var(--divider); display:flex; align-items:center; justify-content:center; flex-direction:column; gap:10px; color:white; text-decoration:none; }
+.mp-new { aspect-ratio:16/9; border-radius:18px; background:#111; border:1px solid var(--divider); display:flex; align-items:center; justify-content:center; flex-direction:column; gap:10px; color:white; text-decoration:none; }
 .mp-new>span { width:48px; height:48px; border-radius:50%; display:grid; place-items:center; background:var(--bg-elevated); color:var(--primary-text); transition:transform 150ms; }
 .mp-new:hover>span { transform:scale(1.08); }
 .mp-new strong { font-size:14px; font-weight:500; }

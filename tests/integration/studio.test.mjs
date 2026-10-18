@@ -27,6 +27,17 @@ async function setup() {
 describe("studio documents and task ledger", () => {
   beforeAll(async () => { f = await domainFixture(); });
   afterAll(async () => { await f?.cleanup(); });
+  it("persists chat versus canvas origin and rejects changing origin on an idempotent retry", async () => {
+    const { user, input } = await setup();
+    for (const origin of ["chat", "canvas"]) {
+      const key = randomUUID(), request = { ...input, origin };
+      const job = await submitStudioJob(user.id, request, key, f.db, deps);
+      expect(job.origin).toBe(origin);
+      expect((await f.db.tryOn.findUnique({ where: { id: job.id } })).snapshot.origin).toBe(origin);
+      expect(await submitStudioJob(user.id, request, key, f.db, deps)).toMatchObject({ id: job.id, origin });
+      await expect(submitStudioJob(user.id, { ...request, origin: origin === "chat" ? "canvas" : "chat" }, key, f.db, deps)).rejects.toThrow("IDEMPOTENCY_CONFLICT");
+    }
+  });
   it("reserves, captures and refunds the selected resolution price, with immutable replay after a price change", async () => {
     const { user, input } = await setup();
     const priced = (prices, base = 18) => ({ ...deps, capabilities: { tools: deps.capabilities.tools.map(t => ({ ...t, ...(t.dependency === "image" ? { cost: base, resolutionSurcharges: prices } : {}) })) } });

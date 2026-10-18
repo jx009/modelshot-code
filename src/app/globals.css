@@ -546,8 +546,9 @@ button:disabled, select:disabled, textarea:disabled { cursor: not-allowed; opaci
 .brand { justify-self: start; display: inline-flex; align-items: center; gap: 9px; color: var(--primary-text); text-decoration: none; font-family: var(--font-display); font-size: 20px; }
 .brand-dot { color: var(--primary); }
 .desktop-nav { display: flex; height: 100%; align-items: center; gap: 4px; }
-.desktop-nav a, .mobile-nav a { display: flex; align-items: center; gap: 8px; color: var(--secondary-text); text-decoration: none; font-size: 13px; font-weight: 500; }
-.desktop-nav a { position: relative; height: 100%; padding: 0 18px; }
+.desktop-nav :is(a,button), .mobile-nav > :is(a,button) { display: flex; align-items: center; gap: 8px; color: var(--secondary-text); text-decoration: none; font-size: 13px; font-weight: 500; cursor: pointer; }
+.desktop-nav :is(a,button) { position: relative; height: 100%; padding: 0 18px; }
+.mobile-nav > button { min-height: 42px; padding: 0 10px; }
 .desktop-nav a[aria-current="page"] { color: var(--primary-text); }
 .desktop-nav a[aria-current="page"]::after { content: ""; position: absolute; bottom: -1px; left: 18px; right: 18px; height: 2px; background: var(--primary); }
 .nav-actions { justify-self: end; display: flex; align-items: center; gap: 8px; }

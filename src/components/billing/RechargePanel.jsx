@@ -4,7 +4,6 @@ import { useAuth } from "@/components/auth/AuthProvider";
 import { useLocale } from "next-intl";
 import { useSession } from "next-auth/react";
 import { ArrowUpRight, Check, CircleCheck, Coins, CreditCard, LoaderCircle, ShieldCheck, Sparkles, X, Zap } from "lucide-react";
-import { Link } from "@/i18n/navigation";
 import { requestKey } from "@/lib/client-api";
 import styles from "./recharge.module.css";
 import CreditIcon from "@/components/ui/CreditIcon";
@@ -19,7 +18,7 @@ function pendingOrder(key, value) {
   return null;
 }
 function price(row, zh) { return new Intl.NumberFormat(zh ? "zh-CN" : "en-US", { style: "currency", currency: row.currency.toUpperCase(), maximumFractionDigits: 2 }).format(row.amountMinor / 100); }
-export default function RechargePanel({ onClose }) {
+export default function RechargePanel({ onClose, onRecords }) {
   const auth = useAuth();
   const locale = useLocale(), zh = locale === "zh";
   const { data: session, status, update } = useSession();
@@ -99,15 +98,15 @@ export default function RechargePanel({ onClose }) {
     <div className={styles.content}>
       {orderId && <div className={`${styles.notice} ${payment?.status === "paid" ? styles.success : ""}`} role="status">{payment?.status === "paid" ? <><CircleCheck size={19} /><span>{zh ? `充值成功，${payment.credits.toLocaleString()} 积分已到账。` : `Payment confirmed. ${payment.credits.toLocaleString()} credits added.`}</span></> : <><LoaderCircle size={17} className={checking ? "animate-spin" : ""} /><span>{terminalPayment ? terminalLabel : zh ? "正在等待支付平台确认，到账后余额会自动更新。" : "Waiting for payment confirmation. Your balance will update automatically."}</span>{!terminalPayment && <button onClick={() => setPollRound(r => r + 1)}>{zh ? "查询到账" : "Check status"}</button>}<button onClick={() => { pendingOrder(storageKey, null); setOrderId(""); setPayment(null); }}>{zh ? "收起" : "Dismiss"}</button></>}</div>}
       {loading ? <div className={styles.loading}><LoaderCircle className="animate-spin" size={22} />{zh ? "正在加载积分套餐…" : "Loading credit packs…"}</div> : <div className={styles.packs}>{catalog?.products.map(p => <button key={p.id} type="button" className={`${styles.pack} ${selected === p.id ? styles.selected : ""}`} onClick={() => setSelected(p.id)} aria-pressed={selected === p.id} aria-label={`${p.credits.toLocaleString()} ${zh ? "积分" : "credits"} · ${price(p, zh)}`}>
-        <div className={styles.packTop}><CreditIcon size={19} />{p.recommended && <span className={styles.recommended}>{zh ? "推荐" : "POPULAR"}</span>}<span className={styles.radio}>{selected === p.id && <Check size={12} />}</span></div>
-        <h2 className={styles.creditAmount}>{p.credits.toLocaleString()}<span>{zh ? "积分" : "credits"}</span></h2>
-        <div className={styles.price}>{price(p, zh)}<small>{zh ? "一次购买" : "One-time purchase"}</small></div>
+        <div className={styles.packTop}>{p.recommended && <span className={styles.recommended}>{zh ? "推荐" : "POPULAR"}</span>}<span className={styles.radio}>{selected === p.id && <Check size={12} />}</span></div>
+        <h2 className={styles.price}>{price(p, zh)}</h2>
+        <div className={styles.creditAmount}><CreditIcon size={18} /><strong>{p.credits.toLocaleString()}</strong><span>{zh ? "积分" : "credits"}</span></div>
         <span className={styles.feature}><Check size={13} />{zh ? "永久有效 · 随用随扣" : "Never expires · Pay as you create"}</span>
       </button>)}</div>}
       {!loading && !catalog?.products.length && !error && <p className={styles.muted}>{zh ? "暂无上架套餐。" : "No credit packs are available."}</p>}
       <div className={styles.paymentRow}><div><h3>{zh ? "支付方式" : "Payment method"}</h3><div className={styles.methods}>{catalog?.methods?.map(m => <button key={m.id} className={`${styles.method} ${method === m.id ? styles.methodActive : ""}`} onClick={() => setMethod(m.id)} aria-pressed={method === m.id}><span className={styles.methodSymbol} data-channel={m.id}>{m.id === "alipay" ? "支" : m.id === "wxpay" ? "微" : <CreditCard size={16} />}</span>{METHOD_NAMES[m.id]?.[zh ? 0 : 1]}{method === m.id && <Check size={13} />}</button>)}</div>{!loading && !catalog?.methods?.length && <p className={styles.muted}>{zh ? "充值暂未开放，请联系管理员。" : "Payments are not available yet. Please contact support."}</p>}</div><div className={styles.assurances}><span><ShieldCheck size={14} />{zh ? "安全支付" : "Secure payment"}</span><span><Zap size={14} />{zh ? "支付确认后自动到账" : "Credits added on confirmation"}</span></div></div>
       {error && <div className={styles.error} role="alert">{error}<button onClick={() => window.location.reload()}>{zh ? "刷新" : "Reload"}</button></div>}
     </div>
-    <footer className={styles.footer}><div className={styles.total}>{zh ? "实付金额" : "Total"}<strong>{plan ? price(plan, zh) : "—"}</strong><span>{plan ? `${plan.credits.toLocaleString()} ${zh ? "积分，永久有效" : "credits, no expiry"}` : ""}</span></div><div className={styles.checkoutActions}><Link href="/account" onClick={onClose}>{zh ? "充值记录" : "Billing history"}</Link><button className={styles.pay} disabled={busy || loading || !plan || !catalog?.paymentsEnabled || !method || status === "loading"} onClick={purchase}>{busy ? <LoaderCircle className="animate-spin" size={17} /> : <>{session?.user?.id ? zh ? "立即充值" : "Buy credits" : zh ? "登录并充值" : "Sign in to recharge"}<ArrowUpRight size={17} /></>}</button></div></footer>
+    <footer className={styles.footer}><div className={styles.total}>{zh ? "实付金额" : "Total"}<strong>{plan ? price(plan, zh) : "—"}</strong><span>{plan ? `${plan.credits.toLocaleString()} ${zh ? "积分，永久有效" : "credits, no expiry"}` : ""}</span></div><div className={styles.checkoutActions}><button type="button" className={styles.history} onClick={onRecords}>{zh ? "充值记录" : "Billing history"}</button><button className={styles.pay} disabled={busy || loading || !plan || !catalog?.paymentsEnabled || !method || status === "loading"} onClick={purchase}>{busy ? <LoaderCircle className="animate-spin" size={17} /> : <>{session?.user?.id ? zh ? "立即充值" : "Buy credits" : zh ? "登录并充值" : "Sign in to recharge"}<ArrowUpRight size={17} /></>}</button></div></footer>
   </section>;
 }

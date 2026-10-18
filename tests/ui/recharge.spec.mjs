@@ -14,6 +14,7 @@ async function fixtures(page, { initialNull = 0, paid = false } = {}) {
       return route.fulfill({ json: { id: "fixture-order", status: paid ? "paid" : "pending", amountMinor: 4900, currency: "cny", credits: 3000 } });
     }
     if (url.pathname === "/api/studio/documents") return route.fulfill({ json: [] });
+    if (url.pathname === "/api/inspiration") return route.fulfill({ json: { items: [], layout: { mode: "masonry", columns: 4, gap: 16 } } });
     if (url.pathname === "/api/studio/capabilities") return route.fulfill({ json: { imageModels: [], imageProvider: "", tools: [], planningAvailable: false } });
     if (url.pathname === "/api/auth/providers") return route.fulfill({ json: { email: { id: "email", name: "Email", type: "credentials" } } });
     return route.fulfill({ json: {} });
@@ -27,7 +28,7 @@ for (const theme of ["dark", "light"]) test(`recharge opens from credits with CN
   const dialog = page.getByRole("dialog", { name: "积分充值" });
   await expect(dialog.getByRole("button", { name: "立即充值" })).toBeEnabled();
   await page.evaluate(theme => document.documentElement.setAttribute("data-theme", theme), theme);
-  await expect(dialog.getByText("¥49.00", { exact: true })).toHaveCount(1);
+  await expect(dialog.getByRole("heading", { name: "¥49.00", exact: true })).toBeVisible();
   await expect(dialog.getByRole("button", { name: /微信支付/ })).toBeVisible();
   await dialog.getByRole("button", { name: /微信支付/ }).click();
   await expect(dialog.getByRole("button", { name: /微信支付/ })).toHaveAttribute("aria-pressed", "true");
@@ -98,7 +99,7 @@ test("HTTP pages without randomUUID can start and retry the same checkout", asyn
 test("English recharge uses USD and hidden Google does not appear on login", async ({ page }) => {
   await fixtures(page);
   await page.goto("/en/pricing");
-  await expect(page.getByText("$15.00", { exact: true })).toHaveCount(1);
+  await expect(page.getByRole("heading", { name: "$15.00", exact: true })).toBeVisible();
   await page.route("**/api/auth/session", route => route.fulfill({ json: null }));
   await page.goto("/en/login");
   await expect(page.getByLabel("Password", { exact: true })).toBeVisible();

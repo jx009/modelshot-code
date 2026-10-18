@@ -5,10 +5,9 @@ import { useTheme } from "next-themes";
 import { useLocale, useTranslations } from "next-intl";
 import { signOut } from "next-auth/react";
 import { Link } from "@/i18n/navigation";
-import { Check, LogOut, Monitor, User, Users, CreditCard, History, CircleHelp } from "lucide-react";
+import { Check, LogOut, Monitor, User, Users, CreditCard, History } from "lucide-react";
 
 import { useRecharge } from "./billing/RechargeProvider";
-import AccountRecords from "./AccountRecords";
 
 // SSR/CSR 一致性：服务端 false、客户端 true，避免 hydration 不匹配
 const emptySubscribe = () => () => {};
@@ -24,11 +23,9 @@ function useMounted() {
 export default function UserMenu({ user }) {
   const recharge = useRecharge();
   const zh = useLocale() === "zh";
-  const [records, setRecords] = useState(null);
   const trigger = useRef(null);
   const isAgent = ["agent", "admin", "root"].includes(user?.role);
   const t = useTranslations("common");
-  const f = useTranslations("flow");
   const invite = useTranslations("invite");
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -92,10 +89,9 @@ export default function UserMenu({ user }) {
             </div>
           )}
 
-          <button role="menuitem" onClick={() => { setOpen(false); recharge.open(); }} className="flex items-center gap-2 px-3 py-2 text-sm"><CreditCard size={15} />{zh ? "购买积分" : "Buy credits"}</button>
-          {[["usage", History, "使用记录", "Usage history"], ["orders", CreditCard, "购买记录", "Purchases"], ["help", CircleHelp, "使用指南", "Help"]].map(([id, Icon, cn, en]) => <button key={id} role="menuitem" onClick={() => { setRecords(id); setOpen(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-sm"><Icon size={15} />{zh ? cn : en}</button>)}
+          <button role="menuitem" onClick={() => { setOpen(false); recharge.open(trigger); }} className="flex items-center gap-2 px-3 py-2 text-sm"><CreditCard size={15} />{zh ? "购买积分" : "Buy credits"}</button>
+          {[["usage", History, "使用记录", "Usage history"], ["orders", CreditCard, "购买记录", "Purchases"]].map(([id, Icon, cn, en]) => <button key={id} role="menuitem" onClick={() => { recharge.openRecords(id, trigger); setOpen(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-sm"><Icon size={15} />{zh ? cn : en}</button>)}
           {/* 邀请中心（agent+ 可见——普通用户看不到，制造升为流量手的动机） */}
-          <Link href="/account" role="menuitem" onClick={() => setOpen(false)} className="flex items-center gap-2 px-3 py-2 text-sm"><User size={15} />{f("account")}</Link>
           {isAgent && (
             <Link
               href="/invite"
@@ -137,7 +133,6 @@ export default function UserMenu({ user }) {
           </button>
         </div>
       )}
-      {records && <AccountRecords initialTab={records} returnFocusRef={trigger} onClose={() => setRecords(null)} />}
     </div>
   );
 }

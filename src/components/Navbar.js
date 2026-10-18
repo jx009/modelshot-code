@@ -2,10 +2,10 @@
 import CreditIcon from "@/components/ui/CreditIcon";
 
 import { useState } from "react";
-import { CreditCard, Coins, Menu, X, LogOut } from "lucide-react";
+import { CreditCard, History, Menu, X, LogOut } from "lucide-react";
 import BrandLogo from "./BrandLogo";
 import { useSession, signOut } from "next-auth/react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { usePathname } from "@/i18n/navigation";
 import Link from "@/components/ui/NavigationLink";
 import ThemeSwitcher from "./ThemeSwitcher";
@@ -19,19 +19,19 @@ export default function Navbar() {
   const { data: session } = useSession();
   const t = useTranslations("workspace");
   const tn = useTranslations("nav");
-  const f = useTranslations("flow");
+  const zh = useLocale() === "zh";
   const path = usePathname();
   const [open, setOpen] = useState(false);
   if (path === "/admin" || path.startsWith("/admin/") || path === "/" || path === "/projects" || path === "/assets" || path === "/commerce" || path === "/explore" || path.startsWith("/explore/") || path === "/studio-v2") return null;
   const links = [
     { href: "/pricing", label: tn("pricing"), icon: CreditCard },
-    { href: "/account", label: f("account"), icon: Coins },
   ];
   return (
     <header className="site-nav">
       <Link href="/" className="brand" aria-label="来塔绘梦"><BrandLogo /></Link>
       <nav className="desktop-nav" aria-label={t("menu")}>
         {links.map(({ href, label, icon: Icon }) => <Link key={href} href={href} aria-current={path === href ? "page" : undefined}><Icon size={16} />{label}</Link>)}
+        <button onClick={() => recharge.openRecords("usage")}><History size={16} />{zh ? "使用记录" : "Usage history"}</button>
       </nav>
       <div className="nav-actions">
         <span className="desktop-control"><LocaleSwitcher /></span><ThemeSwitcher />
@@ -40,6 +40,7 @@ export default function Navbar() {
       </div>
       {open && <nav className="mobile-nav" aria-label={t("menu")}>
         {links.map(({ href, label, icon: Icon }) => <Link key={href} href={href} onClick={() => setOpen(false)} aria-current={path === href ? "page" : undefined}><Icon size={17} />{label}</Link>)}
+        <button onClick={() => { setOpen(false); recharge.openRecords("usage"); }}><History size={17} />{zh ? "使用记录" : "Usage history"}</button>
         <div className="flex items-center justify-between pt-3 border-t border-divider"><LocaleSwitcher />{session?.user && <button className="button compact" onClick={() => signOut()}><LogOut size={15} />{t("signOut")}</button>}</div>
       </nav>}
     </header>

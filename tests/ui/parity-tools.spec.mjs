@@ -33,6 +33,55 @@ async function select(page,name="参考图片 1") {
   await page.getByRole("button",{name:"图层",exact:true}).click();
 }
 
+for (const width of [1440, 390]) test(`OCR result has direct entry points and persistent controls at ${width}px`, async ({ page, context }, info) => {
+  const f = await fixture(page);
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  const boxes = Array.from({ length: 45 }, (_, index) => ({ text: `识别文字 ${index + 1}`, rect: index ? null : { left: 10, top: 10, width: 100, height: 20 } }));
+  const job = { id: "ocr-result-job", tool: "ocr", status: "succeeded", documentId: "creative-doc", targetId: "layer-0", resultData: { ocr: { boxes, approximateLocations: true } } };
+  await page.route("**/api/studio/jobs?**", route => route.fulfill({ json: [job] }));
+  await page.setViewportSize({ width, height: 900 });
+  await page.goto("/zh/studio-v2?document=creative-doc");
+  const message = page.locator(".ms-message.assistant").filter({ hasText: "文字识别" });
+  await expect(message.getByRole("button", { name: "查看文字", exact: true })).toBeVisible();
+  await message.getByRole("button", { name: "查看文字", exact: true }).click();
+  const panel = page.getByRole("dialog", { name: "图片中的文字", exact: true });
+  await expect(panel).toBeVisible();
+  await expect(panel).toContainText("识别到 45 段文字");
+  const close = panel.getByRole("button", { name: "关闭文字识别结果", exact: true });
+  const before = await close.boundingBox();
+  await panel.locator(".ms-ocr-content").evaluate(el => { el.scrollTop = el.scrollHeight; });
+  await expect(panel.getByLabel("第 45 段文字", { exact: true })).toBeInViewport();
+  await expect(close).toBeInViewport();
+  expect((await close.boundingBox()).y).toBeCloseTo(before.y, 1);
+  await panel.getByRole("button", { name: "复制全部文字", exact: true }).click();
+  expect((await page.evaluate(() => navigator.clipboard.readText())).replace(/\r\n/g, "\n")).toBe(boxes.map(box => box.text).join("\n"));
+  await expect(panel.getByRole("button", { name: "已复制", exact: true })).toBeVisible();
+  if (width === 390) {
+    // Remote HTTP origins have no Clipboard API; selection copying must still work.
+    await page.evaluate(async () => {
+      await navigator.clipboard.writeText("previous clipboard");
+      Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+    });
+    await panel.getByRole("button", { name: "已复制", exact: true }).click();
+    const copied = await page.evaluate(() => { delete navigator.clipboard; return navigator.clipboard.readText(); });
+    expect(copied.replace(/\r\n/g, "\n")).toBe(boxes.map(box => box.text).join("\n"));
+    await expect(panel.getByLabel("第 45 段文字", { exact: true })).toBeInViewport();
+  }
+  await page.screenshot({ path: info.outputPath(`ocr-scrolled-${width}.png`) });
+  await close.click();
+  await expect(panel).toHaveCount(0);
+  // Completed text tasks expose their result in the task center too.
+  await page.getByRole("button", { name: "任务列表", exact: true }).click();
+  await page.locator(".ms-task-card").getByRole("button", { name: "查看文字", exact: true }).click();
+  await expect(panel).toBeVisible();
+  await expect(page.locator(".ms-task-popover")).toHaveCount(0);
+  await panel.getByLabel("第 1 段文字", { exact: true }).fill("修订文字");
+  await page.keyboard.press("Escape");
+  await expect(panel).toHaveCount(0);
+  expect(f.posted).toHaveLength(0);
+  expect(f.errors).toEqual([]);
+});
+
 for (const width of [1440,390]) test(`ratio grid sends wide 4K and persists in the canvas at ${width}px`,async({page},info)=>{
   const f=await fixture(page);
   await page.setViewportSize({width,height:960});

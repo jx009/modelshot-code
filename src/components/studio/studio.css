@@ -155,4 +155,17 @@
 
 .ms-image-preview { width:100vw; max-width:none; height:100dvh; max-height:none; margin:0; border:0; color:var(--primary-text); }
 
+/* Keep OCR controls outside the scrolling text list. */
+.ms-tool-panel.ms-ocr-panel{display:flex;flex-direction:column;width:min(334px,calc(100% - 32px));padding:0;overflow:hidden;z-index:30}
+.ms-ocr-header{flex-shrink:0;padding:12px 15px;border-bottom:1px solid var(--divider);background:var(--bg-elevated)}
+.ms-ocr-header .ms-panel-title{margin-bottom:8px}
+.ms-ocr-header strong{font-weight:500}
+.ms-ocr-actions{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px;color:var(--secondary-text)}
+.ms-ocr-actions .ms-text-button,.ms-ocr-result-link{display:inline-flex;align-items:center;gap:5px}
+.ms-ocr-actions button:disabled{opacity:.4;cursor:default}
+.ms-ocr-content{min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:14px 15px}
+.ms-ocr-panel .ms-ocr-row input{min-width:0;flex:1}
+.ms-ocr-panel .ms-ocr-row>.ms-icon{flex-shrink:0}
+.ms-ocr-result-link{margin-top:8px;color:var(--primary-text)}
+
 @media(min-width:761px) { .ms-canvas-space:has(.ms-editor) .ms-canvas-top-right { top:12px; right:320px; } }

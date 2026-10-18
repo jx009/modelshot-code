@@ -23,7 +23,17 @@ test("real session persists on refresh and navigation; revoked sessions stay on 
   const email = `session-${info.project.name}-${randomUUID()}@modelshot.test`;
   try {
     const user = await db.user.create({ data: { email, passwordHash: await bcrypt.hash(E2E_PASSWORD, 10), emailVerified: new Date(), credits: 321 } });
-    await signIn(page, email);
+    await page.goto("/en?source=creative");
+    const prompt = page.getByRole("textbox", { name: "Describe your idea", exact: true });
+    await prompt.fill("An airy product poster with warm sunlight");
+    await page.locator(".cr-top-cta").click();
+    const dialog = page.getByRole("dialog", { name: "Sign in to Letai AI" });
+    await dialog.getByLabel("Email", { exact: true }).fill(email);
+    await dialog.getByLabel("Password", { exact: true }).fill(E2E_PASSWORD);
+    await dialog.getByRole("button", { name: "Sign in", exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page).toHaveURL(/\/en\?source=creative$/);
+    await expect(prompt).toHaveValue("An airy product poster with warm sunlight");
     const response = await page.request.get("/api/auth/session");
     expect(response.headers()["cache-control"]).toContain("no-store");
     expect((await response.json()).user.email).toBe(email);
@@ -37,7 +47,7 @@ test("real session persists on refresh and navigation; revoked sessions stay on 
     expect(await (await page.request.get("/api/auth/session")).json()).toBeNull();
     await page.goto("/en/login");
     await expect(page.getByLabel("Password", { exact: true })).toBeVisible();
-    await expect(page).toHaveURL(/\/en\/login$/);
+    await expect(page).toHaveURL(/\/en\?auth=login$/);
     // A fresh login must work with the same browser storage after revocation.
     await signIn(page, email);
     expect((await (await page.request.get("/api/auth/session")).json()).user.email).toBe(email);

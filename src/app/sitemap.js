@@ -6,7 +6,7 @@ import { CASES } from "@/lib/commerce/catalog";
  */
 const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://modelshot.app";
 
-const PATHS = ["", "/explore", ...CASES.map(item => `/explore/${item.id}`), "/commerce", "/studio-v2", "/projects", "/assets", "/pricing", "/login"];
+const PATHS = ["", "/explore", ...CASES.map(item => `/explore/${item.id}`), "/commerce", "/studio-v2", "/projects", "/assets", "/pricing"];
 
 export default function sitemap() {
   const entries = [];

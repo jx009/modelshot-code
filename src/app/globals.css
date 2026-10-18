@@ -21,6 +21,8 @@
 
 /* ══════════ 第一层 · 原始色板（深色 = 品牌默认 — 避免深色用户加载瞬间白闪）══════════ */
 :root {
+  --credit-icon: #F5BE57;
+  --credit-icon-muted: #F5BE5714;
   color-scheme: dark;
   --selection-ink: #30ed19;
   /* Fixed artboard colors belong to the artwork, independent of UI theme. */
@@ -108,6 +110,8 @@
 
 /* ══════════ 第一层 · 原始色板（浅色 = 覆盖块）══════════ */
 [data-theme="light"] {
+  --credit-icon: #AD6B13;
+  --credit-icon-muted: #D9A23B16;
   color-scheme: light;
   /* 表面 */
   --bg-page: #F6F6F3;            /* 暖纸白，禁纯白 */

@@ -2,6 +2,7 @@
 import Image from "next/image";
 import { previewUrl } from "@/lib/studio/image-url";
 import { useEffect, useRef, useState } from "react";
+import { useAuth } from "@/components/auth/AuthProvider";
 import { useSession } from "next-auth/react";
 import { api, requestKey } from "@/lib/client-api";
 import { promptTitle } from "@/lib/studio/project-title";
@@ -21,6 +22,7 @@ export function CaseCard({ item, zh }) {
 }
 
 export default function DiscoverHome({ explore = false }) {
+  const auth = useAuth();
   const zh = useLocale() === "zh", router = useRouter();
   const [mode, setMode] = useState("chat"), [prompt, setPrompt] = useState(""), [category, setCategory] = useState("all"), [query, setQuery] = useState("");
   const { status } = useSession(), uploadInput = useRef(null);
@@ -38,7 +40,7 @@ export default function DiscoverHome({ explore = false }) {
   }, [status, explore]);
   async function upload(files) {
     if (!files.length || operation.current) return;
-    if (status !== "authenticated") { router.push("/login?callbackUrl=/"); return; }
+    if (status !== "authenticated") { auth.open(); return; }
     operation.current = true; setBusy(true); setError("");
     try {
       const layers = [...attachments];

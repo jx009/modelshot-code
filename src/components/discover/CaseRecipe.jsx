@@ -1,16 +1,18 @@
 "use client";
 import { useRef, useState } from "react";
+import { useAuth } from "@/components/auth/AuthProvider";
 import { useSession } from "next-auth/react";
 import { useRouter } from "@/i18n/navigation";
 import { WandSparkles, LoaderCircle } from "lucide-react";
 import { api, requestKey } from "@/lib/client-api";
 import { caseRecipe } from "@/lib/commerce/case-recipe";
 export default function CaseRecipe({ item, zh }) {
+  const auth = useAuth();
   const router = useRouter(), { status } = useSession(), pending = useRef(null), lock = useRef(false);
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
   const recipe = caseRecipe(item, zh ? "zh" : "en");
   async function useRecipe() {
-    if (status !== "authenticated") { router.push(`/login?callbackUrl=${encodeURIComponent(`/${zh ? "zh" : "en"}/explore/${item.id}`)}`); return; }
+    if (status !== "authenticated") { auth.open(); return; }
     if (lock.current) return;
     lock.current = true; setBusy(true); setError("");
     try {

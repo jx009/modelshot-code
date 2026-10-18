@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useLocale, useTranslations } from "next-intl";
 import { RefreshCw, ExternalLink, CreditCard, ChevronLeft, ChevronRight } from "lucide-react";
-import { Link } from "@/i18n/navigation";
+import Link from "@/components/ui/NavigationLink";
 import { useRemoteResource } from "@/hooks/useRemoteResource";
 import { api, requestKey } from "@/lib/client-api";
 import { formatMoney } from "@/lib/domain/billing/catalog";

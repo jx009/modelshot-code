@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useAuth } from "@/components/auth/AuthProvider";
 import { useLocale } from "next-intl";
 import { useSession } from "next-auth/react";
 import { ArrowUpRight, Check, CircleCheck, Coins, CreditCard, LoaderCircle, ShieldCheck, Sparkles, X, Zap } from "lucide-react";
@@ -19,7 +19,7 @@ function pendingOrder(key, value) {
 }
 function price(row, zh) { return new Intl.NumberFormat(zh ? "zh-CN" : "en-US", { style: "currency", currency: row.currency.toUpperCase(), maximumFractionDigits: 2 }).format(row.amountMinor / 100); }
 export default function RechargePanel({ onClose }) {
-  const router = useRouter();
+  const auth = useAuth();
   const locale = useLocale(), zh = locale === "zh";
   const { data: session, status, update } = useSession();
   const [catalog, setCatalog] = useState(null), [loading, setLoading] = useState(true), [error, setError] = useState("");
@@ -73,7 +73,7 @@ export default function RechargePanel({ onClose }) {
   const terminalLabel = payment?.status === "refunded" ? (zh ? "该订单已退款。" : "This order has been refunded.") : (zh ? "该订单已结束，请重新选择套餐充值。" : "This order has ended. Please start a new purchase.");
   async function purchase() {
     if (!plan || !method || busy) return;
-    if (!session?.user?.id) { router.push(`/${locale}/login?callbackUrl=${encodeURIComponent(`/${locale}/pricing`)}`); return; }
+    if (!session?.user?.id) { auth.open(); return; }
     setBusy(true); setError("");
     const selection = `${selected}:${method}:${locale}`;
     if (!keys.current.has(selection)) keys.current.set(selection, requestKey());

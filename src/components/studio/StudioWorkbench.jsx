@@ -1,4 +1,5 @@
 "use client";
+import CreditIcon from "@/components/ui/CreditIcon";
 
 import dynamic from "next/dynamic";
 import Image from "next/image";
@@ -6,7 +7,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRecharge } from "@/components/billing/RechargeProvider";
 import { useLocale } from "next-intl";
-import { Link } from "@/i18n/navigation";
+import Link from "@/components/ui/NavigationLink";
 import { ArrowUp, ArrowDown, ArrowUpRight, Plus, X, FolderOpen, Download, Save, Undo2, Redo2, MousePointer2, Hand, ImagePlus, Type, Layers3, Sparkles, WandSparkles, Expand, Crop, Eraser, Move, ScanText, Scissors, Video, MessageCircle, Zap, ShoppingBag, ChevronDown, Check, LoaderCircle, ZoomIn, Minus, Maximize, Trash2, Eye, EyeOff, Copy, Coins, Play, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { api, requestKey } from "@/lib/client-api";
 import BrandLogo, { BrandMark } from "@/components/BrandLogo";
@@ -522,7 +523,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
       <div className="ms-top-actions">
         <button className="ms-button ms-save" data-action="save-studio" onClick={() => save().catch(notify)} disabled={busy}><Save size={15} />{t("保存", "Save")}</button>
         <button className="ms-button ms-export" onClick={() => setExportOpen(true)}><Download size={15} />{t("导出", "Export")}</button>
-        <button onClick={recharge.open} className="ms-credit"><Zap size={15} />{usage?.credits ?? "—"}<span>{t("积分", "credits")}</span></button>
+        <button onClick={recharge.open} className="ms-credit"><CreditIcon />{usage?.credits ?? "—"}<span>{t("积分", "credits")}</span></button>
         {session?.user ? <UserMenu user={session.user} /> : <Link href="/login" className="ms-button ms-primary">{t("登录", "Sign in")}</Link>}
       </div>
     </header>

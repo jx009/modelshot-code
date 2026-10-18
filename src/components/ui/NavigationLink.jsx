@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLinkStatus } from "next/link";
 import { useLocale } from "next-intl";
+import { useAuth } from "@/components/auth/AuthProvider";
 import { Link } from "@/i18n/navigation";
 
 function Feedback({ onPending }) {
@@ -23,6 +24,7 @@ function Feedback({ onPending }) {
 // Prefetch a full destination on hover/focus, including dynamic pages. `auto`
 // alone stops at a loading boundary; prefetching every card floods HTTP/1.
 export default function NavigationLink({ children, onNavigate, onClick, onMouseEnter, onFocus, prefetch = "intent", ...props }) {
+  const auth = useAuth();
   const started = useRef(0);
   const [intentHref, setIntentHref] = useState(null);
   const intentKey = JSON.stringify([props.href, props.locale]);
@@ -38,6 +40,12 @@ export default function NavigationLink({ children, onNavigate, onClick, onMouseE
   }} onClick={event => {
     onClick?.(event);
     if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+    const destination = new URL(event.currentTarget.href);
+    if (auth && destination.origin === window.location.origin && /^\/(?:zh\/|en\/)?login$/.test(destination.pathname)) {
+      event.preventDefault();
+      auth.open({ callbackUrl: destination.searchParams.get("callbackUrl") || destination.searchParams.get("next"), refCode: destination.searchParams.get("ref") });
+      return;
+    }
     if (event.currentTarget.href === window.location.href) { event.preventDefault(); return; }
     if (pending && Date.now() - started.current >= 8000) {
       event.preventDefault();

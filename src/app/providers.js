@@ -4,6 +4,7 @@ import { SessionProvider, getSession } from "next-auth/react";
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { usePathname } from "next/navigation";
+import { AuthProvider } from "@/components/auth/AuthProvider";
 import { RechargeProvider } from "@/components/billing/RechargeProvider";
 
 function SessionRefresh({ onRecovered }) {
@@ -48,7 +49,7 @@ export function Providers({ children }) {
   return (
     <SessionProvider key={recovery?.expires || "initial"} session={recovery || undefined} refetchInterval={60} refetchOnWindowFocus refetchWhenOffline={false}>
       <SessionRefresh onRecovered={setRecovery} />
-      <RechargeProvider>{children}</RechargeProvider>
+      <AuthProvider><RechargeProvider>{children}</RechargeProvider></AuthProvider>
     </SessionProvider>
   );
 }

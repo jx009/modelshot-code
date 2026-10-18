@@ -103,5 +103,5 @@ test("English recharge uses USD and hidden Google does not appear on login", asy
   await page.goto("/en/login");
   await expect(page.getByLabel("Password", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: /Google/i })).toHaveCount(0);
-  await expect(page).toHaveURL(/\/en\/login$/);
+  await expect(page).toHaveURL(/\/en\?auth=login$/);
 });

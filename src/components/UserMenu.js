@@ -129,7 +129,7 @@ export default function UserMenu({ user }) {
 
           <button
             role="menuitem"
-            onClick={() => signOut({ callbackUrl: "/login" })}
+            onClick={() => signOut({ callbackUrl: zh ? "/zh" : "/en" })}
             className="flex w-full items-center gap-2 px-3 py-2 text-xs font-medium text-danger hover:bg-danger/10 transition-colors cursor-pointer"
           >
             <LogOut size={13} />

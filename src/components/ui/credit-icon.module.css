@@ -1,0 +1,1 @@
+.icon{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--credit-icon);background:var(--credit-icon-muted);width:25px;height:25px;border-radius:8px;box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--credit-icon) 16%,transparent)}.icon svg{fill:var(--credit-icon);stroke:var(--credit-icon)}

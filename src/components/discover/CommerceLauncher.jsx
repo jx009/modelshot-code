@@ -1,6 +1,7 @@
 "use client";
 import Image from "next/image";
 import { useRef, useState } from "react";
+import { useAuth } from "@/components/auth/AuthProvider";
 import { useSession } from "next-auth/react";
 import { useLocale } from "next-intl";
 import { useRouter } from "@/i18n/navigation";
@@ -9,6 +10,7 @@ import { ArrowUp, ImagePlus, LoaderCircle, X } from "lucide-react";
 import { requestKey } from "@/lib/client-api";
 
 export default function CommerceLauncher({ initialDescription = "" }) {
+  const auth = useAuth();
   const locale = useLocale(), zh = locale === "zh", router = useRouter(), { data: session, status } = useSession();
   const t = (cn, en) => zh ? cn : en;
   const [brief, setBrief] = useState({ product: "", brand: "", platform: "taobao", region: "CN", language: locale, description: initialDescription });
@@ -24,7 +26,8 @@ export default function CommerceLauncher({ initialDescription = "" }) {
   function start(signIn = false) {
     try {
       const path = `/${locale}/commerce?draft=${stash()}`;
-      router.push(signIn ? `/login?callbackUrl=${encodeURIComponent(path)}` : path.replace(`/${locale}`, ""));
+      if (signIn) auth.open({ callbackUrl: path });
+      else router.push(path.replace(`/${locale}`, ""));
     } catch { setNotice(t("浏览器无法保存资料，请打开电商工作台继续。", "Browser storage is unavailable. Open Commerce Studio to continue.")); }
   }
   async function upload(kind, file) {

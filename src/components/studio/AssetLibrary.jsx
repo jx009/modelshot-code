@@ -8,7 +8,7 @@ import { api } from "@/lib/client-api";
 import { previewUrl, imageUrl } from "@/lib/studio/image-url";
 import Modal from "@/components/ui/Modal";
 import { useDebouncedValue } from "@/components/ui/useDebouncedValue";
-import { Link } from "@/i18n/navigation";
+import Link from "@/components/ui/NavigationLink";
 import "./asset-library.css";
 
 export default function AssetLibrary({ onSelect, maxSelection = 10 }) {

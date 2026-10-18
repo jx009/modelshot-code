@@ -1,11 +1,13 @@
 "use client";
+import CreditIcon from "@/components/ui/CreditIcon";
 
 import { useState } from "react";
 import { CreditCard, Coins, Menu, X, LogOut } from "lucide-react";
 import BrandLogo from "./BrandLogo";
 import { useSession, signOut } from "next-auth/react";
 import { useTranslations } from "next-intl";
-import { Link, usePathname } from "@/i18n/navigation";
+import { usePathname } from "@/i18n/navigation";
+import Link from "@/components/ui/NavigationLink";
 import ThemeSwitcher from "./ThemeSwitcher";
 import LocaleSwitcher from "./LocaleSwitcher";
 import UserMenu from "./UserMenu";
@@ -33,7 +35,7 @@ export default function Navbar() {
       </nav>
       <div className="nav-actions">
         <span className="desktop-control"><LocaleSwitcher /></span><ThemeSwitcher />
-        {session?.user ? <><button onClick={recharge.open} className="balance desktop-control" title={t("credits")}><Coins size={15} /><span>{session.user.credits ?? 0}</span></button><UserMenu user={session.user} /></> : <Link href="/login" className="button primary compact">{t("signIn")}</Link>}
+        {session?.user ? <><button onClick={recharge.open} className="balance desktop-control" title={t("credits")}><CreditIcon /><span>{session.user.credits ?? 0}</span></button><UserMenu user={session.user} /></> : <Link href="/login" className="button primary compact">{t("signIn")}</Link>}
         <button className="icon-button mobile-menu-button" onClick={() => setOpen(!open)} aria-label={t("menu")} aria-expanded={open}>{open ? <X size={19} /> : <Menu size={19} />}</button>
       </div>
       {open && <nav className="mobile-nav" aria-label={t("menu")}>

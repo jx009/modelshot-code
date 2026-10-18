@@ -25,6 +25,14 @@ export async function GET(request) {
   } catch (error) { return errorResponse(error); }
 }
 export async function POST(request) {
+  const started = Date.now();
   try { const user = await requireUser(); return Response.json(await saveDocument(user.id, await readJson(request, documentSchema, 4194304))); }
-  catch (error) { return errorResponse(error); }
+  catch (error) {
+    const response = errorResponse(error);
+    const { traceId } = await response.clone().json();
+    // Correlate the browser error with server logs without logging canvas content or credentials.
+    console.warn(JSON.stringify({ event: "studio.document.save.failed", traceId, status: response.status, durationMs: Date.now() - started,
+      errorType: error?.name, databaseCode: /^P\d{4}$/.test(error?.code || "") ? error.code : undefined }));
+    return response;
+  }
 }

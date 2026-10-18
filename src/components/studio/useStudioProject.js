@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, requestKey } from "@/lib/client-api";
 import { documentContent } from "@/lib/studio/project-title";
+import { submitDocument, transientSaveError } from "@/lib/studio/save-document";
 import { activeProject, rememberProject, readProjectDraft, writeProjectDraft } from "@/lib/studio/project-storage";
 
 export const emptyProject = () => ({ id: null, version: null, name: "Untitled", nameSource: "fallback", createKey: requestKey(), layers: [], messages: [], jobs: [], appliedJobs: [], plan: null });
@@ -40,14 +41,37 @@ export function useStudioProject({ userId, sessionLoading = false, initialDocume
     const task = async () => {
       if (scope !== epoch.current) throw new Error("SESSION_CLOSED");
       if (!userId) throw new Error("UNAUTHORIZED");
+      const send = async body => {
+        if (scope !== epoch.current) throw new Error("SESSION_CLOSED");
+        draftRef.current = { ...draftRef.current, _pendingSave: body };
+        persist(draftRef.current);
+        try {
+          return await submitDocument(body, { isCurrent: () => scope === epoch.current, onRetry: () => setSaveState("retrying") });
+        } catch (error) {
+          if (scope === epoch.current && !transientSaveError(error)) {
+            draftRef.current = { ...draftRef.current, _pendingSave: undefined };
+            persist(draftRef.current);
+          }
+          throw error;
+        }
+      };
+      // Resolve an uncertain write before sending newer edits with another version.
+      if (!copy && draftRef.current._pendingSave) {
+        const pending = draftRef.current._pendingSave;
+        const recovered = await send(pending);
+        if (scope !== epoch.current) throw new Error("SESSION_CLOSED");
+        if (recovered.replayed && !recovered.acknowledged) throw Object.assign(new Error("DOCUMENT_VERSION_CONFLICT"), { code: "DOCUMENT_VERSION_CONFLICT" });
+        draftRef.current = { ...draftRef.current, id: recovered.id, version: recovered.version, _pendingSave: undefined };
+        persist(draftRef.current);
+      }
       const d = draftRef.current, rev = revision.current;
       if (!meaningful(d)) return null;
       if (!copy && d.id && savedRevision.current === rev) return { ...d, content: documentContent(d) };
       setSaveState("saving");
-      const body = { ...(copy && d.id ? { copyFromId: d.id } : {}), ...(!copy && d.id ? { id: d.id, version: d.version } : { createKey: copy ? requestKey() : d.createKey }), name: d.name, nameSource: d.nameSource || "manual", content: documentContent(d) };
-      let saved = await api("/api/studio/documents", { method: "POST", body });
+      const body = { saveKey: requestKey(), ...(copy && d.id ? { copyFromId: d.id } : {}), ...(!copy && d.id ? { id: d.id, version: d.version } : { createKey: copy ? requestKey() : d.createKey }), name: d.name, nameSource: d.nameSource || "manual", content: documentContent(d) };
+      let saved = await send(body);
       // A creation retry may return the first accepted snapshot. Preserve edits made since then.
-      if (!body.id && saved.replayed) {
+      if (!body.id && saved.replayed && !saved.acknowledged) {
         if (saved.version !== 1) {
           if (scope === epoch.current) {
             const conflicted = { ...draftRef.current, id: saved.id, version: 1, _dirty: true };
@@ -55,11 +79,11 @@ export function useStudioProject({ userId, sessionLoading = false, initialDocume
           }
           throw Object.assign(new Error("DOCUMENT_VERSION_CONFLICT"), { code: "DOCUMENT_VERSION_CONFLICT" });
         }
-        saved = await api("/api/studio/documents", { method: "POST", body: { ...body, id: saved.id, version: saved.version } });
+        saved = await send({ ...body, saveKey: requestKey(), id: saved.id, version: saved.version });
       }
       if (scope !== epoch.current) return saved;
       savedRevision.current = rev;
-      const current = { ...draftRef.current, ...(revision.current === rev ? { messages: saved.content.messages, name: saved.name } : {}), id: saved.id, version: saved.version, _dirty: revision.current !== rev };
+      const current = { ...draftRef.current, ...(revision.current === rev ? { messages: saved.content.messages, name: saved.name } : {}), id: saved.id, version: saved.version, _pendingSave: undefined, _dirty: revision.current !== rev };
       draftRef.current = current; setDraft(current); persist(current);
       setSaveState(current._dirty ? "local" : "saved"); projectURL(saved.id);
       return saved;
@@ -91,6 +115,11 @@ export function useStudioProject({ userId, sessionLoading = false, initialDocume
     if (id) {
       try {
         const remote = await api(`/api/studio/documents/${encodeURIComponent(id)}?pagedLayers=1`);
+        const pending = cached?._pendingSave;
+        if (pending?.saveKey && remote.lastSaveKey === pending.saveKey && remote.version === (pending.id ? pending.version + 1 : 1)) {
+          cached = { ...cached, version: remote.version, _pendingSave: undefined };
+          value = cached;
+        }
         if (!cached?._dirty && remote.layerCount > remote.content.layers.length) {
           const chunks = await Promise.all(Array.from({ length: Math.ceil(remote.layerCount / 100) - 1 }, (_, index) => api(`/api/studio/documents/${encodeURIComponent(id)}/layers?offset=${(index + 1) * 100}&version=${remote.version}`)));
           remote.content.layers = [...remote.content.layers, ...chunks.flatMap(chunk => chunk.items)];

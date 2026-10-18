@@ -3,15 +3,28 @@ import { AppError } from "../../http.js";
 import { lockUser } from "../billing/ledger.js";
 import { documentSchema } from "../../studio/tools.js";
 import { projectTitle } from "../../studio/project-title.js";
+import { createHash } from "node:crypto";
 
 export async function saveDocument(userId, input, db = prisma) {
   const data = documentSchema.parse(input);
+  const saveHash = data.saveKey ? createHash("sha256").update(JSON.stringify(data)).digest("hex") : null;
   return db.$transaction(async tx => {
     await lockUser(tx, userId);
+    if (data.id && data.saveKey) {
+      const previous = await tx.studioDocument.findFirst({ where: { id: data.id, userId, deletedAt: null } });
+      if (previous?.lastSaveKey === data.saveKey) {
+        if (previous.lastSaveHash !== saveHash) throw new AppError("SAVE_KEY_REUSED", 409);
+        if (previous.version !== data.version + 1) throw new AppError("DOCUMENT_VERSION_CONFLICT", 409);
+        return previous;
+      }
+    }
     if (!data.id && data.createKey) {
       const existing = await tx.studioDocument.findUnique({ where: { userId_createKey: { userId, createKey: data.createKey } } });
       if (existing?.deletedAt) throw new AppError("DOCUMENT_NOT_FOUND", 404);
-      if (existing) return { ...existing, replayed: true };
+      if (existing) {
+        if (data.saveKey && existing.lastSaveKey === data.saveKey && existing.lastSaveHash !== saveHash) throw new AppError("SAVE_KEY_REUSED", 409);
+        return { ...existing, replayed: true, acknowledged: Boolean(data.saveKey && existing.lastSaveKey === data.saveKey && existing.version === 1) };
+      }
     }
     const refs = new Set([...data.content.layers.map(l => l.assetId), ...data.content.messages.map(m => m.assetId), ...(data.content.commerce?.sections || []).map(s => s.revisionAssetId), data.content.commerce?.productAssetId, data.content.commerce?.referenceAssetId].filter(Boolean));
     if (refs.size && await tx.asset.count({ where: { id: { in: [...refs] }, userId, status: "active" } }) !== refs.size) throw new AppError("ASSET_NOT_FOUND", 404);
@@ -20,6 +33,7 @@ export async function saveDocument(userId, input, db = prisma) {
     let document;
     const storedContent = { ...data.content, messages: data.content.messages.slice(-100), jobs: data.content.jobs.slice(-100), appliedJobs: data.content.appliedJobs.slice(-100) };
     const metadata = {
+      lastSaveKey: data.saveKey || null, lastSaveHash: saveHash,
       name: projectTitle(data.name, data.content),
       ...(data.nameSource ? { nameSource: data.nameSource } : {}),
       kind: data.content.commerce ? "commerce" : "canvas",
@@ -48,5 +62,5 @@ export async function saveDocument(userId, input, db = prisma) {
     if (removed.length) await tx.assetReference.deleteMany({ where: { entityId: document.id, kind: "studio", assetId: { in: removed } } });
     if (added.length) await tx.assetReference.createMany({ data: added.map(assetId => ({ assetId, entityId: document.id, kind: "studio" })), skipDuplicates: true });
     return document;
-  });
+  }, { maxWait: 10000, timeout: 15000 });
 }

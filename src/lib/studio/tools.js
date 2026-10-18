@@ -71,7 +71,7 @@ export const contentSchema = z.object({
   if (new Set(content.layers.map(l => l.id)).size !== content.layers.length) ctx.addIssue({ code: "custom", message: "DUPLICATE_LAYER" });
   for (const l of content.layers) if (l.type !== "text" && !l.assetId) ctx.addIssue({ code: "custom", message: "ASSET_REQUIRED" });
 });
-export const documentSchema = z.object({ copyFromId: id.optional(), id: id.optional(), version: z.number().int().positive().optional(), createKey: id.optional(), nameSource: z.enum(["manual", "prompt", "upload", "fallback"]).optional(), name: z.string().trim().min(1).max(100), content: contentSchema }).strict();
+export const documentSchema = z.object({ saveKey: id.optional(), copyFromId: id.optional(), id: id.optional(), version: z.number().int().positive().optional(), createKey: id.optional(), nameSource: z.enum(["manual", "prompt", "upload", "fallback"]).optional(), name: z.string().trim().min(1).max(100), content: contentSchema }).strict();
 export const planSchema = z.object({ summary: z.string().max(1000), steps: z.array(z.object({ tool: z.enum(["generate", "edit", "expand", "upscale", "describe", "split", "remove-bg", "ocr", "video"]), params: paramsSchema, explanation: z.string().max(500) }).strict()).min(1).max(4) }).strict();
 
 export function validatePlan(value, available, hasImage, costs = {}) {

@@ -26,6 +26,8 @@ export async function api(url, { method = "GET", body, key, signal } = {}) {
     error.url = url;
     error.method = method;
     error.detail = data.message || data.detail || "";
+    error.traceId = data.traceId || "";
+    error.retryable = data.retryable;
     throw error;
   }
   return data;

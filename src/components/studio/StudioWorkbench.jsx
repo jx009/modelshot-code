@@ -55,6 +55,8 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
     if (code === "SESSION_CLOSED") return;
     const descriptions = {
       LOCAL_SAVE_FAILED: t("本地保存失败，请保持页面打开并重试云端保存。", "Local save failed. Keep this page open and retry saving to the cloud."),
+      DOCUMENT_SAVE_UNAVAILABLE: t("画布暂未同步到云端，已自动重试。请保留当前页面，稍后点击保存重试。", "Canvas sync is temporarily unavailable after automatic retries. Keep this page open and retry saving shortly."),
+      DOCUMENT_SAVE_TOO_LARGE: t("画布保存请求超过服务器大小限制，请保留当前页面并联系管理员检查上传限制。", "The canvas exceeds the server request size limit. Keep this page open and ask an admin to check upload limits."),
       DOCUMENT_VERSION_CONFLICT: t("云端版本已更新。本地修改仍在，请另存为新项目或打开云端版本。", "Cloud version changed. Save as a new project or open the cloud version."),
       INSUFFICIENT_CREDITS: t("可用积分不足，请补充积分后重试。", "Not enough available credits."),
       UNAUTHORIZED: t("请先登录，素材和作品会保存到你的账户。", "Sign in to save assets and projects."),
@@ -84,8 +86,8 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
       INVALID_OCR_RESULT: t("文字识别结果格式异常，请检查 OCR 模型是否支持图片和 JSON 输出。", "Invalid OCR response. Check image and JSON support."),
       VISION_NOT_CONFIGURED: t("管理员尚未配置对话规划模型。请在后台“模型配置 → 后台大语言模型”配置；也可使用“快速生图”直接生成一张图。", "No planning model is configured. Configure one in Admin → Models → Backend language model, or use Quick generation for a direct single-image request."),
     };
-    const detail = code === "REQUEST_FAILED" && error?.url
-      ? `（${error.method || "GET"} ${error.url}${error.detail ? `：${error.detail}` : ""}）`
+    const detail = ["REQUEST_FAILED", "DOCUMENT_SAVE_UNAVAILABLE", "DOCUMENT_SAVE_TOO_LARGE"].includes(code)
+      ? `（${[error?.status ? `HTTP ${error.status}` : t("连接中断或响应异常", "Connection or response error"), error?.traceId ? `ID: ${error.traceId}` : ""].filter(Boolean).join(" · ")}）`
       : "";
     setNotice((descriptions[code] || imageToolErrorMessage(code, zh)) + detail);
   }, [t, zh]);
@@ -517,7 +519,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
     <header className="ms-topbar">
       <Link href="/" className="ms-brand" aria-label="来塔AI"><BrandLogo /></Link>
       <span className="ms-top-divider" />
-      <button className="ms-project-trigger" disabled={busy} onClick={async () => { try { setProjects(await api("/api/studio/documents")); } catch (e) { notify(e); } }}><FolderOpen size={17} /><span>{draft.name === "Untitled" ? t("新建项目", "New project") : draft.name}<small>{saveState === "saving" ? t("正在保存…", "Saving…") : saveState === "saved" ? t("已保存到云端", "Saved to cloud") : saveState === "error" ? (typeof navigator !== "undefined" && !navigator.onLine ? t("离线，修改已保存在此设备", "Offline — saved on this device") : t("保存失败，点击保存重试", "Save failed — retry")) : saveState === "conflict" ? t("版本冲突，本地修改已保留", "Conflict — local edits preserved") : saveState === "loading" ? t("正在打开…", "Opening…") : t("待同步到云端", "Waiting to sync")}</small></span><ChevronDown size={14} /></button>
+      <button className="ms-project-trigger" disabled={busy} onClick={async () => { try { setProjects(await api("/api/studio/documents")); } catch (e) { notify(e); } }}><FolderOpen size={17} /><span>{draft.name === "Untitled" ? t("新建项目", "New project") : draft.name}<small>{saveState === "saving" ? t("正在保存…", "Saving…") : saveState === "retrying" ? t("连接波动，正在重试保存…", "Reconnecting, retrying save…") : saveState === "saved" ? t("已保存到云端", "Saved to cloud") : saveState === "error" ? (typeof navigator !== "undefined" && !navigator.onLine ? t("离线，修改已保存在此设备", "Offline — saved on this device") : t("保存失败，点击保存重试", "Save failed — retry")) : saveState === "conflict" ? t("版本冲突，本地修改已保留", "Conflict — local edits preserved") : saveState === "loading" ? t("正在打开…", "Opening…") : t("待同步到云端", "Waiting to sync")}</small></span><ChevronDown size={14} /></button>
       <RecentProjects zh={zh} onChoose={openProject} disabled={busy || !ready} />
       <button className="ms-icon ms-new" title={t("新建项目", "New project")} disabled={busy || !ready} onClick={newProject}><Plus size={19} /></button>
       <div className="ms-top-actions">

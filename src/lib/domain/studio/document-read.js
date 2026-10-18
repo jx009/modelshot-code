@@ -4,7 +4,7 @@ import { AppError } from "../../http.js";
 export async function readDocumentPage(userId, id, offset = 0, version, db = prisma) {
   if (!Number.isInteger(offset) || offset < 0 || offset > 20000) throw new AppError("INVALID_CURSOR");
   const rows = await db.$queryRaw`
-    SELECT id, name, "nameSource", "createKey", kind, version, "createdAt", "updatedAt",
+    SELECT id, name, "nameSource", "createKey", "lastSaveKey", kind, version, "createdAt", "updatedAt",
       jsonb_array_length(content->'layers')::int AS "layerCount",
       (content - 'layers') || jsonb_build_object('layers', COALESCE(
         (SELECT jsonb_agg(value ORDER BY ordinal) FROM jsonb_array_elements(content->'layers') WITH ORDINALITY AS layers(value, ordinal)

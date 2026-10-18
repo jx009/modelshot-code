@@ -55,6 +55,30 @@ describe("project lifecycle", () => {
     expect(result.current.saveState).toBe("conflict");
     expect(onError).toHaveBeenCalledWith("DOCUMENT_VERSION_CONFLICT");
   });
+  it("resolves a persisted uncertain save before sending edits made after the failure", async () => {
+    const pending = { id: "project-a", version: 1, saveKey: "uncertain-write", name: "Earlier", content: { layers: [], messages: [message], jobs: [] } };
+    mocks.read.mockResolvedValue({ id: "project-a", version: 1, name: "Latest local edit", layers: [], messages: [message], jobs: [], appliedJobs: [], _dirty: true, _pendingSave: pending });
+    mocks.api.mockResolvedValueOnce({ id: "project-a", version: 1, content: pending.content })
+      .mockImplementation(async (_url, { body }) => ({ ...body, version: body.version + 1 }));
+    const { result } = renderHook(() => useStudioProject({ userId: "user", initialDocument: "project-a", paused: true, onError: vi.fn() }));
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    await act(() => result.current.save());
+    expect(mocks.api.mock.calls[1][1].body).toEqual(pending);
+    expect(mocks.api.mock.calls[2][1].body).toMatchObject({ version: 2, name: "Latest local edit" });
+    expect(result.current.draft).toMatchObject({ version: 3, _dirty: false });
+    expect(result.current.draft._pendingSave).toBeUndefined();
+  });
+  it("recognizes its own committed save after reload without discarding newer local edits", async () => {
+    mocks.read.mockResolvedValue({ id: "project-a", version: 1, name: "Newer local edit", layers: [], messages: [message], jobs: [], appliedJobs: [], _dirty: true,
+      _pendingSave: { id: "project-a", version: 1, saveKey: "committed-write" } });
+    mocks.api.mockResolvedValue({ id: "project-a", version: 2, lastSaveKey: "committed-write", content: { layers: [], messages: [], jobs: [] } });
+    const onError = vi.fn();
+    const { result } = renderHook(() => useStudioProject({ userId: "user", initialDocument: "project-a", paused: true, onError }));
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    expect(result.current.draft).toMatchObject({ name: "Newer local edit", version: 2, _dirty: true });
+    expect(result.current.saveState).toBe("local");
+    expect(onError).not.toHaveBeenCalled();
+  });
   it("never reports all tasks complete while an output is still loading or failed", () => {
     const jobs = [{ id: "a", status: "succeeded" }, { id: "b", status: "succeeded" }];
     expect(taskSummary(jobs, ["a"], {})).toEqual({ active: 1, failed: 0, complete: false });

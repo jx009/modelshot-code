@@ -7,6 +7,27 @@ let fixture;
 beforeAll(async () => { fixture = await domainFixture(); });
 afterAll(async () => { await fixture?.cleanup(); });
 const content = { schemaVersion: 1, layers: [], jobs: [], messages: [] };
+it("acknowledges a lost creation response without creating or updating twice", async () => {
+  const user = await fixture.user();
+  const input = { createKey: "lost-create", saveKey: "create-receipt", name: "Cat", content };
+  const first = await saveDocument(user.id, input, fixture.db);
+  const retry = await saveDocument(user.id, input, fixture.db);
+  expect(retry).toMatchObject({ id: first.id, version: 1, acknowledged: true });
+  await expect(saveDocument(user.id, { ...input, name: "Different" }, fixture.db)).rejects.toThrow("SAVE_KEY_REUSED");
+});
+it("replays an update once, but rejects changed payloads and genuinely stale versions", async () => {
+  const user = await fixture.user();
+  const initial = await saveDocument(user.id, { name: "Cat", content }, fixture.db);
+  const input = { id: initial.id, version: 1, saveKey: "update-receipt", name: "Updated cat", content };
+  const [first, replay] = await Promise.all([saveDocument(user.id, input, fixture.db), saveDocument(user.id, input, fixture.db)]);
+  expect(first.version).toBe(2); expect(replay.version).toBe(2);
+  expect((await readDocumentPage(user.id, initial.id, 0, undefined, fixture.db)).lastSaveKey).toBe(input.saveKey);
+  await expect(saveDocument(user.id, { ...input, name: "Wrong" }, fixture.db)).rejects.toThrow("SAVE_KEY_REUSED");
+  const other = await fixture.user();
+  await expect(saveDocument(other.id, input, fixture.db)).rejects.toThrow("DOCUMENT_VERSION_CONFLICT");
+  await saveDocument(user.id, { ...input, version: 2, saveKey: "another-tab", name: "Other tab" }, fixture.db);
+  await expect(saveDocument(user.id, input, fixture.db)).rejects.toThrow("DOCUMENT_VERSION_CONFLICT");
+});
 it("deduplicates creation retries without overwriting the first accepted snapshot", async () => {
   const user = await fixture.user();
   const input = { createKey: "retry-create-project", name: "生成一只猫", nameSource: "prompt", content };

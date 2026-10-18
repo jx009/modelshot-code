@@ -534,6 +534,8 @@ model StudioDocument {
   name String
   nameSource String @default("manual")
   createKey String?
+  lastSaveKey String?
+  lastSaveHash String?
   kind String @default("canvas")
   coverAssetId String?
   itemCount Int @default(0)

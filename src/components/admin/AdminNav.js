@@ -10,6 +10,7 @@ const LINKS = [
   { href: "/admin/studio-tools", label: "工具配置" },
   { href: "/admin/users", label: "用户管理" },
   { href: "/admin/tryons", label: "生成审计" },
+  { href: "/admin/inspiration", label: "灵感管理" },
   { href: "/admin/orders", label: "订单管理" },
   { href: "/admin/billing", label: "充值与支付" },
   { href: "/admin/cost", label: "成本利润" },

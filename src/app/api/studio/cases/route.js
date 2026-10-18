@@ -5,6 +5,7 @@ import { z } from "zod";
 import { requireUser } from "@/lib/require-user";
 import { AppError, errorResponse, readJson } from "@/lib/http";
 import { getCase } from "@/lib/commerce/catalog";
+import { findInspiration } from "@/lib/server/inspiration";
 import { caseRecipe } from "@/lib/commerce/case-recipe";
 import { createImage } from "@/lib/domain/assets/service";
 import { saveDocument } from "@/lib/domain/studio/documents";
@@ -15,13 +16,17 @@ export async function POST(request) {
   try {
     const user = await requireUser(), data = await readJson(request, input);
     await rateLimit("case-recipe", user.id, 30, 600);
-    const item = getCase(data.caseId);
+    const item = await findInspiration(data.caseId) || getCase(data.caseId);
     if (!item) throw new AppError("CASE_NOT_FOUND", 404);
     const recipe = caseRecipe(item, data.locale);
     const id = createHash("sha256").update(`case:${user.id}:${item.id}:${data.createKey}`).digest("hex");
-    const asset = await createImage(user.id, await readFile(path.join(process.cwd(), "public", "inspiration", `${item.image}.webp`)), { id });
-    const layer = { id: `reference_${item.id}`, type: "image", assetId: asset.id, name: data.locale === "zh" ? item.title : item.en, x: 90, y: 100, ...scaleToFit(asset.width, asset.height, 480), pixelWidth: asset.width, pixelHeight: asset.height, visible: true, rotation: 0, opacity: 1 };
-    const doc = await saveDocument(user.id, { createKey: data.createKey, name: layer.name, nameSource: "manual", content: { schemaVersion: 1, layers: [layer], messages: [], jobs: [], composer: { text: recipe.prompt, fixedPrompt: recipe.fixedPrompt, size: recipe.size, outputCount: recipe.outputCount, referenceIds: [layer.id] } } });
+    let layers = [];
+    if (!item.cover) {
+      const asset = await createImage(user.id, await readFile(path.join(process.cwd(), "public", "inspiration", `${item.image}.webp`)), { id });
+      const layer = { id: `reference_${item.id}`, type: "image", assetId: asset.id, name: data.locale === "zh" ? item.title : item.en, x: 90, y: 100, ...scaleToFit(asset.width, asset.height, 480), pixelWidth: asset.width, pixelHeight: asset.height, visible: true, rotation: 0, opacity: 1 };
+      layers = [layer];
+    }
+    const doc = await saveDocument(user.id, { createKey: data.createKey, name: data.locale === "zh" ? item.title : item.titleEn || item.en || item.title, nameSource: "manual", content: { schemaVersion: 1, layers, messages: [], jobs: [], composer: { text: recipe.prompt, fixedPrompt: recipe.fixedPrompt, size: recipe.size, outputCount: recipe.outputCount, referenceIds: layers.map(l => l.id) } } });
     return Response.json({ documentId: doc.id, mode: recipe.mode });
   } catch (error) { return errorResponse(error); }
 }

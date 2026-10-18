@@ -2,10 +2,12 @@ import { prisma } from "../../prisma.js";
 import { AppError } from "../../http.js";
 import { digestJson } from "../generation/contracts.js";
 
-export async function auditedOperation(adminId, key, action, input, mutate, db = prisma, minRole = "admin") {
+export async function auditedOperation(adminId, key, action, input, mutate, db = prisma, minRole = "admin", options = {}) {
   if (!/^[a-zA-Z0-9_-]{16,128}$/.test(key || "")) throw new AppError("IDEMPOTENCY_KEY_REQUIRED");
   if (typeof input.reason !== "string" || input.reason.trim().length < 3 || input.reason.length > 500) throw new AppError("REASON_REQUIRED");
   return db.$transaction(async tx => {
+    // Shared-resource writers can establish a consistent lock order before actor locks.
+    await options.beforeActorLock?.(tx);
     await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${adminId} FOR UPDATE`;
     const actor = await tx.user.findUnique({ where: { id: adminId } });
     if (!actor || actor.status !== "active" || !["root", ...(minRole === "admin" ? ["admin"] : [])].includes(actor.role)) throw new AppError("ADMIN_SCOPE_DENIED", 403);

@@ -13,6 +13,7 @@ import { createStoryboard } from "../../src/lib/commerce/planner.js";
 import { briefSchema } from "../../src/lib/commerce/schema.js";
 import { createImage } from "../../src/lib/domain/assets/service.js";
 import { extractObject } from "../../src/lib/domain/studio/segmentation.js";
+import { expansionPadding, editTargetSize } from "../../src/lib/studio/edit-geometry.js";
 
 let f;
 const config = { imageModel: "fixture", chatModel: "fixture-vision", plannerKind: "openai", videoModel: "fixture-video" };
@@ -26,6 +27,34 @@ async function setup() {
 describe("studio documents and task ledger", () => {
   beforeAll(async () => { f = await domainFixture(); });
   afterAll(async () => { await f?.cleanup(); });
+  it("delivers complete guided edit results with one image call, no language calls, and unchanged prices", async () => {
+    for (const tool of ["inpaint", "expand"]) {
+      const { user, input } = await setup();
+      const padding = expansionPadding(user.asset.width, user.asset.height, "16:9");
+      const selection = await createImage(user.id, await sharp({ create: { width: user.asset.width, height: user.asset.height, channels: 4, background: "white" } }).png().toBuffer(), {}, f.db, f.store);
+      const request = { ...input, tool, ...(tool === "inpaint" ? { maskId: selection.id } : {}), params: { prompt: "Remove the flowerpot", size: "1024x1024", padding } };
+      const job = await submitStudioJob(user.id, request, randomUUID(), f.db, deps);
+      expect(job.cost).toBe(18);
+      let imageCalls = 0, languageCalls = 0;
+      const adapters = {
+        vision: async () => { languageCalls++; throw new Error("Must not call a language model"); },
+        generate: async (_config, args) => {
+          imageCalls++;
+          expect(args.references).toHaveLength(1);
+          const { width, height } = await sharp(args.image).metadata();
+          return sharp({ create: { width, height, channels: 4, background: "blue" } }).png().toBuffer();
+        },
+      };
+      await executeStudio(job.id, { db: f.db, store: f.store, config, adapters });
+      await executeStudio(job.id, { db: f.db, store: f.store, config, adapters });
+      const row = await f.db.tryOn.findUnique({ where: { id: job.id } });
+      expect(row.status, row.errorCode).toBe("succeeded");
+      expect(row.resultData.assets[0]).toMatchObject(editTargetSize(tool, user.asset, padding));
+      expect(row.resultData.edit.originalPrompt).toBe(request.params.prompt);
+      expect(imageCalls).toBe(1); expect(languageCalls).toBe(0);
+      expect((await usageSummary(user.id, f.db)).credits).toBe(82);
+    }
+  });
   it("pins dedicated OCR and upscale models and charges each completed job only once", async () => {
     for (const tool of ["ocr", "upscale"]) {
       const { user, input } = await setup();

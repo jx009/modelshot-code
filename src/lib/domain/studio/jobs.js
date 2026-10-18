@@ -10,11 +10,13 @@ import { ACTIVE, LIMITS, digestJson } from "../generation/contracts.js";
 import { commerceReferences } from "../../commerce/project.js";
 import { imageSizeError } from "../../studio/image-size.js";
 import { upscaleInputError } from "../../studio/upscale.js";
+import { GUIDED_EDIT_TOOLS, editOutputSize, editTargetSize } from "../../studio/edit-geometry.js";
 
 export async function submitStudioJob(userId, input, key, db = prisma, deps = {}) {
   const data = jobSchema.parse(input);
   if (!/^[a-zA-Z0-9_-]{16,128}$/.test(key || "")) throw new AppError("IDEMPOTENCY_KEY_REQUIRED");
   const config = deps.config || await studioConfig(db, data.provider, "image", data.tool, { skipPreview: Boolean(data.maskId) });
+  if (data.tool === "inpaint" && config.imageKind === "dashscope" && data.referenceAssetIds?.length > 1) throw new AppError("TOO_MANY_EDIT_REFERENCES", 422);
   const caps = deps.capabilities || await capabilities(db, config);
   const requestId = createHash("sha256").update(`studio:${userId}:${key}`).digest("hex");
   // A replay may follow an unrelated document save; the immutable source and
@@ -53,7 +55,9 @@ export async function submitStudioJob(userId, input, key, db = prisma, deps = {}
     }
     // Reject known unsupported dimensions before reserving any credits.
     if (getTool(data.tool).dependency === "image") {
-      const sizeError = imageSizeError(config, data.params.size, inputAsset);
+      const targetSize = GUIDED_EDIT_TOOLS.includes(data.tool) ? editTargetSize(data.tool, inputAsset, data.params.padding) : null;
+      if (targetSize && (Math.max(targetSize.width, targetSize.height) > 8192 || targetSize.width * targetSize.height > 40000000)) throw new AppError("IMAGE_TOO_LARGE", 413);
+      const sizeError = targetSize ? editOutputSize(config, data.params.size, targetSize).error : imageSizeError(config, data.params.size, inputAsset);
       if (sizeError) throw new AppError(sizeError, 422);
     }
     if (data.params.selectionMode === "region" && ![data.params.moveSource, data.params.moveTarget].every(r => regionInside(r, inputAsset.width, inputAsset.height))) throw new AppError("MOVE_OUT_OF_BOUNDS", 422);

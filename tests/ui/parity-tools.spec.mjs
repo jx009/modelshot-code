@@ -33,6 +33,27 @@ async function select(page,name="参考图片 1") {
   await page.getByRole("button",{name:"图层",exact:true}).click();
 }
 
+for (const width of [1440, 390]) test(`guided expansion uses the chosen geometry without language optimization at ${width}px`, async ({ page }, info) => {
+  const f = await fixture(page);
+  let languageRequests = 0;
+  page.on("request", request => { if (/\/api\/studio\/(optimize|plan)$/.test(new URL(request.url()).pathname)) languageRequests++; });
+  await page.setViewportSize({ width, height: 900 });
+  await page.goto("/zh/studio-v2?document=creative-doc");
+  if (width < 760) await page.getByRole("button", { name: "画布", exact: true }).click();
+  await select(page); await tool(page, "AI 扩图");
+  const panel = page.locator(".ms-editor-expand");
+  await panel.getByRole("button", { name: "16:9", exact: true }).click();
+  await expect(panel).toContainText("800 × 450");
+  await expect(panel.getByRole("checkbox")).toHaveCount(0);
+  await page.screenshot({ path: info.outputPath(`expansion-${width}.png`) });
+  await panel.getByRole("button", { name: "生成 18 积分", exact: true }).click();
+  await expect.poll(() => f.posted.length).toBe(1);
+  expect(f.posted[0]).toMatchObject({ tool: "expand", params: { padding: { left: 100, right: 100, top: 0, bottom: 0 } } });
+  expect(f.posted[0].params.autoOptimize).toBeUndefined();
+  expect(languageRequests).toBe(0);
+  expect(f.errors).toEqual([]);
+});
+
 for (const width of [1440, 390]) test(`OCR result has direct entry points and persistent controls at ${width}px`, async ({ page, context }, info) => {
   const f = await fixture(page);
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);

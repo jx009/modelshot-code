@@ -75,7 +75,8 @@
   .ms-editor-hint { font-size: 10px; }
   .ms-editor .ms-crop-presets { gap: 2px; }
   .ms-editor .ms-crop-option { min-height: 43px; font-size: 10px; }
-  .ms-editor-expand .ms-editor-ratios { display: none; }
+  .ms-editor-expand .ms-editor-ratios button { padding: 8px 3px; }
+  .ms-editor-expand .ms-editor-ratios svg { display: none; }
   .ms-editor-expand .ms-editor-card { max-height: min(230px,27dvh); }
   .ms-editor-expand .ms-editor-prompt { min-height: 48px; }
   .ms-editor-expand .ms-editor-card>footer { margin-top: 8px; }

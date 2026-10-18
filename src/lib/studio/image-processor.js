@@ -34,17 +34,30 @@ export async function processLargeImage(image, maxDimension = 2048) {
  * @returns {Promise<HTMLImageElement>} Loaded image
  */
 const images = new Map();
+function trimImages() {
+  for (const [key, entry] of images) {
+    if (images.size <= 32) break;
+    if (entry.settled) images.delete(key);
+  }
+}
 export function loadImage(src, { signal, timeoutMs = 25000 } = {}) {
   if (signal?.aborted) return Promise.reject(new DOMException("Aborted", "AbortError"));
   if (!images.has(src)) {
+    const controller = new AbortController();
+    const entry = { controller, consumers: 0, settled: false };
     const task = queueImage(() => new Promise((resolve, reject) => {
       let attempt = 0;
       function start() {
+        if (controller.signal.aborted) { reject(controller.signal.reason); return; }
         const image = new window.Image();
         image.decoding = "async";
         let settled = false;
         const timer = setTimeout(() => fail("IMAGE_LOAD_TIMEOUT"), timeoutMs);
-        const cleanup = () => { clearTimeout(timer); image.onload = null; image.onerror = null; };
+        const cleanup = () => { clearTimeout(timer); image.onload = null; image.onerror = null; controller.signal.removeEventListener("abort", abort); };
+        function abort() {
+          if (settled) return;
+          settled = true; cleanup(); image.src = ""; reject(controller.signal.reason);
+        }
         function fail(code) {
           if (settled) return;
           settled = true;
@@ -60,20 +73,34 @@ export function loadImage(src, { signal, timeoutMs = 25000 } = {}) {
           } catch { fail("IMAGE_LOAD_FAILED"); }
         };
         image.onerror = () => fail("IMAGE_LOAD_FAILED");
+        controller.signal.addEventListener("abort", abort, { once: true });
         image.src = src;
       }
       start();
-    }));
-    images.set(src, task);
-    task.catch(() => { if (images.get(src) === task) images.delete(src); });
-    while (images.size > 32) images.delete(images.keys().next().value);
+    }), controller.signal);
+    entry.task = task;
+    images.set(src, entry);
+    task.then(() => { entry.settled = true; trimImages(); }, () => { entry.settled = true; if (images.get(src) === entry) images.delete(src); });
   }
-  const task = images.get(src);
-  if (!signal) return task;
+  const entry = images.get(src);
+  // A shared download remains alive while any canvas/export still needs it.
+  // Leaving the last consumer cancels the underlying image, not just its waiter.
+  entry.consumers++;
   return new Promise((resolve, reject) => {
-    const abort = () => reject(new DOMException("Aborted", "AbortError"));
-    signal.addEventListener("abort", abort, { once: true });
-    task.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
+    let finished = false;
+    const finish = (callback, value) => {
+      if (finished) return;
+      finished = true; signal?.removeEventListener("abort", abort);
+      entry.consumers--;
+      if (!entry.consumers && !entry.settled) {
+        if (images.get(src) === entry) images.delete(src);
+        entry.controller.abort();
+      }
+      callback(value);
+    };
+    const abort = () => finish(reject, new DOMException("Aborted", "AbortError"));
+    signal?.addEventListener("abort", abort, { once: true });
+    entry.task.then(value => finish(resolve, value), error => finish(reject, error));
   });
 }
 

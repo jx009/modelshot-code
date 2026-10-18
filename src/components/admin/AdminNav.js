@@ -11,6 +11,7 @@ const LINKS = [
   { href: "/admin/users", label: "用户管理" },
   { href: "/admin/tryons", label: "生成审计" },
   { href: "/admin/orders", label: "订单管理" },
+  { href: "/admin/billing", label: "充值与支付" },
   { href: "/admin/cost", label: "成本利润" },
   { href: "/admin/commissions", label: "分销佣金" },
   { href: "/admin/settings", label: "系统设置" },

@@ -9,6 +9,16 @@ import { encryptSecret, decryptSecret, maskSecret } from "./crypto.js";
 
 // key 常量 + 元信息（env 兜底名 + 是否敏感）
 export const CONFIG_KEYS = {
+  google_login_enabled:  { env: "GOOGLE_LOGIN_ENABLED", sensitive: false },
+  registration_credits:  { env: "REGISTRATION_CREDITS", sensitive: false },
+  payments_enabled:      { env: "PAYMENTS_ENABLED", sensitive: false },
+  epay_enabled:          { env: "EPAY_ENABLED", sensitive: false },
+  epay_gateway:          { env: "EPAY_GATEWAY", sensitive: false },
+  epay_merchant_id:      { env: "EPAY_MERCHANT_ID", sensitive: false },
+  epay_merchant_key:     { env: "EPAY_MERCHANT_KEY", sensitive: true },
+  epay_methods:          { env: "EPAY_METHODS", sensitive: false },
+  payment_public_url:    { env: "PAYMENT_PUBLIC_URL", sensitive: false },
+  credit_packages:       { env: "CREDIT_PACKAGES", sensitive: false },
   smtp_host:             { env: "SMTP_HOST",             sensitive: false },
   smtp_port:             { env: "SMTP_PORT",             sensitive: false },
   smtp_user:             { env: "SMTP_USER",             sensitive: false },
@@ -25,6 +35,7 @@ export const CONFIG_KEYS = {
 let cache = new Map();
 let cacheAt = 0;
 const TTL = 60_000;
+const LIVE_KEYS = new Set(["google_login_enabled", "registration_credits", "credit_packages", "payments_enabled", "epay_enabled", "epay_methods"]);
 
 export function invalidateSiteConfig() {
   cache = new Map();
@@ -32,15 +43,16 @@ export function invalidateSiteConfig() {
 }
 
 /** 单 key 读取：DB > env；敏感项自动解密；null 表示未配置 */
-export async function getSiteConfig(key) {
+export async function getSiteConfig(key, db = prisma) {
   const meta = CONFIG_KEYS[key];
   if (!meta) throw new Error(`Unknown config key: ${key}`);
 
-  if (cache.has(key) && Date.now() - cacheAt < TTL) return cache.get(key);
+  if (db === prisma && !LIVE_KEYS.has(key) && cache.has(key) && Date.now() - cacheAt < TTL) return cache.get(key);
+  if (Date.now() - cacheAt >= TTL) { cache.clear(); cacheAt = Date.now(); }
 
   let value = null;
   {
-    const row = await prisma.systemConfig.findUnique({ where: { key } });
+    const row = await db.systemConfig.findUnique({ where: { key } });
     if (row?.value != null && row.value !== "") {
       value = meta.sensitive ? decryptSecret(row.value) : row.value;
     }
@@ -51,14 +63,13 @@ export async function getSiteConfig(key) {
     // 占位文字视为未配置
     if (envVal && envVal.trim() && !envVal.includes("待填")) value = envVal.trim();
   }
-  cache.set(key, value);
-  cacheAt = Date.now();
+  if (db === prisma) cache.set(key, value);
   return value;
 }
 
 /** 批量读取（一次缓存周期内） */
-export async function getSiteConfigs(keys) {
-  const entries = await Promise.all(keys.map(async k => [k, await getSiteConfig(k)]));
+export async function getSiteConfigs(keys, db = prisma) {
+  const entries = await Promise.all(keys.map(async k => [k, await getSiteConfig(k, db)]));
   return Object.fromEntries(entries);
 }
 

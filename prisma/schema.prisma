@@ -68,6 +68,14 @@ model User {
   transactions  CreditTransaction[]
   cycles BillingCycle[]
   quotes GenerationQuote[]
+  inviteAliases InviteCodeAlias[]
+}
+
+model InviteCodeAlias {
+  code String @id
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
 }
 
 // 扣费流水 — 「钱」的唯一真相源，每次消费/退款/充值/赠送都有独立记录

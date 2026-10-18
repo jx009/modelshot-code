@@ -5,7 +5,7 @@ import { Copy, LoaderCircle, Users, X } from "lucide-react";
 import toast from "react-hot-toast";
 import ThemedToaster from "@/components/ui/ThemedToaster";
 import ContentShell from "@/components/ContentShell";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 
 /**
  * 邀请中心（agent 及以上）— 方案 4.8.4
@@ -13,6 +13,9 @@ import { useTranslations } from "next-intl";
  */
 export default function InvitePage() {
   const t = useTranslations("invite");
+  const locale = useLocale();
+  const [currency, setCurrency] = useState(locale === "zh" ? "cny" : "usd");
+  const money = (value, unit = currency) => new Intl.NumberFormat(locale === "zh" ? "zh-CN" : "en-US", { style: "currency", currency: unit.toUpperCase() }).format(value || 0);
   const [data, setData] = useState(null);
   const [commissions, setCommissions] = useState(null);
   const [tab, setTab] = useState("invitees");
@@ -20,7 +23,7 @@ export default function InvitePage() {
 
   useEffect(() => {
     Promise.all([
-      fetch("/api/invite").then(r => r.json()).catch(() => null),
+      fetch(`/api/invite?currency=${currency}`).then(r => r.json()).catch(() => null),
     ]).then(([d]) => {
       if (d?.error) {
         setData({ forbidden: true });
@@ -28,7 +31,7 @@ export default function InvitePage() {
         setData(d);
       }
     }).finally(() => setLoading(false));
-  }, []);
+  }, [currency]);
 
   const loadCommissions = async () => {
     const res = await fetch("/api/invite?tab=commissions");
@@ -56,7 +59,7 @@ export default function InvitePage() {
 
   const s = data?.summary || {};
   const origin = typeof window !== "undefined" ? window.location.origin : "";
-  const inviteLink = `${origin}/en/login?ref=${data?.inviteCode || ""}`;
+  const inviteLink = `${origin}/${locale}/login?ref=${data?.inviteCode || ""}`;
 
   return (
     <ContentShell className="px-6 py-10">
@@ -84,13 +87,14 @@ export default function InvitePage() {
           </div>
         </div>
 
+        <select aria-label={locale === "zh" ? "业绩币种" : "Currency"} value={currency} onChange={e => setCurrency(e.target.value)} className="button compact"><option value="cny">人民币 CNY</option><option value="usd">USD 美元</option></select>
         {/* 业绩汇总 */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <Stat label={t("invitees")} value={s.inviteeCount ?? 0} />
           <Stat label={t("paidInvitees")} value={s.paidInviteeCount ?? 0} />
-          <Stat label={t("orderTotal")} value={`$${s.totalOrderAmount ?? 0}`} />
-          <Stat label={t("pending")} value={`$${s.pendingCommission ?? 0}`} accent />
-          <Stat label={t("settled")} value={`$${s.settledCommission ?? 0}`} />
+          <Stat label={t("orderTotal")} value={money(s.totalOrderAmount)} />
+          <Stat label={t("pending")} value={money(s.pendingCommission)} accent />
+          <Stat label={t("settled")} value={money(s.settledCommission)} />
         </div>
 
         {/* 明细 Tabs */}
@@ -121,7 +125,7 @@ export default function InvitePage() {
                       <td className="px-4 py-2.5 text-center">
                         {i.hasPaid ? <span className="text-success font-medium">{t("yes")}</span> : <span className="text-secondary-text">—</span>}
                       </td>
-                      <td className="px-4 py-2.5 text-right text-primary-text tabular-nums">${i.paidAmount}</td>
+                      <td className="px-4 py-2.5 text-right text-primary-text tabular-nums">{money(i.paidAmount)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -146,9 +150,9 @@ export default function InvitePage() {
                 <tbody>
                   {commissions.commissions.map(c => (
                     <tr key={c.id} className="border-t border-divider/60">
-                      <td className="px-4 py-2.5 text-primary-text tabular-nums">${c.orderAmount}</td>
+                      <td className="px-4 py-2.5 text-primary-text tabular-nums">{money(c.orderAmount, c.currency)}</td>
                       <td className="px-4 py-2.5 text-secondary-text tabular-nums">{(c.commissionRate * 100).toFixed(0)}%</td>
-                      <td className="px-4 py-2.5 text-primary font-medium tabular-nums">${c.commissionAmount}</td>
+                      <td className="px-4 py-2.5 text-primary font-medium tabular-nums">{money(c.commissionAmount, c.currency)}</td>
                       <td className="px-4 py-2.5">
                         <span className={`px-2 py-0.5 rounded-full border text-xs font-medium ${
                           c.status === "settled" ? "text-success bg-success/10 border-success/30"

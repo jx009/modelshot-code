@@ -20,6 +20,7 @@ export async function GET(req) {
   try {
     const { searchParams } = new URL(req.url);
     const agentId = searchParams.get("agentId");
+    const currency = searchParams.get("currency") === "cny" ? "cny" : "usd";
 
     // 单个流量手：佣金明细
     if (agentId) {
@@ -54,17 +55,17 @@ export async function GET(req) {
     const agentIds = agentsRaw.map(a => a.id);
     const commissionAgg = await prisma.inviteCommission.groupBy({
       by: ["inviterId", "status"],
-      where: { inviterId: { in: agentIds } },
+      where: { inviterId: { in: agentIds }, currency },
       _sum: { amountMinor: true, reversedMinor: true },
       _count: { _all: true },
     });
 
-    const adjustments = await prisma.commissionAdjustment.groupBy({ by: ["inviterId"], where: { inviterId: { in: agentIds }, settledAt: null }, _sum: { amountMinor: true } });
+    const adjustments = await prisma.commissionAdjustment.groupBy({ by: ["inviterId"], where: { inviterId: { in: agentIds }, currency, settledAt: null }, _sum: { amountMinor: true } });
     const agents = agentsRaw.map(a => {
       const rows = commissionAgg.filter(c => c.inviterId === a.id);
       const get = (status) => rows.find(r => r.status === status);
       return {
-        id: a.id,
+        id: a.id, currency,
         email: a.email,
         name: a.name,
         role: a.role,
@@ -104,13 +105,13 @@ export async function POST(req) {
   if (auth.response) return auth.response;
 
   try {
-    const { agentId, remark } = await req.json();
+    const { agentId, remark, currency } = await readJson(req, z.object({ agentId: z.string().min(1).max(128), remark: z.string().trim().min(3).max(500), currency: z.enum(["cny", "usd"]).default("usd") }).strict());
     if (!agentId) return new NextResponse("Missing agentId", { status: 400 });
 
-    const result = await settleCommission(agentId, auth.user.id, remark, req.headers.get("idempotency-key") || undefined);
+    const result = await settleCommission(agentId, auth.user.id, remark, req.headers.get("idempotency-key") || undefined, prisma, currency);
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {
     console.error("[ADMIN_COMMISSIONS_SETTLE]", error);
-    return new NextResponse(error.message || "Internal Error", { status: 500 });
+    return errorResponse(error);
   }
 }

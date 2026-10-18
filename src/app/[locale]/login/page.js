@@ -1,9 +1,9 @@
 "use client";
 
-import { signIn, useSession, getProviders } from "next-auth/react";
+import { signIn, useSession, getProviders, getSession } from "next-auth/react";
 import { ArrowRight, Info, Key, Mail } from "lucide-react";
 import { useEffect, useState, Suspense } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import toast from "react-hot-toast";
 import ThemedToaster from "@/components/ui/ThemedToaster";
 import ContentShell from "@/components/ContentShell";
@@ -24,15 +24,14 @@ function LoginContent() {
   const t = useTranslations("login");
   const te = useTranslations("errors");
   const { data: session, status } = useSession();
-  const router = useRouter();
   const searchParams = useSearchParams();
   const rawNext = searchParams.get("callbackUrl") || searchParams.get("next") || "";
   const next = safeNext(rawNext && rawNext !== "/" ? rawNext : "/studio-v2");
   const refCode = searchParams.get("ref") || ""; // 分销邀请码（注册时绑定，一次性）
 
-  const [activeTab, setActiveTab] = useState("google"); // "google" | "email"
+  const [activeTab, setActiveTab] = useState("email"); // "google" | "email"
   const [googleAvailable, setGoogleAvailable] = useState(false);
-  useEffect(() => { getProviders().then(providers => { setGoogleAvailable(!!providers?.google); if (!providers?.google) setActiveTab("email"); }); }, []);
+  useEffect(() => { getProviders().then(providers => { setGoogleAvailable(!!providers?.google); if (!providers?.google) setActiveTab("email"); }).catch(() => setGoogleAvailable(false)); }, []);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // 邮箱登录状态（login / register / reset 三态，照搬 LetAiCode 交互）
@@ -43,10 +42,13 @@ function LoginContent() {
   const [codeSending, setCodeSending] = useState(false);
 
   useEffect(() => {
-    if (status === "authenticated") {
-      router.push(next);
+    if (status === "authenticated" && session?.user?.id) {
+      // Confirm the server cookie rather than redirecting from stale tab state.
+      let current = true;
+      getSession().then(fresh => { if (current && fresh?.user?.id) window.location.replace(next); });
+      return () => { current = false; };
     }
-  }, [status, router, next]);
+  }, [status, session?.user?.id, next]);
 
   // 发送验证码到邮箱；本地环境由 Mailpit 捕获。
   const handleSendCode = async (purpose) => {
@@ -110,8 +112,10 @@ function LoginContent() {
       if (res?.error) {
         toast.error(te("INVALID_CREDENTIALS"));
       } else {
+        const fresh = await getSession();
+        if (!fresh?.user?.id) { toast.error(te("GENERIC")); return; }
         toast.success(t("success"));
-        router.push(next);
+        window.location.assign(next);
       }
     } catch (err) {
       toast.error(te("GENERIC"));
@@ -151,7 +155,7 @@ function LoginContent() {
       <ThemedToaster />
       <div className="relative bg-bg-card border border-divider w-full max-w-md rounded-xl p-8 space-y-6 shadow-2xl animate-scale-up">
         <div className="flex flex-col items-center text-center space-y-3">
-          <div className="w-14 h-14 rounded-2xl bg-bg-elevated border border-divider flex items-center justify-center" aria-label="来塔AI">
+          <div className="w-14 h-14 rounded-xl bg-bg-elevated border border-divider flex items-center justify-center" aria-label="来塔AI">
             <BrandMark size={30} />
           </div>
           <h2 className="text-2xl font-medium tracking-tight">{t("title")}</h2>
@@ -162,7 +166,7 @@ function LoginContent() {
 
         {/* Auth Method Selector Tabs */}
         <div className="flex bg-bg-page p-1 rounded-lg border border-divider/60">
-          <button
+          {googleAvailable && <button
             type="button"
             disabled={!googleAvailable}
             onClick={() => setActiveTab("google")}
@@ -174,7 +178,7 @@ function LoginContent() {
           >
             <GoogleIcon />
             <span>{t("googleTab")}</span>
-          </button>
+          </button>}
 
           <button
             type="button"

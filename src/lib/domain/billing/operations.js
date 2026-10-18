@@ -49,6 +49,7 @@ export async function billingOperation(adminId, key, input, db = prisma) {
     await tx.$queryRaw`SELECT id FROM "Order" WHERE id = ${candidate.id} FOR UPDATE`;
     let order = await tx.order.findUnique({ where: { id: input.id } });
     if (input.action === "refund") {
+      if (order.stripePaymentIntentId?.startsWith("epay:")) throw new AppError("EPAY_REFUND_REQUIRES_GATEWAY", 409);
       if (!order.stripePaymentIntentId || !["paid", "partially_refunded"].includes(order.status)) throw new AppError("ORDER_NOT_REFUNDABLE", 409);
       const requests = await tx.refundRequest.aggregate({ where: { orderId: order.id, status: { in: ["pending", "submitted", "review"] } }, _sum: { amountMinor: true } });
       const claimed = order.refundedMinor + (requests._sum.amountMinor || 0);
@@ -95,6 +96,10 @@ export async function processRefundRequest(id, { db = prisma, stripe } = {}) {
   const request = await db.refundRequest.findUnique({ where: { id } });
   if (!request || ["submitted", "confirmed", "failed"].includes(request.status)) return;
   const order = await db.order.findUniqueOrThrow({ where: { id: request.orderId } });
+  if (order.stripePaymentIntentId?.startsWith("epay:")) {
+    await db.refundRequest.update({ where: { id }, data: { status: "review", errorCode: "EPAY_REFUND_REQUIRES_GATEWAY" } });
+    return;
+  }
   try {
     if (Date.now() - request.createdAt > 23 * 3600_000) {
       const refunds = await stripe.refunds.list({ payment_intent: order.stripePaymentIntentId, limit: 100 });

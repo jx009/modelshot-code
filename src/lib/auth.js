@@ -5,6 +5,7 @@ import { prisma } from "./prisma";
 import bcrypt from "bcryptjs";
 import { getSiteConfigs } from "./site-config";
 import { rateLimit } from "./domain/identity/rate-limit.js";
+import { createRegisteredUser, registrationCredits } from "./domain/identity/registration.js";
 
 /**
  * 动态构建 authOptions（每次请求重建，Google 凭据 DB > env）
@@ -12,16 +13,23 @@ import { rateLimit } from "./domain/identity/rate-limit.js";
  * 必须改为工厂函数。调用方：`getServerSession(await buildAuthOptions())`
  */
 export async function buildAuthOptions() {
-  const cfg = await getSiteConfigs(["google_client_id", "google_client_secret"]);
+  const cfg = await getSiteConfigs(["google_client_id", "google_client_secret", "google_login_enabled"]);
   const googleClientId = cfg.google_client_id;
   const googleClientSecret = cfg.google_client_secret;
   return {
-  adapter: PrismaAdapter(prisma),
+  adapter: {
+    ...PrismaAdapter(prisma),
+    async createUser(data) {
+      const credits = await registrationCredits();
+      return prisma.$transaction(tx => createRegisteredUser(tx, data, credits));
+    },
+  },
   session: {
     strategy: "jwt",
+    maxAge: 30 * 24 * 60 * 60,
   },
   providers: [
-    ...(googleClientId && googleClientSecret ? [GoogleProvider({
+    ...(!["0", "false"].includes(cfg.google_login_enabled) && googleClientId && googleClientSecret ? [GoogleProvider({
       clientId: googleClientId || process.env.GOOGLE_CLIENT_ID,
       clientSecret: googleClientSecret || process.env.GOOGLE_CLIENT_SECRET,
     })] : []),
@@ -74,10 +82,12 @@ export async function buildAuthOptions() {
       if (userId) {
         token.id = userId;
         try {
-          const dbUser = await prisma.user.findUnique({
+          const query = () => prisma.user.findUnique({
             where: { id: userId },
             select: { credits: true, status: true, role: true, sessionVersion: true }
           });
+          // Retry a dropped pool connection once, still failing closed on outage.
+          const dbUser = await query().catch(() => query());
           if (dbUser) {
             if (user) token.sessionVersion = dbUser.sessionVersion;
             token.credits = dbUser.credits;
@@ -94,7 +104,7 @@ export async function buildAuthOptions() {
     async session({ session, token }) {
       // 封禁用户：session 置空（前端视为未登录，立即失效）
       if (!token || token.invalid !== false) {
-        return { ...session, user: null };
+        return null;
       }
       if (session.user && token) {
         session.user.id = token.id || token.sub;

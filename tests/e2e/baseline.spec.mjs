@@ -12,7 +12,7 @@ async function signIn(page, email, destination = "/en/studio-v2") {
   await page.getByLabel("Email", { exact: true }).fill(email);
   await page.getByLabel("Password", { exact: true }).fill(E2E_PASSWORD);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await expect(page).toHaveURL(new RegExp(`${destination}$`));
+  await expect(page).toHaveURL(url => url.pathname === destination);
   await expect.poll(async () => (await (await page.request.get("/api/auth/session")).json()).user?.email).toBe(email);
 }
 
@@ -152,7 +152,7 @@ test("root can create multiple model channels with public aliases and a planning
 test("unsafe legacy entry points are unavailable", async ({ request }) => {
   const providers = await (await request.get("/api/auth/providers")).json();
   expect(providers).not.toHaveProperty("credentials");
-  expect((await request.post("/api/checkout", { data: { planId: "basic" } })).status()).toBe(503);
+  expect((await request.post("/api/checkout", { data: { planId: "basic" } })).status()).toBe(401);
   expect((await request.post("/api/user/apikey", { data: { apiKey: "same-suffix" } })).status()).toBe(404);
   expect((await request.post("/api/user/credentials", { data: { provider: "openai", secret: "unused" } })).status()).toBe(404);
   expect((await request.get("/uploads/legacy.png")).status()).toBe(404);

@@ -17,7 +17,9 @@ const statusCls = {
  */
 export default function AdminCommissions() {
   const reasonPrompt = useAdminReason();
-  const { data: agents, loading, error, reload: load } = useRemoteResource("/api/admin/commissions");
+  const [currency, setCurrency] = useState("cny");
+  const money = (value, unit = currency) => new Intl.NumberFormat("zh-CN", { style: "currency", currency: unit.toUpperCase() }).format(value || 0);
+  const { data: agents, loading, error, reload: load } = useRemoteResource(`/api/admin/commissions?currency=${currency}`);
   const [acting, setActing] = useState(null);
   const [detail, setDetail] = useState(null); // { agentId, ...commissions/logs }
 
@@ -35,11 +37,11 @@ export default function AdminCommissions() {
       const res = await fetch("/api/admin/commissions", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Idempotency-Key": approval.key },
-        body: JSON.stringify({ agentId: agent.id, remark: approval.reason }),
+        body: JSON.stringify({ agentId: agent.id, remark: approval.reason, currency }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed");
-      toast.success(`已结算 $${data.amount}（${data.count} 笔）`);
+      toast.success(`已结算 ${money(data.amount)}（${data.count} 笔）`);
       await load();
     } catch (e) {
       toast.error(e.message);
@@ -81,6 +83,7 @@ export default function AdminCommissions() {
         </button>
       </div>
 
+      <select aria-label="结算币种" value={currency} onChange={e => setCurrency(e.target.value)} className="button compact"><option value="cny">人民币 CNY</option><option value="usd">美元 USD</option></select>
       {error ? <p role="alert" className="text-sm text-danger">加载失败，请刷新重试。</p> : loading ? (
         <div className="flex items-center gap-2 text-secondary-text text-sm py-10"><LoaderCircle className="animate-spin" size={14} /> Loading…</div>
       ) : !agents || agents.agents.length === 0 ? (
@@ -97,8 +100,8 @@ export default function AdminCommissions() {
                 </div>
                 <div className="flex items-center gap-4 text-xs">
                   <span className="text-secondary-text">邀请 <b className="text-primary-text tabular-nums">{a.inviteeCount}</b></span>
-                  <span className="text-warning font-medium tabular-nums">待结算 ${a.pendingCommission}</span>
-                  <span className="text-success font-medium tabular-nums">已结算 ${a.settledCommission}</span>
+                  <span className="text-warning font-medium tabular-nums">待结算 {money(a.pendingCommission)}</span>
+                  <span className="text-success font-medium tabular-nums">已结算 {money(a.settledCommission)}</span>
                 </div>
               </div>
 
@@ -161,8 +164,8 @@ export default function AdminCommissions() {
                     <tbody>
                       {detail.commissions.map(c => (
                         <tr key={c.id} className="border-t border-divider/50">
-                          <td className="py-2 text-primary-text tabular-nums">${c.orderAmount}</td>
-                          <td className="py-2 text-right text-primary font-medium tabular-nums">${c.commissionAmount}</td>
+                          <td className="py-2 text-primary-text tabular-nums">{money(c.orderAmount, c.currency)}</td>
+                          <td className="py-2 text-right text-primary font-medium tabular-nums">{money(c.commissionAmount, c.currency)}</td>
                           <td className="py-2 pl-3"><span className={`px-2 py-0.5 rounded-full border font-medium ${statusCls[c.status]}`}>{c.status}</span></td>
                         </tr>
                       ))}
@@ -176,7 +179,7 @@ export default function AdminCommissions() {
                   <p className="text-xs text-secondary-text">暂无</p>
                 ) : detail.logs.map(l => (
                   <div key={l.id} className="border border-divider rounded-[10px] p-3 mb-2 text-xs">
-                    <div className="flex justify-between"><span className="text-primary-text font-medium">${l.amount}</span><span className="text-secondary-text">{new Date(l.createdAt).toLocaleString()}</span></div>
+                    <div className="flex justify-between"><span className="text-primary-text font-medium">{money(l.amount, l.currency)}</span><span className="text-secondary-text">{new Date(l.createdAt).toLocaleString()}</span></div>
                     <div className="text-secondary-text mt-0.5">{l.settledRecordCount} 笔{l.remark ? ` · ${l.remark}` : ""}</div>
                   </div>
                 ))}

@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
+import { useRecharge } from "@/components/billing/RechargeProvider";
 import { useLocale } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import { ArrowUp, ArrowDown, ArrowUpRight, Plus, X, FolderOpen, Download, Save, Undo2, Redo2, MousePointer2, Hand, ImagePlus, Type, Layers3, Sparkles, WandSparkles, Expand, Crop, Eraser, Move, ScanText, Scissors, Video, MessageCircle, Zap, ShoppingBag, ChevronDown, Check, LoaderCircle, ZoomIn, Minus, Maximize, Trash2, Eye, EyeOff, Copy, Coins, Play, PanelLeftClose, PanelLeftOpen } from "lucide-react";
@@ -44,6 +45,7 @@ const TERMINAL = ["succeeded", "failed", "cancelled"];
 const delay = (ms, signal) => new Promise((resolve, reject) => { const timer = setTimeout(resolve, ms); signal?.addEventListener("abort", () => { clearTimeout(timer); reject(new Error("SESSION_CLOSED")); }, { once: true }); });
 
 export default function StudioWorkbench({ initialDocument = "", initialPrompt = "", initialMode = "chat", initialProvider = "", initialSize = "1024x1024", initialCount = 1, initialFixed = "" }) {
+  const recharge = useRecharge();
   const locale = useLocale(), zh = locale === "zh", { data: session, status } = useSession();
   const t = useCallback((cn, en) => zh ? cn : en, [zh]);
   const [busy, setBusy] = useState(false), [notice, setNotice] = useState(null);
@@ -161,7 +163,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
       api("/api/usage", { signal: abort.signal }).then(setUsage).catch(e => { if (!abort.signal.aborted) notify(e); });
     } else loadedProvider.current = undefined;
     return () => { abort.abort(); clearTimeout(fitTimer.current); };
-  }, [status, notify]);
+  }, [status, session?.user?.id, session?.user?.credits, notify]);
   useEffect(() => {
     if (status !== "authenticated" || loadedProvider.current === modelProvider) return;
     const abort = new AbortController();
@@ -520,7 +522,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
       <div className="ms-top-actions">
         <button className="ms-button ms-save" data-action="save-studio" onClick={() => save().catch(notify)} disabled={busy}><Save size={15} />{t("保存", "Save")}</button>
         <button className="ms-button ms-export" onClick={() => setExportOpen(true)}><Download size={15} />{t("导出", "Export")}</button>
-        <Link href="/account" className="ms-credit"><Zap size={15} />{usage?.credits ?? "—"}<span>{t("积分", "credits")}</span></Link>
+        <button onClick={recharge.open} className="ms-credit"><Zap size={15} />{usage?.credits ?? "—"}<span>{t("积分", "credits")}</span></button>
         {session?.user ? <UserMenu user={session.user} /> : <Link href="/login" className="ms-button ms-primary">{t("登录", "Sign in")}</Link>}
       </div>
     </header>

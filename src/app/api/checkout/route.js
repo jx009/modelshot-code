@@ -1,14 +1,12 @@
 import { z } from "zod";
 import { requireUser } from "../../../lib/require-user.js";
-import { AppError, errorResponse, readJson } from "../../../lib/http.js";
-import { getStripe } from "../../../lib/stripe.js";
-import { startCheckout } from "../../../lib/domain/billing/payments.js";
+import { errorResponse, readJson } from "../../../lib/http.js";
+import { startRecharge } from "../../../lib/domain/billing/recharge.js";
 
 export async function POST(request) {
   try {
-    if (process.env.PAYMENTS_ENABLED !== "1") throw new AppError("CHECKOUT_UNAVAILABLE", 503);
     const user = await requireUser();
-    const { planId } = await readJson(request, z.object({ planId: z.string().max(40) }).strict());
-    return Response.json(await startCheckout(user.id, planId, request.headers.get("idempotency-key"), await getStripe()));
+    const input = await readJson(request, z.object({ planId: z.string().max(40), locale: z.enum(["zh", "en"]), method: z.enum(["alipay", "wxpay", "qqpay", "stripe"]), expectedAmountMinor: z.number().int().positive(), expectedCredits: z.number().int().positive() }).strict());
+    return Response.json(await startRecharge(user.id, input, request.headers.get("idempotency-key")), { headers: { "Cache-Control": "no-store" } });
   } catch (error) { return errorResponse(error); }
 }

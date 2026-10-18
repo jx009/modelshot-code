@@ -13,6 +13,10 @@ import { useAdminReason } from "@/hooks/useAdminReason";
 
 const SECTIONS = [
   {
+    id: "registration", icon: Zap, title: "新用户注册", desc: "每个新用户仅在首次注册时赠送一次积分，邮箱与 Google 注册均适用。",
+    fields: [{ key: "registration_credits", label: "注册赠送积分", type: "number", placeholder: "0（不赠送），最大 1000000" }],
+  },
+  {
     id: "smtp",
     icon: Mail,
     title: "邮件 SMTP",
@@ -32,6 +36,7 @@ const SECTIONS = [
     title: "Google OAuth",
     desc: "Google Cloud Console 创建 OAuth 2.0 客户端（Web 应用）。redirect URI 配：/api/auth/callback/google",
     fields: [
+      { key: "google_login_enabled", label: "Google 登录入口", type: "switch" },
       { key: "google_client_id", label: "Client ID", placeholder: "xxx.apps.googleusercontent.com" },
       { key: "google_client_secret", label: "Client Secret", sensitive: true, placeholder: "留空 = 不变更" },
     ],
@@ -83,7 +88,7 @@ export default function AdminSettings() {
   const save = async key => {
     const approval = await reasonPrompt.ask();
     if (!approval) return;
-    const value = values[key];
+    const value = values[key] ?? (key === "google_login_enabled" ? (configOf(key)?.display === "false" || configOf(key)?.display === "0" ? "false" : "true") : "");
     setSavingKey(key);
     try {
       const res = await fetch("/api/admin/settings", {
@@ -94,7 +99,7 @@ export default function AdminSettings() {
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || "Failed");
       toast.success(value ? "已保存（DB 优先生效）" : "已清除（回退 env）");
-      setValues(v => ({ ...v, [key]: "" }));
+      setValues(v => { const next = { ...v }; delete next[key]; return next; });
       await load();
     } catch (e) {
       toast.error(e.message);
@@ -158,13 +163,15 @@ export default function AdminSettings() {
                     )}
                   </label>
                   <div className="flex gap-2">
-                    <input
-                      type={f.sensitive ? "password" : "text"}
+                    {f.type === "switch" ? <select aria-label={f.label} className="flex-1 min-w-0 bg-bg-page border border-divider rounded-[10px] px-3 py-2 text-xs" value={values[f.key] ?? (c?.display === "false" || c?.display === "0" ? "false" : "true")} onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))}><option value="true">显示 Google 登录</option><option value="false">隐藏 Google 登录（禁用）</option></select> : <input
+                      type={f.sensitive ? "password" : f.type || "text"}
+                      min={f.type === "number" ? 0 : undefined}
+                      max={f.type === "number" ? 1000000 : undefined}
                       value={values[f.key] ?? ""}
                       onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))}
                       placeholder={f.sensitive && c?.source !== "none" ? "留空 = 不变更" : f.placeholder}
                       className="flex-1 bg-bg-page border border-divider rounded-[10px] px-3 py-2 text-xs text-primary-text placeholder-secondary-text/50 focus:outline-none focus:border-primary/50"
-                    />
+                    />}
                     <button
                       onClick={() => save(f.key)}
                       disabled={savingKey === f.key || !(values[f.key] ?? "").trim()}
@@ -179,7 +186,7 @@ export default function AdminSettings() {
           </div>
 
           {/* 测试连接 */}
-          <div className="flex items-center gap-3 flex-wrap">
+          {sec.test && <div className="flex items-center gap-3 flex-wrap">
             {sec.test.extraField && (
               <input
                 type="email"
@@ -197,7 +204,7 @@ export default function AdminSettings() {
               {testing === sec.test.target ? <LoaderCircle size={12} className="animate-spin" /> : <Zap size={12} />}
               {sec.test.label}
             </button>
-          </div>
+          </div>}
         </div>
       ))}
     </div>

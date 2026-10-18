@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { prisma } from "../../../../lib/prisma";
 import { requireAdmin, auditLog } from "../../../../lib/admin-auth";
-import { getSiteConfigView, setSiteConfig, invalidateSiteConfig, getSiteConfigs } from "../../../../lib/site-config";
+import { CONFIG_KEYS, getSiteConfigView, setSiteConfig, invalidateSiteConfig, getSiteConfigs } from "../../../../lib/site-config";
 import { z } from "zod";
-import { readJson, errorResponse } from "../../../../lib/http.js";
+import { AppError, readJson, errorResponse } from "../../../../lib/http.js";
 import { auditedOperation } from "../../../../lib/domain/identity/admin-operation.js";
 
 /**
@@ -27,6 +27,9 @@ export async function PATCH(req) {
 
   try {
     const input = await readJson(req, z.object({ key: z.string().max(100), value: z.string().max(4096), reason: z.string().min(3).max(500) }).strict());
+    if (!CONFIG_KEYS[input.key] || input.key === "credit_packages" || input.key.startsWith("epay_") || ["payments_enabled", "payment_public_url"].includes(input.key)) throw new AppError("USE_BILLING_SETTINGS");
+    if (input.key === "registration_credits" && !/^(0|[1-9]\d{0,5}|1000000)$/.test(input.value)) throw new AppError("INVALID_REGISTRATION_CREDITS");
+    if (input.key === "google_login_enabled" && !["true", "false"].includes(input.value)) throw new AppError("INVALID_INPUT");
     const result = await auditedOperation(auth.user.id, req.headers.get("idempotency-key"), "SET_SITE_CONFIG", input, async tx => {
       await setSiteConfig(input.key, input.value, tx);
       return { audit: { key: input.key, source: input.value ? "db" : "cleared" } };

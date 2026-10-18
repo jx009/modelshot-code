@@ -27,6 +27,7 @@ export async function GET(req) {
 
   const { searchParams } = new URL(req.url);
   const tab = searchParams.get("tab") || "overview";
+  const currency = searchParams.get("currency") === "cny" ? "cny" : "usd";
 
   // 邀请码（懒生成）
   const inviteCode = await ensureInviteCode(session.user.id);
@@ -46,14 +47,14 @@ export async function GET(req) {
 
   // 概览：业绩 + 邀请明细
   const [summary, invitees] = await Promise.all([
-    getAgentSummary(session.user.id),
+    getAgentSummary(session.user.id, currency),
     prisma.user.findMany({
       where: { inviterId: session.user.id },
       orderBy: { invitedAt: "desc" },
       take: 50,
       select: {
         id: true, name: true, email: true, invitedAt: true,
-        orders: { where: { status: "paid", currency: "usd" }, select: { amountMinor: true } },
+        orders: { where: { status: { in: ["paid", "partially_refunded"] }, currency }, select: { amountMinor: true } },
       },
     }),
   ]);

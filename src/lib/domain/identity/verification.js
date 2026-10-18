@@ -3,6 +3,8 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "../../prisma.js";
 import { AppError } from "../../http.js";
+import { findInviter } from "./invite-codes.js";
+import { createRegisteredUser, registrationCredits } from "./registration.js";
 
 export const emailSchema = z.string().trim().toLowerCase().max(254).email();
 export const purposeSchema = z.enum(["REGISTER", "RESET_PASSWORD"]);
@@ -39,6 +41,7 @@ export async function issueChallenge(email, purpose, db = prisma) {
 export async function changeIdentity(input, purpose, db = prisma) {
   const { email, password, code, refCode } = identitySchema.parse(input);
   const passwordHash = await bcrypt.hash(password, 12);
+  const credits = purpose === "REGISTER" ? await registrationCredits(db) : 0;
   // Return verification failures from the transaction so failed attempts commit.
   const result = await db.$transaction(async tx => {
     await lock(tx, email, purpose);
@@ -51,12 +54,11 @@ export async function changeIdentity(input, purpose, db = prisma) {
     const existing = await tx.user.findUnique({ where: { email } });
     if (purpose === "REGISTER") {
       if (existing) return { error: "EMAIL_ALREADY_REGISTERED" };
-      const inviter = refCode ? await tx.user.findUnique({ where: { inviteCode: refCode }, select: { id: true, status: true } }) : null;
-      await tx.user.create({ data: {
-        email, name: email.split("@")[0], passwordHash, emailVerified: new Date(), credits: 0,
-        inviteCode: randomUUID().replaceAll("-", "").slice(0, 12).toUpperCase(),
+      const inviter = await findInviter(tx, refCode);
+      await createRegisteredUser(tx, {
+        email, name: email.split("@")[0], passwordHash, emailVerified: new Date(),
         ...(inviter?.status === "active" ? { inviterId: inviter.id, invitedAt: new Date() } : {}),
-      } });
+      }, credits);
     } else if (existing) {
       await tx.user.update({ where: { id: existing.id }, data: { passwordHash, sessionVersion: { increment: 1 } } });
     }

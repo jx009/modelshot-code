@@ -370,9 +370,9 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, selectedId, sele
     const current = actions.current;
     if (!current.panning && !current.editing) current.onSelect(id, additive);
   }, []);
-  const previewPicture = useCallback(item => {
+  const previewPicture = useCallback((item, image) => {
     const current = actions.current;
-    if (!current.editing && item.type === "image") current.onPreview?.(item.assetId);
+    if (!current.editing && item.type === "image") current.onPreview?.(item.assetId, image);
   }, []);
   const changePicture = useCallback((id, patch) => {
     const current = actions.current;

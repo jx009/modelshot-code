@@ -58,8 +58,13 @@
 .ms-chat-restore~.ms-canvas-label{left:60px}
 .ms-image-preview{position:fixed;inset:0;z-index:100;background:var(--bg-page);display:flex;flex-direction:column;align-items:center;padding:20px;gap:14px}
 .ms-preview-controls{display:flex;align-items:center;gap:12px;flex-shrink:0;align-self:flex-end}
-.ms-preview-image{width:100%;flex:1;min-height:0;overflow:auto;display:grid;place-items:center}
-.ms-preview-image img{width:auto;height:auto;max-width:100%;max-height:100%;object-fit:contain;transform-origin:center}
+.ms-preview-body{position:relative;width:100%;flex:1;min-height:0}
+.ms-preview-image{position:absolute;inset:0;overflow:auto;overscroll-behavior:contain}
+.ms-preview-image-space{width:100%;height:100%;display:flex;align-items:center;justify-content:center}
+.ms-preview-image-content{flex:none}
+.ms-preview-image-content img{display:block;width:100%;height:100%;max-width:none;max-height:none;object-fit:contain}
+.ms-preview-status{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:8px;max-width:calc(100% - 24px);padding:8px 12px;border:1px solid var(--divider);border-radius:20px;background:var(--bg-popover);color:var(--secondary-text);font-size:12px;white-space:nowrap;pointer-events:none}
+.ms-preview-status button{display:flex;align-items:center;gap:4px;color:var(--primary-text);pointer-events:auto}
 .ms-preview-history{display:flex;gap:9px;max-width:100%;overflow-x:auto;flex-shrink:0;padding:4px}
 .ms-preview-history button{flex:0 0 64px;height:64px;border:2px solid transparent;border-radius:8px;overflow:hidden}
 .ms-preview-history button.active{border-color:var(--primary)}

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-let loadImage, started;
+let loadImage, getCachedImage, started;
 const controllers = [];
 const controller = () => { const value = new AbortController(); controllers.push(value); return value; };
 const flush = async () => { for (let i = 0; i < 15; i++) await Promise.resolve(); };
@@ -11,7 +11,7 @@ beforeEach(async () => {
     decode() { return Promise.resolve(); }
     set src(value) { this.url = value; if (value) started.push(this); }
   } });
-  ({ loadImage } = await import("../../src/lib/studio/image-processor.js"));
+  ({ loadImage, getCachedImage } = await import("../../src/lib/studio/image-processor.js"));
 });
 afterEach(async () => {
   controllers.splice(0).forEach(c => c.abort()); await flush();
@@ -83,4 +83,32 @@ it("loads private canvas images with CORS and falls back to same-origin on COS f
   started[0].onerror(); await flush();
   expect(started[1].url).toBe("/api/assets/fixture-00000001?preview=320&delivery=proxy");
   await started[1].onload(); expect(await task).toBe(started[1]);
+});
+
+it("only exposes fully decoded images and reuses the exact image without another download", async () => {
+  expect(getCachedImage("preview")).toBeNull();
+  expect(started).toHaveLength(0);
+  const pending = loadImage("preview", { signal: controller().signal });
+  await flush();
+  let decoded;
+  started[0].decode = () => new Promise(resolve => { decoded = resolve; });
+  const loading = started[0].onload();
+  expect(getCachedImage("preview")).toBeNull();
+  decoded(); await loading; await pending;
+  expect(getCachedImage("preview")).toBe(started[0]);
+  expect(await loadImage("preview")).toBe(started[0]);
+  expect(started).toHaveLength(1);
+});
+
+it("retains a recently viewed image while evicting older decoded images", async () => {
+  for (let i = 0; i < 32; i++) {
+    const pending = loadImage(`cached-${i}`, { signal: controller().signal });
+    await flush(); await started.at(-1).onload(); await pending;
+  }
+  const first = getCachedImage("cached-0");
+  const pending = loadImage("next", { signal: controller().signal });
+  await flush(); await started.at(-1).onload(); await pending;
+  expect(getCachedImage("cached-0")).toBe(first);
+  expect(getCachedImage("cached-1")).toBeNull();
+  expect(getCachedImage("next")).toBe(started.at(-1));
 });

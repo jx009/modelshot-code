@@ -15,14 +15,15 @@ export function assetImageRequest(src, delivery) {
  * @returns {Promise<HTMLImageElement>} Processed image
  */
 export async function processLargeImage(image, maxDimension = 2048) {
-  if (image.width <= maxDimension && image.height <= maxDimension) {
+  const width = image.naturalWidth || image.width, height = image.naturalHeight || image.height;
+  if (width <= maxDimension && height <= maxDimension) {
     return image;
   }
 
-  const scale = maxDimension / Math.max(image.width, image.height);
+  const scale = maxDimension / Math.max(width, height);
   const canvas = document.createElement("canvas");
-  canvas.width = Math.round(image.width * scale);
-  canvas.height = Math.round(image.height * scale);
+  canvas.width = Math.round(width * scale);
+  canvas.height = Math.round(height * scale);
 
   const ctx = canvas.getContext("2d");
   ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
@@ -42,6 +43,14 @@ export async function processLargeImage(image, maxDimension = 2048) {
  * @returns {Promise<HTMLImageElement>} Loaded image
  */
 const images = new Map();
+// Return decoded pixels without starting another request (including a signed redirect).
+export function getCachedImage(src) {
+  const entry = images.get(src);
+  if (!entry?.image) return null;
+  images.delete(src);
+  images.set(src, entry);
+  return entry.image;
+}
 function trimImages() {
   for (const [key, entry] of images) {
     if (images.size <= 32) break;
@@ -91,7 +100,7 @@ export function loadImage(src, { signal, timeoutMs = 25000 } = {}) {
     }), controller.signal);
     entry.task = task;
     images.set(src, entry);
-    task.then(() => { entry.settled = true; trimImages(); }, () => { entry.settled = true; if (images.get(src) === entry) images.delete(src); });
+    task.then(image => { entry.image = image; entry.settled = true; trimImages(); }, () => { entry.settled = true; if (images.get(src) === entry) images.delete(src); });
   }
   const entry = images.get(src);
   // A shared download remains alive while any canvas/export still needs it.

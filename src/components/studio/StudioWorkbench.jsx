@@ -22,6 +22,7 @@ import { promptTitle } from "@/lib/studio/project-title";
 import { useStudioProject } from "./useStudioProject";
 import StudioTaskPopover from "./StudioTaskPopover";
 import StudioMessageHistory from "./StudioMessageHistory";
+import StudioPreviewImage from "./StudioPreviewImage";
 import OcrResultPanel from "./OcrResultPanel";
 import { useStudioView } from "./useStudioView";
 import RecentProjects from "./RecentProjects";
@@ -111,6 +112,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
   const [panning, setPanning] = useState(false), [spaceHeld, setSpaceHeld] = useState(false);
   const [chatCollapsed, setChatCollapsed] = useState(false), [viewport, setViewport] = useState(null);
   const [imagePreview, setImagePreview] = useState(null), [previewZoom, setPreviewZoom] = useState(1);
+  const [previewSeed, setPreviewSeed] = useState(null);
   const moveUnchanged = objectSelection?.region ? JSON.stringify(params.moveSource) === JSON.stringify(params.moveTarget) : !params.dx && !params.dy;
   const [resultStates, setResultStates] = useState({}), [planRunning, setPlanRunning] = useState(false);
   const [projectLoad, setProjectLoad] = useState(0);
@@ -577,7 +579,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
         {chatCollapsed && <button className="ms-icon ms-chat-restore" title={t("展开聊天", "Open chat")} onClick={() => { setChatCollapsed(false); setMobileChat(true); }}><PanelLeftOpen size={18} /></button>}
         <Canvas ref={canvas} layers={draft.layers} selectedId={selectedId} selectedIds={effectiveSelection} onSelect={selectLayer} onChange={commitLayers} mode={mode} brushSize={brush}
           selectionTool={toolId} editPadding={params.editPadding} focusPoints={params.focusPoints || []} onFocusPoint={addFocus} adjustmentPreview={toolId === "adjust" ? (compareOriginal ? {} : adjustments) : null}
-          zh={zh} onViewport={setViewport} onCamera={onCamera} onPreview={asset => { setImagePreview(asset); setPreviewZoom(1); }}
+          zh={zh} onViewport={setViewport} onCamera={onCamera} onPreview={(assetId, image) => { setPreviewSeed({ assetId, image }); setImagePreview(assetId); setPreviewZoom(1); }}
           moveRegions={toolId === "move" && objectSelection?.region ? { source: params.moveSource, target: params.moveTarget } : null} onMoveRegions={patch => setParams(p => ({ ...p, ...patch }))}
           cropRect={params.rect} cropShape={params.cropShape} cropGrid={params.cropGrid} onCropGrid={cropGrid => setParams(p => ({ ...p, cropGrid }))} onMaskChange={setHasMask} panning={panning || spaceHeld} moveOffset={{ dx: params.dx, dy: params.dy }} onMoveOffset={offset => setParams(p => ({ ...p, ...offset }))} onMovePreparing={() => { setObjectSelection(null); setMode("object-preparing"); }} onMoveReady={value => { setObjectSelection(value); setParams(p => ({ ...p, dx: 0, dy: 0, ...(value.region ? { moveSource: { ...value.bounds, rotation: 0 }, moveTarget: { ...value.bounds, rotation: 0 } } : {}) })); setMode(toolId === "inpaint" ? "object-edit" : "move"); }} onMoveFailed={() => { setObjectSelection(null); setMode("object-select-rect"); }}
           onCrop={rect => setParams(p => ({ ...p, rect }))} expandPadding={params.padding} onExpandPadding={padding => setParams(p => ({ ...p, padding }))}
@@ -617,7 +619,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
     {libraryOpen && <Modal label={t("选择素材", "Choose assets")} className="ml-picker-dialog" onClose={() => setLibraryOpen(false)}><button className="ms-icon" title={t("关闭", "Close")} onClick={() => setLibraryOpen(false)}><X size={18} /></button><AssetLibrary maxSelection={libraryOpen === "tool" ? Math.max(0, 2 - toolReferences.length) : libraryOpen === "reference" ? Math.max(0, referenceLimit - references.length) : 10} onSelect={importLibrary} /></Modal>}
     {imagePreview && <Modal className="ms-image-preview" label={t("图片预览", "Image preview")} onClose={() => setImagePreview(null)}>
       <div className="ms-preview-controls"><button className="ms-icon" title={t("缩小预览", "Zoom preview out")} onClick={() => setPreviewZoom(z => Math.max(0.25, z - 0.25))}><Minus size={18} /></button><span>{Math.round(previewZoom * 100)}%</span><button className="ms-icon" title={t("放大预览", "Zoom preview in")} onClick={() => setPreviewZoom(z => Math.min(4, z + 0.25))}><Plus size={18} /></button><a className="ms-icon" href={imageUrl(imagePreview)} download="letai.png" title={t("下载原图", "Download image")}><Download size={18} /></a><button autoFocus className="ms-icon" title={t("关闭预览", "Close preview")} onClick={() => setImagePreview(null)}><X size={20} /></button></div>
-      <div className="ms-preview-image"><Image unoptimized src={imageUrl(imagePreview)} width={2048} height={2048} style={{ transform: `scale(${previewZoom})` }} alt={t("完整图片", "Full image")} /></div>
+      <StudioPreviewImage key={imagePreview} assetId={imagePreview} initialImage={previewSeed?.assetId === imagePreview ? previewSeed.image : null} zoom={previewZoom} zh={zh} />
       <div className="ms-preview-history">{draft.layers.filter(l => l.type === "image").map(l => <button key={l.id} className={l.assetId === imagePreview ? "active" : ""} aria-label={l.name} onClick={() => { setImagePreview(l.assetId); setPreviewZoom(1); }}><Image unoptimized src={previewUrl(l.assetId, 320)} width={64} height={64} alt="" /></button>)}</div>
     </Modal>}
     {preview && <Modal className="ms-video-modal" label={t("视频预览", "Video preview")} onClose={() => setPreview(null)}><button className="ms-icon" title={t("关闭视频", "Close video")} onClick={() => setPreview(null)}><X size={20} /></button><video src={imageUrl(preview)} controls autoPlay playsInline /></Modal>}

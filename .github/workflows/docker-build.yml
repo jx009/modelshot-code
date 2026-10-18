@@ -177,9 +177,55 @@ jobs:
           DIGEST: ${{ steps.build.outputs.digest }}
         run: cosign sign --yes "$IMAGE@$DIGEST"
 
+  publish_hk_static:
+    name: Publish immutable static assets to Hong Kong
+    needs: build_single_arch
+    if: github.ref == 'refs/heads/main' && vars.HK_STATIC_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.sha }}
+      - uses: docker/login-action@c99871dec2022cc055c062a10cc1a1310835ceb4 # v4.3.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Extract assets from the exact images being published
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p hk-static
+          for arch in amd64 arm64; do
+            image="$IMAGE:$BUILD_TAG-$arch"
+            docker pull --platform "linux/$arch" "$image"
+            container=$(docker create --platform "linux/$arch" "$image")
+            mkdir -p "extracted-$arch"
+            docker cp "$container:/app/.next/static/." "extracted-$arch/"
+            docker rm "$container"
+            python3 scripts/publish-static.py "extracted-$arch" hk-static
+          done
+      - name: Upload without replacing or removing live assets
+        env:
+          HK_SERVER_HOST: ${{ secrets.HK_SERVER_HOST }}
+          HK_SERVER_USER: ${{ secrets.HK_SERVER_USER }}
+          HK_SERVER_SSH_KEY: ${{ secrets.HK_SERVER_SSH_KEY }}
+          HK_SERVER_KNOWN_HOSTS: ${{ secrets.HK_SERVER_KNOWN_HOSTS }}
+          HK_SERVER_PORT: ${{ vars.HK_SERVER_PORT || '22' }}
+        run: bash scripts/deploy-hk-static.sh hk-static
+      - name: Deployment summary
+        run: echo 'Hong Kong static assets published additively. Old files retained; public image tags may now advance.' >> "$GITHUB_STEP_SUMMARY"
+
   create_manifests:
     name: Publish multi-arch tags
-    needs: [prepare, build_single_arch, build_tools_single_arch]
+    needs: [prepare, build_single_arch, build_tools_single_arch, publish_hk_static]
+    # Disabled Hong Kong deployment and non-main releases may skip the upload.
+    # Once enabled, an upload failure must prevent latest/main/SHA tags advancing.
+    if: >-
+      ${{ !cancelled() && needs.prepare.result == 'success' &&
+          needs.build_single_arch.result == 'success' &&
+          needs.build_tools_single_arch.result == 'success' &&
+          (needs.publish_hk_static.result == 'success' || needs.publish_hk_static.result == 'skipped') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

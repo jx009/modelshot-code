@@ -149,6 +149,8 @@ docker compose --env-file .env.production -f compose.prod.yaml exec -T postgres 
 
 ## 4. 反向代理与 HTTPS
 
+美国源站、香港入口的增量静态资源发布见 [香港部署说明](./hong-kong-static-deployment.md)。该流程保留旧资源，香港同步成功后才推进正式镜像标签。
+
 Web 默认只绑 `127.0.0.1:3000`，由宿主机 Nginx/Caddy 终止 TLS 再转发。反代要透传 `Host`、`X-Forwarded-For`、`X-Forwarded-Proto`，并把 `PUBLIC_URL` 设为对外域名、`TRUST_PROXY=true`。不想装反代就把 `BIND_ADDR` 改成 `0.0.0.0`，但这样没有 TLS，登录 Cookie 和支付回调都不安全，不建议长期这么跑。
 
 不要在 `PUBLIC_URL` 里带结尾斜杠或容器端口。

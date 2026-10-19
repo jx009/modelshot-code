@@ -1,5 +1,5 @@
 "use client";
-import Image from "next/image";
+import InspirationImage from "./InspirationImage";
 import { useState } from "react";
 import { useLocale } from "next-intl";
 import { ArrowLeft, ArrowUpRight, Copy, Check } from "lucide-react";
@@ -11,7 +11,7 @@ export default function InspirationDetail({ item }) {
   const zh = useLocale() === "zh", [copied, setCopied] = useState(false), [error, setError] = useState("");
   const prompt = inspirationPrompt(item, zh ? "zh" : "en");
   return <article className="ig-detail"><Link className="cr-back" href="/explore"><ArrowLeft size={16} />{zh ? "返回灵感发现" : "Back to inspiration"}</Link>
-    <div className="ig-detail-grid"><div className="ig-full-image"><Image src={inspirationImage(item)} width={Number(item.size.split("x")[0])} height={Number(item.size.split("x")[1])} unoptimized={item.cover.type === "asset"} alt={item.title} priority sizes="(max-width: 900px) 100vw, 60vw" /><a href={inspirationImage(item)} target="_blank" rel="noreferrer">{zh ? "查看完整图片" : "View full image"}<ArrowUpRight size={14} /></a></div>
+    <div className="ig-detail-grid"><div className="ig-full-image"><InspirationImage item={item} width={Number(item.size.split("x")[0])} height={Number(item.size.split("x")[1])} alt={item.title} priority sizes="(max-width: 900px) 100vw, 60vw" /><a href={inspirationImage(item)} target="_blank" rel="noreferrer">{zh ? "查看完整图片" : "View full image"}<ArrowUpRight size={14} /></a></div>
       <aside><span className="cr-overline">{inspirationLabel(item, zh)} / SELECTED WORK</span><h1>{zh ? item.title : item.titleEn || item.title}</h1><p className="ig-description">{zh ? item.description : item.descriptionEn || item.description}</p>
         <div className="ig-parameters"><span>{item.model || (zh ? "站内精选" : "Curated work")}</span><span>{item.size} · {item.quality}</span></div>
         <CaseRecipe item={item} zh={zh} />

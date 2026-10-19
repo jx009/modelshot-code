@@ -3,6 +3,7 @@ import { Queue, Worker } from "bullmq";
 import { prisma } from "../lib/prisma.js";
 import { queueConnection, workQueue, QUEUE_NAME, MIRROR_QUEUE_NAME, dispatchOutbox } from "../lib/infra/queue/index.js";
 import { processCosAsset, processCosRemoval } from "../lib/domain/assets/cos-delivery.js";
+import { processInspirationMirror } from "../lib/server/inspiration-delivery.js";
 import { executeOutput } from "../lib/domain/generation/execution.js";
 import { recoverWork } from "../lib/domain/generation/recovery.js";
 import { processDelivery, processQuality } from "../lib/domain/generation/delivery.js";
@@ -20,8 +21,9 @@ const queue = workQueue(connection);
 const mirrorQueue = new Queue(MIRROR_QUEUE_NAME, { connection });
 // Independent concurrency: COS traffic must not occupy model generation slots.
 const mirrorWorker = new Worker(MIRROR_QUEUE_NAME, async job => {
-  if (!["asset-mirror", "asset-mirror-delete"].includes(job.name) || job.data.version !== 1 || typeof job.data.id !== "string") throw new Error("Unsupported mirror payload");
-  await (job.name === "asset-mirror-delete" ? processCosRemoval : processCosAsset)(job.data.id);
+  const handlers = { "asset-mirror": processCosAsset, "asset-mirror-delete": processCosRemoval, "inspiration-mirror": processInspirationMirror };
+  if (!handlers[job.name] || job.data.version !== 1 || typeof job.data.id !== "string") throw new Error("Unsupported mirror payload");
+  await handlers[job.name](job.data.id);
 }, { connection, concurrency: 2 });
 mirrorWorker.on("failed", job => console.error(JSON.stringify({ code: "COS_MIRROR_RETRY", assetId: job?.data?.id })));
 mirrorWorker.on("error", () => console.error(JSON.stringify({ code: "COS_WORKER_ERROR" })));

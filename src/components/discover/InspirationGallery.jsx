@@ -3,7 +3,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ArrowUpRight, Search, Sparkles } from "lucide-react";
 import Link from "@/components/ui/NavigationLink";
-import { INSPIRATION_CATEGORIES, inspirationImage } from "@/lib/inspiration/gallery";
+import { INSPIRATION_CATEGORIES } from "@/lib/inspiration/gallery";
 import InspirationCover from "./InspirationCover";
 
 export default function InspirationGallery(props) {
@@ -14,19 +14,32 @@ function Gallery({ zh, explore }) {
   const [gallery, setGallery] = useState(null), [error, setError] = useState(false), [reload, setReload] = useState(0), [category, setCategory] = useState(() => INSPIRATION_CATEGORIES.some(c => c[0] === params.get("category")) ? params.get("category") : "all"), [query, setQuery] = useState("");
   useEffect(() => {
     const abort = new AbortController();
+    let timer, refreshing = false;
     async function refresh() {
-      try { const res = await fetch("/api/inspiration", { cache: "no-store", signal: abort.signal }); if (!res.ok) throw new Error("Unavailable"); setGallery(await res.json()); setError(false); } catch { if (!abort.signal.aborted) setError(true); }
+      if (refreshing || abort.signal.aborted) return;
+      refreshing = true;
+      clearTimeout(timer);
+      let delay = 60000;
+      try {
+        const res = await fetch("/api/inspiration", { cache: "no-store", signal: abort.signal });
+        if (!res.ok) throw new Error("Unavailable");
+        const next = await res.json();
+        setGallery(next); setError(false);
+        // Adopt newly mirrored images without a page reload; refresh signatures
+        // before expiry for cards that have not scrolled into view yet.
+        delay = next.deliveryPending ? 5000 : next.deliveryExpiresAt ? Math.max(10000, Math.min(60000, next.deliveryExpiresAt - Date.now() - 30000)) : 60000;
+      } catch { if (!abort.signal.aborted) setError(true); }
+      finally { refreshing = false; if (!abort.signal.aborted) timer = setTimeout(refresh, delay); }
     }
     void refresh();
     window.addEventListener("focus", refresh);
-    const timer = setInterval(refresh, 60_000);
-    return () => { abort.abort(); window.removeEventListener("focus", refresh); clearInterval(timer); };
+    return () => { abort.abort(); window.removeEventListener("focus", refresh); clearTimeout(timer); };
   }, [reload]);
   if (!gallery) return <section className="ig-section"><p role={error ? "alert" : "status"}>{zh ? (error ? "灵感库暂时无法加载。" : "正在加载灵感作品…") : (error ? "The gallery is unavailable." : "Loading inspiration…")}</p>{error && <button onClick={() => setReload(v => v + 1)}>{zh ? "重试" : "Try again"}</button>}</section>;
   const visible = gallery.items.filter(i => (category === "all" || i.category === category) && `${i.title} ${i.titleEn} ${i.description} ${i.prompt}`.toLowerCase().includes(query.toLowerCase().trim()));
   const { layout } = gallery;
   const renderCard = item => <Link key={item.id} href={`/explore/${item.id}`} className="ig-card" aria-label={zh ? item.title : item.titleEn || item.title}>
-    <InspirationCover item={item} src={inspirationImage(item)} mode={layout.mode} className="ig-cover" unoptimized={item.cover.type === "asset"} alt={zh ? item.title : item.titleEn || item.title}><span className="ig-use">{zh ? "以此创作" : "Create with this"}<ArrowUpRight size={14} /></span></InspirationCover>
+    <InspirationCover item={item} mode={layout.mode} className="ig-cover" alt={zh ? item.title : item.titleEn || item.title}><span className="ig-use">{zh ? "以此创作" : "Create with this"}<ArrowUpRight size={14} /></span></InspirationCover>
   </Link>;
   return <section className="cr-inspiration ig-section">
     <div className="cr-section-heading"><div><h2><Sparkles size={19} />{zh ? "灵感发现" : "Discover inspiration"}<span>{zh ? "让好想法，成为下一件作品" : "Find your next creative direction"}</span></h2></div>{!explore && <Link href="/explore">{zh ? "探索全部" : "Explore all"}<ArrowUpRight size={15} /></Link>}</div>

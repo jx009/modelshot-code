@@ -13,7 +13,7 @@ export async function dispatchOutbox(db, queue, limit = 100, mirrorQueue) {
   const events = await db.outboxEvent.findMany({ where: { deliveredAt: null, availableAt: { lte: new Date() } }, orderBy: { createdAt: "asc" }, take: limit });
   let sent = 0;
   for (const event of events) {
-    const isMirror = ["asset-mirror", "asset-mirror-delete"].includes(event.kind);
+    const isMirror = ["asset-mirror", "asset-mirror-delete", "inspiration-mirror"].includes(event.kind);
     if (isMirror && !mirrorQueue) continue;
     await db.outboxEvent.update({ where: { id: event.id }, data: { attempts: { increment: 1 } } });
     await (isMirror ? mirrorQueue : queue).add(event.kind, { id: event.entityId, version: 1 }, { jobId: event.id, attempts: 5, backoff: { type: "exponential", delay: 5000 }, removeOnComplete: { age: 86400 }, removeOnFail: { age: 604800 } });

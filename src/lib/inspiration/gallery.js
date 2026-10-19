@@ -41,7 +41,9 @@ export function inspirationPromptZh(item) {
 export function inspirationPrompt(item, locale = "zh") {
   return locale === "zh" ? inspirationPromptZh(item) || item.prompt : item.prompt;
 }
-export function inspirationImage(item) {
+export function inspirationImage(item, thumbnail = false) {
+  if (thumbnail && item.thumbnailUrl) return item.thumbnailUrl;
+  if (item.imageUrl) return item.imageUrl;
   return item.cover.type === "builtin" ? `/inspiration/generated/${item.cover.file}${item.imageVersion ? `.${item.imageVersion}` : ""}.webp` : `/api/inspiration/${encodeURIComponent(item.id)}/image`;
 }
 export function inspirationLabel(item, zh = true) { const c = INSPIRATION_CATEGORIES.find(c => c[0] === item.category); return c?.[zh ? 1 : 2] || ""; }

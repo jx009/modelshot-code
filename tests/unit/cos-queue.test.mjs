@@ -4,12 +4,12 @@ import { scheduleCosRemoval, processCosRemoval } from "../../src/lib/domain/asse
 import { COS_DEFAULTS } from "../../src/lib/infra/storage/cos-config.js";
 
 it("dispatches image uploads and deletions to a separate durable queue", async () => {
-  const events = ["generate", "asset-mirror", "asset-mirror-delete"].map((kind, i) => ({ id: String(i), entityId: "asset", kind }));
+  const events = ["generate", "asset-mirror", "asset-mirror-delete", "inspiration-mirror"].map((kind, i) => ({ id: String(i), entityId: "asset", kind }));
   const db = { outboxEvent: { findMany: vi.fn(async () => events), update: vi.fn(), updateMany: vi.fn() } };
   const generation = { add: vi.fn() }, mirror = { add: vi.fn() };
-  expect(await dispatchOutbox(db, generation, 100, mirror)).toBe(3);
+  expect(await dispatchOutbox(db, generation, 100, mirror)).toBe(4);
   expect(generation.add).toHaveBeenCalledOnce(); expect(generation.add.mock.calls[0][0]).toBe("generate");
-  expect(mirror.add.mock.calls.map(call => call[0])).toEqual(["asset-mirror", "asset-mirror-delete"]);
+  expect(mirror.add.mock.calls.map(call => call[0])).toEqual(["asset-mirror", "asset-mirror-delete", "inspiration-mirror"]);
 });
 it("persists cleanup before purging sources and never deletes a currently active asset", async () => {
   const config = { ...COS_DEFAULTS, bucket: "fixture-1250000000", secretId: "fixture-id", secretKey: "fixture-key" };

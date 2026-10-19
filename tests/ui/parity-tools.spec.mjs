@@ -7,7 +7,7 @@ import { IMAGE_RATIOS } from "../../src/lib/studio/image-size.js";
 async function fixture(page) {
   const png = await sharp({ create: { width: 600, height: 450, channels: 4, background: "#c6a67d" } }).png().toBuffer();
   let doc = { id: "creative-doc", version: 1, name: "创意测试", content: { schemaVersion: 1, layers: [0,1].map(i => ({ id:`layer-${i}`, type:"image", assetId:`image-${i}`, name:`参考图片 ${i+1}`, x:90+i*400,y:100,width:320,height:240,pixelWidth:600,pixelHeight:450,rotation:0,visible:true,opacity:1 })), messages:[],jobs:[],appliedJobs:[] } };
-  const posted=[], errors=[], uploads=[];
+  const posted=[], errors=[], uploads=[], jobs=[];
   page.on("pageerror", e => errors.push(e.message));
   await page.route("**/api/**", async route => {
     const request=route.request(), path=new URL(request.url()).pathname;
@@ -20,13 +20,13 @@ async function fixture(page) {
     if(path==="/api/studio/documents" && request.method()==="POST") { const body=request.postDataJSON(); doc={...doc,...body,id:"creative-doc",version:doc.version+1}; return reply(doc); }
     if(path==="/api/studio/documents/creative-doc") return reply(doc);
     if(path==="/api/studio/documents") return reply([]);
-    if(path==="/api/studio/jobs" && request.method()==="POST") { const body=request.postDataJSON(); posted.push(body); return reply({...body,id:`job-${posted.length}`,status:"queued"}); }
-    if(path==="/api/studio/jobs") return reply([]);
+    if(path==="/api/studio/jobs" && request.method()==="POST") { const body=request.postDataJSON(); posted.push(body); const job={...body,id:`job-${posted.length}`,status:"queued",createdAt:new Date().toISOString()}; jobs.unshift(job); return reply(job); }
+    if(path==="/api/studio/jobs") return reply(jobs);
     if(path==="/api/studio/focus") return reply({label:"玻璃瓶",languageCost:1});
     if(path==="/api/studio/cases") return reply({documentId:doc.id,mode:"quick"});
     return reply({credits:500,items:[]});
   });
-  return {posted,errors,uploads,getDoc:()=>doc};
+  return {posted,errors,uploads,jobs,getDoc:()=>doc};
 }
 async function select(page,name="参考图片 1") {
   await page.getByRole("button",{name:"图层",exact:true}).click();
@@ -159,6 +159,11 @@ test("homepage retains references and submits chosen ratio, fixed prompt and bat
   await expect(page).toHaveURL(/studio-v2\?document=/);
   expect(f.posted).toHaveLength(2);
   expect(f.posted[0]).toMatchObject({tool:"edit",assetId:"uploaded-1",params:{prompt:"保留产品外观\n自然光商品海报",size:"2:3@1K"}});
+  await expect(page.locator(".ms-message.user")).toHaveText("自然光商品海报");
+  await expect(page.locator(".ms-message.user img")).toHaveCount(1);
+  await expect(page.getByLabel("创作描述", {exact:true})).toHaveValue("");
+  await expect(page.locator(".ms-chat-activity > div")).toHaveCount(2);
+  expect(f.getDoc().content.composer.fixedPrompt).toBe("保留产品外观");
   expect(f.errors).toEqual([]);
 });
 for (const mode of ["对话", "快速"]) test(`homepage ${mode} Enter submits once without another canvas confirmation`,async({page})=>{
@@ -194,8 +199,74 @@ for (const mode of ["对话", "快速"]) test(`homepage ${mode} Enter submits on
     await expect(page.getByLabel("创作描述",{exact:true})).toBeEnabled();
     expect(f.posted).toHaveLength(1);
     expect(f.posted[0]).toMatchObject({tool:"generate",params:{prompt:"自然光商品海报",size:"1024x1024"}});
+    await expect(page.locator(".ms-message.user")).toHaveText("自然光商品海报");
+    await expect(page.locator(".ms-welcome")).toHaveCount(0);
+    await expect(page.getByLabel("创作描述",{exact:true})).toHaveValue("");
+    await expect(page.locator(".ms-chat-activity")).toContainText("排队中");
+    await page.reload();
+    await expect(page.locator(".ms-message.user")).toHaveText("自然光商品海报");
+    await expect(page.getByLabel("创作描述",{exact:true})).toHaveValue("");
+    await expect(page.locator(".ms-chat-activity")).toContainText("排队中");
+    expect(f.posted).toHaveLength(1);
     expect(f.errors).toEqual([]);
   } finally {release();}
+});
+
+test("homepage batch retry preserves one message and reuses the uncertain job key", async ({page}) => {
+  const f = await fixture(page);
+  const keys = [];
+  await page.route("**/api/studio/jobs", async route => {
+    if (route.request().method() !== "POST") return route.fallback();
+    keys.push(route.request().headers()["idempotency-key"]);
+    if (keys.length === 2) return route.fulfill({status:503,json:{code:"TEMPORARILY_UNAVAILABLE"}});
+    return route.fallback();
+  });
+  await page.goto("/zh");
+  await expect(page.getByRole("button", {name:/生图模型：Fixture image/})).toBeVisible();
+  await page.getByLabel("描述你的创意").fill("画一只狮子");
+  await page.getByLabel("生成张数").selectOption("2");
+  await page.getByLabel("开始创作", {exact:true}).click();
+  await expect(page.locator(".cr-home-composer [role=alert]")).toContainText("TEMPORARILY_UNAVAILABLE");
+  expect(f.posted).toHaveLength(1);
+  await page.getByLabel("开始创作", {exact:true}).click();
+  await expect(page).toHaveURL(/studio-v2\?document=/);
+  await expect(page.locator(".ms-message.user")).toHaveText("画一只狮子");
+  await expect(page.getByLabel("创作描述", {exact:true})).toHaveValue("");
+  await expect(page.locator(".ms-chat-activity > div")).toHaveCount(2);
+  expect(keys).toHaveLength(3);
+  expect(keys[2]).toBe(keys[1]);
+  expect(keys[0]).not.toBe(keys[1]);
+  expect(f.posted).toHaveLength(2);
+  expect(f.getDoc().content.messages).toHaveLength(1);
+  expect(f.errors).toEqual([]);
+});
+
+test("homepage chat follows completion and failure while canvas tools stay out of the conversation", async ({page}, info) => {
+  const f = await fixture(page);
+  await page.goto("/zh");
+  await expect(page.getByRole("button", {name:/生图模型：Fixture image/})).toBeVisible();
+  await page.getByLabel("描述你的创意").fill("画一只狮子");
+  await page.getByLabel("描述你的创意").press("Enter");
+  await expect(page.locator(".ms-chat-activity")).toContainText("排队中");
+  await page.screenshot({path:info.outputPath("homepage-chat-queued.png")});
+  f.jobs[0].status = "running";
+  f.jobs.push({id:"canvas-only",documentId:"creative-doc",origin:"canvas",tool:"expand",status:"queued"});
+  await expect(page.locator(".ms-chat-activity")).toContainText("正在处理");
+  await expect(page.locator(".ms-chat-activity > div")).toHaveCount(1);
+  await expect(page.locator(".ms-chat-activity")).not.toContainText("扩图");
+  f.jobs[0].status = "succeeded";
+  f.jobs[0].resultData = {assets:[{id:"lion-result",width:600,height:450,contentType:"image/png"}]};
+  await expect(page.locator(".ms-message.assistant img")).toHaveCount(1);
+  await expect(page.locator(".ms-chat-activity")).toHaveCount(0);
+  await expect.poll(() => f.getDoc().content.appliedJobs).toContain("job-1");
+  await page.reload();
+  await expect(page.locator(".ms-message.user")).toHaveCount(1);
+  await expect(page.locator(".ms-message.assistant")).toHaveCount(1);
+  expect(f.posted).toHaveLength(1);
+  f.jobs.push({id:"failed-chat",documentId:"creative-doc",origin:"chat",tool:"generate",status:"failed",errorCode:"PROVIDER_REJECTED",createdAt:"2026-01-01T00:00:00.000Z"});
+  await expect(page.locator(".ms-chat-activity")).toContainText("PROVIDER_REJECTED");
+  await expect(page.locator(".ms-chat-activity").getByRole("button", {name:"关闭失败提示"})).toBeVisible();
+  expect(f.errors).toEqual([]);
 });
 
 test("homepage Enter waits for pricing and submits once when model loading is slow",async({page})=>{

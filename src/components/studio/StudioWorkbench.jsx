@@ -166,6 +166,16 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
       update(d => ({ ...d, name: promptTitle(text), nameSource: "prompt" }));
     }
   }
+  function retryResult(job) {
+    setNotice(null); resultLoads.current.delete(job.id); collectResult(job).catch(() => {});
+  }
+  async function cancelJob(job) {
+    try {
+      await api(`/api/studio/jobs/${job.id}`, { method: "DELETE" });
+      setJobs(current => current.map(row => row.id === job.id ? { ...row, cancelRequested: true } : row));
+      setProjectLoad(value => value + 1);
+    } catch (error) { notify(error); }
+  }
   function scheduleFit(delay = 0) {
     clearTimeout(fitTimer.current);
     fitTimer.current = setTimeout(() => canvas.current?.fit(), delay);
@@ -569,7 +579,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
         </div>
         <div className="ms-conversation">
           <StudioMessageHistory key={draft.id || draft.createKey} documentId={draft.id} messages={draft.messages} zh={zh} onError={notify} onImage={assetId => { setImagePreview(assetId); }} />
-          {!draft.messages.length && <div className="ms-welcome">
+          {!draft.messages.length && !jobs.some(job => job.origin === "chat") && pendingTask?.origin !== "chat" && <div className="ms-welcome">
             <div className="ms-orb"><BrandMark size={31} /></div><h1>{t("想象一下，然后实现它。", "Imagine it. Make it real.")}</h1>
             <p>{t("描述画面，上传灵感。和 AI 一起，让每个想法变成作品。", "Describe a scene. Bring a reference. Give your next idea a place to grow.")}</p>
             <div className="ms-suggestions">{[t("为我的商品设计一张自然光海报", "Create a natural-light product poster"), t("把这张图片变成电影感的画面", "Give this image a cinematic look"), t("帮我拆分主体和背景", "Separate the subject and background")].map((text, i) => <button key={text} onClick={() => { setPrompt(text); if (i === 2 && selected) chooseTool("split"); }}><span>{text}</span><ArrowUpRight size={15} /></button>)}</div>
@@ -578,6 +588,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
           {draft.messages.map(m => <div className={`ms-message ${m.role}`} key={m.id}>{m.role === "assistant" && <span className="ms-speaker"><BrandMark size={17} />来塔绘梦</span>}<p>{m.text}</p>{jobs.find(job => job.id === m.id && job.resultData?.ocr) && <button className="ms-text-button ms-ocr-result-link" onClick={() => openOcr(jobs.find(job => job.id === m.id))}><ScanText size={14} />{t("查看文字", "View text")}</button>}{m.assetId && <button className="ms-message-image" onClick={() => { const layer = draft.layers.find(l => l.assetId === m.assetId); if (layer) { setSelected(layer.id); setMobileChat(false); setTimeout(() => canvas.current?.fit(), 100); } }}><Image unoptimized width={480} height={480} loading="lazy" src={previewUrl(m.assetId, 320)} alt={t("对话引用的图片", "Image referenced in conversation")} /></button>}</div>)}
           {draft.plan && <div className="ms-plan"><span className="ms-eyebrow"><Sparkles size={13} />{t("创作计划", "CREATIVE PLAN")}</span><p>{draft.plan.summary}</p>{draft.plan.steps.map((step, i) => <div className="ms-plan-step" key={i}><span>{i < draft.plan.index ? <Check size={13} /> : i + 1}</span><div>{zh ? getTool(step.tool)?.zh : getTool(step.tool)?.en}<small>{step.explanation}</small></div></div>)}<button className="ms-button ms-primary" disabled={busy || planRunning || !pricesReady || draft.plan.status === "complete"} onClick={runPlan}>{draft.plan.status === "complete" ? t("已完成", "Complete") : draft.plan.index ? t("继续执行", "Continue") : t("确认并执行", "Run plan")}<span>{t("剩余预计", "Remaining")} {remainingPlanCost ?? "—"} {t("积分", "credits")}</span></button><button className="ms-text-button" disabled={busy || planRunning} onClick={() => update(d => ({ ...d, plan: null }))}>{t("移除计划", "Dismiss plan")}</button></div>}
         </div>
+        <StudioActivity key={`chat-${draft.createKey}`} conversation jobs={jobs.filter(job => job.origin === "chat")} pending={pendingTask?.origin === "chat" ? pendingTask : null} appliedJobs={draft.appliedJobs} resultStates={resultStates} zh={zh} onRetry={retryResult} onCancel={cancelJob} />
         <div className="ms-composer">
           {references.length > 0 && <div className="ms-reference-list">{references.map((layer, index) => <div key={layer.id} className="ms-reference"><Image unoptimized width={64} height={64} src={previewUrl(layer.assetId, 320)} alt="" /><span>{index + 1} · {layer.name}</span><button className="ms-icon" title={t("取消引用", "Clear reference")} onClick={() => { setComposer({ referenceIds: references.filter(item => item.id !== layer.id).map(item => item.id) }); if (layer.id === selectedId) setSelected(null); }}><X size={13} /></button></div>)}</div>}
           {referencePicker && <div className="ms-reference-picker"><header>{t("引用项目图片", "Reference project images")}<button className="ms-icon" aria-label={t("关闭图片选择", "Close image picker")} onClick={() => setReferencePicker(false)}><X size={14} /></button></header><div>{draft.layers.filter(layer => layer.type === "image").map(layer => <button key={layer.id} title={layer.name} disabled={references.length >= referenceLimit && !references.some(item => item.id === layer.id)} onClick={() => { setComposer({ referenceIds: [...new Set([...references.map(item => item.id), layer.id])], text: prompt.replace(/@$/, "") }); setReferencePicker(false); }}><Image unoptimized width={70} height={70} src={previewUrl(layer.assetId, 320)} alt={layer.name} /></button>)}</div><button className="ms-text-button" onClick={() => { setReferencePicker(false); setLibraryOpen("reference"); }}>{t("从素材库选择", "Choose from asset library")}</button></div>}
@@ -593,8 +604,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
         <button className="ms-icon ms-library-trigger" title={t("素材库", "Asset library")} onClick={() => setLibraryOpen(true)}><FolderOpen size={19} /></button>
         {saveState === "conflict" && <div className="ms-save-conflict" role="alert"><span>{t("云端项目已更新，本地修改已保留", "The cloud project changed. Your local edits are preserved.")}</span><button onClick={() => save(true).catch(notify)}>{t("另存为新项目", "Save as new project")}</button><button onClick={() => reloadCloud().catch(notify)}>{t("打开云端版本", "Open cloud version")}</button></div>}
         <StudioActivity key={draft.createKey} jobs={jobs} pending={pendingTask} appliedJobs={draft.appliedJobs} resultStates={resultStates} zh={zh}
-          onRetry={job => { setNotice(null); resultLoads.current.delete(job.id); collectResult(job).catch(() => {}); }}
-          onCancel={async job => { try { await api(`/api/studio/jobs/${job.id}`, { method: "DELETE" }); setJobs(current => current.map(row => row.id === job.id ? { ...row, cancelRequested: true } : row)); setProjectLoad(value => value + 1); } catch (error) { notify(error); } }} />
+          onRetry={retryResult} onCancel={cancelJob} />
         {chatCollapsed && <button className="ms-icon ms-chat-restore" title={t("展开聊天", "Open chat")} onClick={() => { setChatCollapsed(false); setMobileChat(true); }}><PanelLeftOpen size={18} /></button>}
         <Canvas ref={canvas} projectKey={draft.createKey} readOnly={!ready} ocrEntries={ocrEntries} onOpenOcr={openOcr} onUsePrompt={useTextPrompt} layers={draft.layers} selectedId={selectedId} selectedIds={effectiveSelection} onSelect={selectLayer} onChange={commitLayers} mode={mode} brushSize={brush}
           selectionTool={toolId} editPadding={params.editPadding} focusPoints={params.focusPoints || []} onFocusPoint={addFocus} adjustmentPreview={toolId === "adjust" ? (compareOriginal ? {} : adjustments) : null}

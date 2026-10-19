@@ -195,3 +195,8 @@
 .ms-task-status>div+div{margin-top:8px}
 .ms-task-status>div>span{flex:1}
 .ms-task-status>div>svg{flex-shrink:0}
+.ms-chat-activity{flex-shrink:0;max-height:150px;overflow:auto;margin:0 14px 10px;padding:10px 12px;border:1px solid var(--divider);border-radius:10px;background:var(--bg-elevated);color:var(--secondary-text);font-size:12px}
+.ms-chat-activity>div{display:flex;align-items:center;gap:8px}
+.ms-chat-activity>div+div{margin-top:8px}
+.ms-chat-activity>div>span{flex:1;min-width:0;overflow-wrap:anywhere}
+.ms-chat-activity>div>svg,.ms-chat-activity button{flex-shrink:0}

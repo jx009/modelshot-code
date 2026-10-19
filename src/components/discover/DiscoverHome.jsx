@@ -90,9 +90,11 @@ export default function DiscoverHome({ explore = false }) {
       const offer = caps.tools?.find(tool => tool.id === (attachments.length ? "edit" : "generate")) || model;
       if (attachments.length > (model?.maxReferenceImages ?? 3)) throw new Error(zh ? "此模型不支持这些参考图，请更换模型" : "Choose a model supporting these references");
       const fingerprint = JSON.stringify({ text, size, count, provider: selectedProvider, attachments });
-      if (pending.current?.fingerprint !== fingerprint) pending.current = { fingerprint, createKey: requestKey(), keys: Array.from({ length: count }, () => requestKey()), index: 0 };
+      if (pending.current?.fingerprint !== fingerprint) pending.current = { fingerprint, createKey: requestKey(), messageId: requestKey(), keys: Array.from({ length: count }, () => requestKey()), index: 0 };
       const batch = pending.current;
-      if (!batch.document) batch.document = await api("/api/studio/documents", { method: "POST", body: { createKey: batch.createKey, name: promptTitle(prompt || attachments[0]?.name || "Untitled"), nameSource: prompt.trim() ? "prompt" : "upload", content: { schemaVersion: 1, layers: attachments, messages: [], jobs: [], composer: { text: prompt, fixedPrompt: fixed, outputCount: count, size, referenceIds: attachments.map(l => l.id) } } } });
+      // Persist the sent message before submitting, just like the canvas sender.
+      // Refreshing the destination must not restore it as an unsent prompt.
+      if (!batch.document) batch.document = await api("/api/studio/documents", { method: "POST", body: { createKey: batch.createKey, name: promptTitle(prompt || attachments[0]?.name || "Untitled"), nameSource: prompt.trim() ? "prompt" : "upload", content: { schemaVersion: 1, layers: attachments, messages: prompt.trim() ? [{ id: batch.messageId, role: "user", text: prompt, ...(attachments[0] ? { assetId: attachments[0].assetId } : {}) }] : [], jobs: [], composer: { text: "", fixedPrompt: fixed, outputCount: count, size, referenceIds: attachments.map(l => l.id) } } } });
       setResumeDocument(batch.document.id);
       if (prompt.trim()) for (; batch.index < count; batch.index++) {
         const source = attachments[0];

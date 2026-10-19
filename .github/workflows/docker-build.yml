@@ -232,8 +232,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
+      contents: read
       id-token: write
     steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.sha }}
       - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
       - uses: docker/login-action@c99871dec2022cc055c062a10cc1a1310835ceb4 # v4.3.0
         with:
@@ -265,33 +269,9 @@ jobs:
         env:
           TAGS: ${{ steps.meta.outputs.tags }}
         shell: bash
-        run: |
-          set -euo pipefail
-          args=()
-          while IFS= read -r tag; do
-            [[ -z "$tag" ]] || args+=(--tag "$tag")
-          done <<< "$TAGS"
-          docker buildx imagetools create "${args[@]}" \
-            "$IMAGE:$BUILD_TAG-amd64" "$IMAGE:$BUILD_TAG-arm64"
-          while IFS= read -r tag; do
-            [[ -z "$tag" ]] && continue
-            cosign sign --yes "$tag"
-            docker buildx imagetools inspect "$tag" >> "$GITHUB_STEP_SUMMARY"
-          done <<< "$TAGS"
+        run: bash scripts/publish-image-manifest.sh "$IMAGE:$BUILD_TAG-amd64" "$IMAGE:$BUILD_TAG-arm64"
       - name: Merge, sign and summarize tools image
         env:
           TAGS: ${{ steps.tools-meta.outputs.tags }}
         shell: bash
-        run: |
-          set -euo pipefail
-          args=()
-          while IFS= read -r tag; do
-            [[ -z "$tag" ]] || args+=(--tag "$tag")
-          done <<< "$TAGS"
-          docker buildx imagetools create "${args[@]}" \
-            "$IMAGE:tools-$BUILD_TAG-amd64" "$IMAGE:tools-$BUILD_TAG-arm64"
-          while IFS= read -r tag; do
-            [[ -z "$tag" ]] && continue
-            cosign sign --yes "$tag"
-            docker buildx imagetools inspect "$tag" >> "$GITHUB_STEP_SUMMARY"
-          done <<< "$TAGS"
+        run: bash scripts/publish-image-manifest.sh "$IMAGE:tools-$BUILD_TAG-amd64" "$IMAGE:tools-$BUILD_TAG-arm64"

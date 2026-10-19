@@ -4,10 +4,11 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLocale } from "next-intl";
 import Modal from "@/components/ui/Modal";
 import { authDestination } from "@/lib/auth-navigation";
-import AuthPanel from "./AuthPanel";
+import dynamic from "next/dynamic";
 import styles from "./auth.module.css";
 
 const AuthContext = createContext(null);
+const AuthPanel = dynamic(() => import("./AuthPanel"));
 export function useAuth() { return useContext(AuthContext); }
 
 function AuthRouteEntry({ open }) {

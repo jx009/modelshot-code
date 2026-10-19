@@ -4,11 +4,12 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { useLocale } from "next-intl";
 import Modal from "@/components/ui/Modal";
 import { useAuth } from "@/components/auth/AuthProvider";
-import AccountRecords from "@/components/AccountRecords";
-import RechargePanel from "./RechargePanel";
+import dynamic from "next/dynamic";
 import styles from "./recharge.module.css";
 
 const RechargeContext = createContext(null);
+const AccountRecords = dynamic(() => import("@/components/AccountRecords"));
+const RechargePanel = dynamic(() => import("./RechargePanel"));
 export function useRecharge() { return useContext(RechargeContext); }
 
 function RecordsRouteEntry({ openRecords }) {

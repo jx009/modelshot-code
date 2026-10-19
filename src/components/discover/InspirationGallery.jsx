@@ -3,8 +3,9 @@ import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ArrowUpRight, Search, Sparkles } from "lucide-react";
 import Link from "@/components/ui/NavigationLink";
-import { INSPIRATION_CATEGORIES } from "@/lib/inspiration/gallery";
+import { INSPIRATION_CATEGORIES } from "@/lib/inspiration/presentation";
 import InspirationCover from "./InspirationCover";
+import { readGalleryCache, writeGalleryCache } from "@/lib/inspiration/client-cache";
 
 export default function InspirationGallery(props) {
   return <Suspense fallback={null}><Gallery {...props} /></Suspense>;
@@ -21,9 +22,11 @@ function Gallery({ zh, explore }) {
       clearTimeout(timer);
       let delay = 60000;
       try {
-        const res = await fetch("/api/inspiration", { cache: "no-store", signal: abort.signal });
+        const res = await fetch("/api/inspiration", { signal: abort.signal });
         if (!res.ok) throw new Error("Unavailable");
         const next = await res.json();
+        if (abort.signal.aborted) return;
+        writeGalleryCache(next);
         setGallery(next); setError(false);
         // Adopt newly mirrored images without a page reload; refresh signatures
         // before expiry for cards that have not scrolled into view yet.
@@ -31,7 +34,14 @@ function Gallery({ zh, explore }) {
       } catch { if (!abort.signal.aborted) setError(true); }
       finally { refreshing = false; if (!abort.signal.aborted) timer = setTimeout(refresh, delay); }
     }
-    void refresh();
+    // Restore public metadata after hydration, then revalidate in the background.
+    // A refresh/navigation needn't blank the gallery during an overseas request.
+    void Promise.resolve().then(() => {
+      if (abort.signal.aborted) return;
+      const cached = readGalleryCache();
+      if (cached) setGallery(cached);
+      void refresh();
+    });
     window.addEventListener("focus", refresh);
     return () => { abort.abort(); window.removeEventListener("focus", refresh); clearTimeout(timer); };
   }, [reload]);
@@ -39,7 +49,7 @@ function Gallery({ zh, explore }) {
   const visible = gallery.items.filter(i => (category === "all" || i.category === category) && `${i.title} ${i.titleEn} ${i.description} ${i.prompt}`.toLowerCase().includes(query.toLowerCase().trim()));
   const { layout } = gallery;
   const renderCard = item => <Link key={item.id} href={`/explore/${item.id}`} className="ig-card" aria-label={zh ? item.title : item.titleEn || item.title}>
-    <InspirationCover item={item} mode={layout.mode} className="ig-cover" alt={zh ? item.title : item.titleEn || item.title}><span className="ig-use">{zh ? "以此创作" : "Create with this"}<ArrowUpRight size={14} /></span></InspirationCover>
+    <InspirationCover defer item={item} mode={layout.mode} className="ig-cover" alt={zh ? item.title : item.titleEn || item.title}><span className="ig-use">{zh ? "以此创作" : "Create with this"}<ArrowUpRight size={14} /></span></InspirationCover>
   </Link>;
   return <section className="cr-inspiration ig-section">
     <div className="cr-section-heading"><div><h2><Sparkles size={19} />{zh ? "灵感发现" : "Discover inspiration"}<span>{zh ? "让好想法，成为下一件作品" : "Find your next creative direction"}</span></h2></div>{!explore && <Link href="/explore">{zh ? "探索全部" : "Explore all"}<ArrowUpRight size={15} /></Link>}</div>

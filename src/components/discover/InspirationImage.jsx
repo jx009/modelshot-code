@@ -1,7 +1,7 @@
 "use client";
 import Image from "next/image";
 import { useState } from "react";
-import { inspirationImage } from "@/lib/inspiration/gallery";
+import { inspirationImage } from "@/lib/inspiration/presentation";
 
 // Bypass Next's US image optimizer for COS URLs. A failed/expired URL falls
 // back once to the source, so an idle tab or unavailable COS cannot break cards.

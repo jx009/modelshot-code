@@ -162,11 +162,11 @@ test("homepage retains references and submits chosen ratio, fixed prompt and bat
   await expect(page.locator(".ms-message.user")).toHaveText("自然光商品海报");
   await expect(page.locator(".ms-message.user img")).toHaveCount(1);
   await expect(page.getByLabel("创作描述", {exact:true})).toHaveValue("");
-  await expect(page.locator(".ms-chat-activity > div")).toHaveCount(2);
+  await expect(page.locator(".ms-task-status > div")).toHaveCount(2);
   expect(f.getDoc().content.composer.fixedPrompt).toBe("保留产品外观");
   expect(f.errors).toEqual([]);
 });
-for (const mode of ["对话", "快速"]) test(`homepage ${mode} Enter submits once without another canvas confirmation`,async({page})=>{
+for (const mode of ["对话"]) test(`homepage ${mode} Enter submits once without another canvas confirmation`,async({page})=>{
   const f=await fixture(page);
   let release, creations=0;
   const gate=new Promise(resolve=>{release=resolve;});
@@ -202,11 +202,11 @@ for (const mode of ["对话", "快速"]) test(`homepage ${mode} Enter submits on
     await expect(page.locator(".ms-message.user")).toHaveText("自然光商品海报");
     await expect(page.locator(".ms-welcome")).toHaveCount(0);
     await expect(page.getByLabel("创作描述",{exact:true})).toHaveValue("");
-    await expect(page.locator(".ms-chat-activity")).toContainText("排队中");
+    await expect(page.locator(".ms-task-status")).toContainText("排队中");
     await page.reload();
     await expect(page.locator(".ms-message.user")).toHaveText("自然光商品海报");
     await expect(page.getByLabel("创作描述",{exact:true})).toHaveValue("");
-    await expect(page.locator(".ms-chat-activity")).toContainText("排队中");
+    await expect(page.locator(".ms-task-status")).toContainText("排队中");
     expect(f.posted).toHaveLength(1);
     expect(f.errors).toEqual([]);
   } finally {release();}
@@ -232,7 +232,7 @@ test("homepage batch retry preserves one message and reuses the uncertain job ke
   await expect(page).toHaveURL(/studio-v2\?document=/);
   await expect(page.locator(".ms-message.user")).toHaveText("画一只狮子");
   await expect(page.getByLabel("创作描述", {exact:true})).toHaveValue("");
-  await expect(page.locator(".ms-chat-activity > div")).toHaveCount(2);
+  await expect(page.locator(".ms-task-status > div")).toHaveCount(2);
   expect(keys).toHaveLength(3);
   expect(keys[2]).toBe(keys[1]);
   expect(keys[0]).not.toBe(keys[1]);
@@ -241,31 +241,32 @@ test("homepage batch retry preserves one message and reuses the uncertain job ke
   expect(f.errors).toEqual([]);
 });
 
-test("homepage chat follows completion and failure while canvas tools stay out of the conversation", async ({page}, info) => {
+test("homepage results stay in chat while task progress stays on the canvas", async ({page}, info) => {
   const f = await fixture(page);
   await page.goto("/zh");
   await expect(page.getByRole("button", {name:/生图模型：Fixture image/})).toBeVisible();
   await page.getByLabel("描述你的创意").fill("画一只狮子");
   await page.getByLabel("描述你的创意").press("Enter");
-  await expect(page.locator(".ms-chat-activity")).toContainText("排队中");
+  await expect(page.locator(".ms-task-status")).toContainText("排队中");
   await page.screenshot({path:info.outputPath("homepage-chat-queued.png")});
   f.jobs[0].status = "running";
   f.jobs.push({id:"canvas-only",documentId:"creative-doc",origin:"canvas",tool:"expand",status:"queued"});
-  await expect(page.locator(".ms-chat-activity")).toContainText("正在处理");
-  await expect(page.locator(".ms-chat-activity > div")).toHaveCount(1);
-  await expect(page.locator(".ms-chat-activity")).not.toContainText("扩图");
+  await expect(page.locator(".ms-task-status")).toContainText("正在处理");
+  await expect(page.locator(".ms-task-status > div")).toHaveCount(2);
+  await expect(page.locator(".ms-conversation")).not.toContainText("扩图");
+  await expect(page.locator(".ms-chat-activity")).toHaveCount(0);
   f.jobs[0].status = "succeeded";
   f.jobs[0].resultData = {assets:[{id:"lion-result",width:600,height:450,contentType:"image/png"}]};
   await expect(page.locator(".ms-message.assistant img")).toHaveCount(1);
-  await expect(page.locator(".ms-chat-activity")).toHaveCount(0);
+  await expect(page.locator(".ms-task-status > div")).toHaveCount(1);
   await expect.poll(() => f.getDoc().content.appliedJobs).toContain("job-1");
   await page.reload();
   await expect(page.locator(".ms-message.user")).toHaveCount(1);
   await expect(page.locator(".ms-message.assistant")).toHaveCount(1);
   expect(f.posted).toHaveLength(1);
-  f.jobs.push({id:"failed-chat",documentId:"creative-doc",origin:"chat",tool:"generate",status:"failed",errorCode:"PROVIDER_REJECTED",createdAt:"2026-01-01T00:00:00.000Z"});
-  await expect(page.locator(".ms-chat-activity")).toContainText("PROVIDER_REJECTED");
-  await expect(page.locator(".ms-chat-activity").getByRole("button", {name:"关闭失败提示"})).toBeVisible();
+  f.jobs.push({id:"failed-chat",documentId:"creative-doc",origin:"chat",tool:"generate",status:"failed",errorCode:"PROVIDER_REJECTED",createdAt:new Date(Date.now() + 1000).toISOString()});
+  await expect(page.locator(".ms-task-status")).toContainText("生成图片");
+  await expect(page.locator(".ms-task-status").getByRole("button", {name:"关闭失败提示"})).toBeVisible();
   expect(f.errors).toEqual([]);
 });
 

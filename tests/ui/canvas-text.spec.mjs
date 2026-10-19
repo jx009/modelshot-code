@@ -153,6 +153,61 @@ test("saved OCR entry reopens a result older than the recent job list", async ({
   expect(f.errors).toEqual([]);
 });
 
+for (const nextDraft of ["", "下一张画一只狮子"]) test(`canvas clears sent text immediately and preserves the next draft: ${nextDraft || "empty"}`, async ({ page }) => {
+  const f = await fixture(page);
+  let release, requests = 0;
+  const gate = new Promise(resolve => { release = resolve; });
+  await page.route("**/api/studio/jobs", async route => {
+    if (route.request().method() === "POST") { requests++; await gate; }
+    await route.fallback();
+  });
+  try {
+    await openCanvas(page);
+    const composer = page.getByLabel("创作描述", { exact: true });
+    await composer.fill("生成一只老虎");
+    await composer.press("Control+Enter");
+    await expect.poll(() => requests).toBe(1);
+    await expect(composer).toHaveValue("");
+    await expect(page.locator(".ms-message.user")).toHaveText("生成一只老虎");
+    if (nextDraft) await composer.fill(nextDraft);
+    release();
+    await expect(page.locator(".ms-message.assistant img")).toHaveCount(1);
+    await expect(composer).toHaveValue(nextDraft);
+    await expect.poll(() => f.getDoc().content.composer?.text).toBe(nextDraft);
+    await page.reload();
+    await expect(composer).toHaveValue(nextDraft);
+    expect(requests).toBe(1);
+    expect(f.posted).toHaveLength(1);
+    expect(f.errors).toEqual([]);
+  } finally { release(); }
+});
+
+test("canvas restores a rejected submission for retry without duplicating the message or key", async ({ page }) => {
+  const f = await fixture(page);
+  const keys = [];
+  await page.route("**/api/studio/jobs", async route => {
+    if (route.request().method() === "POST") {
+      keys.push(route.request().headers()["idempotency-key"]);
+      if (keys.length === 1) return route.fulfill({ status: 503, json: { code: "TEMPORARILY_UNAVAILABLE" } });
+    }
+    await route.fallback();
+  });
+  await openCanvas(page);
+  const composer = page.getByLabel("创作描述", { exact: true });
+  await composer.fill("生成一只老虎");
+  await composer.press("Control+Enter");
+  await expect(page.locator(".ms-notice")).toContainText("TEMPORARILY_UNAVAILABLE");
+  await expect(composer).toHaveValue("生成一只老虎");
+  await composer.press("Control+Enter");
+  await expect(page.locator(".ms-message.assistant img")).toHaveCount(1);
+  await expect(page.locator(".ms-message.user")).toHaveCount(1);
+  await expect(composer).toHaveValue("");
+  expect(keys).toHaveLength(2);
+  expect(keys[1]).toBe(keys[0]);
+  expect(f.posted).toHaveLength(1);
+  expect(f.errors).toEqual([]);
+});
+
 test("OCR entry follows live pan, image drag and zoom before pointer release", async ({ page }, info) => {
   const f = await fixture(page, { archivedOcr: true });
   const stage = await openCanvas(page);

@@ -429,6 +429,8 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
     if (session?.user && !pricesReady) return;
     if (!session?.user) { notify("UNAUTHORIZED"); return; }
     const text = [fixedPrompt, prompt].filter(Boolean).join("\n"), target = references[0] || null, extraReferences = references.slice(1).map(layer => layer.assetId);
+    const projectKey = draftRef.current.createKey;
+    let composerCleared = false;
     submission.current = true; setBusy(true);
     try {
       if (text.length > 4000) throw new Error(t("固定提示词与描述合计不能超过 4000 字。", "The fixed prompt and description must total at most 4,000 characters."));
@@ -439,6 +441,10 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
       const messageId = draftRef.current.pendingMessage?.signature === signature ? draftRef.current.pendingMessage.id : requestKey();
       update(d => ({ ...d, pendingMessage: { signature, id: messageId } }));
       message("user", prompt, target?.assetId, messageId);
+      // The sent message owns this text now. Clear before network work, and do
+      // not clear again when a response arrives: the user may be writing next.
+      setPrompt("");
+      composerCleared = true;
       if (!planned) {
         const previous = draftRef.current.pendingBatch;
         const batch = previous?.signature === signature ? previous : { signature, keys: Array.from({ length: outputCount }, () => requestKey()), index: 0 };
@@ -455,10 +461,14 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
         const planned = await api("/api/studio/plan", { method: "POST", key: requestKey(), body: { size: params.size, ...(modelProvider ? { provider: modelProvider } : {}), prompt: text, ...(target ? { assetId: target.assetId } : {}), messages: draftRef.current.messages.slice(-6).map(m => ({ role: m.role, text: m.text.slice(0, 2000) })) } });
         update(d => ({ ...d, plan: { summary: planned.summary, steps: planned.steps, credits: planned.credits, id: requestKey(), index: 0, targetId: target?.id || null, status: "ready", activeJob: null } }));
       }
-      setPrompt("");
       update(d => ({ ...d, pendingMessage: null }));
       api("/api/usage").then(setUsage).catch(() => {});
-    } catch (e) { notify(e); } finally { submission.current = false; setBusy(false); }
+    } catch (e) {
+      if (composerCleared && draftRef.current.createKey === projectKey) {
+        update(d => d.composer?.text ? d : { ...d, composer: { ...d.composer, text: prompt } });
+      }
+      notify(e);
+    } finally { submission.current = false; setBusy(false); }
   }
   async function waitJob(id) {
     const signal = life.current.signal;

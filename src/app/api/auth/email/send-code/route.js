@@ -9,7 +9,7 @@ export async function POST(request) {
     const { email, purpose } = await readJson(request, challengeSchema);
     await rateLimit("email-ip", clientAddress(request), 20, 600, prisma, "EMAIL_IP_RATE_LIMITED");
     const challenge = await issueChallenge(email, purpose, prisma, {
-      beforeIssue: tx => rateLimit("email-address", email, 5, 3600, tx, "EMAIL_ADDRESS_RATE_LIMITED"),
+      beforeIssue: tx => rateLimit("email-address", email, 5, 600, tx, "EMAIL_ADDRESS_RATE_LIMITED"),
     });
     try { await sendVerificationEmail(email, challenge.code, purpose); }
     catch (error) {

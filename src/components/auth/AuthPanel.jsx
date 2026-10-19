@@ -45,7 +45,8 @@ export default function AuthPanel({ request, onClose, onSuccess }) {
       const response = await fetch("/api/auth/email/send-code", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: email.trim(), purpose: mode === "register" ? "REGISTER" : "RESET_PASSWORD" }) });
       const body = await response.json();
       if (!response.ok) {
-        failure(body.code || body.error || "GENERIC");
+        const code = body.code || body.error || "GENERIC";
+        failure(response.status === 429 && code !== "CODE_RATE_LIMITED" ? "EMAIL_ADDRESS_RATE_LIMITED" : code);
         if (response.status === 429) {
           const retry = Number(body.retryAfter || response.headers.get("Retry-After"));
           setCooldown(Number.isFinite(retry) && retry > 0 ? Math.ceil(retry) : 60);

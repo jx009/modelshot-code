@@ -76,9 +76,9 @@ it("rejects registration challenges for an existing email before issuing a code 
   await expect(issueChallenge(address, "RESET_PASSWORD", db)).resolves.toHaveProperty("code");
 });
 
-it("does not spend another hourly email quota during the code cooldown", async () => {
+it("does not spend another ten-minute email quota during the code cooldown", async () => {
   const address = `${prefix}-cooldown@modelshot.test`;
-  const beforeIssue = vi.fn(tx => rateLimit("email-address", address, 5, 3600, tx, "EMAIL_ADDRESS_RATE_LIMITED"));
+  const beforeIssue = vi.fn(tx => rateLimit("email-address", address, 5, 600, tx, "EMAIL_ADDRESS_RATE_LIMITED"));
   const first = await issueChallenge(address, "RESET_PASSWORD", db, { beforeIssue });
   for (let attempt = 0; attempt < 6; attempt++) {
     await expect(issueChallenge(address, "RESET_PASSWORD", db, { beforeIssue })).rejects.toMatchObject({ code: "CODE_RATE_LIMITED", retryAfter: expect.any(Number) });

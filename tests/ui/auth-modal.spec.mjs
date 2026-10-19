@@ -26,7 +26,7 @@ for (const code of ["RATE_LIMITED", "EMAIL_ADDRESS_RATE_LIMITED", "EMAIL_IP_RATE
   await dialog.getByLabel("邮箱", { exact: true }).fill("recovery@example.invalid");
   await dialog.getByRole("button", { name: "发送验证码" }).click();
   await expect(dialog.getByRole("alert")).not.toContainText("出错了");
-  await expect(dialog.getByRole("alert")).toContainText(code === "EMAIL_ADDRESS_RATE_LIMITED" ? "该邮箱本小时" : code === "EMAIL_IP_RATE_LIMITED" ? "当前网络" : "请求过于频繁");
+  await expect(dialog.getByRole("alert")).toHaveText("您发送邮箱过于频繁，请十分钟后再试");
   await expect(dialog.getByRole("button", { name: /^2:0[0-5]$/ })).toBeDisabled();
   expect(requests).toEqual([{ email: "recovery@example.invalid", purpose: "RESET_PASSWORD" }]);
   // Resending is rate-limited; redeeming a code already delivered remains possible.

@@ -42,7 +42,7 @@ export async function issueChallenge(email, purpose, db = prisma, { beforeIssue 
       throw error;
     }
     // Check the send quota only after the cooldown, under the same lock. Repeated
-    // clicks must not consume another hourly slot without issuing a new code.
+    // clicks must not consume another send slot without issuing a new code.
     await beforeIssue?.(tx);
     const code = String(randomInt(100000, 1000000));
     const record = { id: randomUUID(), email, purpose, keyVersion: process.env.VERIFICATION_KEY_VERSION || "1" };

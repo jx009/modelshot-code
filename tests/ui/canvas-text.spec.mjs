@@ -153,6 +153,68 @@ test("saved OCR entry reopens a result older than the recent job list", async ({
   expect(f.errors).toEqual([]);
 });
 
+test("OCR entry follows live pan, image drag and zoom before pointer release", async ({ page }, info) => {
+  const f = await fixture(page, { archivedOcr: true });
+  const stage = await openCanvas(page);
+  const entry = page.getByRole("button", { name: "查看文字 · 原始图片", exact: true });
+  await expect(entry).toBeVisible();
+  await expect.poll(async () => (await entry.boundingBox()).x - (await stage.boundingBox()).x).toBeCloseTo(80, 0);
+  const start = await entry.boundingBox(), frame = await stage.boundingBox();
+  expect(start.width).toBe(28);
+  expect(start.x - frame.x).toBeCloseTo(80, 0);
+  expect(start.y - frame.y).toBeCloseTo(358, 0);
+  await expect(entry.locator("span")).not.toBeVisible();
+  await entry.focus();
+  await expect(entry.locator("span")).toBeVisible();
+  await entry.evaluate(node => node.blur());
+
+  // Middle-button panning changes Konva immediately, before saved camera state.
+  await page.mouse.move(frame.x + 480, frame.y + 400);
+  await page.mouse.down({ button: "middle" });
+  await page.mouse.move(frame.x + 560, frame.y + 440, { steps: 8 });
+  await expect.poll(async () => (await entry.boundingBox()).x - start.x).toBeCloseTo(80, 0);
+  await expect.poll(async () => (await entry.boundingBox()).y - start.y).toBeCloseTo(40, 0);
+  expect(f.getDoc().content.layers[0]).toEqual(f.source);
+  await page.screenshot({ path: info.outputPath("ocr-follow-pan-held.png") });
+  await page.mouse.up({ button: "middle" });
+  const panned = await entry.boundingBox();
+  await expect.poll(async () => (await entry.boundingBox()).x).toBeCloseTo(panned.x, 0);
+
+  // Moving an image must move its entry without creating document writes per frame.
+  await page.mouse.move(panned.x + 90, panned.y - 90);
+  await page.mouse.down();
+  await page.mouse.move(panned.x + 180, panned.y - 60, { steps: 8 });
+  await expect.poll(async () => (await entry.boundingBox()).x - panned.x).toBeCloseTo(90, 0);
+  await expect.poll(async () => (await entry.boundingBox()).y - panned.y).toBeCloseTo(30, 0);
+  expect(f.getDoc().content.layers[0]).toEqual(f.source);
+  await page.mouse.up();
+  await expect.poll(() => f.getDoc().content.layers[0].x).toBe(f.source.x + 90);
+
+  const beforeZoom = await entry.boundingBox();
+  const pointer = { x: frame.x + 500, y: frame.y + 350 };
+  await page.mouse.move(pointer.x, pointer.y);
+  await page.mouse.wheel(0, -100);
+  await expect.poll(async () => (await entry.boundingBox()).x).toBeCloseTo(pointer.x + (beforeZoom.x - pointer.x) * 1.07, 0);
+  await expect.poll(async () => (await entry.boundingBox()).y).toBeCloseTo(pointer.y + (beforeZoom.y - 8 - pointer.y) * 1.07 + 8, 0);
+  expect((await entry.boundingBox()).width).toBe(28);
+  // Resizing uses live node bounds too, while the document still has old sizes.
+  const zoomed = await entry.boundingBox();
+  await page.mouse.click(zoomed.x + 100, zoomed.y - 100);
+  const selection = JSON.parse(await stage.getAttribute("data-selection-frame"));
+  const oldWidth = f.getDoc().content.layers[0].width;
+  await page.mouse.move(frame.x + selection.left + selection.width + 3, frame.y + selection.top + selection.height + 3);
+  await page.mouse.down();
+  await page.mouse.move(frame.x + selection.left + selection.width + 35, frame.y + selection.top + selection.height + 27, { steps: 8 });
+  await expect.poll(async () => (await entry.boundingBox()).y - zoomed.y).toBeGreaterThan(10);
+  expect(f.getDoc().content.layers[0].width).toBe(oldWidth);
+  await page.mouse.up();
+  await expect.poll(() => f.getDoc().content.layers[0].width).toBeGreaterThan(oldWidth);
+  await entry.click();
+  await expect(page.getByLabel("第 1 段文字", { exact: true })).toHaveValue("很久之前识别的文字");
+  expect(f.posted).toEqual([]);
+  expect(f.errors).toEqual([]);
+});
+
 test("double-click blank canvas creates no empty layer when cancelled", async ({ page }) => {
   const f = await fixture(page, { empty: true });
   const stage = await openCanvas(page);

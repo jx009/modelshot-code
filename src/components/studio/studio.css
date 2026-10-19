@@ -186,8 +186,14 @@
 .ms-canvas-text-actions button,.ms-canvas-ocr-entry{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:32px;padding:6px 10px;color:var(--primary-text);font-size:12px;font-weight:500;white-space:nowrap;cursor:pointer}
 .ms-canvas-text-actions button{border:0;border-radius:6px;background:transparent}
 .ms-canvas-text-actions button:hover{background:var(--bg-elevated)}
-.ms-canvas-ocr-entry{position:absolute;z-index:14;border:1px solid var(--divider-strong);border-radius:9px;background:var(--bg-popover);box-shadow:var(--depth-1)}
-.ms-canvas-ocr-entry:hover{border-color:var(--tertiary-text)}
+.ms-canvas-ocr-entry{position:absolute;left:0;top:0;z-index:14;width:28px;height:28px;min-height:28px;padding:0;border:1px solid var(--divider);border-radius:8px;background:var(--bg-card);color:var(--secondary-text);transition:background .15s,color .15s,border-color .15s}
+.ms-canvas-ocr-entry[hidden]{display:none}
+.ms-canvas-ocr-entry>svg{flex-shrink:0}
+.ms-canvas-ocr-entry>span{position:absolute;left:33px;top:0;display:flex;align-items:center;height:28px;padding:0 8px;border:1px solid var(--divider);border-radius:7px;background:var(--bg-popover);opacity:0;visibility:hidden;pointer-events:none;transition:opacity .15s}
+.ms-canvas-ocr-entry:hover,.ms-canvas-ocr-entry:focus-visible{border-color:var(--tertiary-text);color:var(--primary-text);background:var(--bg-popover)}
+.ms-canvas-ocr-entry:focus-visible{outline:2px solid var(--primary);outline-offset:3px}
+.ms-studio .ms-canvas-ocr-entry:active:not(:disabled){scale:1}
+.ms-canvas-ocr-entry:hover>span,.ms-canvas-ocr-entry:focus-visible>span{opacity:1;visibility:visible}
 .ms-canvas-space:has(.ms-inline-text-editor) .ms-empty-canvas{visibility:hidden}
 .ms-empty-canvas{pointer-events:none}
 .ms-empty-canvas button{pointer-events:auto}

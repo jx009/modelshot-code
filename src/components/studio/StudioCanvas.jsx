@@ -4,7 +4,8 @@ import { forwardRef, startTransition, useCallback, useEffect, useImperativeHandl
 import { Stage, Layer, Image as CanvasImage, Transformer, Text, Group, Line, Rect, Circle } from "react-konva";
 import CanvasArtwork from "./canvas/CanvasArtwork";
 import CanvasTextEditor from "./canvas/CanvasTextEditor";
-import { ArrowUpRight, Pencil, ScanText } from "lucide-react";
+import CanvasOcrEntries from "./canvas/CanvasOcrEntries";
+import { ArrowUpRight, Pencil } from "lucide-react";
 import { useTheme } from "next-themes";
 import { requestKey } from "@/lib/client-api";
 import MultiSelectionTransform from "./canvas/MultiSelectionTransform";
@@ -528,13 +529,7 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, projectKey, read
       <button onClick={() => onUsePrompt?.(selection)}><ArrowUpRight size={15} />{zh ? "作为提示词" : "Use as prompt"}</button>
       {!selection.locked && <button aria-label={zh ? "编辑画布文字" : "Edit canvas text"} disabled={readOnly} onClick={() => setTextEditor({ projectKey, layer: selection })}><Pencil size={15} /></button>}
     </div>}
-    {mode === "select" && !editingText && ocrEntries.map(entry => {
-      const layer = layers.find(item => item.id === entry.layerId && item.visible);
-      if (!layer) return null;
-      const left = camera.x + layer.x * camera.scale, top = camera.y + layer.y * camera.scale;
-      if (left > dimensions.width || top > dimensions.height || left + layer.width * camera.scale < 0 || top + layer.height * camera.scale < 0) return null;
-      return <button key={entry.layerId} className="ms-canvas-ocr-entry" aria-label={zh ? `查看文字 · ${layer.name}` : `View text · ${layer.name}`} style={{ left: Math.max(12, Math.min(dimensions.width - 132, left)), top: Math.max(48, Math.min(dimensions.height - 120, top + layer.height * camera.scale + 12)) }} onClick={() => onOpenOcr?.(entry.jobId)}><ScanText size={14} />{zh ? "查看文字" : "View text"}</button>;
-    })}
+    {mode === "select" && !editingText && <CanvasOcrEntries stage={stage} layers={layers} entries={ocrEntries} onOpen={onOpenOcr} zh={zh} />}
     {contextMenu && <CanvasContextMenu position={contextMenu} layers={layers} ids={selectedIds} onChange={onChange} onSelect={onSelect} onClose={closeContextMenu} onFit={fit} zh={zh} />}
   </div>;
 });

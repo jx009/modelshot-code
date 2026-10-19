@@ -114,14 +114,14 @@
 .ms-body{height:calc(100dvh - 64px);grid-template-columns:380px minmax(0,1fr);padding:12px 0 12px 16px;gap:0;background:var(--bg-canvas)}
 .ms-chat{border:1px solid var(--divider);border-radius:28px;background:var(--bg-card);box-shadow:none}.ms-chat:hover{box-shadow:none}
 .ms-chat-heading{padding:12px 13px 8px}.ms-chat-heading>span{font-size:13px;color:var(--primary-text)}.ms-chat-heading>span svg{display:none}
-.ms-tabs{margin:0 8px;padding:3px;border-radius:14px;background:var(--bg-elevated);border:0;gap:2px;min-height:44px}
+.ms-tabs{margin:0 8px;padding:3px;border-radius:14px;background:var(--bg-elevated);border:0;gap:2px;min-height:44px;display:grid;grid-template-columns:1fr 1.3fr}
 .ms-tabs button,.ms-commerce-tab{font-size:12px;padding:8px 3px;border-radius:10px;white-space:nowrap}
 .ms-tabs button[aria-selected=true]{background:var(--primary-text);color:var(--bg-page);box-shadow:none}
 .ms-conversation{padding:24px 16px}.ms-message p{font-size:13px;line-height:1.8}.ms-message.user{margin-left:45px;background:var(--bg-elevated);border:0;border-radius:16px 16px 3px 16px;padding:12px 14px}
 .ms-message-image{max-width:240px}.ms-message-image img{border-radius:8px}
 .ms-composer{margin:0 7px 7px;border-radius:24px;background:var(--bg-card);border-color:var(--divider-strong);padding:14px 12px 10px;box-shadow:none;transition:border-color 150ms}
 .ms-composer:focus-within{border-color:var(--divider-strong);box-shadow:none}.ms-composer textarea{font-size:13px;line-height:1.7;min-height:110px}.ms-send{background:var(--primary-text);color:var(--bg-page);border-radius:50%;width:34px;height:34px}.ms-model-pill{background:var(--bg-card-hover);border:0;border-radius:9px;font-size:12px;padding:8px}
-.ms-composer-tools select{font-size:11px}.ms-composer-hint{font-size:10px}.ms-welcome h1{font-size:23px}.ms-welcome>p{font-size:13px}.ms-orb{width:40px;height:40px;margin-bottom:16px}
+.ms-composer-tools select{font-size:11px}.ms-composer-hint{font-size:10px;gap:6px}.ms-composer-hint .ms-text-button{font-size:10px!important;color:var(--secondary-text);border:1px solid var(--divider)!important;background:var(--bg-elevated)!important;padding:5px 9px!important;border-radius:8px!important;display:inline-flex;align-items:center;gap:5px;transition:border-color .15s,background .15s,color .15s}.ms-composer-hint .ms-text-button:hover{border-color:var(--primary)!important;color:var(--primary)!important;background:var(--primary-muted)!important}.ms-composer-hint .ms-text-button:disabled{opacity:.4;cursor:not-allowed}.ms-welcome h1{font-size:23px}.ms-welcome>p{font-size:13px}.ms-orb{width:40px;height:40px;margin-bottom:16px}
 .ms-canvas-space{border:0;border-radius:0;background-color:var(--bg-canvas);background-image:radial-gradient(var(--divider) .6px,transparent .6px);background-size:12px 12px}
 .ms-canvas-label{top:15px;left:18px;font-size:11px;opacity:1}
 .ms-context-toolbar,.ms-context-toolbar:hover{width:174px;padding:6px;background:var(--bg-popover);border:1px solid var(--divider-strong);border-radius:12px;box-shadow:0 10px 28px var(--shadow-soft);transform:none}

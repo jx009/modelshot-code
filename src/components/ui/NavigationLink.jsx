@@ -14,7 +14,7 @@ function Feedback({ onPending }) {
   useEffect(() => {
     onPending(pending);
     if (!pending) return;
-    const timer = setTimeout(() => setSlow(true), 8000);
+    const timer = setTimeout(() => setSlow(true), 2000);
     return () => { clearTimeout(timer); setSlow(false); };
   }, [pending, onPending]);
   if (!pending) return null;
@@ -68,7 +68,7 @@ export default function NavigationLink({ children, onNavigate, onClick, onMouseE
       return;
     }
     if (event.currentTarget.href === window.location.href) { event.preventDefault(); return; }
-    if (pending && Date.now() - started.current >= 8000) {
+    if (pending && Date.now() - started.current >= 2000) {
       event.preventDefault();
       window.location.assign(event.currentTarget.href);
     }

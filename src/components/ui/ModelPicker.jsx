@@ -13,18 +13,33 @@ function ModelMark({ model, small = false }) {
 
 export default function ModelPicker({ models = [], value, onChange, zh, disabled = false, emptyLabel }) {
   const [open, setOpen] = useState(false);
+  const [closing, setClosing] = useState(false);
   const [position, setPosition] = useState(null);
   const trigger = useRef(null), panel = useRef(null), options = useRef([]);
   const id = useId();
   const selected = models.find(model => model.id === value);
   const unavailable = disabled || !models.length;
-  const expanded = open && !unavailable;
+  const expanded = (open || closing) && !unavailable;
   const positioned = Boolean(position);
   const label = zh ? "生图模型" : "Image model";
 
   function close(restoreFocus = false) {
-    setOpen(false);
-    if (restoreFocus) trigger.current?.focus();
+    setClosing(true);
+    const el = panel.current;
+    let called = false;
+    const done = () => {
+      if (called) return;
+      called = true;
+      setOpen(false);
+      setClosing(false);
+      if (restoreFocus) trigger.current?.focus();
+    };
+    if (el) {
+      el.addEventListener("animationend", done, { once: true });
+      setTimeout(done, 200);
+    } else {
+      done();
+    }
   }
 
   useLayoutEffect(() => {
@@ -58,7 +73,7 @@ export default function ModelPicker({ models = [], value, onChange, zh, disabled
   useEffect(() => {
     if (!expanded) return;
     function outside(event) {
-      if (!panel.current?.contains(event.target) && !trigger.current?.contains(event.target)) setOpen(false);
+      if (!panel.current?.contains(event.target) && !trigger.current?.contains(event.target)) close();
     }
     document.addEventListener("pointerdown", outside);
     document.addEventListener("focusin", outside);
@@ -81,7 +96,7 @@ export default function ModelPicker({ models = [], value, onChange, zh, disabled
       onClick={() => setOpen(current => !current)} onKeyDown={event => { if (["ArrowDown", "ArrowUp"].includes(event.key)) { event.preventDefault(); setOpen(true); } }}>
       <ModelMark model={selected} small /><span className="mpk-trigger-name">{selected?.label || emptyLabel || (zh ? "选择模型" : "Choose model")}</span><ChevronDown className="mpk-chevron" size={14} />
     </button>
-    {expanded && createPortal(<div ref={panel} className="mpk-panel" style={position || { visibility: "hidden" }} onKeyDown={navigate} lang={zh ? "zh" : "en"}>
+    {expanded && createPortal(<div ref={panel} className="mpk-panel" data-closing={closing || undefined} style={position || { visibility: "hidden" }} onKeyDown={navigate} lang={zh ? "zh" : "en"}>
       <header className="mpk-heading"><Box size={20} /><span>{zh ? "模型选择" : "Choose a model"}</span><button type="button" className="mpk-close" aria-label={zh ? "关闭模型选择" : "Close model picker"} onClick={() => close(true)}><X size={18} /></button></header>
       <div className="mpk-category"><ImageIcon size={16} /><span>{zh ? "图片" : "Image"}</span><span className="mpk-count">{models.length}</span></div>
       <div id={id} role="listbox" aria-label={label} className="mpk-list">

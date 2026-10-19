@@ -221,9 +221,14 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
     if (resultLoads.current.has(job.id)) return resultLoads.current.get(job.id);
     const task = (async () => {
     setResultStates(s => ({ ...s, [job.id]: "loading" }));
-    // Load the exact same cached preview that the canvas will draw before
-    // replacing anything. A failed download must never hide the original.
-    await Promise.all((job.resultData?.assets || []).filter(asset => asset.contentType.startsWith("image/")).map(asset => loadImage(previewUrl(asset.id), { signal: life.current?.signal })));
+    // Kick off a background preload so the canvas image cache is warm, but
+    // don't await it — the result must be applied immediately so navigation
+    // and other UI interactions are never blocked by an in-flight download.
+    Promise.all(
+      (job.resultData?.assets || [])
+        .filter(asset => asset.contentType.startsWith("image/"))
+        .map(asset => loadImage(previewUrl(asset.id), { signal: life.current?.signal }))
+    ).catch(() => {});  // silently ignore; canvas handles missing-image state
     const current = draftRef.current;
     if (job.documentId !== current.id || life.current?.signal.aborted || current.appliedJobs?.includes(job.id)) { resultLoads.current.delete(job.id); return; }
     const layers = appendResult(current.layers, job, current.layers.find(l => l.id === job.targetId));
@@ -585,7 +590,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
       <aside className="ms-chat">
         <div className="ms-chat-heading"><span><Sparkles size={16} />{t("创意，从一句话开始", "An idea starts a conversation")}</span><button className="ms-icon" title={t("查看画布", "Show canvas")} onClick={() => { setMobileChat(false); setChatCollapsed(true); }}><PanelLeftClose size={17} /></button></div>
         <div className="ms-tabs" role="tablist">
-          {[["chat", MessageCircle, t("对话", "Chat")], ["quick", Zap, t("快速", "Quick generation")]].map(([id, Icon, label]) => <button role="tab" aria-selected={tab === id} key={id} onClick={() => setTab(id)}><Icon size={15} />{label}</button>)}<Link href="/commerce" className="ms-commerce-tab"><ShoppingBag size={15} />{t("电商套图", "Commerce")}</Link>
+          {[["chat", MessageCircle, t("对话", "Chat")]].map(([id, Icon, label]) => <button role="tab" aria-selected={tab === id} key={id} onClick={() => setTab(id)}><Icon size={15} />{label}</button>)}<Link href="/commerce" className="ms-commerce-tab"><ShoppingBag size={15} />{t("电商套图", "Commerce")}</Link>
         </div>
         <div className="ms-conversation">
           <StudioMessageHistory key={draft.id || draft.createKey} documentId={draft.id} messages={draft.messages} zh={zh} onError={notify} onImage={assetId => { setImagePreview(assetId); }} />
@@ -598,7 +603,6 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
           {draft.messages.map(m => <div className={`ms-message ${m.role}`} key={m.id}>{m.role === "assistant" && <span className="ms-speaker"><BrandMark size={17} />来塔绘梦</span>}<p>{m.text}</p>{jobs.find(job => job.id === m.id && job.resultData?.ocr) && <button className="ms-text-button ms-ocr-result-link" onClick={() => openOcr(jobs.find(job => job.id === m.id))}><ScanText size={14} />{t("查看文字", "View text")}</button>}{m.assetId && <button className="ms-message-image" onClick={() => { const layer = draft.layers.find(l => l.assetId === m.assetId); if (layer) { setSelected(layer.id); setMobileChat(false); setTimeout(() => canvas.current?.fit(), 100); } }}><Image unoptimized width={480} height={480} loading="lazy" src={previewUrl(m.assetId, 320)} alt={t("对话引用的图片", "Image referenced in conversation")} /></button>}</div>)}
           {draft.plan && <div className="ms-plan"><span className="ms-eyebrow"><Sparkles size={13} />{t("创作计划", "CREATIVE PLAN")}</span><p>{draft.plan.summary}</p>{draft.plan.steps.map((step, i) => <div className="ms-plan-step" key={i}><span>{i < draft.plan.index ? <Check size={13} /> : i + 1}</span><div>{zh ? getTool(step.tool)?.zh : getTool(step.tool)?.en}<small>{step.explanation}</small></div></div>)}<button className="ms-button ms-primary" disabled={busy || planRunning || !pricesReady || draft.plan.status === "complete"} onClick={runPlan}>{draft.plan.status === "complete" ? t("已完成", "Complete") : draft.plan.index ? t("继续执行", "Continue") : t("确认并执行", "Run plan")}<span>{t("剩余预计", "Remaining")} {remainingPlanCost ?? "—"} {t("积分", "credits")}</span></button><button className="ms-text-button" disabled={busy || planRunning} onClick={() => update(d => ({ ...d, plan: null }))}>{t("移除计划", "Dismiss plan")}</button></div>}
         </div>
-        <StudioActivity key={`chat-${draft.createKey}`} conversation jobs={jobs.filter(job => job.origin === "chat")} pending={pendingTask?.origin === "chat" ? pendingTask : null} appliedJobs={draft.appliedJobs} resultStates={resultStates} zh={zh} onRetry={retryResult} onCancel={cancelJob} />
         <div className="ms-composer">
           {references.length > 0 && <div className="ms-reference-list">{references.map((layer, index) => <div key={layer.id} className="ms-reference"><Image unoptimized width={64} height={64} src={previewUrl(layer.assetId, 320)} alt="" /><span>{index + 1} · {layer.name}</span><button className="ms-icon" title={t("取消引用", "Clear reference")} onClick={() => { setComposer({ referenceIds: references.filter(item => item.id !== layer.id).map(item => item.id) }); if (layer.id === selectedId) setSelected(null); }}><X size={13} /></button></div>)}</div>}
           {referencePicker && <div className="ms-reference-picker"><header>{t("引用项目图片", "Reference project images")}<button className="ms-icon" aria-label={t("关闭图片选择", "Close image picker")} onClick={() => setReferencePicker(false)}><X size={14} /></button></header><div>{draft.layers.filter(layer => layer.type === "image").map(layer => <button key={layer.id} title={layer.name} disabled={references.length >= referenceLimit && !references.some(item => item.id === layer.id)} onClick={() => { setComposer({ referenceIds: [...new Set([...references.map(item => item.id), layer.id])], text: prompt.replace(/@$/, "") }); setReferencePicker(false); }}><Image unoptimized width={70} height={70} src={previewUrl(layer.assetId, 320)} alt={layer.name} /></button>)}</div><button className="ms-text-button" onClick={() => { setReferencePicker(false); setLibraryOpen("reference"); }}>{t("从素材库选择", "Choose from asset library")}</button></div>}

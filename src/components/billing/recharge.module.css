@@ -1,5 +1,13 @@
-.dialog{width:min(1060px,calc(100vw - 40px));max-width:1060px;max-height:calc(100dvh - 48px);margin:auto;padding:0;border:1px solid var(--divider);border-radius:24px;background:var(--bg-card);color:var(--primary-text);box-shadow:0 30px 100px #0005;overflow:hidden}
-.dialog::backdrop{background:#080b12a6;backdrop-filter:blur(9px)}
+.dialog{width:min(1060px,calc(100vw - 40px));max-width:1060px;max-height:calc(100dvh - 48px);margin:auto;padding:0;border:1px solid var(--divider);border-radius:24px;background:var(--bg-card);color:var(--primary-text);box-shadow:0 30px 100px #0005;overflow:hidden;
+  transition:opacity .2s ease, transform .2s cubic-bezier(.2,.8,.2,1), overlay .2s allow-discrete, display .2s allow-discrete;
+  opacity:1; transform:translateY(0) scale(1);
+}
+.dialog::backdrop{background:#080b12a6;backdrop-filter:blur(9px);transition:opacity .2s ease, overlay .2s allow-discrete, display .2s allow-discrete}
+@starting-style {
+  .dialog[open] { opacity:0; transform:translateY(12px) scale(0.96); }
+  .dialog[open]::backdrop { opacity:0; }
+}
+.dialog:not([open]) { opacity:0; transform:translateY(12px) scale(0.96); }
 .panel{--recharge-accent:#ff985d;--recharge-ink:#25160e;background:var(--bg-card);color:var(--primary-text);display:flex;flex-direction:column;max-height:inherit;min-width:0;text-align:left}
 .header{display:flex;gap:24px;justify-content:space-between;padding:30px 32px 25px;border-bottom:1px solid var(--divider);background:radial-gradient(ellipse at 15% -80%,#ff8b5420,transparent 70%);flex-shrink:0}
 .eyebrow{display:flex;align-items:center;gap:7px;letter-spacing:.1em;font-size:10px;font-weight:600;color:var(--secondary-text)}

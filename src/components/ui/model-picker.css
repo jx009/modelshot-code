@@ -20,6 +20,14 @@
   padding:12px 10px 10px; border:1px solid var(--divider-strong); border-radius:18px;
   background:var(--bg-popover); opacity:1; color:var(--primary-text); text-align:left;
   box-shadow:0 20px 64px #0004,0 3px 12px #0002; animation:mpk-enter .18s cubic-bezier(.2,.8,.2,1);
+  transition:opacity .15s ease, transform .15s ease;
+}
+.mpk-panel[data-closing] {
+  animation:mpk-exit .15s cubic-bezier(.4,0,1,1) both;
+}
+@keyframes mpk-exit {
+  from { opacity:1; transform:translateY(0) scale(1); }
+  to   { opacity:0; transform:translateY(6px) scale(0.97); }
 }
 .mpk-heading { display:flex; align-items:center; gap:9px; padding:0 7px 10px; font-size:16px; font-weight:600; flex-shrink:0; }
 .mpk-close { margin-left:auto; display:grid; place-items:center; width:28px; height:28px; background:transparent; color:var(--secondary-text); border:0; border-radius:8px; cursor:pointer; }

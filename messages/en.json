@@ -466,6 +466,7 @@
     "CROSS_ORIGIN_REQUEST": "This address does not match the site configuration. Use the official site address or contact the administrator.",
     "INVALID_INPUT": "Check the email, six-digit code and password. Passwords need at least 8 characters and at most 72 bytes.",
     "PASSWORD_TOO_SHORT": "Password must be at least 8 characters",
+    "PASSWORD_MISMATCH": "The passwords do not match. Please confirm your password again.",
     "PASSWORD_TOO_LONG": "Password must be at most 72 characters",
     "INVALID_CREDENTIALS": "Invalid email or password"
   },

@@ -15,6 +15,10 @@ export const identitySchema = z.object({
   refCode: z.string().regex(/^[a-zA-Z0-9]{6,32}$/).optional().or(z.literal("")),
 }).strict();
 
+// Public registration/reset forms require an explicit second entry. Keep the
+// internal identity command independent of presentation fields.
+export const confirmedIdentitySchema = identitySchema.extend({ confirmPassword: passwordSchema });
+
 function digest(record, code) {
   const key = process.env[`VERIFICATION_KEY_${record.keyVersion}`] || (record.keyVersion === "1" ? process.env.NEXTAUTH_SECRET : null);
   if (!key || key.length < 32) throw new Error("Verification key unavailable");
@@ -28,6 +32,9 @@ async function lock(tx, email, purpose) {
 export async function issueChallenge(email, purpose, db = prisma, { beforeIssue } = {}) {
   return db.$transaction(async tx => {
     await lock(tx, email, purpose);
+    if (purpose === "REGISTER" && await tx.user.findUnique({ where: { email }, select: { id: true } })) {
+      throw new AppError("EMAIL_ALREADY_REGISTERED");
+    }
     const old = await tx.verificationCode.findUnique({ where: { email_purpose: { email, purpose } } });
     if (old && old.createdAt > new Date(Date.now() - 60_000)) {
       const error = new AppError("CODE_RATE_LIMITED", 429, true);

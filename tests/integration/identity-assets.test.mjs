@@ -66,6 +66,16 @@ it("atomically changes the password and revokes old sessions", async () => {
   await expect(changeIdentity({ email, password: "Other-fixture-password!", code }, "RESET_PASSWORD", db)).rejects.toThrow("CODE_INVALID");
 });
 
+it("rejects registration challenges for an existing email before issuing a code or spending its quota", async () => {
+  const address = `${prefix}-existing@modelshot.test`;
+  await db.user.create({ data: { email: address, name: "Existing account" } });
+  const beforeIssue = vi.fn();
+  await expect(issueChallenge(address, "REGISTER", db, { beforeIssue })).rejects.toMatchObject({ code: "EMAIL_ALREADY_REGISTERED" });
+  expect(beforeIssue).not.toHaveBeenCalled();
+  expect(await db.verificationCode.count({ where: { email: address, purpose: "REGISTER" } })).toBe(0);
+  await expect(issueChallenge(address, "RESET_PASSWORD", db)).resolves.toHaveProperty("code");
+});
+
 it("does not spend another hourly email quota during the code cooldown", async () => {
   const address = `${prefix}-cooldown@modelshot.test`;
   const beforeIssue = vi.fn(tx => rateLimit("email-address", address, 5, 3600, tx, "EMAIL_ADDRESS_RATE_LIMITED"));

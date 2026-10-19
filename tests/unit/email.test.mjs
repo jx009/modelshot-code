@@ -12,6 +12,18 @@ beforeEach(() => {
 });
 
 describe("verification email delivery", () => {
+  it.each([['REGISTER', '注册'], ['RESET_PASSWORD', '重置密码']])("sends a Chinese %s subject and body", async (purpose, label) => {
+    getSiteConfigs.mockResolvedValue({ smtp_host: "127.0.0.1", smtp_port: "51025", smtp_from: "noreply@modelshot.local" });
+    await sendVerificationEmail("test@modelshot.local", "123456", purpose);
+    expect(sendMail).toHaveBeenCalledWith(expect.objectContaining({
+      subject: `【来塔绘梦】${label}验证码`,
+      text: expect.stringContaining("123456"),
+    }));
+    const mail = sendMail.mock.calls.at(-1)[0];
+    expect(mail.text).toContain("5 分钟内有效");
+    expect(mail.text).toContain("如果这不是你本人的操作，请忽略此邮件");
+    expect(mail.text).not.toContain("Your verification code");
+  });
   it("rejects missing SMTP without logging or returning a code", async () => {
     getSiteConfigs.mockResolvedValue({});
     const log = vi.spyOn(console, "log");

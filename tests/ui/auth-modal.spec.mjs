@@ -33,6 +33,7 @@ for (const code of ["RATE_LIMITED", "EMAIL_ADDRESS_RATE_LIMITED", "EMAIL_IP_RATE
   await page.route("**/api/auth/email/reset-password", route => route.fulfill({ json: { ok: true } }));
   await dialog.getByLabel("验证码", { exact: true }).fill("123456");
   await dialog.getByLabel("新密码", { exact: true }).fill("New-password-123");
+  await dialog.getByLabel("确认密码", { exact: true }).fill("New-password-123");
   await dialog.getByRole("button", { name: "重置密码", exact: true }).click();
   await expect(dialog.getByRole("status")).toContainText("密码已重置");
 });
@@ -78,6 +79,7 @@ test("legacy login opens a dismissible modal and keeps invitation registration",
   await dialog.getByLabel("邮箱", { exact: true }).fill("artist@example.invalid");
   await dialog.getByLabel("验证码", { exact: true }).fill("123456");
   await dialog.getByLabel("密码", { exact: true }).fill("secret12345");
+  await dialog.getByLabel("确认密码", { exact: true }).fill("secret12345");
   await dialog.locator("button[type=submit]").click();
   await expect.poll(() => registrations.length).toBe(1);
   expect(registrations[0].refCode).toBe("ABC123");
@@ -116,4 +118,51 @@ test("guest recharge opens login above the recharge selection", async ({ page })
   await expect(login).toHaveCount(0);
   await expect(recharge).toBeVisible();
   await expect(recharge.getByRole("button", { name: "登录并充值" })).toBeEnabled();
+});
+
+for (const mode of ["register", "reset"]) test(`${mode} requires matching confirmation and clears passwords when switching modes`, async ({ page }, info) => {
+  await guest(page);
+  const submissions = [];
+  await page.route(`**/api/auth/email/${mode === "register" ? "register" : "reset-password"}`, route => {
+    submissions.push(route.request().postDataJSON());
+    return route.fulfill({ status: 400, json: { code: "CODE_INVALID" } });
+  });
+  await page.setViewportSize({ width: 390, height: 700 });
+  await page.goto("/zh/login");
+  const dialog = page.getByRole("dialog", { name: "登录来塔绘梦" });
+  await dialog.getByRole("button", { name: mode === "register" ? "免费注册" : "忘记密码" }).click();
+  await dialog.getByLabel("邮箱", { exact: true }).fill("artist@example.invalid");
+  await dialog.getByLabel("验证码", { exact: true }).fill("123456");
+  await dialog.getByLabel(mode === "register" ? "密码" : "新密码", { exact: true }).fill("Password-one-123");
+  const confirmation = dialog.getByLabel("确认密码", { exact: true });
+  await dialog.locator("button[type=submit]").click();
+  expect(submissions).toHaveLength(0);
+  await confirmation.fill("Password-two-123");
+  await dialog.locator("button[type=submit]").click();
+  await expect(dialog.getByRole("alert")).toHaveText("两次输入的密码不一致，请重新确认。");
+  expect(submissions).toHaveLength(0);
+  await confirmation.fill("Password-one-123");
+  await dialog.getByRole("button", { name: "显示确认密码" }).click();
+  await expect(confirmation).toHaveAttribute("type", "text");
+  await dialog.locator("button[type=submit]").click();
+  await expect(dialog.getByRole("alert")).toHaveText("验证码错误");
+  expect(submissions).toEqual([{ email: "artist@example.invalid", password: "Password-one-123", confirmPassword: "Password-one-123", code: "123456" }]);
+  await expect(dialog.getByRole("button", { name: "关闭登录" })).toBeInViewport();
+  await page.screenshot({ path: info.outputPath(`${mode}-confirmation-mobile.png`) });
+  await dialog.getByRole("button", { name: "返回登录" }).click();
+  await expect(confirmation).toHaveCount(0);
+  await expect(dialog.getByLabel("密码", { exact: true })).toHaveValue("");
+});
+
+test("registration shows an existing email error without starting the send countdown", async ({ page }) => {
+  await guest(page);
+  await page.route("**/api/auth/email/send-code", route => route.fulfill({ status: 400, json: { code: "EMAIL_ALREADY_REGISTERED" } }));
+  await page.goto("/zh/login");
+  const dialog = page.getByRole("dialog", { name: "登录来塔绘梦" });
+  await dialog.getByRole("button", { name: "免费注册" }).click();
+  await dialog.getByLabel("邮箱", { exact: true }).fill("existing@example.invalid");
+  await dialog.getByRole("button", { name: "发送验证码" }).click();
+  await expect(dialog.getByRole("alert")).toHaveText("该邮箱已注册，请直接登录");
+  await expect(dialog.getByRole("button", { name: "发送验证码" })).toBeEnabled();
+  await expect(dialog.getByRole("status")).toHaveCount(0);
 });

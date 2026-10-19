@@ -466,6 +466,7 @@
     "CROSS_ORIGIN_REQUEST": "当前访问地址与网站配置不一致，请从网站正式域名访问，或联系管理员。",
     "INVALID_INPUT": "请检查邮箱、6 位验证码和密码格式。密码至少 8 位，最多 72 字节。",
     "PASSWORD_TOO_SHORT": "密码至少 8 位",
+    "PASSWORD_MISMATCH": "两次输入的密码不一致，请重新确认。",
     "PASSWORD_TOO_LONG": "密码最多 72 位",
     "INVALID_CREDENTIALS": "邮箱或密码错误"
   },

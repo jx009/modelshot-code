@@ -17,6 +17,7 @@ export default function AuthPanel({ request, onClose, onSuccess }) {
   const { status, update } = useSession();
   const [mode, setMode] = useState("login"), [google, setGoogle] = useState(false);
   const [email, setEmail] = useState(""), [password, setPassword] = useState(""), [code, setCode] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState(""), [showConfirmation, setShowConfirmation] = useState(false);
   const [showPassword, setShowPassword] = useState(false), [busy, setBusy] = useState(false), [sending, setSending] = useState(false), [cooldown, setCooldown] = useState(0);
   const [error, setError] = useState(request.error ? zh ? "登录未完成，请重试或使用邮箱登录。" : "Sign-in was not completed. Please try again or use email." : ""), [notice, setNotice] = useState("");
   const lock = useRef(false), sendLock = useRef(false);
@@ -33,7 +34,7 @@ export default function AuthPanel({ request, onClose, onSuccess }) {
     getSession().then(fresh => { if (active && fresh?.user?.id) onSuccess(); }).catch(() => {});
     return () => { active = false; };
   }, [status, onSuccess]);
-  function changeMode(next) { setMode(next); setCode(""); setPassword(""); setShowPassword(false); setError(""); setNotice(""); }
+  function changeMode(next) { setMode(next); setCode(""); setPassword(""); setConfirmPassword(""); setShowPassword(false); setShowConfirmation(false); setError(""); setNotice(""); }
   function failure(code) { setError(te.has(code) ? te(code) : te("GENERIC")); }
   async function sendCode() {
     if (sendLock.current || cooldown) return;
@@ -57,10 +58,11 @@ export default function AuthPanel({ request, onClose, onSuccess }) {
   async function submit(event) {
     event.preventDefault();
     if (lock.current) return;
+    if (mode !== "login" && password !== confirmPassword) { failure("PASSWORD_MISMATCH"); return; }
     lock.current = true; setBusy(true); setError(""); setNotice("");
     try {
       if (mode !== "login") {
-        const response = await fetch(`/api/auth/email/${mode === "register" ? "register" : "reset-password"}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: email.trim().toLowerCase(), password, code: code.trim(), ...(mode === "register" && request.refCode ? { refCode: request.refCode } : {}) }) });
+        const response = await fetch(`/api/auth/email/${mode === "register" ? "register" : "reset-password"}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: email.trim().toLowerCase(), password, confirmPassword, code: code.trim(), ...(mode === "register" && request.refCode ? { refCode: request.refCode } : {}) }) });
         const body = await response.json();
         if (!response.ok) { failure(body.code || body.error || "GENERIC"); return; }
         if (mode === "reset") { changeMode("login"); setNotice(t("resetOk")); return; }
@@ -86,6 +88,7 @@ export default function AuthPanel({ request, onClose, onSuccess }) {
             {mode !== "login" && <><label htmlFor="auth-code">{t("codeLabel")}</label><div className={styles.codeRow}><input id="auth-code" type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required value={code} onChange={e => setCode(e.target.value.replace(/\D/g, ""))} placeholder={zh ? "6 位邮箱验证码" : "6-digit email code"} /><button type="button" onClick={sendCode} disabled={sending || cooldown > 0}>{sending ? <LoaderCircle size={15} className={styles.spinner} /> : cooldown ? cooldown >= 60 ? `${Math.floor(cooldown / 60)}:${String(cooldown % 60).padStart(2, "0")}` : `${cooldown}s` : t("sendCode")}</button></div></>}
             <div className={styles.labelRow}><label htmlFor="auth-password">{mode === "reset" ? t("newPasswordLabel") : t("passwordLabel")}</label>{mode === "login" && <button type="button" onClick={() => changeMode("reset")}>{t("forgot")}</button>}</div>
             <div className={styles.inputWrap}><input id="auth-password" type={showPassword ? "text" : "password"} required minLength={8} autoComplete={mode === "login" ? "current-password" : "new-password"} value={password} onChange={e => setPassword(e.target.value)} placeholder={zh ? mode === "login" ? "请输入密码" : "至少 8 位字符" : mode === "login" ? "Enter your password" : "At least 8 characters"} /><button type="button" onClick={() => setShowPassword(v => !v)} aria-label={zh ? showPassword ? "隐藏密码" : "显示密码" : showPassword ? "Hide password" : "Show password"}>{showPassword ? <EyeOff size={16} /> : <Eye size={16} />}</button></div>
+            {mode !== "login" && <><div className={styles.labelRow}><label htmlFor="auth-confirm-password">{zh ? "确认密码" : "Confirm password"}</label></div><div className={styles.inputWrap}><input id="auth-confirm-password" type={showConfirmation ? "text" : "password"} required minLength={8} autoComplete="new-password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} placeholder={zh ? "请再次输入密码" : "Enter your password again"} /><button type="button" onClick={() => setShowConfirmation(v => !v)} aria-label={zh ? showConfirmation ? "隐藏确认密码" : "显示确认密码" : showConfirmation ? "Hide confirmation password" : "Show confirmation password"}>{showConfirmation ? <EyeOff size={16} /> : <Eye size={16} />}</button></div></>}
             {error && <p role="alert" className={styles.error}>{error}</p>}{notice && <p role="status" className={styles.notice}><Check size={14} />{notice}</p>}
             <button type="submit" className={styles.submit}>{busy ? <LoaderCircle size={17} className={styles.spinner} /> : <>{mode === "login" ? t("emailSubmit") : mode === "register" ? t("registerSubmit") : t("resetSubmit")}<ArrowRight size={17} /></>}</button>
             <div className={styles.switchMode}>{mode === "login" ? <><span>{t("noAccount")}</span><button type="button" onClick={() => changeMode("register")}>{zh ? "免费注册" : "Create an account"}<ArrowUpRight size={13} /></button></> : <button type="button" onClick={() => changeMode("login")}>{t("backToLogin")}</button>}</div>

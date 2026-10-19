@@ -27,8 +27,9 @@ export function generateVerificationCode() {
  * @returns {{ sent: boolean }}
  */
 export async function sendVerificationEmail(email, code, purpose) {
-  const subject = purpose === "REGISTER" ? "Your 来塔绘梦 verification code" : "Reset your 来塔绘梦 password";
-  const text = `Your verification code is: ${code}\nIt expires in 5 minutes.\n\nIf you didn't request this, ignore this email.`;
+  const action = purpose === "REGISTER" ? "注册账号" : "重置密码";
+  const subject = `【来塔绘梦】${purpose === "REGISTER" ? "注册" : "重置密码"}验证码`;
+  const text = `你好！\n\n你正在${action}，本次验证码为：\n\n${code}\n\n验证码在 5 分钟内有效，请在页面中输入以完成验证。\n请勿将验证码告诉他人。\n\n如果这不是你本人的操作，请忽略此邮件。\n\n来塔绘梦 · letaidraw`;
 
   const smtp = await loadSmtpConfig();
   if (!smtp) {

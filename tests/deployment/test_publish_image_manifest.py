@@ -1,3 +1,4 @@
+import json
 import os
 from pathlib import Path
 import shutil
@@ -8,12 +9,15 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 BASH = "C:/Program Files/Git/bin/bash.exe" if os.name == "nt" else shutil.which("bash")
-DIGEST = "sha256:" + "a" * 64
+# Fixture copied from Docker's imagetools create --metadata-file documentation:
+# https://docs.docker.com/reference/cli/docker/buildx/imagetools/create/#metadata-file
+METADATA = json.loads((ROOT / "tests/deployment/fixtures/imagetools-create-metadata.json").read_text())
+DIGEST = METADATA["containerimage.descriptor"]["digest"]
 
 
 @unittest.skipUnless(BASH and Path(BASH).exists(), "Bash is required")
 class PublishManifestTests(unittest.TestCase):
-    def run_publish(self, signed=False, failure=False, invalid_digest=False, tools=False):
+    def run_publish(self, signed=False, failure=False, invalid_digest=False, tools=False, metadata=None):
         temp = tempfile.TemporaryDirectory()
         self.addCleanup(temp.cleanup)
         folder = Path(temp.name)
@@ -24,7 +28,7 @@ docker() {
   if [[ "$3" == create ]]; then
     shift 3
     [[ "$1" == --metadata-file ]] || return 9
-    printf '{"containerimage.digest":"%s"}' "$MOCK_DIGEST" > "$2"
+    printf '%s' "$MOCK_METADATA" > "$2"
   fi
 }
 cosign() {
@@ -40,8 +44,11 @@ python3() { command python "$@"; }
         prefix = "tools-" if tools else ""
         tags = [f"example/modelshot:{prefix}{tag}" for tag in ["main", "latest", "sha-abc"]]
         log = folder / "calls.log"
+        metadata = METADATA if metadata is None else metadata
+        if invalid_digest:
+            metadata = {"containerimage.descriptor": {"digest": "invalid"}}
         env = dict(os.environ, BASH_ENV=mock.as_posix(), MOCK_LOG=log.as_posix(),
-                   MOCK_DIGEST="" if invalid_digest else DIGEST,
+                   MOCK_METADATA=json.dumps(metadata),
                    MOCK_SIGNED=str(int(signed)), MOCK_FAILURE=str(int(failure)),
                    IMAGE="example/modelshot", TAGS="\n".join(tags),
                    GITHUB_WORKFLOW_REF="jx009/modelshot-code/.github/workflows/docker-build.yml@refs/heads/main",
@@ -76,6 +83,27 @@ python3() { command python "$@"; }
         result, calls = self.run_publish(invalid_digest=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse(any(c.startswith("cosign") for c in calls))
+
+    def test_build_metadata_or_child_digests_are_not_used_as_index_digest(self):
+        for metadata in (
+            {"containerimage.digest": DIGEST},
+            {"manifests": [{"digest": DIGEST}]},
+            {"config": {"digest": DIGEST}},
+            {"containerimage.descriptor": None},
+            {"containerimage.descriptor": {"digest": None}},
+        ):
+            with self.subTest(metadata=metadata):
+                result, calls = self.run_publish(metadata=metadata)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertFalse(any(c.startswith("cosign") for c in calls))
+
+    def test_index_descriptor_wins_over_unrelated_digest_fields(self):
+        metadata = {**METADATA, "containerimage.digest": "sha256:" + "b" * 64,
+                    "manifests": [{"digest": "sha256:" + "c" * 64}]}
+        result, calls = self.run_publish(metadata=metadata)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual([c for c in calls if c.startswith("cosign sign")],
+                         [f"cosign sign --yes example/modelshot@{DIGEST}"])
 
 
 if __name__ == "__main__":

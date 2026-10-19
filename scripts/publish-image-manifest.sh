@@ -29,9 +29,13 @@ import re
 import sys
 
 with open(sys.argv[1], encoding="utf-8") as source:
-    digest = json.load(source).get("containerimage.digest", "")
-if not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
-    raise SystemExit("Missing or invalid merged image digest")
+    metadata = json.load(source)
+# imagetools create writes a descriptor, unlike build's containerimage.digest.
+# https://docs.docker.com/reference/cli/docker/buildx/imagetools/create/#metadata-file
+descriptor = metadata.get("containerimage.descriptor", {})
+digest = descriptor.get("digest", "") if isinstance(descriptor, dict) else ""
+if not isinstance(digest, str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
+    raise SystemExit("Missing or invalid containerimage.descriptor.digest in imagetools metadata")
 print(digest)
 PY
 )

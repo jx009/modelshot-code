@@ -460,6 +460,11 @@
     "CODE_NOT_FOUND": "请先获取验证码",
     "CODE_TOO_MANY_ATTEMPTS": "尝试次数过多，请重新获取验证码",
     "CODE_RATE_LIMITED": "请等待 60 秒后再获取验证码",
+    "RATE_LIMITED": "请求过于频繁，请稍后重试。已收到的验证码仍可使用。",
+    "EMAIL_IP_RATE_LIMITED": "当前网络发送验证码过于频繁，请在倒计时结束后重试。已收到的验证码仍可使用。",
+    "EMAIL_ADDRESS_RATE_LIMITED": "该邮箱本小时的验证码请求次数已达上限，请在倒计时结束后重试，或使用已收到且未过期的验证码。",
+    "CROSS_ORIGIN_REQUEST": "当前访问地址与网站配置不一致，请从网站正式域名访问，或联系管理员。",
+    "INVALID_INPUT": "请检查邮箱、6 位验证码和密码格式。密码至少 8 位，最多 72 字节。",
     "PASSWORD_TOO_SHORT": "密码至少 8 位",
     "PASSWORD_TOO_LONG": "密码最多 72 位",
     "INVALID_CREDENTIALS": "邮箱或密码错误"

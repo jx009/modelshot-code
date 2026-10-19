@@ -25,11 +25,18 @@ async function lock(tx, email, purpose) {
   await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`verification:${email}:${purpose}`}, 0))::text`;
 }
 
-export async function issueChallenge(email, purpose, db = prisma) {
+export async function issueChallenge(email, purpose, db = prisma, { beforeIssue } = {}) {
   return db.$transaction(async tx => {
     await lock(tx, email, purpose);
     const old = await tx.verificationCode.findUnique({ where: { email_purpose: { email, purpose } } });
-    if (old && old.createdAt > new Date(Date.now() - 60_000)) throw new AppError("CODE_RATE_LIMITED", 429, true);
+    if (old && old.createdAt > new Date(Date.now() - 60_000)) {
+      const error = new AppError("CODE_RATE_LIMITED", 429, true);
+      error.retryAfter = Math.max(1, Math.ceil((old.createdAt.getTime() + 60_000 - Date.now()) / 1000));
+      throw error;
+    }
+    // Check the send quota only after the cooldown, under the same lock. Repeated
+    // clicks must not consume another hourly slot without issuing a new code.
+    await beforeIssue?.(tx);
     const code = String(randomInt(100000, 1000000));
     const record = { id: randomUUID(), email, purpose, keyVersion: process.env.VERIFICATION_KEY_VERSION || "1" };
     await tx.verificationCode.deleteMany({ where: { email, purpose } });

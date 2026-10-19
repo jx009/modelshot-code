@@ -66,6 +66,17 @@ it("atomically changes the password and revokes old sessions", async () => {
   await expect(changeIdentity({ email, password: "Other-fixture-password!", code }, "RESET_PASSWORD", db)).rejects.toThrow("CODE_INVALID");
 });
 
+it("does not spend another hourly email quota during the code cooldown", async () => {
+  const address = `${prefix}-cooldown@modelshot.test`;
+  const beforeIssue = vi.fn(tx => rateLimit("email-address", address, 5, 3600, tx, "EMAIL_ADDRESS_RATE_LIMITED"));
+  const first = await issueChallenge(address, "RESET_PASSWORD", db, { beforeIssue });
+  for (let attempt = 0; attempt < 6; attempt++) {
+    await expect(issueChallenge(address, "RESET_PASSWORD", db, { beforeIssue })).rejects.toMatchObject({ code: "CODE_RATE_LIMITED", retryAfter: expect.any(Number) });
+  }
+  expect(beforeIssue).toHaveBeenCalledTimes(1);
+  expect((await db.verificationCode.findUnique({ where: { email_purpose: { email: address, purpose: "RESET_PASSWORD" } } })).id).toBe(first.id);
+});
+
 it("enforces the rate limit atomically across concurrent requests", async () => {
   const results = await Promise.allSettled(Array.from({ length: 20 }, () => rateLimit("fixture", prefix, 5, 60, db)));
   expect(results.filter(result => result.status === "fulfilled")).toHaveLength(5);

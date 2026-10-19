@@ -14,8 +14,10 @@ export function errorResponse(error) {
   const known = error instanceof AppError;
   if (!known) console.error(JSON.stringify({ traceId, code: "INTERNAL_ERROR", type: error?.name }));
   const code = known ? error.code : "INTERNAL_ERROR";
-  return Response.json({ code, error: code, message: code, retryable: known ? error.retryable : true, traceId }, {
+  const retryAfter = known && Number.isFinite(error.retryAfter) && error.retryAfter > 0 ? Math.ceil(error.retryAfter) : null;
+  return Response.json({ code, error: code, message: code, retryable: known ? error.retryable : true, traceId, ...(retryAfter ? { retryAfter } : {}) }, {
     status: known ? error.status : 500,
+    ...(retryAfter ? { headers: { "Retry-After": String(retryAfter) } } : {}),
   });
 }
 

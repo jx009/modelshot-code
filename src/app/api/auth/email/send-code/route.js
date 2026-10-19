@@ -7,9 +7,10 @@ import { clientAddress, errorResponse, readJson } from "../../../../../lib/http.
 export async function POST(request) {
   try {
     const { email, purpose } = await readJson(request, challengeSchema);
-    await rateLimit("email-ip", clientAddress(request), 20, 600);
-    await rateLimit("email-address", email, 5, 3600);
-    const challenge = await issueChallenge(email, purpose);
+    await rateLimit("email-ip", clientAddress(request), 20, 600, prisma, "EMAIL_IP_RATE_LIMITED");
+    const challenge = await issueChallenge(email, purpose, prisma, {
+      beforeIssue: tx => rateLimit("email-address", email, 5, 3600, tx, "EMAIL_ADDRESS_RATE_LIMITED"),
+    });
     try { await sendVerificationEmail(email, challenge.code, purpose); }
     catch (error) {
       await prisma.verificationCode.deleteMany({ where: { id: challenge.id } });

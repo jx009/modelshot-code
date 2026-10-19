@@ -13,6 +13,30 @@ async function guest(page, { google = false } = {}) {
   });
 }
 
+for (const code of ["RATE_LIMITED", "EMAIL_ADDRESS_RATE_LIMITED", "EMAIL_IP_RATE_LIMITED"]) test(`password recovery explains ${code} and respects the server retry time`, async ({ page }) => {
+  await guest(page);
+  const requests = [];
+  await page.route("**/api/auth/email/send-code", route => {
+    requests.push(route.request().postDataJSON());
+    return route.fulfill({ status: 429, headers: { "Retry-After": "125" }, json: { code, error: code, retryable: true, retryAfter: 125 } });
+  });
+  await page.goto("/zh/login");
+  const dialog = page.getByRole("dialog", { name: "登录来塔绘梦" });
+  await dialog.getByRole("button", { name: "忘记密码" }).click();
+  await dialog.getByLabel("邮箱", { exact: true }).fill("recovery@example.invalid");
+  await dialog.getByRole("button", { name: "发送验证码" }).click();
+  await expect(dialog.getByRole("alert")).not.toContainText("出错了");
+  await expect(dialog.getByRole("alert")).toContainText(code === "EMAIL_ADDRESS_RATE_LIMITED" ? "该邮箱本小时" : code === "EMAIL_IP_RATE_LIMITED" ? "当前网络" : "请求过于频繁");
+  await expect(dialog.getByRole("button", { name: /^2:0[0-5]$/ })).toBeDisabled();
+  expect(requests).toEqual([{ email: "recovery@example.invalid", purpose: "RESET_PASSWORD" }]);
+  // Resending is rate-limited; redeeming a code already delivered remains possible.
+  await page.route("**/api/auth/email/reset-password", route => route.fulfill({ json: { ok: true } }));
+  await dialog.getByLabel("验证码", { exact: true }).fill("123456");
+  await dialog.getByLabel("新密码", { exact: true }).fill("New-password-123");
+  await dialog.getByRole("button", { name: "重置密码", exact: true }).click();
+  await expect(dialog.getByRole("status")).toContainText("密码已重置");
+});
+
 for (const theme of ["dark", "light"]) test(`login stays over the current creation and preserves its prompt (${theme})`, async ({ page }, info) => {
   await guest(page);
   await page.goto("/zh?source=preview");

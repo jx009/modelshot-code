@@ -289,54 +289,55 @@ describe("studio documents and task ledger", () => {
     expect((await usageSummary(user.id, f.db)).credits).toBe(100);
     expect((await f.db.creditReservation.findUnique({ where: { tryOnId: job.id } })).state).toBe("released");
   });
-  it("reconciles an unknown response without reissuing a paid image request", async () => {
+  it("ends an unrecoverable synchronous response and refunds without reissuing a paid request", async () => {
     const { user, input } = await setup();
     const job = await submitStudioJob(user.id, input, randomUUID(), f.db, deps);
     let calls = 0;
     const adapters = { generate: async () => { calls++; throw new Error("connection reset after accept"); } };
     await executeStudio(job.id, { db: f.db, store: f.store, config, adapters });
-    const diagnostic = "PROVIDER_RESULT_UNKNOWN: connection reset after accept";
-    expect(await f.db.tryOn.findUnique({ where: { id: job.id } })).toMatchObject({ status: "reconciling", errorCode: diagnostic });
-    await f.db.tryOn.update({ where: { id: job.id }, data: { nextAttemptAt: null } });
-    await executeStudio(job.id, { db: f.db, store: f.store, config, adapters });
-    expect(await f.db.tryOn.findUnique({ where: { id: job.id } })).toMatchObject({ status: "reconciling", errorCode: diagnostic });
-    await f.db.tryOn.update({ where: { id: job.id }, data: { nextAttemptAt: null, reconcileUntil: new Date(0) } });
-    await recoverLeases(f.db);
-    await executeStudio(job.id, { db: f.db, store: f.store, config, adapters });
-    expect(calls).toBe(1); expect((await usageSummary(user.id, f.db)).credits).toBe(100);
+    const diagnostic = "PROVIDER_RESULT_UNAVAILABLE: connection reset after accept";
     expect(await f.db.tryOn.findUnique({ where: { id: job.id } })).toMatchObject({ status: "failed", errorCode: diagnostic });
+    await executeStudio(job.id, { db: f.db, store: f.store, config, adapters });
+    expect(calls).toBe(1);
+    expect((await usageSummary(user.id, f.db)).credits).toBe(100);
+    expect((await f.db.creditReservation.findUnique({ where: { tryOnId: job.id } })).state).toBe("released");
   });
-  it("records a real deadline separately, keeps credits reserved while unknown, and refunds once without resubmitting", async () => {
+  it("ends a timed out synchronous call immediately and refunds exactly once", async () => {
     const { user, input } = await setup();
     const job = await submitStudioJob(user.id, input, randomUUID(), f.db, deps);
     let calls = 0;
     const adapters = { generate: async (_config, { signal }) => {
-      calls++;
-      signal.throwIfAborted();
+      calls++; signal.throwIfAborted();
       return new Promise((_, reject) => signal.addEventListener("abort", () => reject(signal.reason), { once: true }));
     } };
     await executeStudio(job.id, { db: f.db, store: f.store, config, adapters, timeoutMs: 250 });
-    expect(calls).toBe(1);
-    expect(await f.db.tryOn.findUnique({ where: { id: job.id } })).toMatchObject({ status: "reconciling", errorCode: "PROVIDER_TIMEOUT" });
-    expect((await f.db.creditReservation.findUnique({ where: { tryOnId: job.id } })).state).toBe("held");
-    await f.db.tryOn.update({ where: { id: job.id }, data: { nextAttemptAt: null, reconcileUntil: new Date(0) } });
-    await executeStudio(job.id, { db: f.db, store: f.store, config, adapters });
     await executeStudio(job.id, { db: f.db, store: f.store, config, adapters });
     expect(calls).toBe(1);
     expect(await f.db.tryOn.findUnique({ where: { id: job.id } })).toMatchObject({ status: "failed", errorCode: "PROVIDER_TIMEOUT" });
     expect((await f.db.creditReservation.findUnique({ where: { tryOnId: job.id } })).state).toBe("released");
     expect((await usageSummary(user.id, f.db)).credits).toBe(100);
   });
-  it("retains sanitized gateway 5xx details while reconciling", async () => {
+  it.each([504, 524])("ends HTTP %i and retains sanitized diagnostics even when a request ID exists", async status => {
     const { user, input } = await setup();
     const job = await submitStudioJob(user.id, input, randomUUID(), f.db, deps);
-    await executeStudio(job.id, { db: f.db, store: f.store, config, adapters: { generate: async () => {
-      throw Object.assign(new Error("upstream timed out; Bearer fixture-secret sk-fixture-secret"), { status: 504 });
+    await executeStudio(job.id, { db: f.db, store: f.store, config, adapters: { generate: async (_config, args) => {
+      await args.onResponse({ requestId: "trace-only-not-a-pollable-task" });
+      throw Object.assign(new Error("upstream timed out; Bearer fixture-secret sk-fixture-secret"), { status });
     } } });
     const row = await f.db.tryOn.findUnique({ where: { id: job.id } });
-    expect(row.status).toBe("reconciling");
-    expect(row.errorCode).toContain("PROVIDER_RESULT_UNKNOWN: HTTP 504: upstream timed out");
+    expect(row.status).toBe("failed");
+    expect(row.errorCode).toContain(`PROVIDER_RESULT_UNAVAILABLE: HTTP ${status}: upstream timed out`);
     expect(row.errorCode).not.toContain("fixture-secret");
+    expect((await usageSummary(user.id, f.db)).credits).toBe(100);
+  });
+  it("finishes legacy non-queryable reconciliation jobs without waiting for their old deadline", async () => {
+    const { user, input } = await setup();
+    const job = await submitStudioJob(user.id, input, randomUUID(), f.db, deps);
+    const diagnostic = "PROVIDER_RESULT_UNKNOWN: HTTP 524: gateway timeout";
+    await f.db.tryOn.update({ where: { id: job.id }, data: { status: "reconciling", reconcileUntil: new Date(Date.now() + 900000), errorCode: diagnostic } });
+    await executeStudio(job.id, { db: f.db, store: f.store, config, adapters: { generate: async () => { throw new Error("MUST_NOT_RESUBMIT"); } } });
+    expect(await f.db.tryOn.findUnique({ where: { id: job.id } })).toMatchObject({ status: "failed", errorCode: diagnostic });
+    expect((await usageSummary(user.id, f.db)).credits).toBe(100);
   });
   it("persists a video task ID then resumes polling after a worker restart", async () => {
     const { user, input } = await setup();

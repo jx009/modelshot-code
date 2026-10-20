@@ -69,6 +69,13 @@ export async function executeStudio(id, { db = prisma, store = objectStorage(), 
   try {
     if (output.cancelRequestedAt) { await finishOutput(id, output.fence, { cancelled: true }, db); return; }
     if (output.resultData) { await finishOutput(id, output.fence, { resultData: output.resultData }, db); return; }
+    const recoverable = ["video", "split"].includes(snapshot.tool) && attempt.requestId;
+    // Synchronous image endpoints cannot retrieve a lost response by request ID.
+    // Also drain legacy reconciliation jobs instead of waiting fifteen minutes.
+    if (reconcile && snapshot.tool !== "crop" && !recoverable) {
+      await finishOutput(id, output.fence, { errorCode: unresolvedError }, db);
+      return;
+    }
     const dependency = getTool(snapshot.tool)?.dependency;
     const modelTool = ["image", "vision", "split", "ocr", "upscale"].includes(dependency);
     const selectedConfig = supplied || (dependency === "local" ? {} : await studioConfig(db, modelTool ? snapshot.provider : undefined, ["split", "ocr", "upscale"].includes(dependency) ? dependency : dependency === "vision" ? "language" : "image", null, { pinned: modelTool, skipPreview: true }));
@@ -76,13 +83,7 @@ export async function executeStudio(id, { db = prisma, store = objectStorage(), 
     const channel = ["split", "ocr", "upscale"].includes(dependency) ? config[`${dependency}Channel`] : dependency === "vision" ? { kind: config.plannerKind, baseURL: config.visionBaseURL } : { kind: config.imageKind || "openai", baseURL: config.baseURL };
     if (modelTool && snapshot.providerKind && (snapshot.providerKind !== channel?.kind || snapshot.providerBaseURL !== (channel?.baseURL || null))) throw new AppError("PROVIDER_CONFIGURATION_CHANGED", 422);
     if (["split", "ocr", "upscale"].includes(dependency) && channel) config[`${dependency}Channel`] = { ...channel, model: snapshot.imageModel };
-    const recoverable = ["video", "split"].includes(snapshot.tool) && attempt.requestId;
     if (reconcile && output.reconcileUntil && output.reconcileUntil <= new Date()) { await finishOutput(id, output.fence, { errorCode: unresolvedError }, db); return; }
-    if (reconcile && snapshot.tool !== "crop" && !recoverable) {
-      if (output.reconcileUntil && output.reconcileUntil <= new Date()) await finishOutput(id, output.fence, { errorCode: unresolvedError }, db);
-      else await deferOutput(claim, unresolvedError, false, db);
-      return;
-    }
     const image = snapshot.assetId ? await readOwnedImage(output.userId, snapshot.assetId, db, store) : null;
     const mask = snapshot.maskId ? await readOwnedImage(output.userId, snapshot.maskId, db, store) : null;
     const references = await Promise.all((snapshot.referenceAssetIds || []).map(ref => readOwnedImage(output.userId, ref, db, store)));
@@ -140,12 +141,22 @@ export async function executeStudio(id, { db = prisma, store = objectStorage(), 
     else await finishOutput(id, output.fence, { cancelled: true }, db);
   } catch (error) {
     const stored = await db.generationAttempt.findUnique({ where: { id: attempt.id } });
+    const persisted = await db.tryOn.findUnique({ where: { id }, select: { resultData: true } });
+    // A saved result with an interrupted settlement must still be recovered.
+    if (persisted?.resultData) {
+      await deferOutput(claim, "RESULT_SETTLEMENT_PENDING", false, db);
+      return;
+    }
     const status = error.status || error.statusCode;
     if (stored?.state === "claimed" || [400, 401, 403, 404, 413, 415, 422, 429].includes(status) || error instanceof AppError && ![502, 504].includes(status)) {
       await finishOutput(id, output.fence, { errorCode: safeProviderError(error, "PROVIDER_REJECTED") }, db);
     } else {
       const failure = controller.signal.aborted ? controller.signal.reason : error;
-      await deferOutput(claim, safeProviderError(failure, "PROVIDER_RESULT_UNKNOWN"), false, db);
+      if (["video", "split"].includes(snapshot.tool) && stored?.requestId) {
+        await deferOutput(claim, safeProviderError(failure, "PROVIDER_RESULT_UNKNOWN"), false, db);
+      } else {
+        await finishOutput(id, output.fence, { errorCode: safeProviderError(failure, "PROVIDER_RESULT_UNAVAILABLE") }, db);
+      }
     }
   } finally { clearTimeout(timer); clearInterval(heartbeat); }
 }

@@ -35,6 +35,27 @@ async function select(page,name="参考图片 1") {
   await page.getByRole("button",{name:"图层",exact:true}).click();
 }
 
+test("a failed task replaces processing feedback on the open canvas without a reload", async ({ page }) => {
+  const f = await fixture(page);
+  const job = { id: "old-edit", tool: "inpaint", status: "running", documentId: "creative-doc", assetId: "image-0", targetId: "layer-0", createdAt: "2020-01-01T00:00:00Z" };
+  f.jobs.push(job);
+  await page.route("**/api/studio/events?**", route => route.abort());
+  await page.goto("/zh/studio-v2?document=creative-doc");
+  const activity = page.locator(".ms-task-status");
+  await expect(activity).toContainText("正在处理");
+  job.status = "reconciling"; job.errorCode = "PROVIDER_RESULT_UNKNOWN: HTTP 524";
+  await expect(activity).toContainText("连接中断，正在核对结果");
+  job.status = "failed";
+  await expect(activity).toContainText("上游连接超时");
+  await expect(activity).toContainText("本次不扣积分");
+  await expect(activity.locator(".ms-spin")).toHaveCount(0);
+  await expect(activity.getByRole("button", { name: "取消", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "任务列表", exact: true }).click();
+  await expect(page.locator(".ms-task-card")).toHaveAttribute("data-state", "failed");
+  await expect(page.locator(".ms-task-card")).toContainText("上游连接超时");
+  expect(f.errors).toEqual([]);
+});
+
 for (const width of [1440, 390]) test(`guided expansion uses the chosen geometry without language optimization at ${width}px`, async ({ page }, info) => {
   const f = await fixture(page);
   let languageRequests = 0;

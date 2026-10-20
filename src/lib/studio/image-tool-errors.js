@@ -11,5 +11,10 @@ const messages = {
 };
 
 export function imageToolErrorMessage(code, zh = true) {
+  if (/^(PROVIDER_TIMEOUT|PROVIDER_RESULT_UNAVAILABLE|PROVIDER_RESULT_UNKNOWN)(:|$)/.test(code || "")) {
+    const timeout = /PROVIDER_TIMEOUT|HTTP (408|504|524)|TIMEOUT/i.test(code);
+    return zh ? timeout ? "上游连接超时，未收到结果，本次不扣积分。请重试。" : "连接中断，未收到结果，本次不扣积分。请重试。"
+      : timeout ? "The upstream timed out without a result. No credits were charged. Please retry." : "The connection ended without a result. No credits were charged. Please retry.";
+  }
   return messages[code]?.[zh ? 0 : 1] || code;
 }

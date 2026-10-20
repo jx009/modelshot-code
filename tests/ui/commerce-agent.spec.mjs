@@ -133,6 +133,77 @@ test("product uploads send original bytes directly to COS and only metadata to t
   expect(proxyUploads).toBe(0);
 });
 
+for (const [width, theme, fail] of [[1440, "light", false], [390, "dark", true]]) test(`planning animation follows the real request at ${width}px`, async ({ page }, info) => {
+  await fixture(page);
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  let requests = 0;
+  await page.route("**/api/commerce/plan", async route => {
+    requests++;
+    await gate;
+    if (fail) return route.fulfill({ status: 503, json: { code: "REQUEST_IN_PROGRESS" } });
+    return route.fallback();
+  });
+  try {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/zh/commerce");
+    await page.evaluate(theme => document.documentElement.setAttribute("data-theme", theme), theme);
+    await page.getByLabel("上传商品原图", { exact: true }).setInputFiles("public/inspiration/chair.webp");
+    await page.getByLabel("产品名称", { exact: true }).fill(brief.product);
+    await page.getByLabel("产品事实与要求").fill(brief.description);
+    await page.getByRole("button", { name: "开始策划", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "正在策划套图", exact: true });
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText("好想法，正在成形");
+    await expect(dialog).toContainText(brief.product);
+    await expect(dialog.locator("img")).toBeVisible();
+    expect(await dialog.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+    await expect(dialog).toHaveCSS("opacity", "1");
+    await page.screenshot({ path: info.outputPath(`planning-${theme}-${width}.png`) });
+    await page.getByRole("button", { name: "收起，继续等待", exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "开始策划", exact: true })).toBeDisabled();
+    await page.getByRole("button", { name: "查看进度", exact: true }).click();
+    await expect(dialog).toBeVisible();
+    expect(requests).toBe(1);
+    release();
+    await expect(dialog).toHaveCount(0);
+    if (fail) {
+      await expect(page.locator('.ca-notice[role="alert"]')).toContainText("这次策划仍在处理中");
+      await expect(page.getByRole("button", { name: "恢复上次请求", exact: true })).toBeEnabled();
+    } else await expect(page.locator(".ca-card")).toHaveCount(3);
+  } finally { release(); }
+});
+
+test("a stalled plan stops loading and recovery reuses its request key", async ({ page }) => {
+  await fixture(page);
+  const keys = [];
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  await page.route("**/api/commerce/plan", async route => {
+    keys.push(route.request().headers()["idempotency-key"]);
+    if (keys.length === 1) { await gate; return route.abort(); }
+    return route.fallback();
+  });
+  try {
+    await page.goto("/zh/commerce");
+    await page.clock.install();
+    await page.getByLabel("上传商品原图", { exact: true }).setInputFiles("public/inspiration/chair.webp");
+    await page.getByLabel("产品名称", { exact: true }).fill(brief.product);
+    await page.getByLabel("产品事实与要求").fill(brief.description);
+    await page.getByRole("button", { name: "开始策划", exact: true }).click();
+    await expect.poll(() => keys.length).toBe(1);
+    await page.clock.fastForward(31000);
+    await expect(page.getByRole("dialog", { name: "正在策划套图", exact: true })).toContainText("无需重复提交");
+    await page.clock.fastForward(90000);
+    await expect(page.getByRole("dialog", { name: "正在策划套图", exact: true })).toHaveCount(0);
+    await expect(page.locator('.ca-notice[role="alert"]')).toContainText("读取超时");
+    await page.getByRole("button", { name: "恢复上次请求", exact: true }).click();
+    await expect(page.locator(".ca-card")).toHaveCount(3);
+    expect(keys).toHaveLength(2); expect(keys[1]).toBe(keys[0]);
+  } finally { release(); }
+});
+
 test("opening the canvas bypasses a stalled result save and recovers completed commerce images", async ({ page }) => {
   const f = await fixture(page, { preloaded: true, blockResultSync: true });
   const errors = []; page.on("pageerror", error => errors.push(error.message));

@@ -11,6 +11,7 @@ import CaseArtwork from "@/components/discover/CaseArtwork";
 import ModelPicker from "@/components/ui/ModelPicker";
 import ImageSizePicker from "@/components/ui/ImageSizePicker";
 import Modal from "@/components/ui/Modal";
+import PlanningLoader from "./PlanningLoader";
 import { CASES, getCase } from "@/lib/commerce/catalog";
 import { normalizeBrief } from "@/lib/commerce/schema-client";
 import { commerceContent } from "@/lib/commerce/project";
@@ -38,6 +39,7 @@ export default function CommerceStudio({ caseId = "", description = "", document
   const [message, setMessage] = useState(""), [target, setTarget] = useState(null), [busy, setBusy] = useState(""), [notice, setNotice] = useState("");
   const [projects, setProjects] = useState(null), [ready, setReady] = useState(false), [showFacts, setShowFacts] = useState(false);
   const [recoverable, setRecoverable] = useState(false);
+  const [planningView, setPlanningView] = useState({ open: false, startedAt: 0 });
   const [selectedSections, setSelectedSections] = useState(null), [editingSection, setEditingSection] = useState(null);
   const lock = useRef(false), pending = useRef(null), syncFailed = useRef(null), files = useRef({}), chatEnd = useRef(null);
   const storageKey = `modelshot-commerce-agent:${session?.user?.id || "guest"}`;
@@ -184,9 +186,10 @@ export default function CommerceStudio({ caseId = "", description = "", document
       if (pending.current?.fingerprint !== fingerprint) pending.current = { fingerprint, key: requestKey(), body };
       try { sessionStorage.setItem(pendingKey, JSON.stringify(pending.current)); } catch { /* In-memory replay still works. */ }
       let result;
-      try { result = await api("/api/commerce/plan", { method: "POST", key: pending.current.key, body }); }
+      if (!reviewJobId) setPlanningView({ open: true, startedAt: Date.now() });
+      try { result = await api("/api/commerce/plan", { method: "POST", key: pending.current.key, body, timeoutMs: 120000 }); }
       catch (e) {
-        const canRecover = !e.code || ["REQUEST_IN_PROGRESS", "REQUEST_FAILED", "INTERNAL_ERROR", "DOCUMENT_VERSION_CONFLICT"].includes(e.code);
+        const canRecover = !e.code || ["REQUEST_TIMEOUT", "REQUEST_IN_PROGRESS", "REQUEST_FAILED", "INTERNAL_ERROR", "DOCUMENT_VERSION_CONFLICT"].includes(e.code);
         setRecoverable(canRecover);
         if (!canRecover) { pending.current = null; try { sessionStorage.removeItem(pendingKey); } catch { /* Optional cache. */ } }
         throw e;
@@ -269,6 +272,7 @@ export default function CommerceStudio({ caseId = "", description = "", document
   const facts = <div className="ca-facts"><div className="ca-uploads">{[["product", "商品原图", "Product image"], ["reference", "风格参考", "Style reference"]].map(([kind, cn, en]) => <div key={kind}><button type="button" disabled={disabled || Boolean(doc)} onClick={() => files.current[kind]?.click()} aria-label={zh ? cn : en}>{sources[kind] ? <Image unoptimized src={previewUrl(sources[kind].assetId, 640)} width={120} height={100} alt={zh ? cn : en} /> : <ImagePlus size={23} />}<span>{zh ? cn : en}</span></button>{sources[kind] && !doc && <button type="button" className="ca-remove" aria-label={t("移除", "Remove ") + (zh ? cn : en)} onClick={() => setSources(s => ({ ...s, [kind]: null }))}><X size={12} /></button>}<input hidden type="file" accept="image/png,image/jpeg,image/webp" aria-label={t("上传", "Upload ") + (zh ? cn : en.toLowerCase())} ref={el => { files.current[kind] = el; }} onChange={e => { upload(kind, e.target.files[0]); e.target.value = ""; }} /></div>)}</div><div className="ca-fields">{[["product", "产品名称", "Product", 80], ["brand", "品牌", "Brand", 60]].map(([key, cn, en, max]) => <label key={key}>{zh ? cn : en}<input maxLength={max} value={brief[key]} disabled={disabled} onChange={e => setBrief(b => ({ ...b, [key]: e.target.value }))} /></label>)}</div><div className="ca-fields three">{[["platform", "平台", "Platform", [["taobao", "淘宝 / 天猫"], ["amazon", "Amazon A+"], ["shopify", "Shopify"]]], ["region", "市场", "Market", [["CN", "中国"], ["US", "US"], ["EU", "EU"]]], ["language", "语言", "Language", [["zh", "中文"], ["en", "English"]]]].map(([key, cn, en, options]) => <label key={key}>{zh ? cn : en}<select aria-label={zh ? cn : en} disabled={disabled} value={brief[key]} onChange={e => setBrief(b => ({ ...b, [key]: e.target.value }))}>{options.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>)}</div><div className="ca-fields"><label>{t("视觉方向", "Art direction")}<select aria-label={t("视觉方向", "Art direction")} disabled={disabled} value={brief.style} onChange={e => setBrief(b => ({ ...b, style: e.target.value }))}><option value="natural">{t("自然生活方式", "Natural lifestyle")}</option><option value="editorial">{t("品牌杂志风", "Editorial")}</option><option value="studio">{t("干净棚拍", "Clean studio")}</option></select></label><label>{t("图片数量", "Image count")}<select aria-label={t("图片数量", "Image count")} disabled={disabled || Boolean(sections.length)} value={brief.imageCount || 0} onChange={e => setBrief(b => ({ ...b, imageCount: Number(e.target.value) }))}><option value={0}>{t("由需求决定", "Based on brief")}</option>{Array.from({ length: 10 }, (_, i) => <option key={i} value={i + 1}>{i + 1}</option>)}</select></label></div><label>{t("产品事实与要求", "Product facts & requirements")}<textarea rows={3} maxLength={2400} value={brief.description} disabled={disabled} onChange={e => setBrief(b => ({ ...b, description: e.target.value }))} placeholder={t("告诉我真实卖点、受众和想要的感觉…", "Verified features, audience and desired feeling…")} /></label></div>;
 
   return <main className={`cm-workspace ca-workspace ${doc ? "ca-has-project" : ""}`}>
+    {busy === "plan" && (planningView.open ? <PlanningLoader product={brief.product} assetId={sources.product?.assetId} startedAt={planningView.startedAt} zh={zh} onClose={() => setPlanningView(v => ({ ...v, open: false }))} /> : <div className="ca-planning-reopen" role="status"><span><LoaderCircle size={16} className="ca-spin" />{t("正在策划套图，请稍候…", "Planning your collection…")}</span><button className="ca-button" onClick={() => setPlanningView(v => ({ ...v, open: true }))}>{t("查看进度", "View progress")}</button></div>)}
     <header className="ca-header"><div><span className="ca-eyebrow">COMMERCE STUDIO</span><h1>{doc?.name || t("为你的产品，设计一整套表达。", "A complete visual story for your product.")}</h1></div><div><button className="ca-button" disabled={disabled} onClick={() => action("projects", async () => setProjects(await api("/api/studio/documents?kind=commerce")))}><FolderOpen size={16} />{t("项目", "Projects")}</button>{doc && <button className="ca-button" disabled={disabled} onClick={newProject}><Plus size={16} />{t("新建", "New")}</button>}</div></header>
     {notice && <div role="alert" className="ca-notice">{notice}<button aria-label={t("关闭提示", "Dismiss")} onClick={() => setNotice("")}><X size={16} /></button></div>}
     {recoverable && <div className="ca-notice"><span>{t("上次请求未确认完成，可以取回同一次请求的结果。", "The last request was not confirmed. Recover that request without submitting a new one.")}</span><button className="ca-button" disabled={disabled} onClick={() => turn({ recover: true })}>{t("恢复上次请求", "Recover request")}</button></div>}

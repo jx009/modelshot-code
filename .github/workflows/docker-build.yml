@@ -12,6 +12,9 @@ permissions:
 env:
   IMAGE: ${{ vars.DOCKERHUB_IMAGE }}
   BUILD_TAG: build-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+  # Pull the official Node image from ECR Public, independently of Docker Hub's
+  # pull quota. Pin the multi-arch index so both runners use the same release.
+  NODE_IMAGE: public.ecr.aws/docker/library/node:22.23.2-bookworm-slim@sha256:48e4b67d85f87bd551df43704e24d252f56cc5f8e9718841aace50f19948f0f9
 
 concurrency:
   group: docker-publish-${{ github.ref }}
@@ -118,6 +121,7 @@ jobs:
           push: true
           tags: ${{ env.IMAGE }}:${{ env.BUILD_TAG }}-${{ matrix.arch }}
           build-args: |
+            NODE_IMAGE=${{ env.NODE_IMAGE }}
             NEXT_DEPLOYMENT_ID=${{ env.BUILD_TAG }}
             NEXT_STATIC_ASSET_NAMESPACE=${{ env.BUILD_TAG }}-${{ matrix.arch }}
           labels: ${{ steps.meta.outputs.labels }}

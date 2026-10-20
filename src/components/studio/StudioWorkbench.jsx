@@ -24,6 +24,7 @@ import { maskHash as hashMask } from "@/lib/studio/mask-hash";
 import { promptTitle } from "@/lib/studio/project-title";
 import { useStudioProject } from "./useStudioProject";
 import StudioActivity from "./StudioActivity";
+import StudioTaskPopover from "./StudioTaskPopover";
 import StudioMessageHistory from "./StudioMessageHistory";
 import StudioImageViewer from "./StudioImageViewer";
 import "./generation-price.css";
@@ -625,6 +626,11 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
         {saveState === "conflict" && <div className="ms-save-conflict" role="alert"><span>{t("云端项目已更新，本地修改已保留", "The cloud project changed. Your local edits are preserved.")}</span><button onClick={() => save(true).catch(notify)}>{t("另存为新项目", "Save as new project")}</button><button onClick={() => reloadCloud().catch(notify)}>{t("打开云端版本", "Open cloud version")}</button></div>}
         <StudioActivity key={draft.createKey} jobs={jobs} pending={pendingTask} appliedJobs={draft.appliedJobs} resultStates={resultStates} zh={zh}
           onRetry={retryResult} onCancel={cancelJob} />
+        <StudioTaskPopover key={`${draft.createKey}:${draft.id || "new"}`} documentId={draft.id} jobs={jobs} pending={pendingTask} appliedJobs={draft.appliedJobs} resultStates={resultStates} zh={zh}
+          onRetry={retryResult} onCancel={cancelJob} onViewText={openOcr} onLocate={job => {
+            const layer = draft.layers.find(item => item.sourceJobId === job.id && item.visible);
+            if (layer) { selectLayer(layer.id); setMobileChat(false); canvas.current?.focusLayer(layer.id); }
+          }} />
         {chatCollapsed && <button className="ms-icon ms-chat-restore" title={t("展开聊天", "Open chat")} onClick={() => { setChatCollapsed(false); setMobileChat(true); }}><PanelLeftOpen size={18} /></button>}
         <Canvas ref={canvas} projectKey={draft.createKey} readOnly={!ready} ocrEntries={ocrEntries} onOpenOcr={openOcr} onUsePrompt={useTextPrompt} layers={draft.layers} selectedId={selectedId} selectedIds={effectiveSelection} onSelect={selectLayer} onChange={commitLayers} mode={mode} brushSize={brush}
           selectionTool={toolId} editPadding={params.editPadding} focusPoints={params.focusPoints || []} onFocusPoint={addFocus} adjustmentPreview={toolId === "adjust" ? (compareOriginal ? {} : adjustments) : null}

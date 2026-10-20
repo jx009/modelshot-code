@@ -21,7 +21,8 @@ fi
 
 metadata=$(mktemp)
 trap 'rm -f "$metadata"' EXIT
-docker buildx imagetools create --metadata-file "$metadata" "${args[@]}" "$@"
+script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+bash "$script_dir/retry-registry.sh" docker buildx imagetools create --metadata-file "$metadata" "${args[@]}" "$@"
 # Use the merged index digest, never a child manifest or image config digest.
 digest=$(python3 - "$metadata" <<'PY'
 import json
@@ -47,10 +48,10 @@ if cosign verify \
   echo "Already signed by this workflow: $ref"
 else
   # All public tags share this index. Sign it once; genuine signing errors fail.
-  cosign sign --yes "$ref"
+  bash "$script_dir/retry-registry.sh" cosign sign --yes "$ref"
 fi
 
 while IFS= read -r tag; do
   [[ -z "$tag" ]] && continue
-  docker buildx imagetools inspect "$tag" >> "$GITHUB_STEP_SUMMARY"
+  bash "$script_dir/retry-registry.sh" docker buildx imagetools inspect "$tag" >> "$GITHUB_STEP_SUMMARY"
 done <<< "$TAGS"

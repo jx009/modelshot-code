@@ -12,9 +12,6 @@ permissions:
 env:
   IMAGE: ${{ vars.DOCKERHUB_IMAGE }}
   BUILD_TAG: build-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
-  # Pull the official Node image from ECR Public, independently of Docker Hub's
-  # pull quota. Pin the multi-arch index so both runners use the same release.
-  NODE_IMAGE: public.ecr.aws/docker/library/node:22.23.2-bookworm-slim@sha256:48e4b67d85f87bd551df43704e24d252f56cc5f8e9718841aace50f19948f0f9
 
 concurrency:
   group: docker-publish-${{ github.ref }}
@@ -102,7 +99,6 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           ref: ${{ github.sha }}
-      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
       - name: Image labels
         id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
@@ -113,6 +109,16 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+      - name: Install registry transfer tool
+        run: sudo apt-get update && sudo apt-get install -y skopeo
+      - name: Download pinned Node base with registry fallback
+        id: node-base
+        timeout-minutes: 22
+        env:
+          ARCH: ${{ matrix.arch }}
+          BASE_DIRECTORY: ${{ runner.temp }}/node-base
+        run: bash scripts/prepare-node-base.sh "$ARCH" "$BASE_DIRECTORY"
       - name: Build architecture image locally
         id: build
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
@@ -121,8 +127,11 @@ jobs:
           platforms: ${{ matrix.platform }}
           outputs: type=oci,dest=${{ runner.temp }}/modelshot-image.tar
           tags: ${{ env.IMAGE }}:${{ env.BUILD_TAG }}-${{ matrix.arch }}
+          # BuildKit reads the verified local OCI content, not a remote registry.
+          build-contexts: |
+            node-base=${{ steps.node-base.outputs.context }}
           build-args: |
-            NODE_IMAGE=${{ env.NODE_IMAGE }}
+            NODE_IMAGE=node-base
             NEXT_DEPLOYMENT_ID=${{ env.BUILD_TAG }}
             NEXT_STATIC_ASSET_NAMESPACE=${{ env.BUILD_TAG }}-${{ matrix.arch }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -130,8 +139,6 @@ jobs:
           cache-to: type=gha,scope=modelshot-${{ matrix.arch }},mode=max,ignore-error=true
           provenance: mode=max
           sbom: true
-      - name: Install registry transfer tool
-        run: sudo apt-get update && sudo apt-get install -y skopeo
       - name: Push exact build output with backoff
         env:
           ARCHIVE: ${{ runner.temp }}/modelshot-image.tar
@@ -168,12 +175,12 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           ref: ${{ github.sha }}
-      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
       - name: Log in to Docker Hub
         uses: docker/login-action@c99871dec2022cc055c062a10cc1a1310835ceb4 # v4.3.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
       - name: Build tools architecture image locally
         id: build
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
@@ -264,11 +271,11 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           ref: ${{ github.sha }}
-      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
       - uses: docker/login-action@c99871dec2022cc055c062a10cc1a1310835ceb4 # v4.3.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
       - name: Resolve public tags
         id: meta

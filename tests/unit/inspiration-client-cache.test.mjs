@@ -6,28 +6,92 @@ async function fixture() {
   vi.resetModules();
   const storage = new Map();
   vi.stubGlobal("sessionStorage", { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value) });
+  const persistent = new Map();
+  vi.stubGlobal("localStorage", { getItem: key => persistent.get(key), setItem: (key, value) => persistent.set(key, value) });
   return import("../../src/lib/inspiration/client-cache.js");
 }
 const gallery = { items: [], layout: { mode: "masonry", columns: 4, gap: 16 } };
 
-test("gallery metadata survives a reload but expires after five minutes", async () => {
+test("gallery metadata survives a reload without a time-based display cutoff", async () => {
   const first = await fixture();
   first.writeGalleryCache(gallery, 1000);
   vi.resetModules();
   const reloaded = await import("../../src/lib/inspiration/client-cache.js");
   expect(reloaded.readGalleryCache(2000)).toEqual(gallery);
-  expect(reloaded.readGalleryCache(301000)).toBeNull();
+  expect(reloaded.readGalleryCache(301000)).toEqual(gallery);
+  expect(reloaded.readGalleryCache(1800999)).toEqual(gallery);
+  expect(reloaded.readGalleryCache(1801000)).toEqual(gallery);
+  expect(reloaded.readGalleryCache(86401000)).toEqual(gallery);
+  expect(reloaded.readGalleryCache(30 * 86400000 + 1000)).toEqual(gallery);
 });
-test("cached COS links are not displayed near or after signature expiry", async () => {
+test.each([31000, 61000, 601000])("expired COS links are removed without discarding public metadata at %i", async now => {
+  const cache = await fixture();
+  const item = { id: "public-cover", title: "Example", cover: { type: "asset", assetId: "cover-asset" }, imageUrl: "https://images.invalid/original?sign=1", thumbnailUrl: "https://images.invalid/thumbnail?sign=1" };
+  const signed = { ...gallery, items: [item], deliveryExpiresAt: 61000 };
+  cache.writeGalleryCache(signed, 1000);
+  expect(cache.readGalleryCache(30999)).toEqual(signed);
+  vi.resetModules();
+  const reloaded = await import("../../src/lib/inspiration/client-cache.js");
+  const cached = reloaded.readGalleryCache(now);
+  expect(cached).toEqual({ ...gallery, items: [{ id: item.id, title: item.title, cover: item.cover }] });
+  expect(signed.items[0].imageUrl).toBe(item.imageUrl);
+  expect(JSON.parse(sessionStorage.getItem("letaidraw:inspiration:v1"))).toEqual({ gallery: signed, savedAt: 1000 });
+  expect(reloaded.readGalleryCache(1801000)).toEqual(cached);
+});
+test("a background refresh replaces stale metadata with fresh signed links", async () => {
   const cache = await fixture();
   cache.writeGalleryCache({ ...gallery, deliveryExpiresAt: 61000 }, 1000);
-  expect(cache.readGalleryCache(2000)).not.toBeNull();
-  expect(cache.readGalleryCache(31000)).toBeNull();
+  expect(cache.readGalleryCache(61000)).toEqual(gallery);
+  const fresh = { ...gallery, items: [{ id: "updated", imageUrl: "https://images.invalid/original?sign=2", thumbnailUrl: "https://images.invalid/thumbnail?sign=2" }], deliveryExpiresAt: 361000 };
+  cache.writeGalleryCache(fresh, 61000);
+  expect(cache.readGalleryCache(62000)).toEqual(fresh);
+});
+test("cached metadata is rejected when the clock moves backwards", async () => {
+  const cache = await fixture();
+  cache.writeGalleryCache(gallery, 1000);
+  expect(cache.readGalleryCache(999)).toBeNull();
 });
 test("blocked browser storage still allows in-memory navigation reuse", async () => {
   const cache = await fixture();
   vi.stubGlobal("sessionStorage", { getItem() { throw new Error("blocked"); }, setItem() { throw new Error("blocked"); } });
+  vi.stubGlobal("localStorage", { getItem() { throw new Error("blocked"); }, setItem() { throw new Error("blocked"); } });
   expect(cache.readGalleryCache(1000)).toBeNull();
   cache.writeGalleryCache(gallery, 1000);
   expect(cache.readGalleryCache(2000)).toEqual(gallery);
+});
+
+test("a new session restores only public metadata without persisted COS signatures", async () => {
+  const cache = await fixture();
+  const item = { id: "public-cover", cover: { type: "asset", assetId: "cover-asset" }, imageUrl: "https://images.invalid/original?sign=1", thumbnailUrl: "https://images.invalid/thumbnail?sign=1" };
+  cache.writeGalleryCache({ ...gallery, items: [item], deliveryExpiresAt: 61000 }, 1000);
+  const snapshot = { ...gallery, items: [{ id: item.id, cover: item.cover }] };
+  expect(JSON.parse(localStorage.getItem("letaidraw:inspiration:v1"))).toEqual({ gallery: snapshot, savedAt: 1000 });
+  vi.stubGlobal("sessionStorage", { getItem: () => null });
+  vi.resetModules();
+  const reloaded = await import("../../src/lib/inspiration/client-cache.js");
+  expect(reloaded.readGalleryCache(86401000)).toEqual(snapshot);
+});
+
+test("newer persistent metadata wins over an old in-memory snapshot", async () => {
+  const cache = await fixture();
+  cache.writeGalleryCache({ ...gallery, items: [{ id: "removed" }] }, 1000);
+  localStorage.setItem("letaidraw:inspiration:v1", JSON.stringify({ gallery, savedAt: 2000 }));
+  expect(cache.readGalleryCache(3000)).toEqual(gallery);
+});
+
+test.each(["broken JSON", JSON.stringify({ gallery, savedAt: "1000" }), JSON.stringify({ gallery, savedAt: 9000 })])("invalid session entries do not hide valid persistent metadata: %s", async invalid => {
+  await fixture();
+  sessionStorage.setItem("letaidraw:inspiration:v1", invalid);
+  localStorage.setItem("letaidraw:inspiration:v1", JSON.stringify({ gallery, savedAt: 1000 }));
+  vi.resetModules();
+  const cache = await import("../../src/lib/inspiration/client-cache.js");
+  expect(cache.readGalleryCache(2000)).toEqual(gallery);
+});
+
+test("a successful empty response replaces the old public snapshot", async () => {
+  const cache = await fixture();
+  cache.writeGalleryCache({ ...gallery, items: [{ id: "removed" }] }, 1000);
+  cache.writeGalleryCache(gallery, 2000);
+  expect(cache.readGalleryCache(3000)).toEqual(gallery);
+  expect(JSON.parse(localStorage.getItem("letaidraw:inspiration:v1"))).toEqual({ gallery, savedAt: 2000 });
 });

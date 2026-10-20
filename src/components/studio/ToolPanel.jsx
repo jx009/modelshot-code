@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import Image from "@/components/studio/AssetImage";
 import { X, RotateCcw, Paintbrush, LoaderCircle, ImageIcon } from "lucide-react";
 import CropControls from "./CropControls";
 import { previewUrl } from "@/lib/studio/image-url";

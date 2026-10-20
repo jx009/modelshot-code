@@ -3,7 +3,7 @@ import CreditIcon from "@/components/ui/CreditIcon";
 import { imageCreditCost } from "@/lib/studio/image-pricing";
 
 import dynamic from "next/dynamic";
-import Image from "next/image";
+import Image from "@/components/studio/AssetImage";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRecharge } from "@/components/billing/RechargeProvider";
@@ -58,6 +58,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
     const code = typeof error === "string" ? error : error?.code || error?.message || "UNKNOWN_ERROR";
     if (code === "SESSION_CLOSED") return;
     const descriptions = {
+      REQUEST_TIMEOUT: t("读取超时，请稍后重试；已提交的任务不会因此取消。", "The request timed out. Try again; submitted jobs are not cancelled."),
       LOCAL_SAVE_FAILED: t("本地保存失败，请保持页面打开并重试云端保存。", "Local save failed. Keep this page open and retry saving to the cloud."),
       DOCUMENT_SAVE_UNAVAILABLE: t("画布暂未同步到云端，已自动重试。请保留当前页面，稍后点击保存重试。", "Canvas sync is temporarily unavailable after automatic retries. Keep this page open and retry saving shortly."),
       DOCUMENT_SAVE_TOO_LARGE: t("画布保存请求超过服务器大小限制，请保留当前页面并联系管理员检查上传限制。", "The canvas exceeds the server request size limit. Keep this page open and ask an admin to check upload limits."),

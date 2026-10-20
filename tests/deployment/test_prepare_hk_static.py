@@ -92,6 +92,44 @@ class ReleaseStaticTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Invalid"):
                 stager.prepare(self.root, self.bundle, "build-abc-123-1", namespace)
 
+    def test_public_images_are_allowlisted_and_versioned(self):
+        for release, content in [("build-abc-123-1", b"old"), ("build-def-124-1", b"new")]:
+            source, namespace = self.image(release, "amd64", b"manifest")
+            for filename in ["studio/scene-03.webp", "inspiration/generated/example.webp", "inspiration/sources.json", "uploads/private.webp"]:
+                image = source / "public" / filename
+                image.parent.mkdir(parents=True, exist_ok=True)
+                image.write_bytes(content)
+            stager.prepare(source, self.bundle, release, namespace)
+            target = self.bundle / "public-releases" / release
+            self.assertEqual((target / "studio/scene-03.webp").read_bytes(), content)
+            self.assertEqual((target / "inspiration/generated/example.webp").read_bytes(), content)
+            self.assertFalse((target / "inspiration/sources.json").exists())
+            self.assertFalse((target / "uploads/private.webp").exists())
+        self.assertEqual((self.bundle / "public-releases/build-abc-123-1/studio/scene-03.webp").read_bytes(), b"old")
+
+    def test_public_images_reject_symlinks_and_unsafe_release_ids(self):
+        source, namespace = self.image("build-abc-123-1", "amd64", b"manifest")
+        studio = source / "public/studio"
+        studio.mkdir(parents=True)
+        (studio / "secret.webp").symlink_to(source / "server.js")
+        with self.assertRaisesRegex(ValueError, "Symlink"):
+            stager.prepare(source, self.bundle, "build-abc-123-1", namespace)
+        with self.assertRaisesRegex(ValueError, "Invalid deployment"):
+            stager.prepare(source, self.bundle, "../escape", namespace)
+
+    def test_same_release_public_image_changes_fail(self):
+        release = "build-abc-123-1"
+        for arch, content in [("amd64", b"first"), ("arm64", b"changed")]:
+            source, namespace = self.image(release, arch, b"manifest")
+            image = source / "public/studio/scene.webp"
+            image.parent.mkdir(parents=True)
+            image.write_bytes(content)
+            if arch == "amd64":
+                stager.prepare(source, self.bundle, release, namespace)
+            else:
+                with self.assertRaisesRegex(ValueError, "Immutable asset conflict"):
+                    stager.prepare(source, self.bundle, release, namespace)
+
 
 if __name__ == "__main__":
     unittest.main()

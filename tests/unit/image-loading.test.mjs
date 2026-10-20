@@ -85,6 +85,24 @@ it("loads private canvas images with CORS and falls back to same-origin on COS f
   await started[1].onload(); expect(await task).toBe(started[1]);
 });
 
+it("downloads an authorized batch link directly and retries the canonical source only once", async () => {
+  const { setAssetDeliveryUser, assetDeliveryEpoch, consumeAssetDelivery } = await import("../../src/lib/studio/asset-delivery.js");
+  setAssetDeliveryUser("owner");
+  const src = "/api/assets/batch-fixture?preview=1280";
+  const url = "https://fixture-1250000000.cos.ap-hongkong.myqcloud.com/private/1280.webp?signature=fixture";
+  consumeAssetDelivery({ assetDelivery: { userId: "owner", expiresAt: Date.now() + 60000, items: [{ assetId: "batch-fixture", variant: 1280, url }] } }, assetDeliveryEpoch());
+  const task = loadImage(src, { signal: controller().signal }).catch(error => error.message);
+  await flush();
+  expect(started[0].url).toBe(url);
+  expect(started[0].crossOrigin).toBe("anonymous");
+  started[0].onerror(); await flush();
+  expect(started[1].url).toBe(src + "&delivery=proxy");
+  started[1].onerror(); await flush();
+  expect(await task).toBe("IMAGE_LOAD_FAILED");
+  expect(started).toHaveLength(2);
+  setAssetDeliveryUser(null);
+});
+
 it("only exposes fully decoded images and reuses the exact image without another download", async () => {
   expect(getCachedImage("preview")).toBeNull();
   expect(started).toHaveLength(0);

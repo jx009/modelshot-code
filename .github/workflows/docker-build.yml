@@ -203,6 +203,9 @@ jobs:
             container=$(docker create --platform "linux/$arch" "$image")
             mkdir -p "extracted-$arch/static"
             docker cp "$container:/app/.next/static/." "extracted-$arch/static/"
+            mkdir -p "extracted-$arch/public"
+            docker cp "$container:/app/public/studio" "extracted-$arch/public/studio"
+            docker cp "$container:/app/public/inspiration" "extracted-$arch/public/inspiration"
             docker cp "$container:/app/.next/required-server-files.json" "extracted-$arch/required-server-files.json"
             docker rm "$container"
             python3 scripts/prepare-hk-static.py "extracted-$arch" hk-static \

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import sharp from "sharp";
 import { COS_DEFAULTS, cosConfigSchema, cosConfigView, cosTargetId, mergeCosConfig } from "../../src/lib/infra/storage/cos-config.js";
 import { cosStorage, testCosConnection } from "../../src/lib/infra/storage/cos.js";
-import { assetDeliveryUrl, cosAssetKey, enqueueCosAsset, processCosAsset, removeCosAsset } from "../../src/lib/domain/assets/cos-delivery.js";
+import { assetDeliveryUrl, assetDeliveryBatch, cosAssetKey, documentAssetIds, enqueueCosAsset, processCosAsset, removeCosAsset } from "../../src/lib/domain/assets/cos-delivery.js";
 
 const config = { ...COS_DEFAULTS, enabled: true, bucket: "fixture-1250000000", secretId: "fixture-id", secretKey: "fixture-secret" };
 const asset = { id: "asset-fixture-0001", userId: "owner", checksum: "checksum", objectKey: "owner/upload/fixture.png", contentType: "image/png", status: "active" };
@@ -42,6 +42,37 @@ describe("COS configuration and credentials", () => {
 });
 
 describe("private replica delivery", () => {
+  it("batch signs only owned, active images and matching receipts with one scoped query", async () => {
+    const key = cosAssetKey(config, asset, 320);
+    const other = { ...asset, id: "other-image", userId: "other-user" };
+    const db = { assetDelivery: { findMany: vi.fn(async () => [
+      { assetId: asset.id, variant: 320, objectKey: key, asset },
+      { assetId: asset.id, variant: 640, objectKey: "old-key", asset },
+      { assetId: other.id, variant: 320, objectKey: cosAssetKey(config, other, 320), asset: other },
+    ]) } };
+    const store = { signedUrl: vi.fn(async () => "https://fixture/signed") };
+    const result = await assetDeliveryBatch(asset.userId, [asset.id, asset.id, other.id], [320, 640], { config, db, store, now: 1000 });
+    expect(db.assetDelivery.findMany).toHaveBeenCalledOnce();
+    expect(db.assetDelivery.findMany.mock.calls[0][0].where).toEqual({ assetId: { in: [asset.id, other.id] }, targetId: cosTargetId(config), variant: { in: [320, 640] }, asset: { userId: asset.userId, status: "active", contentType: { startsWith: "image/" } } });
+    expect(result).toEqual({ userId: asset.userId, expiresAt: 301000, items: [{ assetId: asset.id, variant: 320, url: "https://fixture/signed" }] });
+    expect(store.signedUrl).toHaveBeenCalledOnce();
+  });
+  it("skips disabled or empty batches and degrades optional delivery failures to source", async () => {
+    const db = { assetDelivery: { findMany: vi.fn(async () => { throw new Error("offline"); }) } };
+    expect(await assetDeliveryBatch(asset.userId, [], [320], { config, db })).toBeNull();
+    expect(await assetDeliveryBatch(asset.userId, [asset.id], [320], { config: { ...config, enabled: false }, db })).toBeNull();
+    expect(db.assetDelivery.findMany).not.toHaveBeenCalled();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(await assetDeliveryBatch(asset.userId, [asset.id], [320], { config, db })).toBeNull();
+  });
+  it("bounds signing batches and extracts asset IDs without changing document contents", async () => {
+    const db = { assetDelivery: { findMany: vi.fn(async () => []) } };
+    await assetDeliveryBatch(asset.userId, Array.from({ length: 300 }, (_, index) => `asset-${index}`), [320], { config, db });
+    expect(db.assetDelivery.findMany.mock.calls[0][0].where.assetId.in).toHaveLength(256);
+    const content = { layers: [{ assetId: "layer" }], messages: [{ assetId: "layer" }, { assetId: "message" }], composer: { referenceIds: ["reference"] }, commerce: { productAssetId: "product", sections: [{ revisionAssetId: "revision" }] } };
+    expect(documentAssetIds(content)).toEqual(["layer", "message", "reference", "product", "revision"]);
+    expect(content.layers).toEqual([{ assetId: "layer" }]);
+  });
   it("returns no URL when disabled, cold, or when the receipt key is wrong", async () => {
     const db = { assetDelivery: { findUnique: vi.fn(async () => null) } };
     const store = { signedUrl: vi.fn() };
@@ -80,6 +111,7 @@ describe("private replica delivery", () => {
     const target = { assertPrivateBucket: vi.fn(), put: vi.fn(async (key, b) => replicas.set(key, b)), delete: vi.fn() };
     await processCosAsset(asset.id, { config, db, source, target });
     expect(replicas.size).toBe(4); expect(originals.size).toBe(4); expect(receipts.size).toBe(4);
+    expect(target.put.mock.calls.map(([key]) => key.split("/").at(-1))).toEqual(["320.webp", "640.webp", "1280.webp", "original.png"]);
     expect(await sharp(replicas.get(cosAssetKey(config, asset, 320))).metadata()).toMatchObject({ width: 320, height: 160, format: "webp" });
     for (const receipt of receipts.values()) receipt.readyAt = new Date("2020-01-01");
     await processCosAsset(asset.id, { config, db, source, target });

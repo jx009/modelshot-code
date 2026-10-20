@@ -6,6 +6,7 @@ import Link from "@/components/ui/NavigationLink";
 import { INSPIRATION_CATEGORIES } from "@/lib/inspiration/presentation";
 import InspirationCover from "./InspirationCover";
 import { readGalleryCache, writeGalleryCache } from "@/lib/inspiration/client-cache";
+import { api } from "@/lib/client-api";
 
 export default function InspirationGallery(props) {
   return <Suspense fallback={null}><Gallery {...props} /></Suspense>;
@@ -22,9 +23,7 @@ function Gallery({ zh, explore }) {
       clearTimeout(timer);
       let delay = 60000;
       try {
-        const res = await fetch("/api/inspiration", { signal: abort.signal });
-        if (!res.ok) throw new Error("Unavailable");
-        const next = await res.json();
+        const next = await api("/api/inspiration", { signal: abort.signal });
         if (abort.signal.aborted) return;
         writeGalleryCache(next);
         setGallery(next); setError(false);
@@ -52,6 +51,7 @@ function Gallery({ zh, explore }) {
     <InspirationCover defer item={item} mode={layout.mode} className="ig-cover" alt={zh ? item.title : item.titleEn || item.title}><span className="ig-use">{zh ? "以此创作" : "Create with this"}<ArrowUpRight size={14} /></span></InspirationCover>
   </Link>;
   return <section className="cr-inspiration ig-section">
+    {error && <p role="status">{zh ? "刷新暂时失败，仍显示上次内容。" : "Refresh failed. Showing the previous content."}<button onClick={() => setReload(value => value + 1)}>{zh ? "重试" : "Try again"}</button></p>}
     <div className="cr-section-heading"><div><h2><Sparkles size={19} />{zh ? "灵感发现" : "Discover inspiration"}<span>{zh ? "让好想法，成为下一件作品" : "Find your next creative direction"}</span></h2></div>{!explore && <Link href="/explore">{zh ? "探索全部" : "Explore all"}<ArrowUpRight size={15} /></Link>}</div>
     <div className="cr-filter-bar"><div className="cr-categories" role="group" aria-label={zh ? "案例分类" : "Case categories"}>{INSPIRATION_CATEGORIES.map(([id, cn, en]) => <button key={id} className={category === id ? "active" : ""} onClick={() => setCategory(id)}>{zh ? cn : en}</button>)}</div><label className="cr-search"><Search size={15} /><input value={query} onChange={e => setQuery(e.target.value)} aria-label={zh ? "搜索灵感" : "Search inspiration"} placeholder={zh ? "搜索作品或提示词" : "Search images or prompts"} /></label></div>
     <div className={`ig-gallery ig-${layout.mode} ig-columns-${layout.columns}`} style={{ "--ig-columns": layout.columns, "--ig-gap": `${layout.gap}px` }}>{visible.map(renderCard)}</div>

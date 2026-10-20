@@ -7,18 +7,18 @@ import { useLocale } from "next-intl";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { Link } from "@/i18n/navigation";
 
-function Feedback({ onPending }) {
+function Feedback({ onPending, destination }) {
   const { pending } = useLinkStatus();
   const zh = useLocale() === "zh";
   const [slow, setSlow] = useState(false);
   useEffect(() => {
     onPending(pending);
     if (!pending) return;
-    const timer = setTimeout(() => setSlow(true), 2000);
+    const timer = setTimeout(() => setSlow(true), 8000);
     return () => { clearTimeout(timer); setSlow(false); };
   }, [pending, onPending]);
   if (!pending) return null;
-  return createPortal(<span className="navigation-progress" role="status">{slow ? zh ? "连接较慢，再次点击可直接打开" : "Slow connection. Click again to open directly." : zh ? "正在打开…" : "Opening…"}</span>, document.body);
+  return createPortal(<span className="navigation-progress" role="status">{slow ? zh ? "页面仍在加载…" : "The page is still loading…" : zh ? "正在打开…" : "Opening…"}{slow && destination && <a href={destination} className="navigation-retry" onClick={event => event.stopPropagation()}>{zh ? "重新打开页面" : "Reload destination"}</a>}</span>, document.body);
 }
 
 // Prefetch a full destination on hover/focus, including dynamic pages. `auto`
@@ -48,6 +48,7 @@ export default function NavigationLink({ children, onNavigate, onClick, onMouseE
     return () => { clearTimeout(timer); if (idle) window.cancelIdleCallback(idle); window.removeEventListener("load", schedule); };
   }, [prefetch, prefetchDelay, intentKey, onPrefetch]);
   const [pending, setPending] = useState(false);
+  const [destinationHref, setDestinationHref] = useState(null);
   useEffect(() => { if (!pending) started.current = 0; }, [pending]);
   return <Link prefetch={fetchMode} {...props} onMouseEnter={event => {
     onMouseEnter?.(event);
@@ -68,13 +69,11 @@ export default function NavigationLink({ children, onNavigate, onClick, onMouseE
       return;
     }
     if (event.currentTarget.href === window.location.href) { event.preventDefault(); return; }
-    if (pending && Date.now() - started.current >= 2000) {
-      event.preventDefault();
-      window.location.assign(event.currentTarget.href);
-    }
+    if (pending) { event.preventDefault(); return; }
+    setDestinationHref(event.currentTarget.href);
   }} onNavigate={event => {
     if (started.current) { event.preventDefault(); return; }
     onNavigate?.(event);
     if (!event.defaultPrevented) started.current = Date.now();
-  }}>{children}<Feedback onPending={setPending} /></Link>;
+  }}>{children}<Feedback onPending={setPending} destination={destinationHref} /></Link>;
 }

@@ -1,13 +1,7 @@
 import { createImageQueue } from "./image-queue.js";
+import { assetImageRequest, resolveAssetImage, forgetAssetDelivery } from "./asset-delivery.js";
+export { assetImageRequest } from "./asset-delivery.js";
 const queueImage = createImageQueue(4);
-
-export function assetImageRequest(src, delivery) {
-  if (typeof src !== "string" || !/^\/api\/assets\/[a-zA-Z0-9_-]+(?:\?|$)/.test(src)) return src;
-  const [path, query = ""] = src.split("?");
-  const params = new URLSearchParams(query);
-  params.set("delivery", delivery);
-  return `${path}?${params}`;
-}
 /**
  * Process large images to prevent memory issues
  * @param {HTMLImageElement} image - Source image
@@ -70,6 +64,7 @@ export function loadImage(src, { signal, timeoutMs = 25000 } = {}) {
         image.decoding = "async";
         // COS responses must be CORS-readable before drawing to/exporting canvas.
         if (typeof src === "string" && src.startsWith("/api/assets/")) image.crossOrigin = "anonymous";
+        if (typeof src === "string" && src.startsWith("/api/assets/")) image.referrerPolicy = "no-referrer";
         let settled = false;
         const timer = setTimeout(() => fail("IMAGE_LOAD_TIMEOUT"), timeoutMs);
         const cleanup = () => { clearTimeout(timer); image.onload = null; image.onerror = null; controller.signal.removeEventListener("abort", abort); };
@@ -81,6 +76,7 @@ export function loadImage(src, { signal, timeoutMs = 25000 } = {}) {
           if (settled) return;
           settled = true;
           cleanup(); image.src = "";
+          forgetAssetDelivery(src);
           if (++attempt < 2) start(); else reject(new Error(code));
         }
         image.onload = async () => {
@@ -94,7 +90,7 @@ export function loadImage(src, { signal, timeoutMs = 25000 } = {}) {
         image.onerror = () => fail("IMAGE_LOAD_FAILED");
         controller.signal.addEventListener("abort", abort, { once: true });
         // An expired/deleted replica or missing bucket CORS falls back to MinIO.
-        image.src = assetImageRequest(src, attempt ? "proxy" : "auto");
+        image.src = attempt ? assetImageRequest(src, "proxy") : resolveAssetImage(src);
       }
       start();
     }), controller.signal);

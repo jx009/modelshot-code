@@ -5,7 +5,7 @@ import { cosStorage } from "../../infra/storage/cos.js";
 import { objectStorage } from "../../infra/storage/s3.js";
 import { imagePreview } from "./preview.js";
 
-export const DELIVERY_VARIANTS = [0, 1280, 640, 320];
+export const DELIVERY_VARIANTS = [320, 640, 1280, 0];
 export function cosAssetKey(config, asset, variant) {
   const id = createHash("sha256").update(`${asset.userId}:${asset.id}:${asset.checksum}`).digest("hex");
   return `${config.prefix}/assets/v1/${id}/${variant ? `${variant}.webp` : "original.png"}`;
@@ -34,6 +34,40 @@ export async function assetDeliveryUrl(asset, variant, { db = prisma, config, st
   const key = cosAssetKey(config, asset, variant);
   if (receipt.objectKey !== key) return null;
   return (store || cosStorage(config)).signedUrl(key);
+}
+
+export async function assetDeliveryBatch(userId, assetIds, variants = DELIVERY_VARIANTS, { db = prisma, config, store, now = Date.now() } = {}) {
+  try {
+    const ids = [...new Set(assetIds.filter(id => typeof id === "string" && id))].slice(0, 256);
+    if (!ids.length) return null;
+    config ||= await getCosConfig(db);
+    if (!config.enabled) return null;
+    const receipts = await db.assetDelivery.findMany({
+      where: { assetId: { in: ids }, targetId: cosTargetId(config), variant: { in: variants },
+        asset: { userId, status: "active", contentType: { startsWith: "image/" } } },
+      select: { assetId: true, variant: true, objectKey: true, asset: { select: { id: true, userId: true, checksum: true } } },
+    });
+    if (!receipts.length) return null;
+    const target = store || cosStorage(config);
+    const items = await Promise.all(receipts.map(async receipt => {
+      if (receipt.asset.userId !== userId || receipt.asset.id !== receipt.assetId || receipt.objectKey !== cosAssetKey(config, receipt.asset, receipt.variant)) return null;
+      return { assetId: receipt.assetId, variant: receipt.variant, url: await target.signedUrl(receipt.objectKey) };
+    }));
+    return { userId, expiresAt: now + config.signedUrlSeconds * 1000, items: items.filter(Boolean) };
+  } catch {
+    console.warn(JSON.stringify({ code: "COS_BATCH_DELIVERY_DEFERRED" }));
+    return null;
+  }
+}
+
+export function documentAssetIds(content) {
+  return [...new Set([
+    ...(content.layers || []).map(layer => layer.assetId),
+    ...(content.messages || []).map(message => message.assetId),
+    ...(content.composer?.referenceIds || []),
+    content.commerce?.productAssetId, content.commerce?.referenceAssetId,
+    ...(content.commerce?.sections || []).map(section => section.revisionAssetId),
+  ].filter(Boolean))];
 }
 
 export async function repairCosAsset(asset, variant, { db = prisma, config } = {}) {

@@ -87,17 +87,20 @@ export async function studioConfig(db = prisma, channelName, capability = "image
 
 export async function capabilities(db = prisma, config, channelName) {
   // One request-local snapshot: no duplicated queries or stale shared credentials.
-  const { rows, settings } = await routingSnapshot(db);
-  const c = config || resolveStudioConfig(rows, settings, channelName);
-  const surcharges = await getResolutionSurcharges(db);
-  const imageModels = rows.filter(row => channelScope(row) === "public" && channelCapability(row) === "image").filter(row => { const parsed = JSON.parse(row.config || "{}"); return Boolean(parsed.apiKeyEnc || row.kind === "openai" && (process.env.OPENAI_API_KEY || process.env.STUDIO_API_KEY)); }).map(row => ({ id: row.name, label: row.displayName, creditCost: row.creditCost ?? 18, resolutionSurcharges: surcharges, maxReferenceImages: supportsImageTask(JSON.parse(row.config || "{}"), "edit") ? 3 : 0 }));
-  let external = [];
-  if (c.toolsURL && c.toolsKey) {
+  const toolsURL = config ? config.toolsURL : process.env.STUDIO_TOOLS_URL;
+  const toolsKey = config ? config.toolsKey : process.env.STUDIO_TOOLS_KEY;
+  const externalRequest = (async () => {
+    if (!toolsURL || !toolsKey) return [];
     try {
-      const res = await fetch(`${c.toolsURL}/capabilities`, { headers: { Authorization: `Bearer ${c.toolsKey}` }, signal: AbortSignal.timeout(2000) });
-      if (res.ok) external = (await res.json()).tools || [];
-    } catch { /* Do not advertise unavailable local inference. */ }
-  }
+      const res = await fetch(`${toolsURL}/capabilities`, { headers: { Authorization: `Bearer ${toolsKey}` }, signal: AbortSignal.timeout(2000) });
+      return res.ok ? (await res.json()).tools || [] : [];
+    } catch { return []; }
+  })();
+  const [{ rows, settings }, surcharges, external] = await Promise.all([
+    routingSnapshot(db), getResolutionSurcharges(db), externalRequest,
+  ]);
+  const c = config || resolveStudioConfig(rows, settings, channelName);
+  const imageModels = rows.filter(row => channelScope(row) === "public" && channelCapability(row) === "image").filter(row => { const parsed = JSON.parse(row.config || "{}"); return Boolean(parsed.apiKeyEnc || row.kind === "openai" && (process.env.OPENAI_API_KEY || process.env.STUDIO_API_KEY)); }).map(row => ({ id: row.name, label: row.displayName, creditCost: row.creditCost ?? 18, resolutionSurcharges: surcharges, maxReferenceImages: supportsImageTask(JSON.parse(row.config || "{}"), "edit") ? 3 : 0 }));
   return { imageModel: c.imageDisplayName, imageProvider: c.toolId ? c.requestedProvider : c.imageProvider, imageModels, planningCost: c.plannerCreditCost, planningAvailable: Boolean(c.visionApiKey && c.chatModel),
     tools: TOOLS.map(tool => {
       const setting = settings.find(row => row.toolId === tool.id), enabled = setting?.isEnabled !== false;

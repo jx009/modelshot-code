@@ -8,7 +8,7 @@
 `.github/workflows/docker-build.yml` 增加 `publish_hk_static`。仅 main 分支且开启开关时发布，包括 main 的手动运行。
 
 1. 构建并签名 amd64/arm64 镜像；用本次唯一 `BUILD_TAG` 拉取两个架构的镜像。
-2. 从镜像提取 `/app/.next/static`。不二次构建，确保与对应美国镜像一致。
+2. 从镜像提取 `/app/.next/static`，以及 `/app/public/studio`、`/app/public/inspiration` 中允许发布的图片。不二次构建，确保与对应美国镜像一致。
 3. 校验镜像中的部署标识和资源前缀，将两个架构分别放入 `releases/<BUILD_TAG>-<arch>/_next/static/`，再合并上传。前端构建时已写入相同的资源路径。
 4. 上传到香港 `/www/wwwroot/.letaidraw-static-staging/<BUILD_TAG>/static`，暂存目录不在网站目录内。
 5. 完整检查与现有资源的内容冲突。新文件写完后通过同文件系统硬链接原子发布到 `/www/wwwroot/www.letaidraw.com/_next/static`。
@@ -16,7 +16,7 @@
 
 **线上资源不删除、不覆盖、不整体替换目录。** 已有文件不改内容或修改时间，不使用 rsync `--delete` / `--inplace`。暂存目录在成功后清理；失败时保留以便排查。
 
-只同步 Next.js 构建产物，不上传 HTML、`.next/server`、源代码、密钥或用户图片。`public/` 中可能有固定名称且会变化的资源，继续走反代，避免“禁止覆盖”导致它们永远不更新。页面/API 继续美国执行。
+同步 Next.js 构建产物和上述两个公开目录中的 `.webp`、`.png`、`.jpg`、`.jpeg`、`.avif` 图片；不上传 HTML、`.next/server`、源代码、密钥、JSON 元数据或用户图片。公开图片位于 `/_next/static/public-releases/<BUILD_TAG>/studio/` 和 `inspiration/`，固定文件名也按发布隔离，不覆盖旧版本。页面/API 继续在源站执行。
 
 ### Next.js 清单冲突与版本隔离
 
@@ -80,7 +80,31 @@ Variables：
 
 ## 验证与维护
 
+### 公开图片的一次性 Nginx 配置
+
+此步骤与 JS/CSS 的 location 独立。只改仓库文件不会自动改变线上 Nginx。
+
+1. 备份香港实际站点配置 `html_www.letaidraw.com.conf`。
+2. 将 `docker/nginx/hk-public-image-map.conf` 的内容放入该文件的 `server {}` **外部**，与现有 `upstream` 同级（http 上下文）。
+3. 将 `docker/nginx/hk-public-image-locations.conf` 的内容放入 `server {}` 内。保留隐藏文件拦截规则、现有静态资源规则和 `location /`。如果有其他匹配图片的正则 location，将本规则放在那些规则之前。
+4. 执行 `nginx -t`，仅成功后平滑重载。无需重启应用；随后按正常流程发布包含此改动的新镜像和香港静态资源。
+
+例如 `/studio/scene-03.webp?dpl=build-abc-123-1` 会读取：
+
+```text
+/www/wwwroot/www.letaidraw.com/_next/static/public-releases/build-abc-123-1/studio/scene-03.webp
+```
+
+只有合法的版本号才能选择本地目录；无版本、版本无效或本地缺失时仍回源，且回源兜底不写共享缓存、不下发 immutable。不要创建 `_unversioned` 发布目录。这样不会把当前源站图片永久缓存成旧版本。命中本地图片时返回 `X-HK-Public: local`，并允许浏览器长期缓存；兜底为 `X-HK-Public: origin`。正式发布的 build 标识和现有客户端 `dpl` 参数相匹配。
+
+`/_next/image` 仍由源站优化图片；本改动不在香港启动图片处理，也不改用户图片 `/api/assets/`、登录或生成接口的缓存策略。旧发布如果没有同步图片会继续走兜底；新版本发布后才会逐步受益。
+
+撤销时先删除公开图片的两个 location，再删除 map，并在配置检查通过后重载。保留已发布文件，不删除现有 JS/CSS 规则，不影响源站兜底。
+
+### 验证清单
+
 - 浏览器关闭本地缓存，查看实际 JS/CSS 响应的 `X-HK-Static: local`，确认文件来自香港磁盘。
+- 对带当前 `dpl` 的 `/studio/scene-03.webp` 和 `/inspiration/generated/*.webp` 检查 `X-HK-Public: local`。确认无 `dpl` 或未知版本仍可回源，且响应没有 immutable。
 - 更新后请求上一版本的 JS/CSS，仍应返回 200；同路径内容不允许变化。
 - 新版本同步失败，不删除旧版本资源、不更新正式镜像标签；修复后重新运行工作流。
 - 不同发布、不同架构可各自保留同名清单；同一发布和架构中同路径内容变化仍会明确失败，不会覆盖。

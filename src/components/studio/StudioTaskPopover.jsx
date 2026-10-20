@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import Image from "@/components/studio/AssetImage";
 import { useEffect, useRef, useState } from "react";
 import { CheckCircle2, CircleAlert, LoaderCircle, Sparkles, X, LocateFixed } from "lucide-react";
 import { api } from "@/lib/client-api";

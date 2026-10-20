@@ -1,5 +1,5 @@
 "use client";
-import Image from "next/image";
+import Image from "@/components/studio/AssetImage";
 import { useEffect, useRef, useState } from "react";
 import { useLocale } from "next-intl";
 import { useSession } from "next-auth/react";

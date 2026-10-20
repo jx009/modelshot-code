@@ -1,5 +1,5 @@
 "use client";
-import Image from "next/image";
+import Image from "@/components/studio/AssetImage";
 import CreditIcon from "@/components/ui/CreditIcon";
 import "@/components/studio/generation-price.css";
 import { imageCreditCost } from "@/lib/studio/image-pricing";

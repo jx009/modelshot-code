@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/require-user";
 import { errorResponse, readJson } from "@/lib/http";
 import { addLibraryItem } from "@/lib/domain/assets/library";
+import { assetDeliveryBatch } from "@/lib/domain/assets/cos-delivery";
 export async function GET(request) {
   try {
     const user = await requireUser(), q = new URL(request.url).searchParams;
@@ -13,7 +14,9 @@ export async function GET(request) {
       ...(search ? { name: { contains: search, mode: "insensitive" } } : {}),
       ...(q.get("cursor") ? { id: { lt: q.get("cursor") } } : {}),
     }, orderBy: { id: "desc" }, take: 31, include: { asset: { select: { width: true, height: true, contentType: true } } } });
-    return Response.json({ items: rows.slice(0, 30), nextCursor: rows.length > 30 ? rows[29].id : null });
+    const items = rows.slice(0, 30);
+    const assetDelivery = await assetDeliveryBatch(user.id, items.map(item => item.assetId), [320]);
+    return Response.json({ items, nextCursor: rows.length > 30 ? rows[29].id : null, assetDelivery }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) { return errorResponse(error); }
 }
 export async function POST(request) {

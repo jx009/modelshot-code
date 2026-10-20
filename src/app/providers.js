@@ -1,13 +1,20 @@
 "use client";
 
 import { SessionProvider, getSession } from "next-auth/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import { AuthProvider } from "@/components/auth/AuthProvider";
 import { RechargeProvider } from "@/components/billing/RechargeProvider";
+import { setAssetDeliveryUser } from "@/lib/studio/asset-delivery";
 
 function SessionRefresh({ onRecovered }) {
   const { data: session, status, update } = useSession();
+  const hadSession = useRef(false);
+  const recovering = useRef(false);
+  useEffect(() => {
+    setAssetDeliveryUser(session?.user?.id);
+    return () => setAssetDeliveryUser(null);
+  }, [session?.user?.id]);
   // SessionProvider already refreshes on focus and its interval. Calling update()
   // on every navigation adds a CSRF round trip and temporarily sets loading.
   useEffect(() => {
@@ -16,26 +23,29 @@ function SessionRefresh({ onRecovered }) {
     return () => window.removeEventListener("online", refresh);
   }, [session?.user?.id, update]);
   useEffect(() => {
-    if (status !== "unauthenticated") return;
+    if (status === "authenticated" && session?.user?.id) { hadSession.current = true; return; }
+    if (status !== "unauthenticated" || !hadSession.current) return;
     let active = true, busy = false, attempts = 0;
     const probe = async () => {
-      if (busy || document.visibilityState === "hidden") return;
-      busy = true;
+      if (!active || busy || recovering.current || attempts >= 4 || document.visibilityState === "hidden") return;
+      attempts++;
+      busy = true; recovering.current = true;
       try {
         const fresh = await getSession({ broadcast: false });
         if (active && fresh?.user?.id) onRecovered(fresh);
       } catch {
-        // A failed network probe is retried on focus, reconnect, or the timer.
-      } finally { busy = false; }
+        return;
+      } finally {
+        busy = false; recovering.current = false;
+        if (active && attempts >= 4) { hadSession.current = false; clearInterval(timer); }
+      }
     };
     // A transient null response is cached by NextAuth; recover only from a new
     // server-verified session, never from localStorage or a previous balance.
-    const timer = setInterval(() => { if (++attempts <= 3) void probe(); else clearInterval(timer); }, 4000);
-    window.addEventListener("online", probe);
-    window.addEventListener("focus", probe);
+    const timer = setInterval(probe, 4000);
     void probe();
-    return () => { active = false; clearInterval(timer); window.removeEventListener("online", probe); window.removeEventListener("focus", probe); };
-  }, [status, onRecovered]);
+    return () => { active = false; clearInterval(timer); };
+  }, [status, session?.user?.id, onRecovered]);
   return null;
 }
 

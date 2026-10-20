@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import Image from "@/components/studio/AssetImage";
 import { useEffect, useRef, useState } from "react";
 import { Download, FlipHorizontal2, FlipVertical2, Maximize, Minus, Plus, RotateCcw, RotateCw, X } from "lucide-react";
 import Modal from "@/components/ui/Modal";

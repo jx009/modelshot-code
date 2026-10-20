@@ -1,5 +1,5 @@
 "use client";
-import Image from "next/image";
+import Image from "@/components/studio/AssetImage";
 import { imageCreditCost } from "@/lib/studio/image-pricing";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
@@ -49,6 +49,7 @@ export default function CommerceStudio({ caseId = "", description = "", document
     const code = error?.code || error?.message || String(error);
     const labels = {
       UNAUTHORIZED: t("请先登录，填写的资料会保留。", "Sign in to continue; your brief is retained."),
+      REQUEST_TIMEOUT: t("读取超时，请稍后重试；已提交的任务不会因此取消。", "The request timed out. Try again; submitted jobs are not cancelled."),
       VISION_NOT_CONFIGURED: t("请在管理后台配置支持看图的大语言模型。", "Configure a vision-capable language model in admin."),
       SERVICE_NOT_CONFIGURED: t("所选图片模型尚未配置。", "The image model is not configured."),
       IMAGE_SIZE_UNSUPPORTED: t("当前模型不支持所选比例或分辨率，请更换模型或尺寸。", "This model does not support the selected dimensions. Change the model or size."),

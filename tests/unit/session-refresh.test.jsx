@@ -20,10 +20,39 @@ it("does not refresh on page renders, but still refreshes on network recovery", 
 });
 
 it("keeps bounded server-verified recovery for a transient lost session", async () => {
-  vi.useFakeTimers(); state.session = null; state.status = "unauthenticated";
-  render(<Providers><span>Home</span></Providers>);
+  vi.useFakeTimers();
+  const view = render(<Providers><span>Home</span></Providers>);
+  state.session = null; state.status = "unauthenticated";
+  view.rerender(<Providers><span>Home</span></Providers>);
   await act(async () => {});
   expect(state.getSession).toHaveBeenCalledWith({ broadcast: false });
   await act(async () => vi.advanceTimersByTimeAsync(20000));
   expect(state.getSession).toHaveBeenCalledTimes(4);
+  act(() => window.dispatchEvent(new Event("focus")));
+  act(() => window.dispatchEvent(new Event("online")));
+  expect(state.getSession).toHaveBeenCalledTimes(4);
+});
+
+it("does not probe an ordinary anonymous visit", async () => {
+  vi.useFakeTimers(); state.session = null; state.status = "unauthenticated";
+  render(<Providers><span>Home</span></Providers>);
+  act(() => window.dispatchEvent(new Event("focus")));
+  act(() => window.dispatchEvent(new Event("online")));
+  await act(async () => vi.advanceTimersByTimeAsync(20000));
+  expect(state.getSession).not.toHaveBeenCalled();
+});
+
+it("does not overlap recovery requests or recover an unmounted tree", async () => {
+  vi.useFakeTimers();
+  let complete;
+  state.getSession.mockImplementation(() => new Promise(resolve => { complete = resolve; }));
+  const view = render(<Providers><span>Home</span></Providers>);
+  state.session = null; state.status = "unauthenticated";
+  view.rerender(<Providers><span>Home</span></Providers>);
+  await act(async () => vi.advanceTimersByTimeAsync(20000));
+  expect(state.getSession).toHaveBeenCalledTimes(1);
+  view.unmount();
+  await act(async () => complete({ user: { id: "user" }, expires: "later" }));
+  await act(async () => vi.advanceTimersByTimeAsync(20000));
+  expect(state.getSession).toHaveBeenCalledTimes(1);
 });

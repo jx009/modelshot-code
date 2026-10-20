@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/require-user";
 import { AppError, errorResponse, readJson } from "@/lib/http";
 import { documentSchema } from "@/lib/studio/tools";
 import { saveDocument } from "@/lib/domain/studio/documents";
+import { assetDeliveryBatch } from "@/lib/domain/assets/cos-delivery";
 export async function GET(request) {
   try {
     const user = await requireUser(), query = new URL(request.url).searchParams;
@@ -21,7 +22,8 @@ export async function GET(request) {
       select: { id: true, name: true, version: true, nameSource: true, updatedAt: true, kind: true, coverAssetId: true, itemCount: true },
     });
     const items = rows.slice(0, limit).map(({ itemCount, ...row }) => ({ ...row, count: itemCount })), last = items.at(-1);
-    return Response.json(paged ? { items, nextCursor: rows.length > limit ? Buffer.from(JSON.stringify({ date: last.updatedAt, id: last.id })).toString("base64url") : null } : items);
+    const assetDelivery = paged ? await assetDeliveryBatch(user.id, items.map(item => item.coverAssetId), [640]) : null;
+    return Response.json(paged ? { items, nextCursor: rows.length > limit ? Buffer.from(JSON.stringify({ date: last.updatedAt, id: last.id })).toString("base64url") : null, assetDelivery } : items, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) { return errorResponse(error); }
 }
 export async function POST(request) {

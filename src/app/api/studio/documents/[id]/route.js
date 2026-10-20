@@ -3,13 +3,15 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/require-user";
 import { AppError, errorResponse, sameOrigin, readJson } from "@/lib/http";
 import { z } from "zod";
+import { assetDeliveryBatch, documentAssetIds } from "@/lib/domain/assets/cos-delivery";
 export async function GET(_request, context) {
   try { const user = await requireUser(); const { id } = await context.params;
     const document = new URL(_request.url).searchParams.get("pagedLayers") === "1" ? await readDocumentPage(user.id, id) : await prisma.studioDocument.findFirst({ where: { id, userId: user.id, deletedAt: null } });
     if (!document) throw new AppError("DOCUMENT_NOT_FOUND", 404);
     const applied = await prisma.studioAppliedResult.findMany({ where: { documentId: id }, select: { jobId: true } });
     document.content.appliedJobs = [...new Set([...(document.content.appliedJobs || []), ...applied.map(row => row.jobId)])];
-    return Response.json(document);
+    const assetDelivery = await assetDeliveryBatch(user.id, documentAssetIds(document.content));
+    return Response.json({ ...document, assetDelivery }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) { return errorResponse(error); }
 }
 export async function DELETE(request, context) {

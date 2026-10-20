@@ -1,5 +1,5 @@
 "use client";
-import Image from "next/image";
+import Image from "@/components/studio/AssetImage";
 import { useState } from "react";
 import { api } from "@/lib/client-api";
 import { previewUrl } from "@/lib/studio/image-url";

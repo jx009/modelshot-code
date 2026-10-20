@@ -1,3 +1,5 @@
+import { assetDeliveryEpoch, consumeAssetDelivery } from "./studio/asset-delivery.js";
+
 /**
  * 幂等键生成器。
  *
@@ -15,22 +17,47 @@ export function requestKey() {
     .join("");
 }
 
-export async function api(url, { method = "GET", body, key, signal } = {}) {
-  const response = await fetch(url, { method, signal, headers: { ...(body ? { "Content-Type": "application/json" } : {}), ...(key ? { "Idempotency-Key": key } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const code = data.code || data.error || "REQUEST_FAILED";
-    const error = new Error(code);
-    error.code = code;
-    error.status = response.status;
-    error.url = url;
-    error.method = method;
-    error.detail = data.message || data.detail || "";
-    error.traceId = data.traceId || "";
-    error.retryable = data.retryable;
-    throw error;
+export async function api(url, { method = "GET", body, key, signal, timeoutMs = method.toUpperCase() === "GET" ? 15000 : 0 } = {}) {
+  const deliveryEpoch = assetDeliveryEpoch();
+  const controller = new AbortController();
+  const cancel = () => controller.abort(signal.reason);
+  if (signal?.aborted) cancel();
+  else signal?.addEventListener("abort", cancel, { once: true });
+  let timedOut = false;
+  const timer = timeoutMs > 0 ? setTimeout(() => {
+    if (controller.signal.aborted) return;
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs) : null;
+  try {
+    const response = await fetch(url, { method, signal: controller.signal, headers: { ...(body ? { "Content-Type": "application/json" } : {}), ...(key ? { "Idempotency-Key": key } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
+    const data = await response.json().catch(error => {
+      if (controller.signal.aborted || error.name !== "SyntaxError") throw error;
+      return {};
+    });
+    if (controller.signal.aborted) throw controller.signal.reason;
+    if (!response.ok) {
+      const code = data.code || data.error || "REQUEST_FAILED";
+      const error = new Error(code);
+      error.code = code;
+      error.status = response.status;
+      error.url = url;
+      error.method = method;
+      error.detail = data.message || data.detail || "";
+      error.traceId = data.traceId || "";
+      error.retryable = data.retryable;
+      throw error;
+    }
+    return consumeAssetDelivery(data, deliveryEpoch);
+  } catch (error) {
+    if (!timedOut) throw error;
+    const timeout = new Error("REQUEST_TIMEOUT");
+    Object.assign(timeout, { code: "REQUEST_TIMEOUT", url, method, retryable: method.toUpperCase() === "GET" });
+    throw timeout;
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", cancel);
   }
-  return data;
 }
 
 export const terminalStatus = status => ["succeeded", "failed", "cancelled", "partial_success"].includes(status);

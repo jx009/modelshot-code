@@ -2,7 +2,7 @@
 
 import Image from "@/components/studio/AssetImage";
 import { useEffect, useRef, useState } from "react";
-import { CheckCircle2, CircleAlert, LoaderCircle, Sparkles, X, LocateFixed } from "lucide-react";
+import { CheckCircle2, CircleAlert, History, LoaderCircle, Sparkles, X, LocateFixed } from "lucide-react";
 import { api } from "@/lib/client-api";
 import { getTool } from "@/lib/studio/tool-catalog";
 import { previewUrl } from "@/lib/studio/image-url";
@@ -40,7 +40,7 @@ export default function StudioTaskPopover({ documentId, jobs, pending, appliedJo
   }, [open]);
   const labels = zh ? { submitting: "正在提交…", queued: "排队中…", processing: "正在处理…", running: "正在处理…", reconciling: "正在核对模型结果…", loading: "已生成，正在加载图片…", complete: "已完成", failed: "任务失败", cancelled: "已取消", "load-failed": "已生成，图片加载失败" } : { submitting: "Submitting…", queued: "Queued…", processing: "Processing…", running: "Processing…", reconciling: "Checking provider result…", loading: "Generated, loading image…", complete: "Complete", failed: "Task failed", cancelled: "Cancelled", "load-failed": "Generated, image failed to load" };
   return <div className="ms-task-center" ref={root}>
-    <button ref={trigger} className={`ms-task-trigger ${summary.active ? "is-running" : ""}`} aria-label={zh ? "任务列表" : "Task list"} aria-expanded={open} aria-controls="studio-task-list" onClick={() => setOpen(value => !value)}><Sparkles size={24} />{summary.active > 0 && <span>{summary.active}</span>}</button>
+    <button ref={trigger} className={`ms-task-trigger ${summary.active ? "is-running" : ""}`} aria-label={zh ? "任务列表" : "Task list"} title={zh ? "任务记录" : "Task history"} aria-expanded={open} aria-controls="studio-task-list" onClick={() => setOpen(value => !value)}><History size={22} strokeWidth={1.8} />{summary.active > 0 && <span>{summary.active}</span>}</button>
     {open && <section id="studio-task-list" className="ms-task-popover" aria-label={zh ? "当前项目任务" : "Current project tasks"}>
       <header><span>{zh ? "当前项目任务" : "Project tasks"}</span><button className="ms-icon" aria-label={zh ? "关闭任务列表" : "Close task list"} onClick={() => { setOpen(false); trigger.current?.focus(); }}><X size={16} /></button></header>
       {summary.complete && !history && !rows.some(job => job.resultData?.ocr) ? <div className="ms-task-complete" role="status"><CheckCircle2 size={64} strokeWidth={2} /><p>{zh ? "任务完成" : "Tasks complete"}</p><button onClick={() => setHistory(true)}>{zh ? "查看任务记录" : "View task history"}</button></div> : !rows.length ? <div className="ms-task-empty">{zh ? "暂无任务，开始创作后可在这里查看进度" : "Start creating to see task progress here"}</div> : <div className="ms-task-cards">{rows.map(job => {

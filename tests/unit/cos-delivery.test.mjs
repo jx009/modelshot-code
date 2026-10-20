@@ -30,12 +30,16 @@ describe("COS configuration and credentials", () => {
   });
   it("tests private ACL, byte integrity and deletion; returns only a short browser probe", async () => {
     const values = new Map();
-    const store = { assertPrivateBucket: vi.fn(), put: vi.fn(async (k, b) => values.set(k, b)), get: vi.fn(async k => values.get(k)), delete: vi.fn(async k => values.delete(k)), signedUrl: vi.fn(async () => "https://fixture/probe") };
-    expect(await testCosConnection(config, store)).toEqual({ ok: true, probeUrl: "https://fixture/probe" });
+    const store = { assertPrivateBucket: vi.fn(), put: vi.fn(async (k, b) => values.set(k, b)), get: vi.fn(async k => values.get(k)), delete: vi.fn(async k => values.delete(k)), signedUrl: vi.fn(async () => "https://fixture/probe"), signedUpload: vi.fn(async () => "https://fixture/upload-probe") };
+    const result = await testCosConnection(config, store);
+    expect(result).toEqual({ ok: true, probeUrl: "https://fixture/probe", uploadProbe: { url: "https://fixture/upload-probe", headers: { "Content-Type": "image/png" }, bodyBase64: expect.any(String) } });
     expect(store.assertPrivateBucket).toHaveBeenCalled(); expect(store.delete).toHaveBeenCalledOnce();
     expect([...values.keys()]).toEqual(["letaidraw/diagnostics/browser-probe.png"]);
     expect(await sharp(values.get("letaidraw/diagnostics/browser-probe.png")).raw().toBuffer()).toEqual(Buffer.from([255, 255, 255]));
     expect(store.signedUrl).toHaveBeenCalledWith("letaidraw/diagnostics/browser-probe.png", 60);
+    const probeBytes = values.get("letaidraw/diagnostics/browser-probe.png");
+    expect(Buffer.from(result.uploadProbe.bodyBase64, "base64")).toEqual(probeBytes);
+    expect(store.signedUpload).toHaveBeenCalledWith("letaidraw/diagnostics/browser-probe.png", "image/png", probeBytes.length);
     const client = { getBucketAcl: vi.fn(async () => ({ ACL: "public-read" })) };
     await expect(cosStorage(config, client).assertPrivateBucket()).rejects.toThrow("COS_BUCKET_PUBLIC");
   });

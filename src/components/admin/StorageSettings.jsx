@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Cloud, Database, ShieldCheck, Save, PlugZap, ArrowRight } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAdminReason } from "@/hooks/useAdminReason";
+import { uploadCosObject } from "@/lib/cos-upload";
 
 const fieldClass = "w-full min-w-0 rounded-xl border border-divider bg-bg-page px-3 py-2.5 text-sm text-primary-text disabled:opacity-60";
 const messages = {
@@ -66,7 +67,14 @@ export default function StorageSettings() {
     try {
       const data = await responseBody(await fetch("/api/admin/storage", { method: mode === "save" ? "PATCH" : "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": operation.key }, body: JSON.stringify({ config, reason: operation.reason }) }));
       if (mode === "save") { await load(); toast.success("云存储配置已保存，后台任务将在一分钟内读取新配置。"); }
-      else { await browserProbe(data.probeUrl); setTest("私有桶检查、上传、读取、删除和浏览器画布跨域检查全部通过。测试不保存配置，请点击保存。"); }
+      else {
+        if (!data.uploadProbe?.url || !data.uploadProbe?.bodyBase64) throw new Error("上传测试响应不完整，请更新服务后重新测试。");
+        const bytes = Uint8Array.from(atob(data.uploadProbe.bodyBase64), value => value.charCodeAt(0));
+        try { await uploadCosObject(data.uploadProbe.url, { headers: data.uploadProbe.headers, body: bytes, timeoutMs: 10000 }); }
+        catch (cause) { throw new Error(`服务器读写检查通过，但浏览器 PUT 上传检查失败。${cause.message}`, { cause }); }
+        await browserProbe(data.probeUrl);
+        setTest("私有桶检查、服务器读写删除、浏览器 PUT 直传和画布跨域检查全部通过。测试不保存配置，请点击保存。");
+      }
     } catch (e) { setError(e.message); }
     finally { setBusy(""); }
   }

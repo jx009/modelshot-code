@@ -18,6 +18,7 @@ export default function AssetLibrary({ onSelect, maxSelection = 10 }) {
   const [category, setCategory] = useState("all"), [categories, setCategories] = useState([]), [search, setSearch] = useState("");
   const [items, setItems] = useState([]), [cursor, setCursor] = useState(null), [refresh, setRefresh] = useState(0);
   const [loading, setLoading] = useState(true), [busy, setBusy] = useState(false), [error, setError] = useState("");
+  const [loadError, setLoadError] = useState("");
   const [newCategory, setNewCategory] = useState(false), [categoryName, setCategoryName] = useState("");
   const [selected, setSelected] = useState([]), [preview, setPreview] = useState(null), [renaming, setRenaming] = useState(null), [name, setName] = useState("");
   const debouncedSearch = useDebouncedValue(search);
@@ -28,12 +29,12 @@ export default function AssetLibrary({ onSelect, maxSelection = 10 }) {
     if (status !== "authenticated") return;
     const abort = new AbortController();
     async function load() {
-      setLoading(true); setError("");
+      setLoading(true); setLoadError("");
       try {
         const data = await api(`/api/library?${query}`, { signal: abort.signal });
         if (abort.signal.aborted) return;
         setItems(data.items); setCursor(data.nextCursor);
-      } catch (err) { if (!abort.signal.aborted) setError(err.message); }
+      } catch (err) { if (!abort.signal.aborted) setLoadError(err.message); }
       finally { if (!abort.signal.aborted) setLoading(false); }
     }
     load();
@@ -92,7 +93,7 @@ export default function AssetLibrary({ onSelect, maxSelection = 10 }) {
     <section className="ml-content"><header><h1>{onSelect ? zh ? "选择素材" : "Choose assets" : category === "trash" ? zh ? "回收站" : "Trash" : zh ? "我的素材" : "My assets"}</h1><label className="ml-search"><Search size={16} /><input type="search" aria-label={zh ? "搜索素材" : "Search assets"} placeholder={zh ? "搜索素材" : "Search assets"} value={search} onChange={event => setSearch(event.target.value)} /></label></header>
       {!onSelect && <div className="ml-bulk"><button disabled={busy} onClick={() => { setSelecting(value => !value); setSelected([]); }}>{selecting ? zh ? "退出多选" : "Exit selection" : zh ? "批量管理" : "Select items"}</button>{selecting && <><button disabled={busy || !items.length} onClick={() => setSelected(current => items.every(item => current.some(row => row.id === item.id)) ? current.filter(row => !items.some(item => item.id === row.id)) : [...current, ...items.filter(item => !current.some(row => row.id === item.id))].slice(0, 100))}>{zh ? "全选当前页" : "Select this page"}</button><span>{zh ? `已选 ${selected.length} 项` : `${selected.length} selected`}</span>{category === "trash" ? <button disabled={busy || !selected.length} onClick={() => bulk("restore")}>{zh ? "恢复选中素材" : "Restore selected"}</button> : <><select aria-label={zh ? "批量移动分类" : "Move selected to category"} disabled={busy || !selected.length} value="" onChange={event => bulk("category", event.target.value === "none" ? null : event.target.value)}><option value="" disabled>{zh ? "移动到分类…" : "Move to category…"}</option><option value="none">{zh ? "未分类" : "Uncategorized"}</option>{categories.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}</select><button disabled={busy || !selected.length} onClick={() => bulk("trash")}>{zh ? "移入回收站" : "Move selected to trash"}</button></>}</>}</div>}
       {category === "trash" && <p className="ml-note">{zh ? "素材在回收站保留 30 天。正在被项目使用的图片会继续保留。" : "Items stay in Trash for 30 days. Images used by projects remain available."}</p>}
-      {error && <p role="alert" className="ml-error">{error}</p>}
+      {(error || loadError) && <p role="alert" className="ml-error">{error || loadError}</p>}
       <div className="ml-grid" aria-busy={loading}>{items.map(item => <article key={item.id} className={selected.some(row => row.id === item.id) ? "selected" : ""}>
         <button className="ml-image" aria-label={item.name} aria-pressed={onSelect || selecting ? selected.some(row => row.id === item.id) : undefined} onClick={() => choose(item)}><Image unoptimized src={previewUrl(item.assetId, 320)} width={320} height={320} alt="" />{selected.some(row => row.id === item.id) && <span><Check size={16} /></span>}</button>
         {renaming === item.id ? <form onSubmit={event => { event.preventDefault(); mutate(item.id, { name }); }}><input autoFocus maxLength={160} aria-label={zh ? "素材名称" : "Asset name"} value={name} onChange={event => setName(event.target.value)} onKeyDown={event => { if (event.key === "Escape") setRenaming(null); }} /><button disabled={busy || !name.trim()}>{zh ? "保存" : "Save"}</button></form> : <button className="ml-name" title={item.name} onClick={() => { if (!onSelect && category !== "trash") { setRenaming(item.id); setName(item.name); } }}>{item.name}</button>}

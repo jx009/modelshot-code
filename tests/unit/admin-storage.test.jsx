@@ -25,3 +25,48 @@ it("allows ordinary admins to inspect but disables credential changes and tests"
   expect(screen.getByRole("button", { name: "测试连接与跨域" }).disabled).toBe(true);
   expect(screen.getByLabelText("启用 COS 长期存储与加速").disabled).toBe(true);
 });
+
+const probe = { url: "https://fixture.example.com/probe?put-signature", headers: { "Content-Type": "image/png" }, bodyBase64: "AQID" };
+function mockProbeFetch(put) {
+  const fetch = vi.fn(async (url, init) => {
+    if (url === probe.url) return put(init);
+    return { ok: true, json: async () => init?.method === "POST"
+      ? { ok: true, probeUrl: "https://fixture.example.com/probe?get-signature", uploadProbe: probe }
+      : { config, canManage: true, mirrored: 0 } };
+  });
+  vi.stubGlobal("fetch", fetch);
+  return fetch;
+}
+it("does not report success when server checks pass but browser PUT is blocked", async () => {
+  const fetch = mockProbeFetch(() => { throw new TypeError("Failed to fetch"); });
+  const image = vi.fn(); vi.stubGlobal("Image", image);
+  render(<StorageSettings />);
+  fireEvent.click(await screen.findByRole("button", { name: "测试连接与跨域" }));
+  expect((await screen.findByRole("alert")).textContent).toContain("浏览器 PUT 上传检查失败");
+  expect(screen.getByRole("alert").textContent).toContain("Content-Type");
+  expect(screen.queryByRole("status")).toBeNull();
+  expect(image).not.toHaveBeenCalled();
+  expect(fetch.mock.calls.filter(([, init]) => init?.method === "PUT")).toHaveLength(1);
+});
+it("requires the browser signed PUT and canvas read to pass before reporting success", async () => {
+  const fetch = mockProbeFetch(() => ({ ok: true }));
+  vi.stubGlobal("Image", class { set src(value) { if (value) queueMicrotask(() => this.onload()); } });
+  const getImageData = vi.fn();
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({ drawImage: vi.fn(), getImageData });
+  render(<StorageSettings />);
+  fireEvent.click(await screen.findByRole("button", { name: "测试连接与跨域" }));
+  expect((await screen.findByRole("status")).textContent).toContain("浏览器 PUT 直传和画布跨域检查全部通过");
+  const [, init] = fetch.mock.calls.find(([url]) => url === probe.url);
+  expect(init).toMatchObject({ method: "PUT", credentials: "omit", headers: probe.headers });
+  expect(Array.from(init.body)).toEqual([1, 2, 3]);
+  expect(getImageData).toHaveBeenCalled();
+  expect(fetch.mock.calls.some(([, init]) => init?.method === "PATCH")).toBe(false);
+});
+it("refuses to report a complete test for an outdated server without a PUT probe", async () => {
+  vi.stubGlobal("fetch", vi.fn(async (_url, init) => ({ ok: true, json: async () => init?.method === "POST"
+    ? { ok: true, probeUrl: "https://fixture.example.com/probe" } : { config, canManage: true, mirrored: 0 } })));
+  render(<StorageSettings />);
+  fireEvent.click(await screen.findByRole("button", { name: "测试连接与跨域" }));
+  expect((await screen.findByRole("alert")).textContent).toContain("上传测试响应不完整");
+  expect(screen.queryByRole("status")).toBeNull();
+});

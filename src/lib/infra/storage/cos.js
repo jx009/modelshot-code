@@ -55,6 +55,12 @@ export async function testCosConnection(config, store = cosStorage(config)) {
   }
   // One tiny persistent probe per prefix enables a real browser CORS/decode test.
   const probe = `${config.prefix}/diagnostics/browser-probe.png`;
-  await store.put(probe, Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADElEQVQImWP4//8/AAX+Av5Y8msOAAAAAElFTkSuQmCC", "base64"), "image/png");
-  return { ok: true, probeUrl: await store.signedUrl(probe, 60) };
+  const probeBytes = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADElEQVQImWP4//8/AAX+Av5Y8msOAAAAAElFTkSuQmCC", "base64");
+  await store.put(probe, probeBytes, "image/png");
+  // Exercise the same signed PUT and headers as a real browser upload.
+  // Reuse the fixed private probe so repeated tests leave no new objects.
+  return { ok: true, probeUrl: await store.signedUrl(probe, 60), uploadProbe: {
+    url: await store.signedUpload(probe, "image/png", probeBytes.length),
+    headers: { "Content-Type": "image/png" }, bodyBase64: probeBytes.toString("base64"),
+  } };
 }

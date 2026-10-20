@@ -72,7 +72,7 @@ sh scripts/deploy-update.sh
 | 字段 | 填写 |
 | --- | --- |
 | 来源 Origin | `*` |
-| 方法 | `GET`、`HEAD` |
+| 方法 | `GET`、`HEAD`、`PUT` |
 | 允许 Headers | `*` |
 | 暴露 Headers | `ETag`、`Content-Length`、`Content-Range` |
 | 缓存时间 | `600` 秒 |
@@ -89,12 +89,16 @@ sh scripts/deploy-update.sh
 2. 填 SecretId 和 SecretKey。后续编辑时留空会保留已保存的凭据，不会清除它们。
 3. 签名有效期建议保留 `300` 秒，可设置 `60–900` 秒。
 4. 先点「测试连接与跨域」。测试当前表单，不会自动保存。
-5. 测试会检查桶 ACL，真实上传/读取/删除一个随机小文件，并让当前浏览器加载测试 PNG、执行 Canvas 像素读取以检查跨域。
+5. 测试会检查桶 ACL，真实上传/读取/删除一个随机小文件，再让当前浏览器使用与正式上传相同的签名和请求头 PUT 测试 PNG，最后加载 PNG 并执行 Canvas 像素读取。仅服务器读写和浏览器 GET 通过，不代表浏览器 PUT 可用。
 6. 全部通过后勾选「启用 COS 长期存储与加速」，点击「保存配置」。后台进程最多约 60 秒读取新配置。
 
 SecretId 与 SecretKey 随整份 COS 配置使用现有 `ENCRYPTION_KEY` 加密保存。管理 API 不返回密钥，操作审计不保存密钥。请保持美国 web 和 worker 的 `ENCRYPTION_KEY` 一致，部署后不要随意更换。
 
-测试会保留一张极小的 `letaidraw/diagnostics/browser-probe.png` 供浏览器验证，随机文本测试对象会删除。测试返回的 PNG 地址仅有效 60 秒。
+测试会保留一张极小的 `letaidraw/diagnostics/browser-probe.png` 供浏览器验证，浏览器 PUT 覆盖同一测试对象，不产生额外文件；随机文本测试对象会删除。测试返回的 PNG 读取地址仅有效 60 秒，PUT 地址与正式直传一样有效 900 秒。
+
+已有桶从图片读取加速升级为浏览器直传时，必须在原 CORS 规则中补上 `PUT`，并允许 `Content-Type` 请求头。否则图片可以正常显示，上传仍会被浏览器阻止。修改后重新运行「测试连接与跨域」并重试上传。
+
+素材库、首页和画布上传共用同一条 `/api/upload/direct` → 浏览器 COS PUT → 上传确认流程。2026-10-21 排查的线上配置中，本站来源的 GET / HEAD 预检返回 200，允许方法仅为 `GET,HEAD`；PUT 预检返回 403 `AccessForbidden`，消息为 `CORSResponse: This CORS request is not allowed`。这种情况必须在腾讯云补齐 PUT 规则；代码更新提供准确报错与真实 PUT 测试，不会自动修改存储桶 CORS，也不会在直传失败后悄悄改为美国服务器中转。
 
 ## 8. 如何确认生效
 

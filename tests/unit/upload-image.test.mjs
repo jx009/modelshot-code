@@ -21,3 +21,15 @@ it("never silently uploads to the US after a COS/CORS failure", async () => {
   await expect(uploadImage(new File(["image"], "image.png", { type: "image/png" }))).rejects.toThrow("PUT");
   expect(fetch).toHaveBeenCalledTimes(1); expect(mocks.api).toHaveBeenCalledTimes(1);
 });
+it("preserves COS HTTP rejection status without misreporting it as CORS or registering an asset", async () => {
+  mocks.api.mockResolvedValue({ mode: "cos", uploadId: "upload", url: "https://cos.example/staging" });
+  const fetch = vi.fn(async () => ({ ok: false, status: 403 })); vi.stubGlobal("fetch", fetch);
+  await expect(uploadImage(new File(["image"], "image.png", { type: "image/png" }))).rejects.toMatchObject({ status: 403, message: expect.stringContaining("HTTP 403") });
+  expect(fetch).toHaveBeenCalledTimes(1); expect(mocks.api).toHaveBeenCalledTimes(1);
+});
+it("identifies a PUT timeout without retransmitting or registering an asset", async () => {
+  mocks.api.mockResolvedValue({ mode: "cos", uploadId: "upload", url: "https://cos.example/staging" });
+  const fetch = vi.fn(async () => { throw new DOMException("Timeout", "TimeoutError"); }); vi.stubGlobal("fetch", fetch);
+  await expect(uploadImage(new File(["image"], "image.png", { type: "image/png" }))).rejects.toMatchObject({ message: expect.stringContaining("超时") });
+  expect(fetch).toHaveBeenCalledTimes(1); expect(mocks.api).toHaveBeenCalledTimes(1);
+});

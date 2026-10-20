@@ -1,19 +1,24 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { api } from "@/lib/client-api";
 
 export default function AdminDashboard() {
   const [stats, setStats] = useState(null);
   const [error, setError] = useState("");
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
-    fetch("/api/admin/stats")
-      .then(r => (r.ok ? r.json() : Promise.reject("Failed to load")))
-      .then(setStats)
-      .catch(e => setError(String(e)));
-  }, []);
+    const controller = new AbortController();
+    api("/api/admin/stats", { signal: controller.signal })
+      .then(data => { if (!controller.signal.aborted) setStats(data); })
+      .catch(error => {
+        if (!controller.signal.aborted) setError(error.code === "REQUEST_TIMEOUT" ? "加载超时，请重试。" : "加载失败，请重试。");
+      });
+    return () => controller.abort();
+  }, [reload]);
 
-  if (error) return <div className="text-danger text-sm">{error}</div>;
+  if (error) return <div role="alert" className="text-danger text-sm">{error}<button type="button" className="ml-3 underline" onClick={() => { setError(""); setReload(value => value + 1); }}>重试</button></div>;
   if (!stats) return <div className="text-secondary-text text-sm">Loading...</div>;
 
   const cards = [

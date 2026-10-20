@@ -1,7 +1,7 @@
 "use client";
 
-import { useLocale } from "next-intl";
 import { usePathname } from "@/i18n/navigation";
+import NavigationLink from "@/components/ui/NavigationLink";
 
 const LINKS = [
   { href: "/admin", label: "数据看板" },
@@ -25,9 +25,7 @@ const LINKS = [
 ];
 
 export default function AdminNav({ mobile = false }) {
-  const locale = useLocale();
   const pathname = usePathname();
-  const hrefFor = href => `/${locale}${href}`;
 
   if (mobile) {
     return (
@@ -35,9 +33,9 @@ export default function AdminNav({ mobile = false }) {
         {LINKS.map(l => {
           const active = pathname === l.href;
           return (
-            <a
+            <NavigationLink
               key={l.href}
-              href={hrefFor(l.href)}
+              href={l.href}
               aria-current={active ? "page" : undefined}
               className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${
                 active
@@ -46,7 +44,7 @@ export default function AdminNav({ mobile = false }) {
               }`}
             >
               {l.label}
-            </a>
+            </NavigationLink>
           );
         })}
       </nav>
@@ -58,9 +56,9 @@ export default function AdminNav({ mobile = false }) {
       {LINKS.map(l => {
         const active = pathname === l.href;
         return (
-          <a
+          <NavigationLink
             key={l.href}
-            href={hrefFor(l.href)}
+            href={l.href}
             aria-current={active ? "page" : undefined}
             className={`relative z-10 block w-full cursor-pointer select-none px-5 py-2.5 text-xs font-bold transition-colors ${
               active
@@ -69,7 +67,7 @@ export default function AdminNav({ mobile = false }) {
             }`}
           >
             {l.label}
-          </a>
+          </NavigationLink>
         );
       })}
     </nav>

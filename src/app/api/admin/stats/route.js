@@ -18,7 +18,7 @@ export async function GET(req) {
     const day14End = new Date(todayStart.getTime() + 24 * 3600 * 1000);
 
     const [totalUsers, totalTryons, todayTryons, providerDist, statusDist, costAgg,
-           todayNewUsers, todayRevenue, todayCost, trendRaw, providerHealthRaw] = await Promise.all([
+           todayNewUsers, todayRevenue, todayCost, trendRaw, providerHealthRaw, needsReview] = await Promise.all([
       prisma.user.count(),
       prisma.tryOn.count(),
       prisma.tryOn.count({ where: { createTime: { gte: todayStart } } }),
@@ -38,10 +38,15 @@ export async function GET(req) {
       // 今日成本
       prisma.tryOn.aggregate({ where: { createTime: { gte: todayStart } }, _sum: { costUsd: true } }),
       // 14 天趋势（按天聚合成功/失败）
-      prisma.tryOn.findMany({
-        where: { createTime: { gte: day14Start, lt: day14End } },
-        select: { createTime: true, status: true },
-      }),
+      prisma.$queryRaw`
+        SELECT FLOOR((EXTRACT(EPOCH FROM "createTime") * 1000 - ${day14Start.getTime()}) / 86400000)::int AS "day",
+          COUNT(*) FILTER (WHERE status = 'succeeded')::int AS success,
+          COUNT(*) FILTER (WHERE status = 'failed')::int AS failed
+        FROM "TryOn"
+        WHERE "createTime" >= ${day14Start.toISOString()}::timestamp
+          AND "createTime" < ${day14End.toISOString()}::timestamp
+        GROUP BY 1
+      `,
       // 通道健康（近 24h：调用量/失败数/平均耗时）
       prisma.tryOn.groupBy({
         by: ["provider", "status"],
@@ -49,20 +54,19 @@ export async function GET(req) {
         _count: { _all: true },
         _avg: { durationMs: true },
       }),
+      prisma.tryOn.count({ where: { qaStatus: "needs_review", reviewDecision: null } }),
     ]);
 
-    const needsReview = await prisma.tryOn.count({ where: { qaStatus: "needs_review", reviewDecision: null } });
-
     // 14 天趋势整理
+    const trendByDay = new Map(trendRaw.map(row => [row.day, row]));
     const trend = [];
     for (let i = 0; i < 14; i++) {
       const d = new Date(day14Start.getTime() + i * 24 * 3600 * 1000);
-      const next = new Date(d.getTime() + 24 * 3600 * 1000);
-      const rows = trendRaw.filter(t => t.createTime >= d && t.createTime < next);
+      const totals = trendByDay.get(i);
       trend.push({
         date: `${d.getMonth() + 1}/${d.getDate()}`,
-        success: rows.filter(t => t.status === "succeeded").length,
-        failed: rows.filter(t => t.status === "failed").length,
+        success: totals?.success ?? 0,
+        failed: totals?.failed ?? 0,
       });
     }
 
@@ -88,7 +92,7 @@ export async function GET(req) {
       statusDistribution: statusDist.map(s => ({ status: s.status, count: s._count._all })),
       trend,
       providerHealth: Object.values(providerMap).map(p => ({ ...p, avgDurationMs: Math.round(p.avgDurationMs / p.count) })),
-    });
+    }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     console.error("[ADMIN_STATS]", error);
     return new NextResponse("Internal Error", { status: 500 });

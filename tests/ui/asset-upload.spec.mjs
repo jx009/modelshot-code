@@ -15,11 +15,18 @@ async function fixtures(page, state, bytes) {
   await page.route("**/api/**", async route => {
     const url = new URL(route.request().url()), method = route.request().method();
     if (url.pathname === "/api/upload/direct") {
-      if (method === "POST") return route.fulfill({ json: { mode: "cos", url: "https://fixture.cos.ap-guangzhou.myqcloud.com/pending/image.png?fixture", uploadId: "asset-fixture", headers: { "Content-Type": "image/png" } } });
+      if (method === "POST") return route.fulfill({ json: state.proxy ? { mode: "proxy" } : { mode: "cos", url: "https://fixture.cos.ap-guangzhou.myqcloud.com/pending/image.png?fixture", uploadId: "asset-fixture", headers: { "Content-Type": "image/png" } } });
       calls.complete++;
       return route.fulfill({ json: { assetId: "asset-fixture", width: 64, height: 48, url: "/api/assets/asset-fixture" } });
     }
-    if (url.pathname === "/api/upload") { calls.proxy++; return route.fulfill({ status: 500, json: {} }); }
+    if (url.pathname === "/api/upload") {
+      calls.proxy++;
+      expect(method).toBe("POST");
+      expect(route.request().headers()["content-type"]).toContain("multipart/form-data");
+      const form = await new Response(route.request().postDataBuffer(), { headers: { "content-type": route.request().headers()["content-type"] } }).formData();
+      expect(Buffer.from(await form.get("file").arrayBuffer())).toEqual(bytes);
+      return route.fulfill({ json: { assetId: "asset-fixture", width: 64, height: 48, url: "/api/assets/asset-fixture" } });
+    }
     if (url.pathname === "/api/library") {
       if (method === "POST") {
         calls.library++;
@@ -64,4 +71,15 @@ for (const blocked of [false, true]) test(`asset library uses the shared COS upl
   await expect(page.locator(".ml-name")).toHaveText("素材上传.png");
   await expect(error).toHaveCount(0);
   expect(calls).toEqual({ put: blocked ? 2 : 1, complete: 1, library: 1, proxy: 0 });
+});
+
+test("asset uploads use the original server path without any COS browser request when direct upload is off", async ({ page }) => {
+  const bytes = await sharp({ create: { width: 64, height: 48, channels: 3, background: "white" } }).png().toBuffer();
+  const calls = await fixtures(page, { proxy: true, blocked: true }, bytes);
+  await page.goto("/zh/assets");
+  await expect(page.locator(".ml-grid")).toHaveAttribute("aria-busy", "false");
+  await page.getByLabel("上传素材文件").setInputFiles({ name: "原方案上传.png", mimeType: "image/png", buffer: bytes });
+  await expect(page.locator(".ml-name")).toHaveText("原方案上传.png");
+  await expect(page.locator(".ml-library").getByRole("alert")).toHaveCount(0);
+  expect(calls).toEqual({ put: 0, complete: 0, library: 1, proxy: 1 });
 });

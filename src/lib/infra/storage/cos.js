@@ -57,9 +57,11 @@ export async function testCosConnection(config, store = cosStorage(config)) {
   const probe = `${config.prefix}/diagnostics/browser-probe.png`;
   const probeBytes = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADElEQVQImWP4//8/AAX+Av5Y8msOAAAAAElFTkSuQmCC", "base64");
   await store.put(probe, probeBytes, "image/png");
-  // Exercise the same signed PUT and headers as a real browser upload.
+  const result = { ok: true, probeUrl: await store.signedUrl(probe, 60) };
+  if (!config.enabled || !config.directUploadEnabled) return result;
+  // Exercise the same signed PUT and headers as a real browser upload only when enabled.
   // Reuse the fixed private probe so repeated tests leave no new objects.
-  return { ok: true, probeUrl: await store.signedUrl(probe, 60), uploadProbe: {
+  return { ...result, uploadProbe: {
     url: await store.signedUpload(probe, "image/png", probeBytes.length),
     headers: { "Content-Type": "image/png" }, bodyBase64: probeBytes.toString("base64"),
   } };

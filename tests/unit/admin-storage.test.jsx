@@ -15,7 +15,7 @@ it("saves edited COS settings with blank credentials preserved and an idempotenc
   fireEvent.click(screen.getByRole("button", { name: "保存配置" }));
   await waitFor(() => expect(fetch.mock.calls.some(([, init]) => init?.method === "PATCH")).toBe(true));
   const [, init] = fetch.mock.calls.find(([, init]) => init?.method === "PATCH");
-  expect(JSON.parse(init.body).config).toEqual({ enabled: true, bucket: config.bucket, region: "ap-hongkong", prefix: "letaidraw", signedUrlSeconds: 300, secretId: "", secretKey: "" });
+  expect(JSON.parse(init.body).config).toEqual({ enabled: true, directUploadEnabled: false, bucket: config.bucket, region: "ap-hongkong", prefix: "letaidraw", signedUrlSeconds: 300, secretId: "", secretKey: "" });
   expect(init.headers["Idempotency-Key"]).toBe("fixture-admin-cos-action");
 });
 it("allows ordinary admins to inspect but disables credential changes and tests", async () => {
@@ -24,6 +24,7 @@ it("allows ordinary admins to inspect but disables credential changes and tests"
   expect((await screen.findByRole("button", { name: "保存配置" })).disabled).toBe(true);
   expect(screen.getByRole("button", { name: "测试连接与跨域" }).disabled).toBe(true);
   expect(screen.getByLabelText("启用 COS 长期存储与加速").disabled).toBe(true);
+  expect(screen.getByRole("switch", { name: "浏览器直传 COS（PUT）" }).disabled).toBe(true);
 });
 
 const probe = { url: "https://fixture.example.com/probe?put-signature", headers: { "Content-Type": "image/png" }, bodyBase64: "AQID" };
@@ -32,7 +33,7 @@ function mockProbeFetch(put) {
     if (url === probe.url) return put(init);
     return { ok: true, json: async () => init?.method === "POST"
       ? { ok: true, probeUrl: "https://fixture.example.com/probe?get-signature", uploadProbe: probe }
-      : { config, canManage: true, mirrored: 0 } };
+      : { config: { ...config, enabled: true, directUploadEnabled: true }, canManage: true, mirrored: 0 } };
   });
   vi.stubGlobal("fetch", fetch);
   return fetch;
@@ -64,9 +65,32 @@ it("requires the browser signed PUT and canvas read to pass before reporting suc
 });
 it("refuses to report a complete test for an outdated server without a PUT probe", async () => {
   vi.stubGlobal("fetch", vi.fn(async (_url, init) => ({ ok: true, json: async () => init?.method === "POST"
-    ? { ok: true, probeUrl: "https://fixture.example.com/probe" } : { config, canManage: true, mirrored: 0 } })));
+    ? { ok: true, probeUrl: "https://fixture.example.com/probe" } : { config: { ...config, enabled: true, directUploadEnabled: true }, canManage: true, mirrored: 0 } })));
   render(<StorageSettings />);
   fireEvent.click(await screen.findByRole("button", { name: "测试连接与跨域" }));
   expect((await screen.findByRole("alert")).textContent).toContain("上传测试响应不完整");
   expect(screen.queryByRole("status")).toBeNull();
+});
+it("defaults existing configurations to server upload and saves an explicit opt-in", async () => {
+  const fetch = vi.fn(async (_url, init) => ({ ok: true, json: async () => init?.method ? { ok: true } : { config: { ...config, enabled: true }, canManage: true, mirrored: 12 } }));
+  vi.stubGlobal("fetch", fetch);
+  render(<StorageSettings />);
+  const toggle = await screen.findByRole("switch", { name: "浏览器直传 COS（PUT）" });
+  expect(toggle.checked).toBe(false);
+  fireEvent.click(toggle);
+  fireEvent.click(screen.getByRole("button", { name: "保存配置" }));
+  await waitFor(() => expect(fetch.mock.calls.some(([, init]) => init?.method === "PATCH")).toBe(true));
+  const [, init] = fetch.mock.calls.find(([, init]) => init?.method === "PATCH");
+  expect(JSON.parse(init.body).config).toMatchObject({ enabled: true, directUploadEnabled: true });
+});
+it("checks reading without a browser PUT when direct upload is off", async () => {
+  const fetch = vi.fn(async (_url, init) => ({ ok: true, json: async () => init?.method === "POST"
+    ? { ok: true, probeUrl: "https://fixture.example.com/probe" } : { config: { ...config, enabled: true, directUploadEnabled: false }, canManage: true, mirrored: 0 } }));
+  vi.stubGlobal("fetch", fetch);
+  vi.stubGlobal("Image", class { set src(value) { if (value) queueMicrotask(() => this.onload()); } });
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({ drawImage: vi.fn(), getImageData: vi.fn() });
+  render(<StorageSettings />);
+  fireEvent.click(await screen.findByRole("button", { name: "测试连接与跨域" }));
+  expect((await screen.findByRole("status")).textContent).toContain("无需浏览器 PUT 权限");
+  expect(fetch.mock.calls.some(([, init]) => init?.method === "PUT")).toBe(false);
 });

@@ -33,6 +33,34 @@ test("ROOT configures private COS in a responsive admin page without exposing cr
     const safe = await (await page.request.get("/api/admin/storage")).text();
     expect(safe).not.toContain("fixture-private-secret"); expect(safe).not.toContain("fixture-private-id");
     expect(JSON.parse(safe).config.credentialsConfigured).toBe(true);
+    const directUpload = page.getByRole("switch", { name: "浏览器直传 COS（PUT）" });
+    await expect(directUpload).not.toBeChecked();
+    await expect(directUpload).toBeDisabled();
+    async function saveSettings() {
+      const saved = page.waitForResponse(r => r.url().endsWith("/api/admin/storage") && r.request().method() === "PATCH");
+      await page.getByRole("button", { name: "保存配置" }).click();
+      expect((await saved).ok()).toBe(true);
+      await expect(page.getByRole("button", { name: "保存配置" })).toBeEnabled();
+    }
+    await page.getByLabel("启用 COS 长期存储与加速").check();
+    await saveSettings();
+    const input = { contentType: "image/png", bytes: 1, checksum: "a".repeat(64) };
+    // Storage stays enabled while browser PUT stays off: no external COS call.
+    const plan = await page.request.post("/api/upload/direct", { data: input });
+    expect(plan.ok()).toBe(true);
+    expect(await plan.json()).toEqual({ mode: "proxy" });
+    await directUpload.check();
+    await saveSettings();
+    await page.reload();
+    await expect(directUpload).toBeChecked();
+    const enabled = await (await page.request.get("/api/admin/storage")).json();
+    expect(enabled.config).toMatchObject({ enabled: true, directUploadEnabled: true });
+    await directUpload.uncheck();
+    await saveSettings();
+    const restored = await page.request.post("/api/upload/direct", { data: input });
+    expect(restored.ok()).toBe(true);
+    expect(await restored.json()).toEqual({ mode: "proxy" });
+    await expect(page.getByLabel("启用 COS 长期存储与加速")).toBeChecked();
     await expect(page.getByText("首次配置", { exact: true })).toBeVisible();
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
     expect(overflow).toBe(false);

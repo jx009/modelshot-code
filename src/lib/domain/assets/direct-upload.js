@@ -14,7 +14,7 @@ export const directUploadSchema = z.object({ contentType: z.enum(["image/png", "
 export async function prepareDirectUpload(userId, input, { db = prisma, config, store } = {}) {
   input = directUploadSchema.parse(input);
   config ||= await getCosConfig(db);
-  if (!config.enabled) return { mode: "proxy" };
+  if (!config.enabled || !config.directUploadEnabled) return { mode: "proxy" };
   store ||= cosStorage(config);
   await store.assertPrivateBucket();
   const id = randomUUID(), key = `${config.prefix}/uploads/pending/${userId}/${id}`;

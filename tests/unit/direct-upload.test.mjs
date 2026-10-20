@@ -5,7 +5,7 @@ vi.mock("../../src/lib/domain/assets/cos-delivery.js", () => ({ enqueueCosAsset:
 import { prepareDirectUpload, completeDirectUpload } from "../../src/lib/domain/assets/direct-upload.js";
 import { cosStorage } from "../../src/lib/infra/storage/cos.js";
 import { parseCosObjectKey } from "../../src/lib/infra/storage/cos-primary.js";
-const config = { enabled: true, bucket: "fixture-1250000000", region: "ap-guangzhou", prefix: "letaidraw", secretId: "fake-id", secretKey: "fake-secret", signedUrlSeconds: 300 };
+const config = { enabled: true, directUploadEnabled: true, bucket: "fixture-1250000000", region: "ap-guangzhou", prefix: "letaidraw", secretId: "fake-id", secretKey: "fake-secret", signedUrlSeconds: 300 };
 async function fixture() {
   const bytes = await sharp({ create: { width: 64, height: 32, channels: 3, background: "red" } }).jpeg().toBuffer();
   let intent, asset;
@@ -42,8 +42,17 @@ it("rejects other owners, expired intents, changed configuration and oversized o
   await expect(completeDirectUpload("owner", f.plan.uploadId, { ...f, config })).rejects.toMatchObject({ code: "UPLOAD_EXPIRED" });
   expect(f.db.asset.upsert).not.toHaveBeenCalled(); expect(f.store.copy).not.toHaveBeenCalled();
 });
-it("falls back to the existing upload endpoint only when COS is disabled", async () => {
+it("uses the existing upload endpoint with no COS calls when either switch is off or the old config has no upload switch", async () => {
   const f = await fixture();
-  expect(await prepareDirectUpload("owner", f.input, { ...f, config: { ...config, enabled: false } })).toEqual({ mode: "proxy" });
-  expect(f.db.assetUpload.create).toHaveBeenCalledTimes(1);
+  f.store.assertPrivateBucket.mockClear(); f.store.signedUpload.mockClear(); f.db.assetUpload.create.mockClear();
+  for (const changes of [{ enabled: false }, { directUploadEnabled: false }, { directUploadEnabled: undefined }]) {
+    expect(await prepareDirectUpload("owner", f.input, { ...f, config: { ...config, ...changes } })).toEqual({ mode: "proxy" });
+  }
+  expect(f.db.assetUpload.create).not.toHaveBeenCalled();
+  expect(f.store.assertPrivateBucket).not.toHaveBeenCalled();
+  expect(f.store.signedUpload).not.toHaveBeenCalled();
+});
+it("finishes already uploaded images when direct upload is switched off", async () => {
+  const f = await fixture();
+  expect(await completeDirectUpload("owner", f.plan.uploadId, { ...f, config: { ...config, directUploadEnabled: false } })).toMatchObject({ id: f.plan.uploadId, checksum: f.input.checksum });
 });

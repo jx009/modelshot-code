@@ -31,7 +31,7 @@ describe("COS configuration and credentials", () => {
   it("tests private ACL, byte integrity and deletion; returns only a short browser probe", async () => {
     const values = new Map();
     const store = { assertPrivateBucket: vi.fn(), put: vi.fn(async (k, b) => values.set(k, b)), get: vi.fn(async k => values.get(k)), delete: vi.fn(async k => values.delete(k)), signedUrl: vi.fn(async () => "https://fixture/probe"), signedUpload: vi.fn(async () => "https://fixture/upload-probe") };
-    const result = await testCosConnection(config, store);
+    const result = await testCosConnection({ ...config, directUploadEnabled: true }, store);
     expect(result).toEqual({ ok: true, probeUrl: "https://fixture/probe", uploadProbe: { url: "https://fixture/upload-probe", headers: { "Content-Type": "image/png" }, bodyBase64: expect.any(String) } });
     expect(store.assertPrivateBucket).toHaveBeenCalled(); expect(store.delete).toHaveBeenCalledOnce();
     expect([...values.keys()]).toEqual(["letaidraw/diagnostics/browser-probe.png"]);
@@ -42,6 +42,18 @@ describe("COS configuration and credentials", () => {
     expect(store.signedUpload).toHaveBeenCalledWith("letaidraw/diagnostics/browser-probe.png", "image/png", probeBytes.length);
     const client = { getBucketAcl: vi.fn(async () => ({ ACL: "public-read" })) };
     await expect(cosStorage(config, client).assertPrivateBucket()).rejects.toThrow("COS_BUCKET_PUBLIC");
+  });
+  it("defaults old stored settings to server upload without invalidating COS delivery receipts", () => {
+    const { directUploadEnabled: _unused, ...old } = config;
+    expect(cosConfigSchema.parse(old).directUploadEnabled).toBe(false);
+    expect(cosTargetId({ ...config, directUploadEnabled: true })).toBe(cosTargetId(config));
+    expect(mergeCosConfig({ ...config, directUploadEnabled: true }, config).directUploadEnabled).toBe(true);
+  });
+  it("does not sign a browser PUT probe when direct upload is off", async () => {
+    const store = { assertPrivateBucket: vi.fn(), put: vi.fn(), get: vi.fn(async () => Buffer.from("letaidraw-private-storage-test")), delete: vi.fn(), signedUrl: vi.fn(async () => "https://fixture/read-probe"), signedUpload: vi.fn() };
+    expect(await testCosConnection(config, store)).toEqual({ ok: true, probeUrl: "https://fixture/read-probe" });
+    expect(store.signedUpload).not.toHaveBeenCalled();
+    expect(store.signedUrl).toHaveBeenCalled();
   });
 });
 

@@ -3,6 +3,17 @@ const mocks = vi.hoisted(() => ({ api: vi.fn() }));
 vi.mock("../../src/lib/client-api.js", () => ({ api: mocks.api }));
 import { uploadImage } from "../../src/lib/upload-image.js";
 afterEach(() => vi.unstubAllGlobals());
+it("uses the existing multipart upload when the server selects proxy mode", async () => {
+  mocks.api.mockResolvedValueOnce({ mode: "proxy" });
+  const file = new File(["png bytes"], "image.png", { type: "image/png" });
+  const fetch = vi.fn(async () => ({ ok: true, json: async () => ({ assetId: "proxy-image" }) })); vi.stubGlobal("fetch", fetch);
+  expect(await uploadImage(file)).toEqual({ assetId: "proxy-image" });
+  expect(fetch).toHaveBeenCalledTimes(1);
+  const [url, init] = fetch.mock.calls[0];
+  expect(url).toBe("/api/upload"); expect(init.method).toBe("POST");
+  expect(init.body.get("file")).toEqual(file);
+  expect(mocks.api).toHaveBeenCalledTimes(1);
+});
 it("sends only file bytes to COS and retries registration, not uploading again", async () => {
   const file = new File(["jpeg bytes"], "source.jpg", { type: "image/jpeg" });
   mocks.api.mockResolvedValueOnce({ mode: "cos", url: "https://cos.example/staging?signature", uploadId: "upload", headers: { "Content-Type": file.type } })

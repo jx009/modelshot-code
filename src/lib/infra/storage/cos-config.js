@@ -5,6 +5,7 @@ import { AppError } from "../../http.js";
 
 export const cosConfigSchema = z.object({
   enabled: z.boolean(),
+  directUploadEnabled: z.boolean().default(false),
   bucket: z.string().trim().max(100).refine(v => !v || /^[a-z0-9][a-z0-9-]{0,61}-\d{5,20}$/.test(v)),
   region: z.string().trim().regex(/^[a-z]{2}-[a-z]+(?:-[a-z]+)?(?:-\d)?$/).max(50),
   prefix: z.string().trim().regex(/^[a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_-]+)*$/).max(100),
@@ -12,7 +13,7 @@ export const cosConfigSchema = z.object({
   secretKey: z.string().trim().max(300),
   signedUrlSeconds: z.number().int().min(60).max(900),
 }).strict();
-export const COS_DEFAULTS = Object.freeze({ enabled: false, bucket: "", region: "ap-hongkong", prefix: "letaidraw", secretId: "", secretKey: "", signedUrlSeconds: 300 });
+export const COS_DEFAULTS = Object.freeze({ enabled: false, directUploadEnabled: false, bucket: "", region: "ap-hongkong", prefix: "letaidraw", secretId: "", secretKey: "", signedUrlSeconds: 300 });
 
 export async function getCosConfig(db) {
   const raw = await getSiteConfig("cos_delivery", db);

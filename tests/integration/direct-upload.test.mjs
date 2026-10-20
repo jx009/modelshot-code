@@ -5,7 +5,7 @@ import { domainFixture } from "../support/domain-fixture.mjs";
 import { prepareDirectUpload, completeDirectUpload } from "../../src/lib/domain/assets/direct-upload.js";
 import { readOwnedImage } from "../../src/lib/domain/assets/service.js";
 
-const config = { enabled: true, bucket: "fixture-1250000000", region: "ap-guangzhou", prefix: "test", secretId: "fake", secretKey: "fake", signedUrlSeconds: 300 };
+const config = { enabled: true, directUploadEnabled: true, bucket: "fixture-1250000000", region: "ap-guangzhou", prefix: "test", secretId: "fake", secretKey: "fake", signedUrlSeconds: 300 };
 let fixture, owner, other;
 const intents = [];
 beforeAll(async () => { fixture = await domainFixture(); owner = await fixture.user(); other = await fixture.user(); });

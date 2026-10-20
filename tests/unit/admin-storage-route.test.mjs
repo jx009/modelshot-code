@@ -6,7 +6,7 @@ vi.mock("@/lib/site-config", () => ({ getSiteConfig: mocks.read, setSiteConfig: 
 vi.mock("@/lib/domain/identity/admin-operation", () => ({ auditedOperation: mocks.audit }));
 vi.mock("@/lib/infra/storage/cos", () => ({ testCosConnection: mocks.test, cosError: e => e }));
 import { GET, PATCH, POST } from "../../src/app/api/admin/storage/route.js";
-const config = { enabled: true, bucket: "fixture-1250000000", region: "ap-hongkong", prefix: "letaidraw", signedUrlSeconds: 300, secretId: "private-id", secretKey: "private-secret" };
+const config = { enabled: true, directUploadEnabled: false, bucket: "fixture-1250000000", region: "ap-hongkong", prefix: "letaidraw", signedUrlSeconds: 300, secretId: "private-id", secretKey: "private-secret" };
 beforeEach(() => {
   mocks.auth.mockResolvedValue({ user: { id: "root", role: "root" } }); mocks.read.mockResolvedValue(JSON.stringify(config)); mocks.count.mockResolvedValue(3);
   mocks.audit.mockImplementation(async (_id, _key, _action, _input, mutate) => { await mutate({}); return { ok: true }; });
@@ -43,6 +43,12 @@ it("tests unsaved credentials without persisting them", async () => {
   const response = await POST(request("POST", { secretKey: "new-private-key" }));
   expect(response.status).toBe(200); expect(mocks.write).not.toHaveBeenCalled();
   expect(mocks.test).toHaveBeenCalledWith({ ...config, secretKey: "new-private-key" });
+});
+it.each([true, false])("persists the independent direct upload switch (%s) while retaining storage and credentials", async directUploadEnabled => {
+  expect((await PATCH(request("PATCH", { directUploadEnabled }))).status).toBe(200);
+  expect(JSON.parse(mocks.write.mock.calls[0][1])).toEqual({ ...config, directUploadEnabled });
+  const result = await mocks.audit.mock.calls[0][4]({});
+  expect(result.audit.directUploadEnabled).toBe(directUploadEnabled);
 });
 it("blocks a bucket switch when originals exist but permits credential rotation", async () => {
   mocks.audit.mockImplementation(async (_id, _key, _action, _input, mutate) => { await mutate({ asset: { count: mocks.count } }); return { ok: true }; });

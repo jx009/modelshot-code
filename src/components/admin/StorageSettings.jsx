@@ -55,7 +55,7 @@ export default function StorageSettings() {
     const body = await responseBody(await fetch("/api/admin/storage", { cache: "no-store" }));
     const { credentialsConfigured, endpoint, ...values } = body.config;
     setInfo({ canManage: body.canManage, mirrored: body.mirrored, credentialsConfigured, endpoint });
-    setConfig({ ...values, secretId: "", secretKey: "" });
+    setConfig({ directUploadEnabled: false, ...values, secretId: "", secretKey: "" });
   }
   useEffect(() => { void Promise.resolve().then(load).catch(e => setError(e.message)); }, []);
   function change(key, value) { setConfig(current => ({ ...current, [key]: value })); setTest(null); }
@@ -68,12 +68,15 @@ export default function StorageSettings() {
       const data = await responseBody(await fetch("/api/admin/storage", { method: mode === "save" ? "PATCH" : "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": operation.key }, body: JSON.stringify({ config, reason: operation.reason }) }));
       if (mode === "save") { await load(); toast.success("云存储配置已保存，后台任务将在一分钟内读取新配置。"); }
       else {
-        if (!data.uploadProbe?.url || !data.uploadProbe?.bodyBase64) throw new Error("上传测试响应不完整，请更新服务后重新测试。");
-        const bytes = Uint8Array.from(atob(data.uploadProbe.bodyBase64), value => value.charCodeAt(0));
-        try { await uploadCosObject(data.uploadProbe.url, { headers: data.uploadProbe.headers, body: bytes, timeoutMs: 10000 }); }
-        catch (cause) { throw new Error(`服务器读写检查通过，但浏览器 PUT 上传检查失败。${cause.message}`, { cause }); }
+        const direct = config.enabled && config.directUploadEnabled;
+        if (direct) {
+          if (!data.uploadProbe?.url || !data.uploadProbe?.bodyBase64) throw new Error("上传测试响应不完整，请更新服务后重新测试。");
+          const bytes = Uint8Array.from(atob(data.uploadProbe.bodyBase64), value => value.charCodeAt(0));
+          try { await uploadCosObject(data.uploadProbe.url, { headers: data.uploadProbe.headers, body: bytes, timeoutMs: 10000 }); }
+          catch (cause) { throw new Error(`服务器读写检查通过，但浏览器 PUT 上传检查失败。${cause.message}`, { cause }); }
+        }
         await browserProbe(data.probeUrl);
-        setTest("私有桶检查、服务器读写删除、浏览器 PUT 直传和画布跨域检查全部通过。测试不保存配置，请点击保存。");
+        setTest(direct ? "私有桶检查、服务器读写删除、浏览器 PUT 直传和画布跨域检查全部通过。测试不保存配置，请点击保存。" : "私有桶检查、服务器读写删除和画布跨域检查全部通过。当前未启用浏览器直传，无需浏览器 PUT 权限。测试不保存配置，请点击保存。");
       }
     } catch (e) { setError(e.message); }
     finally { setBusy(""); }
@@ -82,15 +85,19 @@ export default function StorageSettings() {
   return <div className="max-w-5xl space-y-6">
     {reasonPrompt.dialog}
     <div className="flex flex-wrap items-start justify-between gap-4">
-      <div><h1 className="text-lg font-semibold">云存储与图片加速</h1><p className="mt-2 text-xs leading-6 text-secondary-text">图片直传腾讯 COS，原图与预览图长期保存；旧原库继续兼容。仅 ROOT 可修改配置。</p></div>
+      <div><h1 className="text-lg font-semibold">云存储与图片加速</h1><p className="mt-2 text-xs leading-6 text-secondary-text">原图与预览图长期保存，上传方式可独立切换。仅 ROOT 可修改配置。</p></div>
       <span className="rounded-full bg-primary/10 px-3 py-1.5 text-xs text-primary">已同步 {info.mirrored} 张原图</span>
     </div>
     <section className="rounded-2xl border border-divider bg-bg-card p-5 sm:p-6">
       <div className="flex flex-wrap items-center gap-3 text-sm"><Database size={18} className="text-secondary-text" /><span>用户上传 / 模型生成</span><ArrowRight size={14} className="text-muted" /><Cloud size={18} className="text-primary" /><span>腾讯 COS 长期图片存储</span><ArrowRight size={14} className="text-muted" /><span>用户浏览器</span></div>
-      <p className="mt-4 text-xs leading-6 text-secondary-text">浏览器使用短期签名直传 COS，本站校验文件后登记素材。上传保留 JPG / WebP / PNG 原格式；新生成原图优先存入 COS，预览图后台生成。原图下载与套图打包直接读取 COS；旧图按需同步，未同步的旧图仍可从原库读取。</p>
+      <p className="mt-4 text-xs leading-6 text-secondary-text">默认使用原来的服务器上传方式，无需浏览器 PUT 跨域权限。开启浏览器直传后，使用短期签名直接上传 COS，并保留 JPG / WebP / PNG 原格式。COS 长期存储、图片读取加速和旧图兼容由 COS 存储配置控制。</p>
     </section>
     <section className="space-y-5 rounded-2xl border border-divider bg-bg-card p-5 sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="flex items-center gap-2 font-medium"><Cloud size={18} />腾讯云 COS</h2><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={config.enabled} disabled={!info.canManage || Boolean(busy)} onChange={e => change("enabled", e.target.checked)} />启用 COS 长期存储与加速</label></div>
+      <div className="rounded-xl border border-divider bg-bg-page p-4">
+        <label className="flex items-center justify-between gap-4 text-sm font-medium"><span>浏览器直传 COS（PUT）</span><input type="checkbox" role="switch" checked={config.directUploadEnabled} disabled={!info.canManage || !config.enabled || Boolean(busy)} aria-describedby="cos-direct-upload-hint" onChange={e => change("directUploadEnabled", e.target.checked)} /></label>
+        <p id="cos-direct-upload-hint" className="mt-2 text-xs leading-6 text-secondary-text">{config.enabled && config.directUploadEnabled ? "开启：浏览器直接上传腾讯 COS。请先在存储桶 CORS 中允许当前网站来源、PUT 方法和 Content-Type 请求头。" : "关闭：使用原来的服务器上传方式，无需给浏览器开放 COS PUT。图片读取加速继续按 COS 存储配置运行。"} 修改后点击「保存配置」生效。</p>
+      </div>
       <fieldset disabled={!info.canManage || Boolean(busy)} className="grid gap-5 sm:grid-cols-2">
         <Field label="存储桶名称（Bucket）" hint="复制完整桶名，必须包含末尾 APPID。"><input className={fieldClass} placeholder="letaidraw-1250000000" value={config.bucket} onChange={e => change("bucket", e.target.value)} /></Field>
         <Field label="所属地域（Region）" hint="香港填写 ap-hongkong；已有桶必须填写它的实际地域。"><input className={fieldClass} placeholder="ap-hongkong" value={config.region} onChange={e => change("region", e.target.value)} /></Field>
@@ -110,8 +117,8 @@ export default function StorageSettings() {
         <li>在腾讯 COS 控制台选择中国内地或香港地域，新建「私有读写」存储桶；已有桶必须填写实际地域。</li>
         <li>检查桶的生命周期规则：项目目录不要设置到期删除或转归档。图片持续保留，用户主动删除并完成回收站清理后才删除对应 COS 对象。</li>
         <li>在访问管理 CAM 创建专用子用户，授权本桶 ACL 读取与专用目录内对象的上传、读取、复制和删除，再创建访问密钥。</li>
-        <li>在桶的「安全管理 → 跨域访问 CORS」添加规则：来源 <code>*</code>，方法 GET、HEAD、PUT，允许 Headers <code>*</code>，暴露 Headers <code>ETag, Content-Length, Content-Range</code>，缓存 600 秒。私有对象仍必须携带签名才能读取。</li>
-        <li>已有 CORS 规则需要补上 PUT，直传上传才可用。填写配置，测试并启用保存；新上传直接进入 COS，旧图继续兼容。</li>
+        <li>在桶的「安全管理 → 跨域访问 CORS」添加规则：来源 <code>*</code>，方法 GET、HEAD，允许 Headers <code>*</code>，暴露 Headers <code>ETag, Content-Length, Content-Range</code>，缓存 600 秒。私有对象仍必须携带签名才能读取。</li>
+        <li>暂时无法添加 PUT 时，保持「浏览器直传 COS（PUT）」关闭。以后在 CORS 中补上 PUT 后，再打开开关、测试并保存，切换到浏览器直传。</li>
       </ol>
       <p className="text-xs leading-6 text-secondary-text">请确保美国 worker 已更新并运行。COS 加速图片传输，不会消除登录、页面与生成接口的跨洋耗时；存储和流量费用按腾讯云实际计费。</p>
     </section>

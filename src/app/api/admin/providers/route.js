@@ -84,8 +84,8 @@ export async function PATCH(req) {
   try {
     const auth = await requireAdmin(req, "root");
     if (auth.response) return auth.response;
-    const input = await readJson(req, z.object({ ...channelFields, ...visualSecrets, id: z.string().min(1).max(128), kind: kindSchema.optional(), isActive: z.boolean().optional(), isDefault: z.boolean().optional(), isPlanner: z.boolean().optional(), priority: z.number().int().min(0).max(1000).optional(), displayName: z.string().min(1).max(100).optional(), creditCost: z.number().int().min(0).max(100000).optional(), costPerImage: z.number().min(0).max(1000).optional(), apiKey: z.string().max(4096).optional(), baseURL: z.string().max(500).optional(), model: z.string().max(128).optional(), chatModel: z.string().max(128).optional(), reason: z.string().min(3).max(500) }).strict());
-    if (!allowedProviderBaseURL(input.baseURL)) throw new AppError("PROVIDER_PROXY_NOT_ALLOWED");
+    const input = await readJson(req, z.object({ ...channelFields, ...visualSecrets, id: z.string().min(1).max(128), kind: kindSchema.optional(), isActive: z.boolean().optional(), isDefault: z.boolean().optional(), isPlanner: z.boolean().optional(), priority: z.number().int().min(0).max(1000).optional(), displayName: z.string().min(1).max(100).optional(), creditCost: z.number().int().min(0).max(100000).optional(), costPerImage: z.number().min(0).max(1000).optional(), apiKey: z.string().max(4096).optional(), baseURL: z.string().trim().max(500).optional(), model: z.string().max(128).optional(), chatModel: z.string().max(128).optional(), reason: z.string().min(3).max(500) }).strict());
+    if (!allowedProviderBaseURL(input.baseURL)) throw new AppError("PROVIDER_BASE_URL_INVALID");
     const result = await auditedOperation(auth.user.id, req.headers.get("idempotency-key"), "UPDATE_PROVIDER", input, async tx => {
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended('provider-config', 0))::text`;
       const existing = await tx.modelProvider.findUnique({ where: { id: input.id } });
@@ -131,8 +131,8 @@ export async function PUT(req) {
   try {
     const auth = await requireAdmin(req, "root");
     if (auth.response) return auth.response;
-    const input = await readJson(req, z.object({ ...channelFields, ...visualSecrets, kind: kindSchema, displayName: z.string().trim().min(1).max(100), model: z.string().trim().min(1).max(128), chatModel: z.string().trim().max(128).default(""), apiKey: z.string().max(4096).default(""), baseURL: z.string().max(500).default(""), creditCost: z.number().int().min(0).max(100000).default(18), costPerImage: z.number().min(0).max(1000).default(0), reason: z.string().min(3).max(500) }).strict());
-    if (!allowedProviderBaseURL(input.baseURL)) throw new AppError("PROVIDER_PROXY_NOT_ALLOWED");
+    const input = await readJson(req, z.object({ ...channelFields, ...visualSecrets, kind: kindSchema, displayName: z.string().trim().min(1).max(100), model: z.string().trim().min(1).max(128), chatModel: z.string().trim().max(128).default(""), apiKey: z.string().max(4096).default(""), baseURL: z.string().trim().max(500).default(""), creditCost: z.number().int().min(0).max(100000).default(18), costPerImage: z.number().min(0).max(1000).default(0), reason: z.string().min(3).max(500) }).strict());
+    if (!allowedProviderBaseURL(input.baseURL)) throw new AppError("PROVIDER_BASE_URL_INVALID");
     const result = await auditedOperation(auth.user.id, req.headers.get("idempotency-key"), "CREATE_PROVIDER", input, async tx => {
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended('provider-config', 0))::text`;
       const priority = (await tx.modelProvider.aggregate({ _max: { priority: true } }))._max.priority || 0;

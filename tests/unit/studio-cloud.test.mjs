@@ -118,12 +118,13 @@ describe("capability-specific configuration", () => {
     expect(caps.tools.find(t => t.id === "split")).toMatchObject({ available: true, cost: 20 });
     expect(JSON.stringify(caps)).not.toMatch(/secret|apiKey|apiKeyEnc|legacy/);
   });
-  it("admits official origins but rejects arbitrary hosts and mismatched capabilities", () => {
+  it("admits ROOT-configured HTTP/HTTPS gateways but rejects invalid URLs and mismatched capabilities", () => {
     expect(allowedProviderBaseURL("https://dashscope.aliyuncs.com")).toBe(true);
     expect(allowedProviderBaseURL("https://ark.cn-beijing.volces.com/api/v3")).toBe(true);
     expect(allowedProviderBaseURL("https://api.callyouai.com/codex")).toBe(true);
     expect(allowedProviderBaseURL("https://custom-gateway.example:8443/v1")).toBe(true);
-    for (const value of ["http://127.0.0.1", "https://key@fal.run", "https://fal.run?secret=1", "https://fal.run#secret"]) expect(allowedProviderBaseURL(value)).toBe(false);
+    for (const value of ["http://152.53.36.159:3000/v1", "http://127.0.0.1:3000/v1", "http://gateway:3000/v1", "http://[::1]:3000/v1", "https://letaicode.cn/codex", "", undefined]) expect(allowedProviderBaseURL(value)).toBe(true);
+    for (const value of ["ftp://gateway/v1", "file:///etc/passwd", "https:gateway/v1", "https://gate way/v1", "https://gateway/\npath", "https://key@fal.run", "https://fal.run?secret=1", "https://fal.run#secret"]) expect(allowedProviderBaseURL(value)).toBe(false);
     expect(validChannel("volcengine", { studioCapability: "split" })).toBe(false);
     expect(validChannel("fal", { studioCapability: "segment", model: "fal-ai/../bad" })).toBe(false);
   });

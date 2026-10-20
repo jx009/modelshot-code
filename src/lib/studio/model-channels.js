@@ -86,13 +86,14 @@ export function splitChannelReady(channel) {
   return channel?.kind === "volc-visual" ? segmentChannelReady(channel) : Boolean(channel?.kind === "fal" && channel.apiKey);
 }
 
-// Allow official APIs and administrator-configured HTTPS-compatible gateways.
-// The endpoint is already an admin-only secret-bearing setting, so do not
-// maintain a hostname allowlist that blocks legitimate compatible services.
+// ROOT configures trusted upstreams, including self-hosted HTTP gateways.
+// This validates configuration syntax; never use it for user-supplied media URLs.
 export function allowedProviderBaseURL(value) {
   if (!value) return true;
   try {
-    const url = new URL(value);
-    return url.protocol === "https:" && Boolean(url.hostname) && !url.username && !url.password && !url.search && !url.hash;
+    const normalized = value.trim();
+    if (!/^https?:\/\//i.test(normalized) || /[\s\\]/.test(normalized)) return false;
+    const url = new URL(normalized);
+    return ["http:", "https:"].includes(url.protocol) && Boolean(url.hostname) && !url.username && !url.password && !url.search && !url.hash;
   } catch { return false; }
 }

@@ -6,6 +6,10 @@ import toast from "react-hot-toast";
 import { useAdminReason } from "@/hooks/useAdminReason";
 import { CHANNEL_PRESETS, channelScope, channelCapability } from "@/lib/studio/model-channels";
 
+const providerError = error => ["PROVIDER_BASE_URL_INVALID", "PROVIDER_PROXY_NOT_ALLOWED"].includes(error?.message)
+  ? "模型接口地址格式不正确：请填写完整的 http:// 或 https:// 地址，可包含端口和路径，不要附带用户名、密码、查询参数或 #。"
+  : error?.message;
+
 const emptyChannel = { scope: "public", kind: "openai", studioCapability: "image", imageMode: "both", displayName: "", model: "", apiKey: "", accessKeyId: "", secretAccessKey: "", baseURL: "", creditCost: 18, costPerImage: 0.08 };
 const PURPOSE_LABELS = { image: "图像编辑", segment: "物体分割", split: "图层拆分", ocr: "OCR 文字识别", upscale: "图片超分" };
 function dedicatedPreset(purpose) {
@@ -49,7 +53,7 @@ export default function AdminProviders() {
       const result = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(result.code || "SAVE_FAILED");
       toast.success(note || "配置已保存"); await load();
-    } catch (error) { toast.error(error.message || "保存失败"); }
+    } catch (error) { toast.error(providerError(error) || "保存失败"); }
     finally { setSavingId(null); }
   };
 
@@ -63,7 +67,7 @@ export default function AdminProviders() {
       const result = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(result.code || "CREATE_FAILED");
       setChannel(emptyChannel); setAdding(false); toast.success("模型已添加"); await load();
-    } catch (error) { toast.error(error.message || "新增失败"); }
+    } catch (error) { toast.error(providerError(error) || "新增失败"); }
     finally { setSavingId(null); }
   };
 
@@ -105,7 +109,7 @@ export default function AdminProviders() {
         <Field label={channel.studioCapability === "upscale" ? "超分算法（固定）" : channel.studioCapability === "ocr" ? "OCR 视觉模型 ID / Endpoint ID" : "模型名 / 火山 Endpoint ID"}><input required readOnly={channel.kind === "volc-visual"} value={channel.model} maxLength={128} onChange={e => setChannel(value => ({ ...value, model: e.target.value }))} placeholder={channel.studioCapability === "ocr" ? "填写支持读图的模型名或 Endpoint ID" : "例如：gpt-image-2"} /></Field>
         {channel.kind === "fal" && <Field label="专用服务"><select value={channel.studioCapability} onChange={e => setChannel(value => ({ ...value, studioCapability: e.target.value }))}><option value="segment">物体分割</option><option value="split">图层拆分</option></select></Field>}
         {channel.kind === "volc-visual" ? <><Field label="Access Key ID (AK)"><input required type="password" autoComplete="off" value={channel.accessKeyId} onChange={e => setChannel(value => ({ ...value, accessKeyId: e.target.value }))} /></Field><Field label="Secret Access Key (SK)"><input required type="password" autoComplete="off" value={channel.secretAccessKey} onChange={e => setChannel(value => ({ ...value, secretAccessKey: e.target.value }))} /></Field></> : <Field label="API Key"><input required type="password" value={channel.apiKey} maxLength={4096} onChange={e => setChannel(value => ({ ...value, apiKey: e.target.value }))} placeholder="sk-…" /></Field>}
-        <Field label="Base URL"><input type="url" value={channel.baseURL} maxLength={500} onChange={e => setChannel(value => ({ ...value, baseURL: e.target.value }))} placeholder="留空使用官方地址" /></Field>
+        <Field label="Base URL"><input type="url" value={channel.baseURL} maxLength={500} onChange={e => setChannel(value => ({ ...value, baseURL: e.target.value }))} placeholder="支持 HTTP / HTTPS，留空使用官方地址" /></Field>
         <Field label="每次模型请求积分"><input disabled={["ocr", "upscale"].includes(channel.studioCapability)} type="number" min="0" max="100000" step="1" value={channel.creditCost} onChange={e => setChannel(value => ({ ...value, creditCost: e.target.value }))} /></Field>
       </div>
       {["ocr", "upscale"].includes(channel.studioCapability) && <p className="text-xs text-secondary-text">{channel.studioCapability === "ocr" ? "支持火山方舟和 OpenAI 兼容 Chat Completions 接口。填写支持图片输入、JSON 输出的模型；兼容服务的 Base URL 填写 API 前缀（通常以 /v1 结尾）。此配置只用于 OCR。" : "原生 2× 超分 · CVProcess · cn-north-1。需开通图片超分权限，AK/SK 与方舟 API Key 不通用。"} 用户积分请在“工具配置”中设置。</p>}
@@ -150,7 +154,7 @@ function ProviderCard({ provider: p, saving, testingId, testResult, onPatch, onT
         if (p.kind === "volc-visual") setModel(purpose === "upscale" ? "lens_vida_nnsr" : "entity_seg");
       }}>{!["volc-visual", "fal"].includes(p.kind) && <><option value="public">生图模型 · 用户可选</option><option value="language">后台通用大语言模型</option><option value="tool">图像编辑 · 工具专用</option></>}{["openai", "volcengine"].includes(p.kind) && <option value="ocr">OCR 文字识别 · 独立模型</option>}{["volc-visual", "fal"].includes(p.kind) && <option value="segment">物体分割</option>}{p.kind === "fal" && <option value="split">图层拆分</option>}{p.kind === "volc-visual" && <option value="upscale">图片超分 · 火山 2×</option>}</select></Field>
       {p.kind === "volc-visual" ? <><Field label={`Access Key ID (AK)${p.config.hasAccessKey ? " · 已配置" : ""}`}><input type="password" autoComplete="off" value={accessKeyId} onChange={e => setAccessKeyId(e.target.value)} placeholder={p.config.hasAccessKey ? "留空不变更" : "填写 AK"} /></Field><Field label={`Secret Access Key (SK)${p.config.hasSecretKey ? " · 已配置" : ""}`}><input type="password" autoComplete="off" value={secretAccessKey} onChange={e => setSecretAccessKey(e.target.value)} placeholder={p.config.hasSecretKey ? "留空不变更" : "填写 SK"} /></Field></> : <Field label={<>API Key {p.config.hasKey && <span className="text-success">（{p.config.keyMasked}）</span>}</>}><input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder={p.config.hasKey ? "留空不变更" : "sk-…"} /></Field>}
-      <Field label="Base URL（对应协议地址）"><input type="url" value={baseURL} onChange={e => setBaseURL(e.target.value)} placeholder="留空使用官方地址" /></Field>
+      <Field label="Base URL（对应协议地址）"><input type="url" value={baseURL} onChange={e => setBaseURL(e.target.value)} placeholder="支持 HTTP / HTTPS，留空使用官方地址" /></Field>
       <Field label="每次模型请求积分"><input disabled={["ocr", "upscale"].includes(selectedCapability)} type="number" min="0" max="100000" step="1" value={creditCost} onChange={e => setCreditCost(e.target.value)} /></Field>
       {scope !== "language" && <Field label="预估成本（美元/次）"><input type="number" min="0" step="0.001" value={costPerImage} onChange={e => setCost(e.target.value)} /></Field>}
     </div>

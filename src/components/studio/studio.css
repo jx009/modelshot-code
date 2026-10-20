@@ -118,6 +118,7 @@
 .ms-tabs button,.ms-commerce-tab{font-size:12px;padding:8px 3px;border-radius:10px;white-space:nowrap}
 .ms-tabs button[aria-selected=true]{background:var(--primary-text);color:var(--bg-page);box-shadow:none}
 .ms-conversation{padding:24px 16px}.ms-message p{font-size:13px;line-height:1.8}.ms-message.user{margin-left:45px;background:var(--bg-elevated);border:0;border-radius:16px 16px 3px 16px;padding:12px 14px}
+[data-theme="light"] .ms-message.user{background:var(--bg-card-hover);box-shadow:inset 0 0 0 1px var(--divider)}
 .ms-message-image{max-width:240px}.ms-message-image img{border-radius:8px}
 .ms-composer{margin:0 7px 7px;border-radius:24px;background:var(--bg-card);border-color:var(--divider-strong);padding:14px 12px 10px;box-shadow:none;transition:border-color 150ms}
 .ms-composer:focus-within{border-color:var(--divider-strong);box-shadow:none}.ms-composer textarea{font-size:13px;line-height:1.7;min-height:110px}.ms-send{background:var(--primary-text);color:var(--bg-page);border-radius:50%;width:34px;height:34px}.ms-model-pill{background:var(--bg-card-hover);border:0;border-radius:9px;font-size:12px;padding:8px}

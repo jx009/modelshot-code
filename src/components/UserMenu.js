@@ -4,7 +4,6 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useTheme } from "next-themes";
 import { useLocale, useTranslations } from "next-intl";
 import { signOut } from "next-auth/react";
-import { Link } from "@/i18n/navigation";
 import { Check, LogOut, Monitor, User, Users, CreditCard, History } from "lucide-react";
 
 import { useRecharge } from "./billing/RechargeProvider";
@@ -93,15 +92,14 @@ export default function UserMenu({ user }) {
           {[["usage", History, "使用记录", "Usage history"], ["orders", CreditCard, "购买记录", "Purchases"]].map(([id, Icon, cn, en]) => <button key={id} role="menuitem" onClick={() => { recharge.openRecords(id, trigger); setOpen(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-sm"><Icon size={15} />{zh ? cn : en}</button>)}
           {/* 邀请中心（agent+ 可见——普通用户看不到，制造升为流量手的动机） */}
           {isAgent && (
-            <Link
-              href="/invite"
+            <button
               role="menuitem"
-              onClick={() => setOpen(false)}
+              onClick={() => { recharge.openInvite(trigger); setOpen(false); }}
               className="flex w-full items-center gap-2 px-3 py-2 text-xs font-medium text-primary-text hover:bg-bg-card-hover transition-colors cursor-pointer"
             >
               <Users size={13} className="text-primary" />
               <span>{invite("title")}</span>
-            </Link>
+            </button>
           )}
 
           <div className="h-px bg-divider/50 my-1 mx-1" />

@@ -2,4 +2,3 @@
 
 .mr-popover{max-height:calc(100dvh - 110px);overflow:auto;overscroll-behavior:contain}.mr-list{overscroll-behavior:contain}
 @media(max-width:760px){.ms-studio .mr-popover{position:fixed;left:12px;right:12px;top:70px;width:auto}}
-@media(max-width:600px){.cr-shell .cr-topbar .mr-popover{position:fixed;left:12px;right:12px;top:116px;width:auto;max-height:calc(100dvh - 132px)}}

@@ -58,10 +58,10 @@ export default async function LocaleLayout({ children, params }) {
   const messages = await getMessages();
 
   return (
-    <html lang={locale} className={`${instrumentSerif.variable} ${geist.variable} h-full w-full`} suppressHydrationWarning>
+    <html lang={locale} data-theme="dark" className={`${instrumentSerif.variable} ${geist.variable} h-full w-full`} suppressHydrationWarning>
       <body className={`min-h-dvh w-full flex flex-col antialiased bg-bg-page text-primary-text font-sans`}>
         <StylesheetRecovery locale={locale} />
-        {/* 双主题：attribute 模式驱动 [data-theme]，浅/深/跟随系统三态，默认深色（品牌基调） */}
+        {/* 首次访问与服务端首屏默认深色；用户手动选择的浅色或系统主题继续保留。 */}
         <ThemeProvider attribute="data-theme" defaultTheme="dark" enableSystem disableTransitionOnChange={false}>
           <NextIntlClientProvider messages={messages}>
             <Providers>

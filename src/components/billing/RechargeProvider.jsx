@@ -10,18 +10,20 @@ import styles from "./recharge.module.css";
 const RechargeContext = createContext(null);
 const AccountRecords = dynamic(() => import("@/components/AccountRecords"));
 const RechargePanel = dynamic(() => import("./RechargePanel"));
+const InviteCenter = dynamic(() => import("@/components/InviteCenter"));
 export function useRecharge() { return useContext(RechargeContext); }
 
-function RecordsRouteEntry({ openRecords }) {
+function RecordsRouteEntry({ openRecords, openInvite }) {
   const params = useSearchParams(), path = usePathname();
-  const requested = params.get("records"), handled = useRef(null);
+  const requested = params.get("panel") === "invite" ? "invite" : params.get("records"), handled = useRef(null);
   useEffect(() => {
-    if (!["usage", "orders"].includes(requested)) { handled.current = null; return; }
+    if (!["usage", "orders", "invite"].includes(requested)) { handled.current = null; return; }
     const key = `${path}:${requested}`;
     if (handled.current === key) return;
     handled.current = key;
-    openRecords(requested);
-  }, [requested, path, openRecords]);
+    if (requested === "invite") openInvite();
+    else openRecords(requested);
+  }, [requested, path, openRecords, openInvite]);
   return null;
 }
 
@@ -36,12 +38,14 @@ export function RechargeProvider({ children }) {
   }, []);
   const open = useCallback(focusRef => show("recharge", focusRef), [show]);
   const openRecords = useCallback((tab = "orders", focusRef) => show(tab === "usage" ? "usage" : "orders", focusRef), [show]);
+  const openInvite = useCallback(focusRef => show("invite", focusRef), [show]);
   const close = useCallback(() => {
     activeView.current = null;
     setView(null);
     const url = new URL(window.location.href);
-    if (url.searchParams.has("records")) {
+    if (url.searchParams.has("records") || url.searchParams.get("panel") === "invite") {
       url.searchParams.delete("records");
+      if (url.searchParams.get("panel") === "invite") url.searchParams.delete("panel");
       window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
     }
   }, []);
@@ -51,12 +55,13 @@ export function RechargeProvider({ children }) {
     close();
     auth.open({ callbackUrl: `${url.pathname}${url.search}${url.hash}` });
   }
-  return <RechargeContext.Provider value={{ open, close, openRecords }}>
+  return <RechargeContext.Provider value={{ open, close, openRecords, openInvite }}>
     {children}
-    <Suspense fallback={null}><RecordsRouteEntry openRecords={openRecords} /></Suspense>
+    <Suspense fallback={null}><RecordsRouteEntry openRecords={openRecords} openInvite={openInvite} /></Suspense>
     {view === "recharge" && <Modal onClose={close} returnFocusRef={returnFocusRef} label={locale === "zh" ? "积分充值" : "Buy credits"} className={styles.dialog}>
       <RechargePanel onClose={close} onRecords={() => openRecords("orders")} />
     </Modal>}
     {(view === "usage" || view === "orders") && <AccountRecords key={view} initialTab={view} onClose={close} onRecharge={open} onSignIn={signIn} returnFocusRef={returnFocusRef} />}
+    {view === "invite" && <InviteCenter onClose={close} returnFocusRef={returnFocusRef} />}
   </RechargeContext.Provider>;
 }

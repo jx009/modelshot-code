@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { ChevronDown, Crop, Download, Eraser, Expand, FolderOpen, Layers3, MessageCircle, MoreHorizontal, Move, ScanText, Scissors, SlidersHorizontal, Sparkles, Type, Video, WandSparkles, ZoomIn } from "lucide-react";
 import { imageCreditCost } from "@/lib/studio/image-pricing";
 import { getTool } from "@/lib/studio/tool-catalog";
-import { imageUrl } from "@/lib/studio/image-url";
+import { downloadUrl } from "@/lib/studio/image-url";
 import "./image-tool-toolbar.css";
 
 const ICONS = { expand: Expand, upscale: ZoomIn, enhance: Sparkles, describe: WandSparkles, template: WandSparkles, erase: Eraser, inpaint: Scissors, focus: Sparkles, merge: Layers3, "text-edit": Type, translate: Type, ocr: ScanText, "remove-bg": Scissors, split: Layers3, move: Move, crop: Crop, adjust: SlidersHorizontal, video: Video, chat: MessageCircle, library: FolderOpen, download: Download };
@@ -73,7 +73,7 @@ export default function ImageToolToolbar({ selected, size, viewport, capabilitie
     const Icon = ICONS[id] || WandSparkles;
     const hint = unavailable ? t("需管理员启用或配置此工具", "An administrator needs to configure or enable this tool") : item ? `${imageCreditCost(capability || item, size, 0)} ${t("积分", "credits")}` : "";
     const content = <><Icon size={17} /><span>{label}</span>{unavailable && <i className="ms-setup-dot" />}{inMenu && id === "adjust" && <small>{t("免费", "Free")}</small>}</>;
-    if (id === "download") return <a key={id} role="menuitem" href={imageUrl(selected.assetId)} download={`${selected.name}.png`} onClick={() => setOpen(null)}>{content}</a>;
+    if (id === "download") return <a key={id} role="menuitem" href={downloadUrl(selected.assetId)} download={`${selected.name}.png`} onClick={() => setOpen(null)}>{content}</a>;
     return <button key={id} role={inMenu ? "menuitem" : undefined} aria-label={label} disabled={unavailable} title={`${label}${hint ? ` · ${hint}` : ""}`} onPointerEnter={inMenu ? undefined : () => setOpen(null)} onClick={() => {
       setOpen(null);
       if (id === "chat") onChat(); else if (id === "library") onSave(); else onChoose(id);

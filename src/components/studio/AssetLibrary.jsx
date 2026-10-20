@@ -1,11 +1,12 @@
 "use client";
+import { uploadImage } from "@/lib/upload-image";
 import Image from "@/components/studio/AssetImage";
 import { useEffect, useRef, useState } from "react";
 import { useLocale } from "next-intl";
 import { useSession } from "next-auth/react";
 import { FolderOpen, ImagePlus, Images, Plus, Search, Trash2, Undo2, X, Check } from "lucide-react";
 import { api } from "@/lib/client-api";
-import { previewUrl, imageUrl } from "@/lib/studio/image-url";
+import { previewUrl, imageUrl, downloadUrl } from "@/lib/studio/image-url";
 import Modal from "@/components/ui/Modal";
 import { useDebouncedValue } from "@/components/ui/useDebouncedValue";
 import Link from "@/components/ui/NavigationLink";
@@ -55,9 +56,7 @@ export default function AssetLibrary({ onSelect, maxSelection = 10 }) {
     setBusy(true); setError("");
     try {
       for (const file of Array.from(files).slice(0, 20)) {
-        const body = new FormData(); body.append("file", file);
-        const response = await fetch("/api/upload", { method: "POST", body }), data = await response.json();
-        if (!response.ok) throw new Error(data.code || "UPLOAD_FAILED");
+        const data = await uploadImage(file);
         await api("/api/library", { method: "POST", body: { assetId: data.assetId, name: file.name.slice(0, 160), ...(!["all", "uncategorized", "trash"].includes(category) ? { categoryId: category } : {}) } });
       }
     } catch (err) { setError(err.message); } finally { setBusy(false); setRefresh(value => value + 1); if (fileInput.current) fileInput.current.value = ""; }
@@ -105,6 +104,6 @@ export default function AssetLibrary({ onSelect, maxSelection = 10 }) {
     </section>
     <input hidden type="file" multiple accept="image/png,image/jpeg,image/webp" ref={fileInput} aria-label={zh ? "上传素材文件" : "Upload asset files"} onChange={event => upload(event.target.files)} />
     {newCategory && <Modal label={zh ? "创建分类" : "Create category"} onClose={() => { if (!busy) setNewCategory(false); }}><h2>{zh ? "创建分类" : "Create category"}</h2><input autoFocus aria-label={zh ? "分类名称" : "Category name"} placeholder={zh ? "10 字内" : "Up to 10 characters"} maxLength={10} value={categoryName} onChange={event => setCategoryName(event.target.value)} />{error && <p role="alert">{error}</p>}<div className="dialog-actions"><button className="button" disabled={busy} onClick={() => setNewCategory(false)}>{zh ? "取消" : "Cancel"}</button><button className="button primary" disabled={busy || !categoryName.trim()} onClick={addCategory}>{zh ? "确认" : "Confirm"}</button></div></Modal>}
-    {preview && <Modal label={zh ? "素材预览" : "Asset preview"} className="ml-preview-dialog" onClose={() => setPreview(null)}><button aria-label={zh ? "关闭预览" : "Close preview"} onClick={() => setPreview(null)}><X size={20} /></button><Image unoptimized src={imageUrl(preview.assetId)} width={preview.asset.width} height={preview.asset.height} alt={preview.name} /><a href={imageUrl(preview.assetId)} download={preview.name}>{zh ? "下载原图" : "Download original"}</a></Modal>}
+    {preview && <Modal label={zh ? "素材预览" : "Asset preview"} className="ml-preview-dialog" onClose={() => setPreview(null)}><button aria-label={zh ? "关闭预览" : "Close preview"} onClick={() => setPreview(null)}><X size={20} /></button><Image unoptimized src={imageUrl(preview.assetId)} width={preview.asset.width} height={preview.asset.height} alt={preview.name} /><a href={downloadUrl(preview.assetId)} download={preview.name}>{zh ? "下载原图" : "Download original"}</a></Modal>}
   </div>;
 }

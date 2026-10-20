@@ -1,4 +1,5 @@
 "use client";
+import { uploadImage } from "@/lib/upload-image";
 import Image from "next/image";
 import { cloneElement, useEffect, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, Check, ImagePlus, Images, Plus, Save, Search, Trash2, Upload, X } from "lucide-react";
@@ -74,9 +75,7 @@ export default function InspirationAdminPage() {
   async function upload(file) {
     if (!file) return; setUploading(true); setError("");
     try {
-      const form = new FormData(); form.append("file", file);
-      const res = await fetch("/api/upload", { method: "POST", body: form }), data = await res.json();
-      if (!res.ok) throw new Error(data.code || "UPLOAD_FAILED");
+      const data = await uploadImage(file);
       add({ type: "asset", assetId: data.assetId }, { size: generationSize(data.width, data.height), title: file.name.replace(/\.[^.]+$/, "").slice(0, 100) });
     } catch { setError("上传失败，请使用 PNG、JPEG 或 WebP 图片，并检查图片大小。" ); }
     finally { setUploading(false); if (uploadRef.current) uploadRef.current.value = ""; }

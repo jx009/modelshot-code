@@ -4,7 +4,7 @@ import Image from "@/components/studio/AssetImage";
 import { useEffect, useRef, useState } from "react";
 import { Download, FlipHorizontal2, FlipVertical2, Maximize, Minus, Plus, RotateCcw, RotateCw, X } from "lucide-react";
 import Modal from "@/components/ui/Modal";
-import { imageUrl, previewUrl } from "@/lib/studio/image-url";
+import { previewUrl, downloadUrl } from "@/lib/studio/image-url";
 import { DEFAULT_PREVIEW_VIEW, MAX_PREVIEW_ZOOM, MIN_PREVIEW_ZOOM, zoomPreview } from "@/lib/studio/preview-transform";
 import StudioPreviewImage from "./StudioPreviewImage";
 import "./image-viewer.css";
@@ -53,7 +53,7 @@ function PreviewSession({ assetId, initialImage, layers, zh, onSelect, onClose }
         <button className="ms-icon" title={t("垂直翻转", "Flip vertically")} aria-pressed={view.flipY} onClick={() => setView(current => ({ ...current, flipY: !current.flipY }))}><FlipVertical2 size={18} /></button>
         <i className="ms-preview-divider" />
         <button className="ms-icon" title={t("重置预览", "Reset preview")} onClick={reset}><Maximize size={17} /></button>
-        <a className="ms-icon" href={imageUrl(assetId)} download="letaidraw.png" title={t("下载原图", "Download image")}><Download size={18} /></a>
+        <a className="ms-icon" href={downloadUrl(assetId)} download="letaidraw.png" title={t("下载原图", "Download image")}><Download size={18} /></a>
       </div>
       <p className="ms-preview-help">{t("滚轮缩放 · 拖动查看 · 双击复位", "Scroll to zoom · Drag to pan · Double-click to reset")}</p>
     </div>

@@ -19,11 +19,11 @@ it.each([401, 404])("does not sign any COS URL before authorization succeeds (%s
   expect((await GET(request("?delivery=auto"), context)).status).toBe(status);
   expect(mocks.delivery).not.toHaveBeenCalled(); expect(mocks.stream).not.toHaveBeenCalled();
 });
-it("redirects only opted-in, authorized image loads without caching bearer URLs", async () => {
+it("redirects authorized image loads without caching bearer URLs", async () => {
   const response = await GET(request("?preview=320&delivery=auto"), context);
   expect(response.status).toBe(307); expect(response.headers.get("cache-control")).toBe("private, no-store");
   expect(response.headers.get("x-asset-delivery")).toBe("cos");
-  expect(mocks.delivery).toHaveBeenCalledWith(asset, 320); expect(mocks.stream).not.toHaveBeenCalled();
+  expect(mocks.delivery).toHaveBeenCalledWith(asset, 320, { download: false }); expect(mocks.stream).not.toHaveBeenCalled();
 });
 it.each([null, new Error("cos unavailable")])("serves the canonical preview when COS is cold or unavailable", async outcome => {
   if (outcome instanceof Error) mocks.delivery.mockRejectedValue(outcome); else mocks.delivery.mockResolvedValue(outcome);
@@ -32,9 +32,11 @@ it.each([null, new Error("cos unavailable")])("serves the canonical preview when
   expect(mocks.after).toHaveBeenCalledOnce();
   await mocks.after.mock.calls[0][0](); expect(mocks.enqueue).toHaveBeenCalledWith(asset.id);
 });
-it("keeps ordinary downloads same-origin and provides an explicit proxy fallback", async () => {
-  expect((await GET(request(""), context)).status).toBe(200);
+it("routes ordinary downloads to COS and retains an explicit proxy fallback", async () => {
+  expect((await GET(request(""), context)).status).toBe(307);
+  expect((await GET(request("?download=1"), context)).status).toBe(307);
+  expect(mocks.delivery).toHaveBeenLastCalledWith(asset, 0, { download: true });
   expect((await GET(request("?delivery=proxy"), context)).status).toBe(200);
-  expect(mocks.delivery).not.toHaveBeenCalled();
+  expect(mocks.delivery).toHaveBeenCalledTimes(2);
   await mocks.after.mock.calls[0][0](); expect(mocks.repair).toHaveBeenCalledWith(asset, 0);
 });

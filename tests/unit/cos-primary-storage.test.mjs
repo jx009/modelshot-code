@@ -1,0 +1,32 @@
+import { afterEach, expect, it, vi } from "vitest";
+const mock = vi.hoisted(() => ({ send: vi.fn(), config: vi.fn(), cos: { put: vi.fn(), get: vi.fn(), delete: vi.fn() } }));
+vi.mock("@aws-sdk/client-s3", async original => ({ ...await original(), S3Client: class { send(...args) { return mock.send(...args); } } }));
+vi.mock("../../src/lib/infra/storage/cos-config.js", () => ({ getCosConfig: mock.config }));
+vi.mock("../../src/lib/infra/storage/cos.js", () => ({ cosStorage: () => mock.cos }));
+import { objectStorage } from "../../src/lib/infra/storage/s3.js";
+afterEach(() => vi.unstubAllEnvs());
+it("writes COS originals, routes legacy objects, and preserves missing-object recovery semantics", async () => {
+  vi.stubEnv("S3_BUCKET", "fixture"); vi.stubEnv("S3_ACCESS_KEY_ID", "fake"); vi.stubEnv("S3_SECRET_ACCESS_KEY", "fake");
+  const config = { enabled: true, bucket: "fixture-1250000000", region: "ap-guangzhou", prefix: "letaidraw" };
+  mock.config.mockResolvedValue(config);
+  const store = objectStorage(), bytes = Buffer.from("fixture");
+  const key = await store.putImage("owner/original/image.png", bytes, "image/png");
+  expect(key).toBe("cos://fixture-1250000000/ap-guangzhou/letaidraw/originals/owner/original/image.png");
+  expect(mock.send).not.toHaveBeenCalled();
+  mock.cos.get.mockResolvedValue(bytes);
+  expect(await store.get(key)).toEqual(bytes);
+  await store.delete(key);
+  expect(mock.cos.delete).toHaveBeenCalledWith("letaidraw/originals/owner/original/image.png");
+  mock.cos.put.mockRejectedValueOnce(new Error("COS unavailable"));
+  expect(await store.putImage("owner/original/fallback.png", bytes, "image/png")).toBe("owner/original/fallback.png");
+  expect(mock.send.mock.calls[0][0].constructor.name).toBe("PutObjectCommand");
+  const missing = Object.assign(new Error("missing"), { name: "NoSuchKey", $metadata: { httpStatusCode: 404 } });
+  mock.send.mockRejectedValue(missing);
+  expect(await store.get("owner/original/recover.png")).toEqual(bytes);
+  mock.cos.get.mockRejectedValue(Object.assign(new Error("missing in COS"), { code: "NoSuchKey" }));
+  await expect(store.get("owner/original/missing.png")).rejects.toBe(missing);
+  expect(await store.getOptional("owner/original/missing.png")).toBeNull();
+  // Disabling new COS writes retains read access to existing COS originals.
+  mock.config.mockResolvedValue({ ...config, enabled: false }); mock.cos.get.mockResolvedValue(bytes);
+  expect(await store.get(key)).toEqual(bytes);
+});

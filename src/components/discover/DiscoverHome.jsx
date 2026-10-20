@@ -1,4 +1,5 @@
 "use client";
+import { uploadImage } from "@/lib/upload-image";
 import Image from "@/components/studio/AssetImage";
 import CreditIcon from "@/components/ui/CreditIcon";
 import "@/components/studio/generation-price.css";
@@ -46,9 +47,7 @@ export default function DiscoverHome({ explore = false }) {
     try {
       const layers = [...attachments];
       for (const file of Array.from(files).slice(0, 3 - attachments.length)) {
-        const form = new FormData(); form.append("file", file);
-        const response = await fetch("/api/upload", { method: "POST", body: form }), asset = await response.json();
-        if (!response.ok) throw new Error(asset.code || "UPLOAD_FAILED");
+        const asset = await uploadImage(file);
         const size = scaleToFit(asset.width, asset.height, 480);
         layers.push({ id: requestKey(), assetId: asset.assetId, type: "image", name: file.name.slice(0, 150), x: layers.length * 530 + 90, y: 100, ...size, pixelWidth: asset.width, pixelHeight: asset.height, rotation: 0, visible: true, opacity: 1 });
       }

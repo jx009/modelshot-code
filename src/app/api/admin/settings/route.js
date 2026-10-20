@@ -30,6 +30,7 @@ export async function PATCH(req) {
     if (!CONFIG_KEYS[input.key] || input.key === "credit_packages" || input.key.startsWith("epay_") || ["payments_enabled", "payment_public_url"].includes(input.key)) throw new AppError("USE_BILLING_SETTINGS");
     if (input.key === "announcements") throw new AppError("USE_ANNOUNCEMENT_SETTINGS");
     if (input.key === "cos_delivery") throw new AppError("USE_STORAGE_SETTINGS");
+    if (input.key === "execution_limits") throw new AppError("USE_EXECUTION_SETTINGS");
     if (input.key === "image_resolution_pricing") throw new AppError("USE_RESOLUTION_PRICING_SETTINGS");
     if (input.key === "registration_credits" && !/^(0|[1-9]\d{0,5}|1000000)$/.test(input.value)) throw new AppError("INVALID_REGISTRATION_CREDITS");
     if (input.key === "google_login_enabled" && !["true", "false"].includes(input.value)) throw new AppError("INVALID_INPUT");

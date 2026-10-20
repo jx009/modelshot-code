@@ -13,14 +13,24 @@ export function cosStorage(config, client) {
     async put(key, bytes, contentType) {
       return client.putObject({ ...base, Key: key, Body: bytes, ContentLength: bytes.length, ContentType: contentType, ACL: "private", CacheControl: `private, max-age=${config.signedUrlSeconds}`, ContentDisposition: "inline" });
     },
-    async get(key) { return Buffer.from((await client.getObject({ ...base, Key: key })).Body); },
+    async get(key, etag) { return Buffer.from((await client.getObject({ ...base, Key: key, ...(etag ? { IfMatch: etag } : {}) })).Body); },
+    async head(key) { return (await client.headObject({ ...base, Key: key })).headers; },
+    async copy(source, key, etag, contentType) {
+      return client.putObjectCopy({ ...base, Key: key, CopySource: `${config.bucket}.cos.${config.region}.myqcloud.com/${source.split("/").map(encodeURIComponent).join("/")}`,
+        CopySourceIfMatch: etag, MetadataDirective: "Replaced", ContentType: contentType, ACL: "private", CacheControl: "private, max-age=300" });
+    },
+    signedUpload(key, contentType, bytes) {
+      return new Promise((resolve, reject) => client.getObjectUrl({ ...base, Key: key, Method: "PUT", Sign: true, Protocol: "https:", Expires: 900,
+        Headers: { "content-type": contentType, "content-length": String(bytes) } }, (error, result) => error ? reject(error) : resolve(result.Url)));
+    },
     async delete(key) { await client.deleteObject({ ...base, Key: key }); },
     async assertPrivateBucket() {
       const acl = await client.getBucketAcl(base);
       if ((acl.ACL && acl.ACL !== "private") || (acl.Grants || []).some(g => /AllUsers|AuthenticatedUsers/i.test(g.Grantee?.URI || ""))) throw new AppError("COS_BUCKET_PUBLIC");
     },
-    signedUrl(key, seconds = config.signedUrlSeconds) {
-      return new Promise((resolve, reject) => client.getObjectUrl({ ...base, Key: key, Sign: true, Protocol: "https:", Expires: seconds }, (error, result) => error ? reject(error) : resolve(result.Url)));
+    signedUrl(key, seconds = config.signedUrlSeconds, download = false) {
+      return new Promise((resolve, reject) => client.getObjectUrl({ ...base, Key: key, Sign: true, Protocol: "https:", Expires: seconds,
+        ...(download ? { Query: { "response-content-disposition": "attachment" } } : {}) }, (error, result) => error ? reject(error) : resolve(result.Url)));
     },
   };
 }

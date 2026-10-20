@@ -1,7 +1,19 @@
+import { resolveAssetImage, forgetAssetDelivery } from "./studio/asset-delivery.js";
+
+export async function fetchImageBlob(url) {
+  try {
+    const response = await fetch(resolveAssetImage(url));
+    if (!response.ok) throw new Error("Image download failed");
+    return response.blob();
+  } catch {
+    forgetAssetDelivery(url);
+    const response = await fetch(resolveAssetImage(url));
+    if (!response.ok) throw new Error("Image download failed");
+    return response.blob();
+  }
+}
 export async function downloadImage(url, filename) {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error("Image download failed");
-  downloadBlob(await response.blob(), filename);
+  downloadBlob(await fetchImageBlob(url), filename);
 }
 
 export function downloadBlob(blob, filename) {

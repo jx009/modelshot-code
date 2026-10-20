@@ -9,6 +9,7 @@ import { encryptSecret, decryptSecret, maskSecret } from "./crypto.js";
 
 // key 常量 + 元信息（env 兜底名 + 是否敏感）
 export const CONFIG_KEYS = {
+  execution_limits: { env: "EXECUTION_LIMITS", sensitive: false },
   image_resolution_pricing: { env: "IMAGE_RESOLUTION_PRICING", sensitive: false },
   cos_delivery:          { env: "COS_DELIVERY_CONFIG", sensitive: true },
   announcements:         { env: "SITE_ANNOUNCEMENTS", sensitive: false },

@@ -42,6 +42,18 @@ describe("COS configuration and credentials", () => {
 });
 
 describe("private replica delivery", () => {
+  it("serves COS originals immediately without waiting for replica uploads", async () => {
+    const primary = { ...asset, objectKey: `cos://${config.bucket}/${config.region}/letaidraw/originals/image.jpg` };
+    const db = { assetDelivery: { findUnique: vi.fn(async () => null), findMany: vi.fn(async () => []) }, asset: { findMany: vi.fn(async () => [primary]) } };
+    const store = { signedUrl: vi.fn(async () => "https://fixture/direct") };
+    expect(await assetDeliveryUrl(primary, 0, { config, db, store, download: true })).toBe("https://fixture/direct");
+    expect(db.assetDelivery.findUnique).not.toHaveBeenCalled();
+    expect(store.signedUrl).toHaveBeenCalledWith("letaidraw/originals/image.jpg", 300, true);
+    expect(await assetDeliveryUrl(primary, 320, { config, db, store })).toBe("https://fixture/direct");
+    const batch = await assetDeliveryBatch(primary.userId, [primary.id], [0, 320], { config, db, store });
+    expect(batch.items).toHaveLength(2);
+    expect(batch.items.map(item => item.variant)).toEqual([0, 320]);
+  });
   it("batch signs only owned, active images and matching receipts with one scoped query", async () => {
     const key = cosAssetKey(config, asset, 320);
     const other = { ...asset, id: "other-image", userId: "other-user" };

@@ -3,13 +3,14 @@ import { lookup } from "node:dns/promises";
 import ipaddr from "ipaddr.js";
 import { AppError } from "../../http.js";
 import { IMAGE_LIMITS } from "../../domain/assets/service.js";
+import { imageTransfers } from "../concurrency.js";
 
 export function isPublicAddress(address) {
   try { return ipaddr.process(address).range() === "unicast"; } catch { return false; }
 }
 
 export async function downloadProviderImage(value, resolver = lookup) {
-  return downloadMedia(value, resolver, IMAGE_LIMITS.bytes, 20_000);
+  return imageTransfers.run(() => downloadMedia(value, resolver, IMAGE_LIMITS.bytes, 60_000));
 }
 
 export async function downloadProviderVideo(value, resolver = lookup) {

@@ -11,7 +11,7 @@ const input = z.object({ expectedCosts: z.record(z.string().max(128), z.number()
 export async function POST(request) {
   try {
     const user = await requireUser(), data = await readJson(request, input);
-    await rateLimit("commerce-run", user.id, 40, 3600);
+    await rateLimit("commerce-run", user.id, 600, 3600);
     const document = await prisma.studioDocument.findFirst({ where: { id: data.documentId, userId: user.id, deletedAt: null } });
     if (!document) throw new AppError("DOCUMENT_NOT_FOUND", 404);
     if (document.version !== data.version) throw new AppError("DOCUMENT_VERSION_CONFLICT", 409);

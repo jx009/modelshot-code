@@ -18,6 +18,7 @@ async function fixture(page, { preloaded = false, loseFirstResponse = false, blo
     if (path.startsWith("/api/assets/")) return route.fulfill({ body: png, contentType: "image/png" });
     if (path === "/api/auth/session") return json({ user: { id: "agent-ui", name: "Creator", email: "agent@example.invalid", credits: 500 }, expires: "2099-01-01" });
     if (path === "/api/studio/capabilities") return json({ imageProvider: "image-a", imageModels: [{ id: "image-a", label: "Image A", creditCost: 7, maxReferenceImages: 3 }, { id: "image-b", label: "Image B", creditCost: 9, maxReferenceImages: 3 }], planningCost: 2, planningAvailable: true, tools: [{ id: "edit", available: true, cost: request.url().includes("image-b") ? 9 : 7 }] });
+    if (path === "/api/upload/direct") return json({ mode: "proxy" });
     if (path === "/api/upload") { uploads++; return json({ assetId: uploads === 1 ? "product" : "style", width: 512, height: 768 }); }
     if (path === "/api/commerce/plan") {
       const body = request.postDataJSON(); turns.push(body);
@@ -99,6 +100,37 @@ test("agent plans a dynamic set, revises one result, and retains all images in t
   expect(f.writes).toHaveLength(savedWrites);
   expect(f.writes.every(w => w.id === "commerce-project")).toBe(true);
   expect(errors).toEqual([]);
+});
+
+test("product uploads send original bytes directly to COS and only metadata to the app", async ({ page }) => {
+  const f = await fixture(page), requests = [], puts = [];
+  await page.route("https://fixture.cos.ap-guangzhou.myqcloud.com/**", async route => {
+    const request = route.request();
+    if (request.method() === "PUT") puts.push({ bytes: request.postDataBuffer(), type: request.headers()["content-type"] });
+    await route.fulfill({ status: 200, headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "PUT, GET, HEAD", "Access-Control-Allow-Headers": "*" }, body: "" });
+  });
+  await page.route("**/api/upload/direct", async route => {
+    const request = route.request(); requests.push(request.postDataJSON());
+    await route.fulfill({ json: request.method() === "POST"
+      ? { mode: "cos", uploadId: "fixture-direct", url: "https://fixture.cos.ap-guangzhou.myqcloud.com/original", headers: { "Content-Type": "image/webp" } }
+      : { assetId: "product", width: 512, height: 768 } });
+  });
+  let proxyUploads = 0;
+  page.on("request", request => { if (new URL(request.url()).pathname === "/api/upload") proxyUploads++; });
+  await page.goto("/zh/commerce");
+  await page.getByLabel("上传商品原图", { exact: true }).setInputFiles("public/inspiration/chair.webp");
+  await expect.poll(() => requests.length).toBe(2);
+  await page.getByLabel("产品名称", { exact: true }).fill(brief.product);
+  await page.getByLabel("产品事实与要求").fill(brief.description);
+  await page.getByRole("button", { name: "开始策划", exact: true }).click();
+  await expect(page.locator(".ca-card")).toHaveCount(3);
+  expect(f.turns[0].productAssetId).toBe("product");
+  expect(puts).toHaveLength(1);
+  expect(puts[0].type).toBe("image/webp");
+  expect(puts[0].bytes).toEqual(await fs.readFile("public/inspiration/chair.webp"));
+  expect(requests[0]).toMatchObject({ contentType: "image/webp", bytes: puts[0].bytes.length, checksum: expect.stringMatching(/^[a-f0-9]{64}$/) });
+  expect(requests[1]).toEqual({ uploadId: "fixture-direct" });
+  expect(proxyUploads).toBe(0);
 });
 
 test("opening the canvas bypasses a stalled result save and recovers completed commerce images", async ({ page }) => {

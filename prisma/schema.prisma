@@ -262,6 +262,20 @@ model RateLimit {
   @@index([expiresAt])
 }
 
+model AssetUpload {
+  id String @id
+  userId String
+  objectKey String
+  targetId String
+  contentType String
+  bytes Int
+  checksum String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  @@index([expiresAt])
+  @@index([userId, createdAt])
+}
+
 model Asset {
   id String @id @default(cuid())
   userId String
@@ -282,7 +296,7 @@ model Asset {
   @@index([userId, createdAt])
 }
 
-// Disposable private COS replicas. Asset.objectKey remains the canonical MinIO copy.
+// Permanent private COS derivatives and replicas; originals may live in COS or MinIO.
 model AssetDelivery {
   assetId String
   targetId String

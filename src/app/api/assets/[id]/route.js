@@ -18,11 +18,12 @@ export async function GET(request, context) {
     const authorized = performance.now();
     const params = new URL(request.url).searchParams;
     const size = previewSize(params.get("preview"));
-    const delivery = params.get("delivery");
+    const delivery = params.get("delivery") || "auto";
+    const download = params.get("download") === "1";
     if (!video && delivery === "auto") {
       // Ownership is checked above, including for cached replica URLs.
       try {
-        const url = await assetDeliveryUrl(asset, size || 0);
+        const url = await assetDeliveryUrl(asset, size || 0, { download });
         if (url) return new Response(null, { status: 307, headers: { Location: url, "Cache-Control": "private, no-store", "Referrer-Policy": "no-referrer", "X-Asset-Delivery": "cos" } });
       } catch { /* An optional accelerator never blocks the original image. */ }
       after(() => enqueueCosAsset(asset.id));
@@ -46,7 +47,7 @@ export async function GET(request, context) {
       "ETag": `"${asset.checksum}"`,
       ...(asset.createdAt ? { "Last-Modified": new Date(asset.createdAt).toUTCString() } : {}),
       "X-Content-Type-Options": "nosniff",
-      "Content-Disposition": `inline; filename="${asset.id}.${video ? "mp4" : "png"}"`,
+      "Content-Disposition": `${download ? "attachment" : "inline"}; filename="${asset.id}.${video ? "mp4" : asset.contentType === "image/jpeg" ? "jpg" : asset.contentType === "image/webp" ? "webp" : "png"}"`,
       ...(video ? { "Accept-Ranges": "bytes" } : {}),
     };
     if (request.headers.get("if-none-match") === headers.ETag) return new Response(null, { status: 304, headers });

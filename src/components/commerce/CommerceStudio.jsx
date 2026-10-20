@@ -15,6 +15,8 @@ import { CASES, getCase } from "@/lib/commerce/catalog";
 import { normalizeBrief } from "@/lib/commerce/schema-client";
 import { commerceContent } from "@/lib/commerce/project";
 import { api, requestKey, terminalStatus } from "@/lib/client-api";
+import { uploadImage } from "@/lib/upload-image";
+import { fetchImageBlob } from "@/lib/image-download";
 import { previewUrl } from "@/lib/studio/image-url";
 import { preloadCanvas } from "@/lib/studio/preload-canvas";
 import "./agent.css";
@@ -167,9 +169,7 @@ export default function CommerceStudio({ caseId = "", description = "", document
     await action("upload", async () => {
       if (!session?.user) throw new Error("UNAUTHORIZED");
       if (file.size > 10 * 1024 * 1024) throw new Error("FILE_TOO_LARGE");
-      const body = new FormData(); body.append("file", file);
-      const response = await fetch("/api/upload", { method: "POST", body }); const asset = await response.json();
-      if (!response.ok) throw new Error(asset.code || "UPLOAD_FAILED");
+      const asset = await uploadImage(file);
       setSources(s => ({ ...s, [kind]: asset }));
     });
   }
@@ -242,13 +242,16 @@ export default function CommerceStudio({ caseId = "", description = "", document
   async function downloadSet() {
     await action("download", async () => {
       const { default: JSZip } = await import("jszip"), zip = new JSZip();
-      for (const [index, section] of sections.entries()) {
-        const asset = currentJob(section)?.resultData?.assets?.[0];
-        if (!asset) continue;
-        const response = await fetch(`/api/assets/${asset.id}`);
-        if (!response.ok) throw new Error("IMAGE_LOAD_FAILED");
-        zip.file(`${String(index + 1).padStart(2, "0")}-${section.id}.png`, await response.blob());
-      }
+      let next = 0;
+      await Promise.all(Array.from({ length: Math.min(4, sections.length) }, async () => {
+        while (next < sections.length) {
+          const index = next++, section = sections[index], asset = currentJob(section)?.resultData?.assets?.[0];
+          if (!asset) continue;
+          const blob = await fetchImageBlob(`/api/assets/${asset.id}`);
+          const ext = blob.type === "image/jpeg" ? "jpg" : blob.type === "image/webp" ? "webp" : "png";
+          zip.file(`${String(index + 1).padStart(2, "0")}-${section.id}.${ext}`, blob);
+        }
+      }));
       zip.file("creative-brief.json", JSON.stringify(commerce, null, 2));
       const url = URL.createObjectURL(await zip.generateAsync({ type: "blob" }));
       const anchor = document.createElement("a"); anchor.href = url; anchor.download = "letai-commerce.zip"; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);

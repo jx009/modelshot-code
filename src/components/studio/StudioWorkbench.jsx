@@ -11,6 +11,7 @@ import { useLocale } from "next-intl";
 import Link from "@/components/ui/NavigationLink";
 import { ArrowUp, ArrowDown, ArrowUpRight, Plus, X, FolderOpen, Download, Save, Undo2, Redo2, MousePointer2, Hand, ImagePlus, Type, Layers3, Sparkles, WandSparkles, Expand, Crop, Eraser, Move, ScanText, Scissors, Video, MessageCircle, Zap, ShoppingBag, ChevronDown, Check, LoaderCircle, ZoomIn, Minus, Maximize, Trash2, Eye, EyeOff, Copy, Coins, Play, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { api, requestKey } from "@/lib/client-api";
+import { uploadImage } from "@/lib/upload-image";
 import BrandLogo, { BrandMark } from "@/components/BrandLogo";
 import ModelPicker from "@/components/ui/ModelPicker";
 import ImageSizePicker from "@/components/ui/ImageSizePicker";
@@ -304,10 +305,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
   async function uploadFile(file) {
     if (!session?.user) throw new Error("UNAUTHORIZED");
     if (!file || !["image/png", "image/jpeg", "image/webp"].includes(file.type) || file.size > 10 * 1024 * 1024) throw new Error(t("请选择 10 MB 以内的 PNG / JPG / WebP。", "Choose a PNG, JPG or WebP under 10 MB."));
-    const form = new FormData(); form.append("file", file);
-    const res = await fetch("/api/upload", { method: "POST", body: form }); const data = await res.json();
-    if (!res.ok) throw new Error(data.code || "UPLOAD_FAILED");
-    return data;
+    return uploadImage(file);
   }
   async function upload(files) {
     if (submission.current) return;

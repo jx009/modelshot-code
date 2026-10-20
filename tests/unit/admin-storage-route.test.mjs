@@ -1,7 +1,7 @@
 import { beforeEach, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({ auth: vi.fn(), read: vi.fn(), write: vi.fn(), invalidate: vi.fn(), count: vi.fn(), audit: vi.fn(), test: vi.fn() }));
 vi.mock("@/lib/admin-auth", () => ({ requireAdmin: mocks.auth }));
-vi.mock("@/lib/prisma", () => ({ prisma: { assetDelivery: { count: mocks.count } } }));
+vi.mock("@/lib/prisma", () => ({ prisma: { asset: { count: mocks.count } } }));
 vi.mock("@/lib/site-config", () => ({ getSiteConfig: mocks.read, setSiteConfig: mocks.write, invalidateSiteConfig: mocks.invalidate }));
 vi.mock("@/lib/domain/identity/admin-operation", () => ({ auditedOperation: mocks.audit }));
 vi.mock("@/lib/infra/storage/cos", () => ({ testCosConnection: mocks.test, cosError: e => e }));
@@ -43,4 +43,10 @@ it("tests unsaved credentials without persisting them", async () => {
   const response = await POST(request("POST", { secretKey: "new-private-key" }));
   expect(response.status).toBe(200); expect(mocks.write).not.toHaveBeenCalled();
   expect(mocks.test).toHaveBeenCalledWith({ ...config, secretKey: "new-private-key" });
+});
+it("blocks a bucket switch when originals exist but permits credential rotation", async () => {
+  mocks.audit.mockImplementation(async (_id, _key, _action, _input, mutate) => { await mutate({ asset: { count: mocks.count } }); return { ok: true }; });
+  expect((await PATCH(request("PATCH", { bucket: "different-1250000000" }))).status).toBe(409);
+  expect(mocks.write).not.toHaveBeenCalled();
+  expect((await PATCH(request("PATCH", { secretKey: "rotated-secret" }))).status).toBe(200);
 });

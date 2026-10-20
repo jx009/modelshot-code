@@ -8,7 +8,7 @@ import { ACTIVE } from "@/lib/domain/generation/contracts";
 export async function POST(request) {
   try {
     const user = await requireUser();
-    await rateLimit("studio-jobs", user.id, 60, 600);
+    await rateLimit("studio-jobs", user.id, 1200, 600);
     return Response.json(await submitStudioJob(user.id, await readJson(request, jobSchema), request.headers.get("Idempotency-Key")), { status: 202 });
   } catch (error) { return errorResponse(error); }
 }

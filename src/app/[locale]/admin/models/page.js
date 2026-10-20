@@ -1,4 +1,5 @@
 "use client";
+import { uploadImage as uploadAsset } from "@/lib/upload-image";
 
 import { useState, useEffect, useRef } from "react";
 import { ImagePlus, LoaderCircle, Plus, Trash2, Upload, X } from "lucide-react";
@@ -37,11 +38,7 @@ export default function AdminModels() {
     if (!file) return;
     setUploadingImg(true);
     try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const res = await fetch("/api/upload", { method: "POST", body: fd });
-      if (!res.ok) throw new Error();
-      const data = await res.json();
+      const data = await uploadAsset(file);
       setForm(f => ({ ...f, referenceImage: data.url }));
       toast.success("图片已上传");
     } catch {

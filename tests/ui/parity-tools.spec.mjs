@@ -16,6 +16,7 @@ async function fixture(page) {
     if(path==="/api/auth/session") return reply({user:{id:"parity-user",name:"Creator",email:"parity@example.invalid",credits:500},expires:"2099-01-01"});
     if(path==="/api/inspiration") return reply({items:[],layout:{mode:"masonry",columns:4,gap:16}});
     if(path==="/api/studio/capabilities") return reply({imageProvider:"fixture",imageModels:[{id:"fixture",label:"Fixture image",maxReferenceImages:3,creditCost:18}],planningAvailable:true,planningCost:1,tools:TOOLS.map(tool => ({...tool,available:true}))});
+    if(path==="/api/upload/direct") return reply({mode:"proxy"});
     if(path==="/api/upload") { uploads.push(request.postDataBuffer()); return reply({assetId:`uploaded-${uploads.length}`,width:600,height:450}); }
     if(path==="/api/studio/documents" && request.method()==="POST") { const body=request.postDataJSON(); doc={...doc,...body,id:"creative-doc",version:doc.version+1}; return reply(doc); }
     if(path==="/api/studio/documents/creative-doc") return reply(doc);
@@ -94,8 +95,8 @@ for (const width of [1440, 390]) test(`OCR result has direct entry points and pe
   await page.screenshot({ path: info.outputPath(`ocr-scrolled-${width}.png`) });
   await close.click();
   await expect(panel).toHaveCount(0);
-  // The persistent canvas entry reopens the result, without a task archive.
-  await expect(page.getByRole("button", { name: "任务列表", exact: true })).toHaveCount(0);
+  // The restored canvas task center remains available; OCR opens independently.
+  await expect(page.getByRole("button", { name: "任务列表", exact: true })).toHaveCount(1);
   await entry.click();
   await expect(panel).toBeVisible();
   await expect(page.locator(".ms-task-popover")).toHaveCount(0);

@@ -1,4 +1,5 @@
 "use client";
+import { uploadImage } from "@/lib/upload-image";
 import Image from "next/image";
 import { useRef, useState } from "react";
 import { useAuth } from "@/components/auth/AuthProvider";
@@ -36,9 +37,7 @@ export default function CommerceLauncher({ initialDescription = "" }) {
     if (file.size > 10 * 1024 * 1024) { setNotice(t("图片不能超过 10 MB。", "Images must be under 10 MB.")); return; }
     lock.current = true; setBusy(true); setNotice("");
     try {
-      const body = new FormData(); body.append("file", file);
-      const response = await fetch("/api/upload", { method: "POST", body }); const asset = await response.json();
-      if (!response.ok) throw new Error(asset.code || "UPLOAD_FAILED");
+      const asset = await uploadImage(file);
       setAssets(current => ({ ...current, [kind]: asset }));
     } catch (e) { setNotice(t("上传失败，请重试：", "Upload failed: ") + e.message); }
     finally { lock.current = false; setBusy(false); }

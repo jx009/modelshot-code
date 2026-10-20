@@ -1,5 +1,6 @@
 import sharp from "sharp";
 import { AppError } from "../../http.js";
+import { imageProcessing } from "../../infra/concurrency.js";
 
 const cache = new Map(), pending = new Map();
 const MAX_BYTES = 32 * 1024 * 1024;
@@ -29,7 +30,7 @@ export async function imagePreview(asset, size, store) {
     let bytes = await store.getOptional?.(objectKey);
     if (!bytes) {
       const source = await store.get(asset.objectKey);
-      bytes = await sharp(source, { limitInputPixels: 40_000_000 }).resize(size, size, { fit: "inside", withoutEnlargement: true }).webp({ quality: 84, alphaQuality: 100 }).toBuffer();
+      bytes = await imageProcessing.run(() => sharp(source, { limitInputPixels: 40_000_000 }).rotate().resize(size, size, { fit: "inside", withoutEnlargement: true }).webp({ quality: 84, alphaQuality: 100 }).toBuffer());
       if (store.put) await store.put(objectKey, bytes, "image/webp");
     }
     while (cache.size && used + bytes.length > MAX_BYTES) { const oldest = cache.keys().next().value; used -= cache.get(oldest).length; cache.delete(oldest); }

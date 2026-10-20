@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { workflowOutputCount } from "./workflow-catalog.js";
 
-export const LIMITS = Object.freeze({ garments: 50, outputs: 100, activePerUser: 100, queue: 2000, leaseMs: 90_000, reconcileMs: 15 * 60_000 });
+export const LIMITS = Object.freeze({ garments: 50, outputs: 100, activePerUser: 500, queue: 10000, leaseMs: 90_000, reconcileMs: 15 * 60_000 });
 export const TERMINAL = ["succeeded", "failed", "cancelled"];
 export const ACTIVE = ["queued", "running", "provider_pending", "reconciling", "cancel_requested"];
 export const PROFILE_VERSION = "1";

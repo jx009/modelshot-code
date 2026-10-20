@@ -5,10 +5,12 @@ import fs from "node:fs/promises";
 
 const brief = { product: "休闲椅", brand: "物间", description: "为这把蓝色椅子做三张生活方式图片", imageCount: 3, platform: "taobao", region: "CN", language: "zh", style: "natural", theme: "linen", caseId: "", material: "", dimensions: "", audience: "", scenario: "" };
 const cards = Array.from({ length: 3 }, (_, index) => ({ id: `card-${index}`, kind: "lifestyle", title: ["让日常慢下来", "一处安静角落", "属于你的时光"][index], body: "让这把蓝色椅子融入家中的日常。", eyebrow: "", layout: "inset", purpose: "展示真实空间中的比例", direction: "暖白色空间、柔和自然光，保留椅子原始外观。", evidence: "用户上传的蓝色椅子", prompt: "Preserve original chair; create lifestyle image", attempt: 0 }));
-async function fixture(page, { preloaded = false, loseFirstResponse = false } = {}) {
+async function fixture(page, { preloaded = false, loseFirstResponse = false, blockResultSync = false } = {}) {
   const png = await sharp({ create: { width: 512, height: 768, channels: 3, background: "#88a79b" } }).png().toBuffer();
   let doc = preloaded ? makeDoc() : null, jobs = [], turns = [], writes = [], uploads = 0, lastKey;
   const keys = [];
+  let releaseSync, syncBlocked = false;
+  const syncGate = new Promise(resolve => { releaseSync = resolve; });
   function makeDoc() { return { id: "commerce-project", version: 1, name: brief.description, content: { schemaVersion: 1, layers: [{ id: "source", type: "image", assetId: "product", name: "Product", x: 0, y: 0, width: 400, height: 600, pixelWidth: 512, pixelHeight: 768, visible: true, opacity: 1, rotation: 0 }], messages: [{ id: "u1", role: "user", text: brief.description }, { id: "a1", role: "assistant", text: "用三张图讲清产品、生活场景与空间比例。" }], jobs: [], appliedJobs: [], commerce: { version: 1, brief, productAssetId: "product", sections: structuredClone(cards), planning: "agent", size: "1024x1536", agent: { summary: "三张图", styleLock: "柔和自然光、暖白空间、保留产品外观", evidence: ["用户上传的蓝色椅子"], questions: [], lastTurn: "fixture-turn-key-1234", lastTurnDigest: "digest" } } } }; }
   await page.route("**/api/**", async route => {
     const request = route.request(), path = new URL(request.url()).pathname;
@@ -40,12 +42,20 @@ async function fixture(page, { preloaded = false, loseFirstResponse = false } = 
       });
       jobs = [...rows, ...jobs.filter(j => !rows.some(r => r.id === j.id))]; return json({ jobs: rows, failure: null });
     }
-    if (path === "/api/studio/documents" && request.method() === "POST") { const body = request.postDataJSON(); writes.push(body); doc = { ...doc, ...body, version: doc.version + 1 }; return json(doc); }
+    if (path === "/api/studio/documents" && request.method() === "POST") {
+      const body = request.postDataJSON(); writes.push(body);
+      if (blockResultSync && !syncBlocked && body.content.layers.some(layer => layer.sourceJobId)) {
+        syncBlocked = true;
+        await syncGate;
+        return route.abort("failed");
+      }
+      doc = { ...doc, ...body, version: doc.version + 1 }; return json(doc);
+    }
     if (path === "/api/studio/documents/commerce-project") return json(doc);
     if (path === "/api/studio/documents") return json(doc ? [doc] : []);
     return json({ items: [], credits: 500 });
   });
-  return { turns, writes, keys, getDoc: () => doc };
+  return { turns, writes, keys, getDoc: () => doc, isSyncBlocked: () => syncBlocked, releaseSync };
 }
 
 test("agent plans a dynamic set, revises one result, and retains all images in the same project", async ({ page }, info) => {
@@ -81,10 +91,38 @@ test("agent plans a dynamic set, revises one result, and retains all images in t
   const zip = await JSZip.loadAsync(await fs.readFile(await (await downloadPromise).path()));
   expect(Object.keys(zip.files).filter(name => name.endsWith(".png"))).toHaveLength(3);
   expect((await sharp(await zip.file("01-card-0.png").async("nodebuffer")).metadata()).width).toBe(512);
-  await page.getByRole("button", { name: "打开画布" }).click();
+  const savedWrites = f.writes.length;
+  await page.getByRole("link", { name: "打开画布" }).click();
   await expect(page).toHaveURL(/studio-v2\?document=commerce-project/);
+  await expect(page.locator(".ms-canvas-label")).toContainText("5 个图层");
+  await expect(page.locator(".konvajs-content canvas").first()).toBeVisible();
+  expect(f.writes).toHaveLength(savedWrites);
   expect(f.writes.every(w => w.id === "commerce-project")).toBe(true);
   expect(errors).toEqual([]);
+});
+
+test("opening the canvas bypasses a stalled result save and recovers completed commerce images", async ({ page }) => {
+  const f = await fixture(page, { preloaded: true, blockResultSync: true });
+  const errors = []; page.on("pageerror", error => errors.push(error.message));
+  try {
+    await page.goto("/zh/commerce?document=commerce-project");
+    await page.getByRole("button", { name: /生成待办 3 张/ }).click();
+    await expect(page.locator(".ca-card-image img")).toHaveCount(3);
+    await expect.poll(f.isSyncBlocked).toBe(true);
+    expect(f.getDoc().content.layers).toHaveLength(1);
+    await page.getByRole("link", { name: "打开画布" }).click();
+    await expect(page).toHaveURL(/studio-v2\?document=commerce-project/);
+    await expect(page.locator(".ms-canvas-label")).toContainText("4 个图层");
+    await expect(page.locator(".konvajs-content canvas").first()).toBeVisible();
+    await page.getByRole("button", { name: "图层", exact: true }).click();
+    await expect(page.locator(".ms-layer")).toHaveCount(4);
+    for (const card of cards) await expect(page.locator(".ms-layers")).toContainText(card.title);
+    await expect.poll(() => f.getDoc().content.layers.length).toBe(4);
+    expect(f.getDoc().content.layers.filter(layer => layer.sourceJobId).map(layer => layer.id).sort()).toEqual(cards.map(card => `result-job-${card.id}-0-0`).sort());
+    await page.reload();
+    await expect(page.locator(".ms-canvas-label")).toContainText("4 个图层");
+    expect(errors).toEqual([]);
+  } finally { f.releaseSync(); }
 });
 
 test("a lost planning response is recoverable after reload with the original request key", async ({ page }) => {

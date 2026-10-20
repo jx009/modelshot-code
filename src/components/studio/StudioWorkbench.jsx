@@ -17,6 +17,7 @@ import ImageSizePicker from "@/components/ui/ImageSizePicker";
 import { getTool } from "@/lib/studio/tool-catalog";
 import { textLayerHeight } from "@/lib/studio/text-layer";
 import { appendResult, scaleToFit } from "@/lib/studio/canvas-utils";
+import { commerceContent } from "@/lib/commerce/project";
 import { imageUrl, previewUrl } from "@/lib/studio/image-url";
 import { loadImage } from "@/lib/studio/image-processor";
 import { maskHash as hashMask } from "@/lib/studio/mask-hash";
@@ -227,12 +228,16 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
     // and other UI interactions are never blocked by an in-flight download.
     Promise.all(
       (job.resultData?.assets || [])
-        .filter(asset => asset.contentType.startsWith("image/"))
+        .filter(asset => asset.contentType?.startsWith("image/"))
         .map(asset => loadImage(previewUrl(asset.id), { signal: life.current?.signal }))
     ).catch(() => {});  // silently ignore; canvas handles missing-image state
     const current = draftRef.current;
     if (job.documentId !== current.id || life.current?.signal.aborted || current.appliedJobs?.includes(job.id)) { resultLoads.current.delete(job.id); return; }
-    const layers = appendResult(current.layers, job, current.layers.find(l => l.id === job.targetId));
+    // Opening a commerce project must not wait for its background save. Recover
+    // completed sections with the same IDs and layout used by the commerce page.
+    const layers = current.commerce && job.sectionId
+      ? commerceContent(current, current.commerce, [], [job]).layers
+      : appendResult(current.layers, job, current.layers.find(l => l.id === job.targetId));
     const messages = [...current.messages];
     if (job.origin === "chat" && !messages.some(m => m.id === job.id)) messages.push({ id: job.id, role: "assistant", text: job.resultData?.text || `${zh ? getTool(job.tool)?.zh : getTool(job.tool)?.en} · ${t("已完成", "Complete")}`, ...(job.resultData?.assets?.[0]?.contentType?.startsWith("image/") ? { assetId: job.resultData.assets[0].id } : {}) });
     if (job.resultData?.placement === "repair-background") {

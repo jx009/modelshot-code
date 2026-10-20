@@ -21,6 +21,6 @@ export async function currentAnnouncement() {
   const { items } = await getAnnouncements();
   const item = selectAnnouncement(items);
   if (!item) return null;
-  const { id, title, content, titleEn, contentEn, buttonText, buttonTextEn, buttonUrl, style, closable } = item;
-  return { id, title, content, titleEn, contentEn, buttonText, buttonTextEn, buttonUrl, style, closable, revision: announcementVersion(item) };
+  const { id, title, content, titleEn, contentEn, buttonText, buttonTextEn, buttonUrl, buttonAction, style, closable } = item;
+  return { id, title, content, titleEn, contentEn, buttonText, buttonTextEn, buttonUrl, buttonAction, style, closable, revision: announcementVersion(item) };
 }

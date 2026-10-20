@@ -891,6 +891,17 @@ input[type="checkbox"] { width: 14px; height: 14px; accent-color: var(--primary)
 .announcement-preview { overflow: hidden; border: 1px solid var(--divider); border-radius: 12px; }
 .announcement-preview .announcement-content { padding: 12px 40px 12px 14px; justify-content: flex-start; }
 .announcement-preview .announcement-copy { justify-content: flex-start; }
+.announcement-qr-dialog { margin:auto; width:min(420px,calc(100vw - 32px)); max-height:calc(100dvh - 48px); overflow:auto; padding:24px; border:1px solid var(--divider-strong); border-radius:24px; background:var(--bg-popover); color:var(--primary-text); box-shadow:0 24px 80px #0004; text-align:center; }
+.announcement-qr-dialog::backdrop { background:#0008; backdrop-filter:blur(4px); }
+.announcement-qr-dialog header { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; }
+.announcement-qr-dialog header span { display:flex; align-items:center; gap:8px; font-size:14px; }
+.announcement-qr-dialog header button { display:grid; place-items:center; width:32px; height:32px; border-radius:50%; background:var(--bg-card-hover); }
+.announcement-qr-dialog h2 { font-size:19px; font-weight:600; overflow-wrap:anywhere; }
+.announcement-qr-dialog p { font-size:13px; line-height:1.7; white-space:pre-wrap; overflow-wrap:anywhere; margin:10px 0; }
+.announcement-qr-dialog small { display:block; color:var(--secondary-text); font-size:12px; line-height:1.7; }
+.announcement-qr-image { display:grid; place-items:center; min-height:180px; padding:16px; margin:20px auto; border-radius:16px; background:#fff; color:#222; max-width:360px; }
+.announcement-qr-image img { width:100%; height:auto; max-height:55dvh; object-fit:contain; }
+.announcement-qr-image .announcement-link { color:#222; margin-top:8px; }
 html[data-announcement] .site-nav, html[data-announcement] .cr-shell .cr-sidebar { top: var(--site-announcement-height); }
 html[data-announcement] .cr-shell { min-height: calc(100dvh - var(--site-announcement-height)); }
 html[data-announcement] .ms-studio { top: var(--site-announcement-height); display: flex; flex-direction: column; }

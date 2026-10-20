@@ -25,3 +25,11 @@ it("rejects duplicate IDs, reverse schedule, missing button label and excessive 
   expect(announcementsSchema.safeParse([{ ...item, buttonText: "" }]).success).toBe(false);
   expect(announcementsSchema.safeParse(Array.from({ length: 21 }, (_, i) => ({ ...item, id: `notice_${i}` }))).success).toBe(false);
 });
+it("supports QR actions while requiring an uploaded image and preserving legacy links", () => {
+  const qrImage = { id: "c1c31ce9-6e12-4513-bf82-e583e13d7aa6", target: "a".repeat(32) };
+  expect(announcementsSchema.parse([item])).toEqual([item]);
+  expect(announcementsSchema.safeParse([{ ...item, buttonAction: "qr", buttonUrl: "", qrImage }]).success).toBe(true);
+  expect(announcementsSchema.safeParse([{ ...item, buttonAction: "qr" }]).success).toBe(false);
+  expect(announcementsSchema.safeParse([{ ...item, buttonAction: "qr", qrImage, buttonText: "" }]).success).toBe(false);
+  expect(announcementsSchema.safeParse([{ ...item, buttonAction: "qr", qrImage: { ...qrImage, id: "../../private" } }]).success).toBe(false);
+});

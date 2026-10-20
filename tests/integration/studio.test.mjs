@@ -28,6 +28,22 @@ async function setup() {
 describe("studio documents and task ledger", () => {
   beforeAll(async () => { f = await domainFixture(); });
   afterAll(async () => { await f?.cleanup(); });
+  it.each(["jpeg", "webp"])("accepts preserved %s originals and normalizes model inputs only when needed", async format => {
+    const { user, input } = await setup();
+    const bytes = await sharp(f.image).toFormat(format).toBuffer();
+    await f.store.put(user.asset.objectKey, bytes, `image/${format}`);
+    await f.db.asset.update({ where: { id: user.asset.id }, data: { contentType: `image/${format}`, bytes: bytes.length } });
+    const job = await submitStudioJob(user.id, { ...input, referenceAssetIds: [user.asset.id] }, randomUUID(), f.db, deps);
+    let calls = 0;
+    await executeStudio(job.id, { db: f.db, store: f.store, config, adapters: { generate: async (_config, args) => {
+      calls++;
+      expect((await sharp(args.image).metadata()).format).toBe("png");
+      expect((await sharp(args.references[0]).metadata()).format).toBe("png");
+      return args.image;
+    } } });
+    expect(calls).toBe(1);
+    expect((await f.db.tryOn.findUnique({ where: { id: job.id } })).status).toBe("succeeded");
+  });
   it("persists real gateway edit success and correlates rejected requests without losing prompts", async () => {
     const calls = [];
     let reject = false;

@@ -46,12 +46,12 @@ export async function submitStudioJob(userId, input, key, db = prisma, deps = {}
     }
     for (const ref of data.referenceAssetIds || []) {
       const asset = await ownedAsset(userId, ref, tx);
-      if (asset.contentType !== "image/png") throw new AppError("INVALID_SOURCE");
+      if (!["image/png", "image/jpeg", "image/webp"].includes(asset.contentType)) throw new AppError("INVALID_SOURCE");
     }
     const target = document.content.layers.find(l => l.id === data.targetId);
     if (getTool(data.tool).source && (!target || target.assetId !== data.assetId || target.type !== "image")) throw new AppError("TARGET_CHANGED", 409);
     const inputAsset = data.assetId ? await ownedAsset(userId, data.assetId, tx) : null;
-    if (inputAsset && inputAsset.contentType !== "image/png") throw new AppError("INVALID_SOURCE");
+    if (inputAsset && !["image/png", "image/jpeg", "image/webp"].includes(inputAsset.contentType)) throw new AppError("INVALID_SOURCE");
     if (data.tool === "upscale") {
       const invalid = upscaleInputError(inputAsset, data.params.scale);
       if (invalid) throw new AppError(invalid, 422);

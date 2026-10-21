@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import sharp from "sharp";
 import { decryptSecret, encryptSecret } from "../../src/lib/crypto.js";
-import { normalizeImage, assetId } from "../../src/lib/domain/assets/service.js";
+import { normalizeImage, assetId, IMAGE_LIMITS } from "../../src/lib/domain/assets/service.js";
 import { isPublicAddress, downloadProviderImage } from "../../src/lib/infra/storage/download.js";
 import { toFileObject, toInlineData } from "../../src/lib/ai/adapters/base.js";
 import { passwordSchema } from "../../src/lib/domain/identity/verification.js";
@@ -39,17 +39,19 @@ it("validates actual image bytes, strips metadata and rejects forged MIME", asyn
   await expect(normalizeImage(tooManyPixels)).rejects.toThrow("INVALID_IMAGE");
 });
 
-it("allows lossless upscale PNG expansion while keeping upload and pixel limits", async () => {
+it("accepts uploads above 10 MB while retaining output and pixel limits", async () => {
   const width = 2560, height = 2560;
   const jpeg = await sharp(randomBytes(width * height * 3), { raw: { width, height, channels: 3 } }).jpeg({ quality: 75 }).toBuffer();
   expect(jpeg.length).toBeLessThan(10 * 1024 * 1024);
-  await expect(normalizeImage(jpeg)).rejects.toThrow("INVALID_IMAGE_SIZE");
+  await expect(normalizeImage(jpeg, "image/jpeg", { maxOutputBytes: 10 * 1024 * 1024 })).rejects.toThrow("INVALID_IMAGE_SIZE");
   const normalized = await normalizeImage(jpeg, "image/jpeg", { maxOutputBytes: UPSCALE_MAX_NORMALIZED_BYTES });
   expect(normalized.bytes).toBeGreaterThan(10 * 1024 * 1024);
   expect([normalized.width, normalized.height, normalized.contentType]).toEqual([width, height, "image/png"]);
   const decoded = await sharp(jpeg).raw().toBuffer();
   expect((await sharp(normalized.data).raw().toBuffer()).equals(decoded)).toBe(true);
-  await expect(normalizeImage(normalized.data, undefined, { maxOutputBytes: UPSCALE_MAX_NORMALIZED_BYTES })).rejects.toThrow("INVALID_IMAGE_SIZE");
+  expect(IMAGE_LIMITS.bytes).toBe(50 * 1024 * 1024);
+  await expect(normalizeImage(normalized.data)).resolves.toMatchObject({ width, height, contentType: "image/png" });
+  await expect(normalizeImage(Buffer.alloc(IMAGE_LIMITS.bytes + 1), undefined, { maxOutputBytes: UPSCALE_MAX_NORMALIZED_BYTES })).rejects.toThrow("INVALID_IMAGE_SIZE");
   const tooManyPixels = await sharp({ create: { width: 7000, height: 7000, channels: 3, background: "white" } }).png().toBuffer();
   await expect(normalizeImage(tooManyPixels, undefined, { maxOutputBytes: UPSCALE_MAX_NORMALIZED_BYTES })).rejects.toThrow("INVALID_IMAGE");
 }, 15000);

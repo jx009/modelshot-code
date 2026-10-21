@@ -1,3 +1,5 @@
+import { IMAGE_UPLOAD_MAX_BYTES } from "../image-upload-limits.js";
+
 /**
  * Studio error types with user-friendly messages
  */
@@ -34,7 +36,7 @@ const ERROR_MESSAGES_ZH = {
   [StudioErrorType.TIMEOUT]: "操作超时，请重试",
 
   [StudioErrorType.IMAGE_LOAD_FAILED]: "图片加载失败，请重新上传",
-  [StudioErrorType.IMAGE_TOO_LARGE]: "图片过大，请上传小于 10MB 的图片",
+  [StudioErrorType.IMAGE_TOO_LARGE]: "图片过大，请上传不超过 50MB 的图片",
   [StudioErrorType.INVALID_IMAGE_FORMAT]: "不支持的图片格式，请使用 JPG、PNG 或 WEBP",
 
   [StudioErrorType.SEGMENTATION_FAILED]: "抠图失败，请调整选区后重试",
@@ -57,7 +59,7 @@ const ERROR_MESSAGES_EN = {
   [StudioErrorType.TIMEOUT]: "Operation timed out, please retry",
 
   [StudioErrorType.IMAGE_LOAD_FAILED]: "Failed to load image, please re-upload",
-  [StudioErrorType.IMAGE_TOO_LARGE]: "Image too large, please upload images under 10MB",
+  [StudioErrorType.IMAGE_TOO_LARGE]: "Image too large, please upload images up to 50MB",
   [StudioErrorType.INVALID_IMAGE_FORMAT]: "Unsupported image format, please use JPG, PNG or WEBP",
 
   [StudioErrorType.SEGMENTATION_FAILED]: "Segmentation failed, please adjust selection and retry",
@@ -151,7 +153,7 @@ export async function createSegmentationError(response) {
  */
 export function validateImageFile(file, locale = "zh") {
   const messages = locale === "zh" ? ERROR_MESSAGES_ZH : ERROR_MESSAGES_EN;
-  const maxSize = 10 * 1024 * 1024; // 10MB
+  const maxSize = IMAGE_UPLOAD_MAX_BYTES;
   const validTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
 
   if (!validTypes.includes(file.type)) {

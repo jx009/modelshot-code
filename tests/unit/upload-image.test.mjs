@@ -2,7 +2,27 @@ import { afterEach, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({ api: vi.fn() }));
 vi.mock("../../src/lib/client-api.js", () => ({ api: mocks.api }));
 import { uploadImage } from "../../src/lib/upload-image.js";
+import { validateImageFile } from "../../src/lib/studio/error-handler.js";
 afterEach(() => vi.unstubAllGlobals());
+it.each([10 * 1024 * 1024 + 1, 50 * 1024 * 1024])("accepts %i bytes in browser upload validation", async size => {
+  const file = new File(["image"], "image.png", { type: "image/png" });
+  Object.defineProperty(file, "size", { value: size });
+  mocks.api.mockResolvedValueOnce({ mode: "proxy" });
+  vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ assetId: "large-image" }) })));
+  expect(validateImageFile(file).valid).toBe(true);
+  expect(await uploadImage(file)).toEqual({ assetId: "large-image" });
+  expect(mocks.api.mock.calls[0][1].body.bytes).toBe(size);
+});
+it("rejects uploads above 50 MB before hashing or making requests", async () => {
+  const file = { type: "image/png", size: 50 * 1024 * 1024 + 1, arrayBuffer: vi.fn() };
+  const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
+  await expect(uploadImage(file)).rejects.toThrow("50 MB");
+  expect(validateImageFile(file, "zh").error.message).toContain("50MB");
+  expect(validateImageFile(file, "en").error.message).toContain("50MB");
+  expect(file.arrayBuffer).not.toHaveBeenCalled();
+  expect(mocks.api).not.toHaveBeenCalled();
+  expect(fetch).not.toHaveBeenCalled();
+});
 it("uses the existing multipart upload when the server selects proxy mode", async () => {
   mocks.api.mockResolvedValueOnce({ mode: "proxy" });
   const file = new File(["png bytes"], "image.png", { type: "image/png" });

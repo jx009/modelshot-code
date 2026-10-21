@@ -2,10 +2,16 @@ import { createHash } from "node:crypto";
 import sharp from "sharp";
 import { expect, it, vi } from "vitest";
 vi.mock("../../src/lib/domain/assets/cos-delivery.js", () => ({ enqueueCosAsset: vi.fn() }));
-import { prepareDirectUpload, completeDirectUpload } from "../../src/lib/domain/assets/direct-upload.js";
+import { prepareDirectUpload, completeDirectUpload, directUploadSchema } from "../../src/lib/domain/assets/direct-upload.js";
 import { cosStorage } from "../../src/lib/infra/storage/cos.js";
 import { parseCosObjectKey } from "../../src/lib/infra/storage/cos-primary.js";
 const config = { enabled: true, directUploadEnabled: true, bucket: "fixture-1250000000", region: "ap-guangzhou", prefix: "letaidraw", secretId: "fake-id", secretKey: "fake-secret", signedUrlSeconds: 300 };
+it.each([10 * 1024 * 1024 + 1, 50 * 1024 * 1024])("accepts a direct upload of %i bytes", bytes => {
+  expect(directUploadSchema.safeParse({ contentType: "image/png", bytes, checksum: "a".repeat(64) }).success).toBe(true);
+});
+it.each([0, 50 * 1024 * 1024 + 1])("rejects a direct upload of %i bytes", bytes => {
+  expect(directUploadSchema.safeParse({ contentType: "image/png", bytes, checksum: "a".repeat(64) }).success).toBe(false);
+});
 async function fixture() {
   const bytes = await sharp({ create: { width: 64, height: 32, channels: 3, background: "red" } }).jpeg().toBuffer();
   let intent, asset;

@@ -7,8 +7,9 @@ import { AppError } from "../../http.js";
 import { objectStorage } from "../../infra/storage/s3.js";
 import { enqueueCosAsset } from "./cos-delivery.js";
 import { imageProcessing } from "../../infra/concurrency.js";
+import { IMAGE_UPLOAD_MAX_BYTES } from "../../image-upload-limits.js";
 
-export const IMAGE_LIMITS = Object.freeze({ bytes: 10 * 1024 * 1024, pixels: 40_000_000 });
+export const IMAGE_LIMITS = Object.freeze({ bytes: IMAGE_UPLOAD_MAX_BYTES, pixels: 40_000_000 });
 const formats = { png: "image/png", jpeg: "image/jpeg", webp: "image/webp" };
 
 export async function normalizeImage(bytes, declaredType, { maxOutputBytes = IMAGE_LIMITS.bytes } = {}) {

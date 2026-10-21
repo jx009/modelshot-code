@@ -1,5 +1,6 @@
 "use client";
 import { uploadImage } from "@/lib/upload-image";
+import { IMAGE_UPLOAD_MAX_BYTES } from "@/lib/image-upload-limits";
 import Image from "next/image";
 import { useRef, useState } from "react";
 import { useAuth } from "@/components/auth/AuthProvider";
@@ -34,7 +35,7 @@ export default function CommerceLauncher({ initialDescription = "" }) {
   async function upload(kind, file) {
     if (!file || lock.current) return;
     if (!session?.user) { setNotice(t("请先登录上传图片，商品资料会带入下一步。", "Sign in to upload images. Your brief carries over.")); return; }
-    if (file.size > 10 * 1024 * 1024) { setNotice(t("图片不能超过 10 MB。", "Images must be under 10 MB.")); return; }
+    if (file.size > IMAGE_UPLOAD_MAX_BYTES) { setNotice(t("图片不能超过 50 MB。", "Images must be at most 50 MB.")); return; }
     lock.current = true; setBusy(true); setNotice("");
     try {
       const asset = await uploadImage(file);

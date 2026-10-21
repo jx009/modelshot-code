@@ -8,9 +8,10 @@ import { cosStorage } from "../../infra/storage/cos.js";
 import { cosObjectKey, parseCosObjectKey, matchesCosTarget, primaryCos } from "../../infra/storage/cos-primary.js";
 import { imageTransfers, imageProcessing } from "../../infra/concurrency.js";
 import { enqueueCosAsset } from "./cos-delivery.js";
+import { IMAGE_UPLOAD_MAX_BYTES } from "../../image-upload-limits.js";
 
 export const directUploadSchema = z.object({ contentType: z.enum(["image/png", "image/jpeg", "image/webp"]),
-  bytes: z.number().int().positive().max(10 * 1024 * 1024), checksum: z.string().regex(/^[a-f0-9]{64}$/) }).strict();
+  bytes: z.number().int().positive().max(IMAGE_UPLOAD_MAX_BYTES), checksum: z.string().regex(/^[a-f0-9]{64}$/) }).strict();
 export async function prepareDirectUpload(userId, input, { db = prisma, config, store } = {}) {
   input = directUploadSchema.parse(input);
   config ||= await getCosConfig(db);

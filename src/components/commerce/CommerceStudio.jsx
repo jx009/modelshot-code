@@ -17,6 +17,7 @@ import { normalizeBrief } from "@/lib/commerce/schema-client";
 import { commerceContent } from "@/lib/commerce/project";
 import { api, requestKey, terminalStatus } from "@/lib/client-api";
 import { uploadImage } from "@/lib/upload-image";
+import { IMAGE_UPLOAD_MAX_BYTES } from "@/lib/image-upload-limits";
 import { fetchImageBlob } from "@/lib/image-download";
 import { previewUrl } from "@/lib/studio/image-url";
 import { preloadCanvas } from "@/lib/studio/preload-canvas";
@@ -170,7 +171,7 @@ export default function CommerceStudio({ caseId = "", description = "", document
     if (!file) return;
     await action("upload", async () => {
       if (!session?.user) throw new Error("UNAUTHORIZED");
-      if (file.size > 10 * 1024 * 1024) throw new Error("FILE_TOO_LARGE");
+      if (file.size > IMAGE_UPLOAD_MAX_BYTES) throw new Error("FILE_TOO_LARGE");
       const asset = await uploadImage(file);
       setSources(s => ({ ...s, [kind]: asset }));
     });

@@ -19,6 +19,7 @@ import { useToolViewport } from "./canvas/hooks/useToolViewport";
 import { useCanvasState } from "./canvas/hooks/useCanvasState";
 import { useDrawingState } from "./canvas/hooks/useDrawingState";
 import { useSelectionState } from "./canvas/hooks/useSelectionState";
+import { useDeleteSelection } from "./canvas/hooks/useDeleteSelection";
 import { loadImage } from "@/lib/studio/image-processor";
 import { imageUrl, previewUrl } from "@/lib/studio/image-url";
 import { getCursorForMode } from "@/lib/studio/cursor-generator";
@@ -97,6 +98,7 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, projectKey, read
   const [middleHeld, setMiddleHeld] = useState(false);
   const panning = requestedPanning || middleHeld;
   const container = useRef(null), stage = useRef(null), artwork = useRef(null);
+  useDeleteSelection({ container, layers, selectedIds: selectedIds.length ? selectedIds : selectedId ? [selectedId] : [], onChange, onSelect, disabled: readOnly || !!editingText || panning || mode !== "select" });
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
   const [marquee, setMarquee] = useState(null), [contextMenu, setContextMenu] = useState(null);
   const marqueeStart = useRef(null), marqueeRect = useRef(null);
@@ -443,7 +445,8 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, projectKey, read
   const cursorStyle = getCursorForMode(panning ? "hand" : mode, brushSize, selectionInk);
 
   return <div ref={container} className={`ms-stage ${drawingActive ? "is-drawing" : ""} ${draggingArtwork ? "is-dragging-artwork" : ""}`} data-camera-moving={cameraMoving} data-selection-frame={selection ? JSON.stringify({ left: camera.x + selection.x * camera.scale, top: camera.y + selection.y * camera.scale, width: selection.width * camera.scale, height: selection.height * camera.scale }) : undefined} data-mode={mode} data-panning={panning} data-camera-scale={camera.scale} data-camera={JSON.stringify(camera)} data-crop={JSON.stringify({ rect: cropRect, shape: cropShape, grid: cropGrid })} aria-label={label} style={{ cursor: cursorStyle }}
-    onPointerDownCapture={stopCamera}
+    tabIndex={-1}
+    onPointerDownCapture={event => { stopCamera(); if (event.target.tagName === "CANVAS") container.current?.focus({ preventScroll: true }); }}
     onMouseDownCapture={e => {
       if (e.button !== 1) return;
       e.preventDefault(); e.stopPropagation();

@@ -35,17 +35,26 @@
   ::view-transition-new(root) { animation: none; }
 }
 
-.navigation-progress {
-  position:fixed; top:12px; left:50%; transform:translateX(-50%);
-  z-index:10000; padding:8px 16px; border-radius:12px;
-  background:var(--bg-elevated); color:var(--primary-text); border:1px solid var(--divider);
-  box-shadow:0 4px 20px var(--shadow-soft); font:13px/1.5 var(--font-geist),system-ui,sans-serif;
-  width:max-content; max-width:calc(100vw - 24px); text-align:center; pointer-events:none;
-  animation: nav-toast-in 200ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+.navigation-retry {
+  display:inline-block; margin-top:16px; text-decoration:underline;
 }
 
-.navigation-retry {
-  pointer-events:auto; margin-inline-start:12px; text-decoration:underline;
+.navigation-content, .navigation-current { display:contents; }
+.navigation-current[hidden] { display:none !important; }
+.navigation-destination { flex:1; width:100%; min-height:60dvh; padding:32px clamp(18px, 4vw, 64px); background:var(--bg-page); color:var(--primary-text); }
+.navigation-destination[data-section="admin"] { padding:0; }
+.navigation-destination h1 { margin:0; font-size:24px; font-weight:700; }
+.navigation-destination p { margin:12px 0 24px; color:var(--secondary-text); font-size:13px; }
+.navigation-skeleton { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:16px; }
+.navigation-skeleton span { display:block; min-height:150px; border:1px solid var(--divider); border-radius:12px; background:var(--bg-card); }
+.navigation-skeleton-table { grid-template-columns:1fr; gap:10px; }
+.navigation-skeleton-table span { min-height:44px; }
+.navigation-skeleton-canvas { grid-template-columns:60px minmax(0, 1fr) minmax(160px, 22%); }
+.navigation-skeleton-canvas span { min-height:50dvh; }
+@media(max-width:600px) {
+  .navigation-skeleton:not(.navigation-skeleton-table):not(.navigation-skeleton-canvas) { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+  .navigation-skeleton-canvas { grid-template-columns:40px minmax(0, 1fr); }
+  .navigation-skeleton-canvas span:last-child { display:none; }
 }
 
 /* Shared operation surfaces. */

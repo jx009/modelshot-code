@@ -2,7 +2,7 @@
 import { useRef, useState } from "react";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { useSession } from "next-auth/react";
-import { useRouter } from "@/i18n/navigation";
+import { useNavigationRouter as useRouter } from "@/hooks/useNavigationRouter";
 import { WandSparkles, LoaderCircle } from "lucide-react";
 import { api, requestKey } from "@/lib/client-api";
 import { caseRecipe } from "@/lib/commerce/case-recipe";

@@ -1,41 +1,39 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { useLinkStatus } from "next/link";
-import { useLocale } from "next-intl";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { Link } from "@/i18n/navigation";
+import { useNavigationFeedback } from "./NavigationFeedback";
 
-function Feedback({ onPending, destination }) {
+function Feedback({ onPending, navigationId, finish }) {
   const { pending } = useLinkStatus();
-  const zh = useLocale() === "zh";
-  const [slow, setSlow] = useState(false);
+  const wasPending = useRef(false);
   useEffect(() => {
     onPending(pending);
-    if (!pending) return;
-    const timer = setTimeout(() => setSlow(true), 8000);
-    return () => { clearTimeout(timer); setSlow(false); };
-  }, [pending, onPending]);
-  if (!pending) return null;
-  return createPortal(<span className="navigation-progress" role="status">{slow ? zh ? "页面仍在加载…" : "The page is still loading…" : zh ? "正在打开…" : "Opening…"}{slow && destination && <a href={destination} className="navigation-retry" onClick={event => event.stopPropagation()}>{zh ? "重新打开页面" : "Reload destination"}</a>}</span>, document.body);
+    if (wasPending.current && !pending) finish?.(navigationId.current);
+    wasPending.current = pending;
+  }, [pending, onPending, finish, navigationId]);
+  return null;
 }
 
 // Prefetch a full destination on hover/focus, including dynamic pages. `auto`
 // alone stops at a loading boundary; prefetching every card floods HTTP/1.
 export default function NavigationLink({ children, onNavigate, onClick, onMouseEnter, onFocus, onTouchStart, onPrefetch, prefetch = "intent", prefetchDelay = 1000, ...props }) {
   const auth = useAuth();
-  const started = useRef(0);
+  const feedback = useNavigationFeedback();
+  const navigationId = useRef(null), destinationHref = useRef(null);
   const [intentHref, setIntentHref] = useState(null);
+  const [idleHref, setIdleHref] = useState(null);
   const intentKey = JSON.stringify([props.href, props.locale]);
   const deferred = prefetch === "intent" || prefetch === "idle";
-  const fetchMode = deferred ? intentHref === intentKey ? true : false : prefetch;
+  const fetchMode = deferred ? intentHref === intentKey ? true : idleHref === intentKey ? "auto" : false : prefetch;
   useEffect(() => {
     if (prefetch !== "idle" || navigator.connection?.saveData || /(^|-)2g$/.test(navigator.connection?.effectiveType || "")) return;
     let timer, idle;
     const warm = () => {
       if (document.visibilityState !== "visible") return;
-      setIntentHref(intentKey); onPrefetch?.();
+      setIdleHref(intentKey);
     };
     // Only the small, fixed module navigation opts into this. Defer it until
     // initial resources finish, then stagger routes so images keep priority.
@@ -46,11 +44,9 @@ export default function NavigationLink({ children, onNavigate, onClick, onMouseE
     if (document.readyState === "complete") schedule();
     else window.addEventListener("load", schedule, { once: true });
     return () => { clearTimeout(timer); if (idle) window.cancelIdleCallback(idle); window.removeEventListener("load", schedule); };
-  }, [prefetch, prefetchDelay, intentKey, onPrefetch]);
+  }, [prefetch, prefetchDelay, intentKey]);
   const [pending, setPending] = useState(false);
-  const [destinationHref, setDestinationHref] = useState(null);
-  useEffect(() => { if (!pending) started.current = 0; }, [pending]);
-  return <Link prefetch={fetchMode} {...props} onMouseEnter={event => {
+  return <Link prefetch={fetchMode} {...props} aria-busy={pending || undefined} onMouseEnter={event => {
     onMouseEnter?.(event);
     if (!event.defaultPrevented && deferred) { setIntentHref(intentKey); onPrefetch?.(); }
   }} onFocus={event => {
@@ -68,12 +64,12 @@ export default function NavigationLink({ children, onNavigate, onClick, onMouseE
       auth.open({ callbackUrl: destination.searchParams.get("callbackUrl") || destination.searchParams.get("next"), refCode: destination.searchParams.get("ref") });
       return;
     }
-    if (event.currentTarget.href === window.location.href) { event.preventDefault(); return; }
+    if (event.currentTarget.href === window.location.href && !feedback?.isNavigating()) { event.preventDefault(); return; }
     if (pending) { event.preventDefault(); return; }
-    setDestinationHref(event.currentTarget.href);
+    destinationHref.current = event.currentTarget.href;
   }} onNavigate={event => {
-    if (started.current) { event.preventDefault(); return; }
-    onNavigate?.(event);
-    if (!event.defaultPrevented) started.current = Date.now();
-  }}>{children}<Feedback onPending={setPending} destination={destinationHref} /></Link>;
+    let cancelled = false;
+    onNavigate?.({ preventDefault() { cancelled = true; event.preventDefault(); } });
+    if (!cancelled && destinationHref.current) navigationId.current = feedback?.begin(destinationHref.current);
+  }}>{children}<Feedback onPending={setPending} navigationId={navigationId} finish={feedback?.finish} /></Link>;
 }

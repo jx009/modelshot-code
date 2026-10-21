@@ -7,6 +7,7 @@ import Link from "next/link";
 import AdminNav from "@/components/admin/AdminNav";
 import BrandLogo from "@/components/BrandLogo";
 import { ROLE_LEVEL } from "@/lib/admin-auth";
+import NavigationContent from "@/components/ui/NavigationContent";
 
 /**
  * Admin 布局 — 服务端鉴权守卫（层级校验：admin 及以上可进，agent/user 一律踢回首页）
@@ -44,7 +45,7 @@ export default async function AdminLayout({ children }) {
       <main data-admin-content className="relative z-0 flex-1 min-w-0 min-h-0 overflow-y-auto overscroll-contain">
         <div className="p-4 md:p-6 max-w-6xl mx-auto">
           <AdminNav mobile />
-          {children}
+          <NavigationContent section="admin">{children}</NavigationContent>
         </div>
       </main>
     </div>

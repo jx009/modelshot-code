@@ -13,7 +13,7 @@ import { api, requestKey } from "@/lib/client-api";
 import { promptTitle } from "@/lib/studio/project-title";
 import { scaleToFit } from "@/lib/studio/canvas-utils";
 import { useLocale } from "next-intl";
-import { useRouter } from "@/i18n/navigation";
+import { useNavigationRouter as useRouter } from "@/hooks/useNavigationRouter";
 import Link from "@/components/ui/NavigationLink";
 import { ArrowUp, ArrowUpRight, MessageCircle, ShoppingBag, ImagePlus, WandSparkles, X, Type, LoaderCircle } from "lucide-react";
 import InspirationGallery from "./InspirationGallery";

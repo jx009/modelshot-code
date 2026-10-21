@@ -2,6 +2,7 @@ import localFont from "next/font/local";
 import "../globals.css";
 import StylesheetRecovery from "../../components/StylesheetRecovery";
 import { Providers } from "../providers";
+import NavigationContent from "@/components/ui/NavigationContent";
 import Navbar from "../../components/Navbar";
 import AnnouncementBanner from "../../components/AnnouncementBanner";
 import { ThemeProvider } from "next-themes";
@@ -68,7 +69,7 @@ export default async function LocaleLayout({ children, params }) {
               <AnnouncementBanner />
               <Navbar />
               <div className="flex-1 flex flex-col min-h-0">
-                {children}
+                <NavigationContent>{children}</NavigationContent>
               </div>
             </Providers>
           </NextIntlClientProvider>

@@ -6,7 +6,7 @@ import { useRef, useState } from "react";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { useSession } from "next-auth/react";
 import { useLocale } from "next-intl";
-import { useRouter } from "@/i18n/navigation";
+import { useNavigationRouter as useRouter } from "@/hooks/useNavigationRouter";
 import Link from "@/components/ui/NavigationLink";
 import { ArrowUp, ImagePlus, LoaderCircle, X } from "lucide-react";
 import { requestKey } from "@/lib/client-api";

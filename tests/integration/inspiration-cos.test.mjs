@@ -38,6 +38,13 @@ it("first requests enqueue the whole gallery once across visitors and retain sou
   const cold = await inspirationDelivery(gallery, options);
   expect(cold.deliveryPending).toBe(true);
   expect(cold.items.every(item => !item.imageUrl)).toBe(true);
+  const assetQueries = vi.spyOn(f.db.asset, "findMany");
+  const receiptQueries = vi.spyOn(f.db.systemConfig, "findMany");
+  await inspirationDelivery(gallery, options);
+  expect(assetQueries).toHaveBeenCalledTimes(1);
+  expect(receiptQueries).toHaveBeenCalledTimes(1);
+  assetQueries.mockRestore();
+  receiptQueries.mockRestore();
   await Promise.all([enqueueInspirationGallery(gallery, options), enqueueInspirationGallery(gallery, options)]);
   expect(await f.db.outboxEvent.count({ where: { businessKey: { startsWith: `inspiration-mirror:${receipts}` } } })).toBe(3);
   expect(target.put).not.toHaveBeenCalled();
@@ -82,4 +89,33 @@ it("does not publish partial uploads, retries replacements, and excludes hidden 
   await processInspirationMirror(custom.id, options);
   expect(target.put).not.toHaveBeenCalled();
   expect(await inspirationDelivery(gallery, { ...options, config: { ...config, enabled: false } })).toEqual(gallery);
+});
+
+it("honors another worker's lease and recovers expired claims without a long transaction", async () => {
+  const options = { db: f.db, config, target, source: f.store };
+  const delivered = await inspirationDelivery(gallery, options);
+  const revision = new URL(delivered.items[0].imageUrl).pathname.split("/").at(-2);
+  const receiptKey = `${receipts}${revision}`;
+  const lease = JSON.stringify({ token: "other-worker", expiresAt: Date.now() + 300000 });
+  await f.db.systemConfig.update({ where: { key: receiptKey }, data: { value: lease } });
+  target.put.mockClear();
+  await expect(processInspirationMirror(gallery.items[0].id, options)).rejects.toThrow("INSPIRATION_MIRROR_BUSY");
+  expect(target.put).not.toHaveBeenCalled();
+  expect((await f.db.systemConfig.findUnique({ where: { key: receiptKey } })).value).toBe(lease);
+  await f.db.systemConfig.update({ where: { key: receiptKey }, data: { value: JSON.stringify({ token: "dead-worker", expiresAt: 1 }) } });
+  let insideTransaction = false;
+  const transaction = f.db.$transaction.bind(f.db);
+  const spy = vi.spyOn(f.db, "$transaction").mockImplementation((callback, settings) => transaction(async tx => {
+    insideTransaction = true;
+    try { return await callback(tx); } finally { insideTransaction = false; }
+  }, settings));
+  target.put.mockImplementation(async (objectKey, bytes) => {
+    expect(insideTransaction).toBe(false);
+    objects.set(objectKey, bytes);
+  });
+  try {
+    await processInspirationMirror(gallery.items[0].id, options);
+    expect(target.put).toHaveBeenCalledTimes(2);
+    expect((await f.db.systemConfig.findUnique({ where: { key: receiptKey } })).value).toBe("ready");
+  } finally { spy.mockRestore(); }
 });

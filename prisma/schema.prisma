@@ -69,6 +69,8 @@ model User {
   cycles BillingCycle[]
   quotes GenerationQuote[]
   inviteAliases InviteCodeAlias[]
+
+  @@index([createdAt])
 }
 
 model InviteCodeAlias {
@@ -152,6 +154,7 @@ model Order {
   @@index([userId, createdAt])
   @@index([status])
   @@unique([userId, idempotencyKey])
+  @@index([currency, paidAt])
 }
 
 model Subscription {
@@ -553,6 +556,8 @@ model TryOn {
   @@index([userId, createTime])
   @@index([userId, projectId, sku])
   @@index([status])
+  @@index([createTime])
+  @@index([qaStatus, reviewDecision])
 }
 
 model StudioDocument {

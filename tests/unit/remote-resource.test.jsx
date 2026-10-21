@@ -3,7 +3,7 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useRemoteResource } from "../../src/hooks/useRemoteResource.js";
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 describe("remote resource loading", () => {
   it("ignores an older response after filters change", async () => {
@@ -18,9 +18,9 @@ describe("remote resource loading", () => {
     expect(result.current.loading).toBe(false);
   });
   it("surfaces HTTP errors and can reload the same query", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce({ ok: false, status: 503 }).mockResolvedValueOnce({ ok: true, json: async () => [] }));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce({ ok: false, status: 503, json: async () => ({}) }).mockResolvedValueOnce({ ok: true, json: async () => [] }));
     const { result } = renderHook(() => useRemoteResource("/orders"));
-    await waitFor(() => expect(result.current.error?.message).toContain("503"));
+    await waitFor(() => expect(result.current.error?.status).toBe(503));
     act(() => result.current.reload());
     expect(result.current.loading).toBe(true);
     await waitFor(() => expect(result.current.data).toEqual([]));
@@ -40,7 +40,33 @@ describe("remote resource loading", () => {
     await waitFor(() => expect(result.current.data?.status).toBe("running"));
     act(() => result.current.reload());
     expect(result.current.data.status).toBe("running");
+    expect(result.current.loading).toBe(false);
+    expect(result.current.refreshing).toBe(true);
     await act(async () => finish({ ok: true, json: async () => ({ status: "succeeded" }) }));
     expect(result.current.data.status).toBe("succeeded");
+  });
+
+  it("times out a stalled list and allows retry", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("fetch", vi.fn().mockImplementationOnce((_url, { signal }) => new Promise((_resolve, reject) => {
+      signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+    })).mockResolvedValueOnce({ ok: true, json: async () => [] }));
+    const { result } = renderHook(() => useRemoteResource("/orders"));
+    await act(async () => { await vi.advanceTimersByTimeAsync(15000); });
+    expect(result.current.error?.code).toBe("REQUEST_TIMEOUT");
+    await act(async () => result.current.reload());
+    expect(result.current.data).toEqual([]);
+    expect(result.current.error).toBeNull();
+  });
+
+  it("discards private data when access is revoked during refresh", async () => {
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ private: true }) })
+      .mockResolvedValueOnce({ ok: false, status: 403, json: async () => ({ code: "FORBIDDEN" }) }));
+    const { result } = renderHook(() => useRemoteResource("/orders"));
+    await waitFor(() => expect(result.current.data).toEqual({ private: true }));
+    await act(async () => result.current.reload());
+    expect(result.current.data).toBeNull();
+    expect(result.current.error?.status).toBe(403);
   });
 });

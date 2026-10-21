@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { api } from "@/lib/client-api";
 
 export function useRemoteResource(url) {
   const [revision, setRevision] = useState(0);
@@ -10,16 +11,12 @@ export function useRemoteResource(url) {
   useEffect(() => {
     if (!url) return;
     const controller = new AbortController();
-    fetch(url, { signal: controller.signal })
-      .then(async response => {
-        if (!response.ok) throw new Error(`Request failed (${response.status})`);
-        return response.json();
-      })
+    api(url, { signal: controller.signal })
       .then(data => {
         if (!controller.signal.aborted) setResult({ key, url, data, error: null });
       })
       .catch(error => {
-        if (!controller.signal.aborted) setResult(previous => ({ key, url, data: previous?.url === url ? previous.data : null, error }));
+        if (!controller.signal.aborted) setResult(previous => ({ key, url, data: ![401, 403].includes(error.status) && previous?.url === url ? previous.data : null, error }));
       });
     return () => controller.abort();
   }, [url, key]);
@@ -29,7 +26,8 @@ export function useRemoteResource(url) {
   return {
     data: result?.url === url ? result.data : null,
     error: current ? result.error : null,
-    loading: Boolean(url) && !current,
+    loading: Boolean(url) && !current && !(result?.url === url && result.data != null),
+    refreshing: Boolean(url) && !current,
     reload,
   };
 }

@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import sharp from "sharp";
 import { prisma } from "../prisma.js";
 import { getCosConfig, cosTargetId } from "../infra/storage/cos-config.js";
@@ -8,6 +8,7 @@ import { findInspiration, readInspirationImage } from "./inspiration.js";
 const hash = value => createHash("sha256").update(value).digest("hex");
 const builtinHashes = new Map();
 const signedLinks = new Map();
+const mirrorTasks = new Map();
 
 async function deliveryLinks(entry, config, target, now) {
   const key = `${entry.key}:${config.signedUrlSeconds}`;
@@ -44,6 +45,41 @@ async function descriptor(item, config, db) {
   return { key, original: `${prefix}/original`, thumbnail: `${prefix}/640.webp` };
 }
 
+async function descriptors(items, config, db) {
+  const assetItems = items.filter(item => item.cover.type === "asset");
+  const assetIds = [...new Set(assetItems.map(item => item.cover.assetId))];
+  const assetRows = assetIds.length ? await db.asset.findMany({
+    where: {
+      id: { in: assetIds },
+      status: "active",
+      references: { some: { kind: "inspiration", entityId: { in: assetItems.map(item => item.id) } } },
+    },
+    select: {
+      id: true,
+      checksum: true,
+      references: { where: { kind: "inspiration", entityId: { in: assetItems.map(item => item.id) } }, select: { entityId: true } },
+    },
+  }) : [];
+  const assetVersions = new Map();
+  for (const asset of assetRows) {
+    for (const reference of asset.references) assetVersions.set(`${reference.entityId}:${asset.id}`, asset.checksum);
+  }
+  return Promise.all(items.map(async item => {
+    try {
+      const version = item.cover.type === "builtin"
+        ? await sourceVersion(item, db)
+        : assetVersions.get(`${item.id}:${item.cover.assetId}`);
+      if (!version) throw new Error("INSPIRATION_ASSET_UNAVAILABLE");
+      const revision = hash(JSON.stringify([item.id, item.cover, version]));
+      const key = `inspiration_cos_v1:${cosTargetId(config)}:${revision}`;
+      const prefix = `${config.prefix}/inspiration/v1/${revision}`;
+      return { item, entry: { key, original: `${prefix}/original`, thumbnail: `${prefix}/640.webp` } };
+    } catch (error) {
+      return { item, error };
+    }
+  }));
+}
+
 // Receipts are durable internal SystemConfig records, separate from the editable
 // gallery. They survive deploys; only the short-lived access signatures expire.
 export async function inspirationDelivery(gallery, { db = prisma, config, target, now = Date.now() } = {}) {
@@ -53,13 +89,13 @@ export async function inspirationDelivery(gallery, { db = prisma, config, target
     target ||= cosStorage(config);
     let pending = false;
     let expiresAt = now + config.signedUrlSeconds * 1000;
-    const items = await Promise.all(gallery.items.map(async item => {
+    const resolved = await descriptors(gallery.items, config, db);
+    const keys = resolved.filter(result => result.entry).map(result => result.entry.key);
+    const receipts = keys.length ? await db.systemConfig.findMany({ where: { key: { in: keys } }, select: { key: true, value: true } }) : [];
+    const receiptMap = new Map(receipts.map(receipt => [receipt.key, receipt.value]));
+    const items = await Promise.all(resolved.map(async ({ item, entry, error }) => {
+      if (error || !entry || receiptMap.get(entry.key) !== "ready") { pending = true; return item; }
       try {
-        const entry = await descriptor(item, config, db);
-        const receipt = await db.systemConfig.findUnique({ where: { key: entry.key } });
-        if (receipt?.value !== "ready") { pending = true; return item; }
-        // Share still-valid links across visitors/polls, avoiding a fresh image
-        // download just because the gallery metadata was refreshed.
         const { imageUrl, thumbnailUrl, expiresAt: linkExpiry } = await deliveryLinks(entry, config, target, now);
         expiresAt = Math.min(expiresAt, linkExpiry);
         return { ...item, imageUrl, thumbnailUrl };
@@ -75,35 +111,69 @@ export async function enqueueInspirationGallery(gallery, { db = prisma, config, 
   try {
     config ||= await getCosConfig(db);
     if (!config.enabled) return;
-    for (const item of gallery.items) {
-      try {
-        const entry = await descriptor(item, config, db);
-        const receipt = await db.systemConfig.findUnique({ where: { key: entry.key } });
-        if (receipt?.value === "ready") continue;
-        // Queue retries handle transient failures; a later visit can re-enqueue
-        // after exhausted retries without permanently stranding an image.
-        const businessKey = `inspiration-mirror:${entry.key}:${Math.floor(now / 600000)}`;
-        await db.outboxEvent.upsert({ where: { businessKey }, create: { businessKey, kind: "inspiration-mirror", entityId: item.id }, update: {} });
-      } catch { console.warn(JSON.stringify({ code: "INSPIRATION_COS_ENQUEUE_DEFERRED", id: item.id })); }
+    const resolved = await descriptors(gallery.items, config, db);
+    const keys = resolved.filter(result => result.entry).map(result => result.entry.key);
+    const receipts = keys.length ? await db.systemConfig.findMany({ where: { key: { in: keys } }, select: { key: true, value: true } }) : [];
+    const ready = new Set(receipts.filter(receipt => receipt.value === "ready").map(receipt => receipt.key));
+    const pending = resolved.filter(result => result.entry && !ready.has(result.entry.key));
+    if (pending.length) {
+      const minute = Math.floor(now / 600000);
+      await db.outboxEvent.createMany({
+        data: pending.map(({ item, entry }) => ({ businessKey: `inspiration-mirror:${entry.key}:${minute}`, kind: "inspiration-mirror", entityId: item.id })),
+        skipDuplicates: true,
+      });
     }
+    for (const { item, error } of resolved) if (error) console.warn(JSON.stringify({ code: "INSPIRATION_COS_ENQUEUE_DEFERRED", id: item.id }));
   } catch { console.warn(JSON.stringify({ code: "INSPIRATION_COS_CONFIG_UNAVAILABLE" })); }
 }
 
-export async function processInspirationMirror(id, { db = prisma, config, target, source } = {}) {
-  config ||= await getCosConfig(db);
+export async function processInspirationMirror(id, options = {}) {
+  const { db = prisma } = options;
+  const config = options.config || await getCosConfig(db);
   if (!config.enabled) return;
   const item = await findInspiration(id, db);
-  if (!item) return; // Removed/hidden entries must not be newly published.
+  if (!item) return;
   const entry = await descriptor(item, config, db);
-  target ||= cosStorage(config);
-  await db.$transaction(async tx => {
+  const existing = mirrorTasks.get(entry.key);
+  if (existing) return existing;
+  const task = performInspirationMirror(id, entry, { ...options, db, config });
+  mirrorTasks.set(entry.key, task);
+  try { await task; }
+  finally { if (mirrorTasks.get(entry.key) === task) mirrorTasks.delete(entry.key); }
+}
+
+async function performInspirationMirror(id, entry, { db, config, target, source }) {
+  const item = await findInspiration(id, db);
+  if (!item) return; // Removed/hidden entries must not be newly published.
+  if ((await descriptor(item, config, db)).key !== entry.key) return;
+  const lease = JSON.stringify({ token: randomUUID(), expiresAt: Date.now() + 300000 });
+  const claimed = await db.$transaction(async tx => {
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${entry.key}, 0))::text`;
-    if ((await tx.systemConfig.findUnique({ where: { key: entry.key } }))?.value === "ready") return;
+    const receipt = await tx.systemConfig.findUnique({ where: { key: entry.key } });
+    if (receipt?.value === "ready") return false;
+    if (receipt?.value) {
+      let active;
+      try { active = JSON.parse(receipt.value); } catch {}
+      if (active?.expiresAt > Date.now()) throw new Error("INSPIRATION_MIRROR_BUSY");
+    }
+    await tx.systemConfig.upsert({ where: { key: entry.key }, create: { key: entry.key, value: lease }, update: { value: lease } });
+    return true;
+  }, { timeout: 15000, maxWait: 5000 });
+  if (!claimed) return;
+  try {
+    target ||= cosStorage(config);
     await target.assertPrivateBucket();
-    const { bytes, contentType } = await readInspirationImage(item, tx, source);
+    const { bytes, contentType } = await readInspirationImage(item, db, source);
     const thumbnail = await sharp(bytes).rotate().resize({ width: 640, withoutEnlargement: true }).webp({ quality: 82 }).toBuffer();
     await target.put(entry.original, bytes, contentType);
     await target.put(entry.thumbnail, thumbnail, "image/webp");
-    await tx.systemConfig.upsert({ where: { key: entry.key }, create: { key: entry.key, value: "ready" }, update: { value: "ready" } });
-  }, { timeout: 120000, maxWait: 10000 });
+    await db.$transaction(async tx => {
+      const current = await findInspiration(id, tx);
+      if (!current || (await descriptor(current, config, tx)).key !== entry.key) return;
+      const result = await tx.systemConfig.updateMany({ where: { key: entry.key, value: lease }, data: { value: "ready" } });
+      if (!result.count) throw new Error("INSPIRATION_MIRROR_LEASE_LOST");
+    }, { timeout: 15000, maxWait: 5000 });
+  } finally {
+    await db.systemConfig.deleteMany({ where: { key: entry.key, value: lease } });
+  }
 }

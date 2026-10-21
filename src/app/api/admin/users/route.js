@@ -40,7 +40,7 @@ export async function GET(req) {
     const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 
     // 先查用户，再按 userId 聚合月用量（Prisma 嵌套 select 不支持 _sum 聚合）
-    const users = await prisma.user.findMany({
+    const pageData = prisma.user.findMany({
       where,
       select: {
         id: true, name: true, email: true, image: true,
@@ -51,10 +51,8 @@ export async function GET(req) {
       orderBy,
       skip: (page - 1) * limit,
       take: limit,
-    });
-    const [total, usageRows] = await Promise.all([
-      prisma.user.count({ where }),
-      prisma.creditTransaction.groupBy({
+    }).then(async users => {
+      const usageRows = users.length ? await prisma.creditTransaction.groupBy({
         by: ["userId"],
         where: {
           type: "consume", channel: "subscription",
@@ -62,7 +60,12 @@ export async function GET(req) {
           userId: { in: users.map(u => u.id) },
         },
         _sum: { amount: true },
-      }),
+      }) : [];
+      return { users, usageRows };
+    });
+    const [{ users, usageRows }, total] = await Promise.all([
+      pageData,
+      prisma.user.count({ where }),
     ]);
     const usageMap = Object.fromEntries(usageRows.map(r => [r.userId, Math.abs(r._sum.amount || 0)]));
 
@@ -79,7 +82,7 @@ export async function GET(req) {
       total,
       page,
       limit,
-    });
+    }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     console.error("[ADMIN_USERS_GET]", error);
     return new NextResponse("Internal Error", { status: 500 });

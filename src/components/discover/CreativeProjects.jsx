@@ -11,14 +11,44 @@ import Modal from "@/components/ui/Modal";
 import { useDebouncedValue } from "@/components/ui/useDebouncedValue";
 import "./projects.css";
 
+const projectPages = new Map();
+const PROJECT_CACHE_MS = 30_000;
+
+function readProjectPage(key) {
+  const cached = projectPages.get(key);
+  if (!cached) return null;
+  if (Date.now() - cached.savedAt > PROJECT_CACHE_MS) {
+    projectPages.delete(key);
+    return null;
+  }
+  return cached;
+}
+
+function writeProjectPage(key, items, nextCursor) {
+  projectPages.delete(key);
+  projectPages.set(key, { items, nextCursor, savedAt: Date.now() });
+  if (projectPages.size > 40) projectPages.delete(projectPages.keys().next().value);
+}
+
+function clearProjectPages(userId) {
+  for (const key of projectPages.keys()) if (key.startsWith(`${userId}:`)) projectPages.delete(key);
+}
+
 export default function CreativeProjects() {
-  const locale = useLocale(), zh = locale === "zh", { status } = useSession();
+  const { status, data: session } = useSession();
+  const userId = session?.user?.id;
+  return <ProjectLibrary key={userId || status} userId={userId} status={status} />;
+}
+
+function ProjectLibrary({ userId, status }) {
+  const locale = useLocale(), zh = locale === "zh";
   const [rows, setRows] = useState(null), [search, setSearch] = useState(""), [filter, setFilter] = useState("all");
   const [cursor, setCursor] = useState(null), [loading, setLoading] = useState(false), [error, setError] = useState("");
   const [menu, setMenu] = useState(null), [editing, setEditing] = useState(null), [name, setName] = useState("");
   const [removing, setRemoving] = useState(null), [saving, setSaving] = useState(false);
   const debouncedSearch = useDebouncedValue(search);
   const query = new URLSearchParams({ paged: "1", q: debouncedSearch, kind: filter }).toString();
+  const cacheKey = userId ? `${userId}:${query}` : null;
   const activeQuery = useRef(query);
   useEffect(() => { activeQuery.current = query; }, [query]);
   useEffect(() => {
@@ -26,13 +56,33 @@ export default function CreativeProjects() {
     const abort = new AbortController();
     async function load() {
       setLoading(true); setError("");
-      try { const data = await api(`/api/studio/documents?${query}`, { signal: abort.signal }); setRows(data.items); setCursor(data.nextCursor); }
-      catch (err) { if (!abort.signal.aborted) setError(err.message); }
+      try {
+        const data = await api(`/api/studio/documents?${query}`, { signal: abort.signal });
+        if (abort.signal.aborted) return;
+        setRows(data.items);
+        setCursor(data.nextCursor);
+        if (cacheKey) writeProjectPage(cacheKey, data.items, data.nextCursor);
+      }
+      catch (err) {
+        if (abort.signal.aborted) return;
+        if ([401, 403].includes(err.status)) {
+          clearProjectPages(userId);
+          setRows(null);
+          setCursor(null);
+        }
+        setError(err.message);
+      }
       finally { if (!abort.signal.aborted) setLoading(false); }
     }
-    load();
+    void Promise.resolve().then(() => {
+      if (abort.signal.aborted) return;
+      const cached = cacheKey ? readProjectPage(cacheKey) : null;
+      setRows(cached?.items ?? null);
+      setCursor(cached?.nextCursor ?? null);
+      void load();
+    });
     return () => abort.abort();
-  }, [query, status]);
+  }, [cacheKey, query, status, userId]);
   useEffect(() => {
     if (!menu) return;
     const close = event => {
@@ -48,7 +98,7 @@ export default function CreativeProjects() {
   async function rename(row) {
     if (!name.trim() || saving) return;
     setSaving(true); setError("");
-    try { const result = await api(`/api/studio/documents/${row.id}`, { method: "PATCH", body: { name: name.trim(), version: row.version } }); setRows(current => current.map(item => item.id === row.id ? { ...item, ...result } : item)); setEditing(null); }
+    try { const result = await api(`/api/studio/documents/${row.id}`, { method: "PATCH", body: { name: name.trim(), version: row.version } }); clearProjectPages(userId); setRows(current => current.map(item => item.id === row.id ? { ...item, ...result } : item)); setEditing(null); }
     catch (err) { setError(err.code === "DOCUMENT_VERSION_CONFLICT" ? zh ? "项目已在其他页面更新，请刷新后重试" : "Project changed elsewhere. Refresh and retry." : err.message); }
     finally { setSaving(false); }
   }
@@ -56,12 +106,21 @@ export default function CreativeProjects() {
     if (!cursor || loading) return;
     setLoading(true);
     try { const data = await api(`/api/studio/documents?${query}&cursor=${encodeURIComponent(cursor)}`); if (activeQuery.current !== query) return; setRows(current => [...current, ...data.items.filter(item => !current.some(row => row.id === item.id))]); setCursor(data.nextCursor); }
-    catch (err) { setError(err.message); } finally { setLoading(false); }
+    catch (err) { if (activeQuery.current === query) setError(err.message); }
+    finally { if (activeQuery.current === query) setLoading(false); }
   }
   async function remove() {
     setSaving(true);
-    try { await api(`/api/studio/documents/${removing.id}`, { method: "DELETE" }); setRows(current => current.filter(row => row.id !== removing.id)); setRemoving(null); }
+    try { await api(`/api/studio/documents/${removing.id}`, { method: "DELETE" }); clearProjectPages(userId); setRows(current => current.filter(row => row.id !== removing.id)); setRemoving(null); }
     catch (err) { setError(err.message); } finally { setSaving(false); }
+  }
+  async function restore(row) {
+    setSaving(true);
+    try {
+      await api(`/api/studio/documents/${row.id}`, { method: "PATCH", body: { restore: true } });
+      clearProjectPages(userId);
+      setRows(current => current.filter(item => item.id !== row.id));
+    } catch (err) { setError(err.message); } finally { setSaving(false); }
   }
   return <><section className="mp-library">
     <header className="mp-heading"><h1>{zh ? "我的项目" : "My projects"}</h1><label className="mp-search"><Search size={18} /><input type="search" aria-label={zh ? "搜索项目" : "Search projects"} placeholder={zh ? "搜索项目" : "Search projects"} value={search} onChange={event => setSearch(event.target.value)} />{search && <button aria-label={zh ? "清空搜索" : "Clear search"} onClick={() => setSearch("")}><X size={15} /></button>}</label></header>
@@ -73,7 +132,7 @@ export default function CreativeProjects() {
         {rows === null ? Array.from({ length: 5 }, (_, i) => <div className="mp-skeleton" key={i} />) : rows.map(row => <article className="mp-card" key={row.id}>
           <Link className="mp-cover" href={`/${row.kind === "commerce" ? "commerce" : "studio-v2"}?document=${row.id}`} aria-label={row.name} aria-disabled={filter === "trash"} onClick={event => { if (filter === "trash") event.preventDefault(); }}>{row.coverAssetId ? <Image unoptimized src={previewUrl(row.coverAssetId, 640)} alt="" fill sizes="(max-width:600px) 90vw, 320px" /> : <FolderOpen size={40} strokeWidth={1} />}</Link>
           <div className="mp-card-footer"><div>{editing === row.id ? <form onSubmit={event => { event.preventDefault(); rename(row); }}><input autoFocus aria-label={zh ? "项目名称" : "Project name"} maxLength={100} value={name} disabled={saving} onChange={event => setName(event.target.value)} onKeyDown={event => { if (event.key === "Escape") setEditing(null); }} /><button disabled={saving || !name.trim()}>{zh ? "保存" : "Save"}</button><button type="button" disabled={saving} onClick={() => setEditing(null)}>{zh ? "取消" : "Cancel"}</button></form> : <h2 title={row.name}>{row.name}</h2>}<time dateTime={row.updatedAt}>{zh ? "更新于 " : "Updated "}{new Date(row.updatedAt).toLocaleString(locale, { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}</time></div>
-            <div className="mp-card-menu">{filter === "trash" ? <button disabled={saving} onClick={async () => { setSaving(true); try { await api(`/api/studio/documents/${row.id}`, { method: "PATCH", body: { restore: true } }); setRows(current => current.filter(item => item.id !== row.id)); } catch (err) { setError(err.message); } finally { setSaving(false); } }}>{zh ? "恢复" : "Restore"}</button> : <button aria-label={zh ? `项目菜单：${row.name}` : `Project menu: ${row.name}`} aria-expanded={menu === row.id} onClick={() => setMenu(menu === row.id ? null : row.id)}><MoreHorizontal size={20} /></button>}{menu === row.id && <div><button onClick={() => { setEditing(row.id); setName(row.name); setMenu(null); }}><Pencil size={14} />{zh ? "重命名" : "Rename"}</button><button onClick={() => { setRemoving(row); setMenu(null); }}><Trash2 size={14} />{zh ? "删除" : "Delete"}</button></div>}</div>
+            <div className="mp-card-menu">{filter === "trash" ? <button disabled={saving} onClick={() => restore(row)}>{zh ? "恢复" : "Restore"}</button> : <button aria-label={zh ? `项目菜单：${row.name}` : `Project menu: ${row.name}`} aria-expanded={menu === row.id} onClick={() => setMenu(menu === row.id ? null : row.id)}><MoreHorizontal size={20} /></button>}{menu === row.id && <div><button onClick={() => { setEditing(row.id); setName(row.name); setMenu(null); }}><Pencil size={14} />{zh ? "重命名" : "Rename"}</button><button onClick={() => { setRemoving(row); setMenu(null); }}><Trash2 size={14} />{zh ? "删除" : "Delete"}</button></div>}</div>
           </div>
         </article>)}
       </div>

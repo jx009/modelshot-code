@@ -19,6 +19,7 @@ function Gallery({ zh, explore }) {
     let timer, refreshing = false;
     async function refresh() {
       if (refreshing || abort.signal.aborted) return;
+      if (document.visibilityState === "hidden") return;
       refreshing = true;
       clearTimeout(timer);
       let delay = 60000;
@@ -29,7 +30,7 @@ function Gallery({ zh, explore }) {
         setGallery(next); setError(false);
         // Adopt newly mirrored images without a page reload; refresh signatures
         // before expiry for cards that have not scrolled into view yet.
-        delay = next.deliveryPending ? 5000 : next.deliveryExpiresAt ? Math.max(10000, Math.min(60000, next.deliveryExpiresAt - Date.now() - 30000)) : 60000;
+        delay = next.deliveryPending ? 15000 : next.deliveryExpiresAt ? Math.max(10000, Math.min(60000, next.deliveryExpiresAt - Date.now() - 30000)) : 60000;
       } catch { if (!abort.signal.aborted) setError(true); }
       finally { refreshing = false; if (!abort.signal.aborted) timer = setTimeout(refresh, delay); }
     }
@@ -42,7 +43,8 @@ function Gallery({ zh, explore }) {
       void refresh();
     });
     window.addEventListener("focus", refresh);
-    return () => { abort.abort(); window.removeEventListener("focus", refresh); clearTimeout(timer); };
+    document.addEventListener("visibilitychange", refresh);
+    return () => { abort.abort(); window.removeEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh); clearTimeout(timer); };
   }, [reload]);
   if (!gallery) return <section className="ig-section"><p role={error ? "alert" : "status"}>{zh ? (error ? "灵感库暂时无法加载。" : "正在加载灵感作品…") : (error ? "The gallery is unavailable." : "Loading inspiration…")}</p>{error && <button onClick={() => setReload(v => v + 1)}>{zh ? "重试" : "Try again"}</button>}</section>;
   const visible = gallery.items.filter(i => (category === "all" || i.category === category) && `${i.title} ${i.titleEn} ${i.description} ${i.prompt}`.toLowerCase().includes(query.toLowerCase().trim()));

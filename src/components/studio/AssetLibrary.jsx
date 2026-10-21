@@ -1,5 +1,6 @@
 "use client";
 import { uploadImage } from "@/lib/upload-image";
+import { mapWithConcurrency } from "@/lib/map-with-concurrency";
 import Image from "@/components/studio/AssetImage";
 import { useEffect, useRef, useState } from "react";
 import { useLocale } from "next-intl";
@@ -12,70 +13,115 @@ import { useDebouncedValue } from "@/components/ui/useDebouncedValue";
 import Link from "@/components/ui/NavigationLink";
 import "./asset-library.css";
 
+const libraryCache = new Map();
+const categoryCache = new Map();
+const LIBRARY_CACHE_MS = 30_000;
+const CATEGORY_CACHE_MS = 60_000;
+function readCache(cache, key, maxAge) {
+  const entry = cache.get(key);
+  if (!entry || Date.now() - entry.savedAt > maxAge) return null;
+  return entry.value;
+}
+function writeCache(cache, key, value, limit) {
+  cache.set(key, { value, savedAt: Date.now() });
+  if (cache.size > limit) cache.delete(cache.keys().next().value);
+}
+function invalidateUserCache(userId) {
+  if (!userId) return;
+  const prefix = `${userId}:`;
+  for (const key of libraryCache.keys()) if (key.startsWith(prefix)) libraryCache.delete(key);
+  categoryCache.delete(userId);
+}
+
 export default function AssetLibrary({ onSelect, maxSelection = 10 }) {
-  const zh = useLocale() === "zh", { status } = useSession(), fileInput = useRef(null);
+  const zh = useLocale() === "zh", { data: session, status } = useSession(), fileInput = useRef(null);
+  const userId = session?.user?.id;
   const [selecting, setSelecting] = useState(false);
-  const [category, setCategory] = useState("all"), [categories, setCategories] = useState([]), [search, setSearch] = useState("");
-  const [items, setItems] = useState([]), [cursor, setCursor] = useState(null), [refresh, setRefresh] = useState(0);
-  const [loading, setLoading] = useState(true), [busy, setBusy] = useState(false), [error, setError] = useState("");
+  const [category, setCategory] = useState("all"), [categorySnapshot, setCategorySnapshot] = useState({ userId: null, refresh: -1, rows: [] }), [search, setSearch] = useState("");
+  const [itemSnapshot, setItemSnapshot] = useState({ key: "", items: [], cursor: null });
+  const [refresh, setRefresh] = useState(0);
+  const [loadState, setLoadState] = useState({ key: "", loading: true });
+  const [busy, setBusy] = useState(false), [error, setError] = useState("");
   const [loadError, setLoadError] = useState("");
   const [newCategory, setNewCategory] = useState(false), [categoryName, setCategoryName] = useState("");
   const [selected, setSelected] = useState([]), [preview, setPreview] = useState(null), [renaming, setRenaming] = useState(null), [name, setName] = useState("");
   const debouncedSearch = useDebouncedValue(search);
   const query = new URLSearchParams({ category, q: debouncedSearch }).toString();
-  const activeQuery = useRef(query);
-  useEffect(() => { activeQuery.current = query; }, [query]);
+  const cacheKey = userId ? `${userId}:${query}` : "";
+  const snapshotKey = `${cacheKey}:${refresh}`;
+  const cachedCategories = userId ? readCache(categoryCache, userId, CATEGORY_CACHE_MS) : null;
+  const categories = categorySnapshot.userId === userId && categorySnapshot.refresh === refresh ? categorySnapshot.rows : cachedCategories || [];
+  const cachedItems = cacheKey ? readCache(libraryCache, cacheKey, LIBRARY_CACHE_MS) : null;
+  const items = itemSnapshot.key === snapshotKey ? itemSnapshot.items : cachedItems?.items || [];
+  const cursor = itemSnapshot.key === snapshotKey ? itemSnapshot.cursor : cachedItems?.cursor || null;
+  const loading = loadState.key === snapshotKey ? loadState.loading : !cachedItems;
+  const activeQuery = useRef(snapshotKey);
+  useEffect(() => { activeQuery.current = snapshotKey; }, [snapshotKey]);
   useEffect(() => {
     if (status !== "authenticated") return;
     const abort = new AbortController();
     async function load() {
-      setLoading(true); setLoadError("");
+      setLoadError("");
       try {
         const data = await api(`/api/library?${query}`, { signal: abort.signal });
         if (abort.signal.aborted) return;
-        setItems(data.items); setCursor(data.nextCursor);
+        const value = { items: data.items, cursor: data.nextCursor };
+        if (cacheKey) writeCache(libraryCache, cacheKey, value, 100);
+        setItemSnapshot({ key: snapshotKey, ...value });
       } catch (err) { if (!abort.signal.aborted) setLoadError(err.message); }
-      finally { if (!abort.signal.aborted) setLoading(false); }
+      finally { if (!abort.signal.aborted) setLoadState({ key: snapshotKey, loading: false }); }
     }
     load();
     return () => abort.abort();
-  }, [query, refresh, status]);
+  }, [cacheKey, query, refresh, snapshotKey, status]);
   useEffect(() => {
     if (status !== "authenticated") return;
     const abort = new AbortController();
     api("/api/library/categories", { signal: abort.signal }).then(groups => {
-      if (!abort.signal.aborted) setCategories(groups);
+      if (!abort.signal.aborted) {
+        if (userId) writeCache(categoryCache, userId, groups, 30);
+        setCategorySnapshot({ userId, refresh, rows: groups });
+      }
     }).catch(err => { if (!abort.signal.aborted) setError(err.message); });
     return () => abort.abort();
-  }, [refresh, status]);
+  }, [refresh, status, userId]);
   async function mutate(id, body) {
     setBusy(true); setError("");
-    try { await api(`/api/library/${id}`, { method: "PATCH", body }); setRefresh(value => value + 1); setRenaming(null); setSelected(current => current.filter(item => item.id !== id)); }
+    try { await api(`/api/library/${id}`, { method: "PATCH", body }); invalidateUserCache(userId); setRefresh(value => value + 1); setRenaming(null); setSelected(current => current.filter(item => item.id !== id)); }
     catch (err) { setError(err.message); } finally { setBusy(false); }
   }
   async function upload(files) {
     setBusy(true); setError("");
     try {
-      for (const file of Array.from(files).slice(0, 20)) {
+      const selectedFiles = Array.from(files).slice(0, 20);
+      const results = await mapWithConcurrency(selectedFiles, 2, async file => {
         const data = await uploadImage(file);
         await api("/api/library", { method: "POST", body: { assetId: data.assetId, name: file.name.slice(0, 160), ...(!["all", "uncategorized", "trash"].includes(category) ? { categoryId: category } : {}) } });
-      }
-    } catch (err) { setError(err.message); } finally { setBusy(false); setRefresh(value => value + 1); if (fileInput.current) fileInput.current.value = ""; }
+      });
+      const failure = results.find(result => result.status === "rejected");
+      if (failure) throw failure.reason;
+    } catch (err) { setError(err.message); } finally { invalidateUserCache(userId); setBusy(false); setRefresh(value => value + 1); if (fileInput.current) fileInput.current.value = ""; }
   }
   async function addCategory() {
     setBusy(true);
-    try { const row = await api("/api/library/categories", { method: "POST", body: { name: categoryName } }); setCategory(row.id); setNewCategory(false); setCategoryName(""); setRefresh(value => value + 1); }
+    try { const row = await api("/api/library/categories", { method: "POST", body: { name: categoryName } }); invalidateUserCache(userId); setCategory(row.id); setNewCategory(false); setCategoryName(""); setRefresh(value => value + 1); }
     catch (err) { setError(err.message); } finally { setBusy(false); }
   }
   async function more() {
-    setLoading(true);
-    try { const data = await api(`/api/library?${query}&cursor=${encodeURIComponent(cursor)}`); if (activeQuery.current !== query) return; setItems(current => [...current, ...data.items]); setCursor(data.nextCursor); }
-    catch (err) { setError(err.message); } finally { setLoading(false); }
+    setLoadState({ key: snapshotKey, loading: true });
+    try {
+      const data = await api(`/api/library?${query}&cursor=${encodeURIComponent(cursor)}`);
+      if (activeQuery.current !== snapshotKey) return;
+      const value = { items: [...items, ...data.items], cursor: data.nextCursor };
+      if (cacheKey) writeCache(libraryCache, cacheKey, value, 100);
+      setItemSnapshot({ key: snapshotKey, ...value });
+    }
+    catch (err) { if (activeQuery.current === snapshotKey) setError(err.message); } finally { if (activeQuery.current === snapshotKey) setLoadState({ key: snapshotKey, loading: false }); }
   }
   async function bulk(action, categoryId) {
     if (busy || !selected.length) return;
     setBusy(true); setError("");
-    try { await api("/api/library/batch", { method: "POST", body: { ids: selected.map(item => item.id), action, ...(categoryId !== undefined ? { categoryId } : {}) } }); setSelected([]); setRefresh(value => value + 1); }
+    try { await api("/api/library/batch", { method: "POST", body: { ids: selected.map(item => item.id), action, ...(categoryId !== undefined ? { categoryId } : {}) } }); invalidateUserCache(userId); setSelected([]); setRefresh(value => value + 1); }
     catch (err) { setError(err.message); } finally { setBusy(false); }
   }
   function choose(item) {
@@ -95,7 +141,7 @@ export default function AssetLibrary({ onSelect, maxSelection = 10 }) {
       {category === "trash" && <p className="ml-note">{zh ? "素材在回收站保留 30 天。正在被项目使用的图片会继续保留。" : "Items stay in Trash for 30 days. Images used by projects remain available."}</p>}
       {(error || loadError) && <p role="alert" className="ml-error">{error || loadError}</p>}
       <div className="ml-grid" aria-busy={loading}>{items.map(item => <article key={item.id} className={selected.some(row => row.id === item.id) ? "selected" : ""}>
-        <button className="ml-image" aria-label={item.name} aria-pressed={onSelect || selecting ? selected.some(row => row.id === item.id) : undefined} onClick={() => choose(item)}><Image unoptimized src={previewUrl(item.assetId, 320)} width={320} height={320} alt="" />{selected.some(row => row.id === item.id) && <span><Check size={16} /></span>}</button>
+        <button className="ml-image" aria-label={item.name} aria-pressed={onSelect || selecting ? selected.some(row => row.id === item.id) : undefined} onClick={() => choose(item)}><Image unoptimized loading="lazy" src={previewUrl(item.assetId, 320)} width={320} height={320} alt="" />{selected.some(row => row.id === item.id) && <span><Check size={16} /></span>}</button>
         {renaming === item.id ? <form onSubmit={event => { event.preventDefault(); mutate(item.id, { name }); }}><input autoFocus maxLength={160} aria-label={zh ? "素材名称" : "Asset name"} value={name} onChange={event => setName(event.target.value)} onKeyDown={event => { if (event.key === "Escape") setRenaming(null); }} /><button disabled={busy || !name.trim()}>{zh ? "保存" : "Save"}</button></form> : <button className="ml-name" title={item.name} onClick={() => { if (!onSelect && category !== "trash") { setRenaming(item.id); setName(item.name); } }}>{item.name}</button>}
         {!onSelect && <div className="ml-actions">{category === "trash" ? <button disabled={busy} onClick={() => mutate(item.id, { restore: true })}><Undo2 size={14} />{zh ? "恢复" : "Restore"}</button> : <><select aria-label={zh ? `分类：${item.name}` : `Category: ${item.name}`} disabled={busy} value={item.categoryId || ""} onChange={event => mutate(item.id, { categoryId: event.target.value || null })}><option value="">{zh ? "未分类" : "Uncategorized"}</option>{categories.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}</select><button disabled={busy} aria-label={zh ? `移入回收站：${item.name}` : `Move to trash: ${item.name}`} onClick={() => mutate(item.id, { trash: true })}><Trash2 size={15} /></button></>}</div>}
       </article>)}</div>

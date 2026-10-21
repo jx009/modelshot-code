@@ -297,6 +297,7 @@ model Asset {
   libraryItems LibraryItem[]
   deliveries AssetDelivery[]
   @@index([userId, createdAt])
+  @@index([userId, checksum, contentType, status])
 }
 
 // Permanent private COS derivatives and replicas; originals may live in COS or MinIO.

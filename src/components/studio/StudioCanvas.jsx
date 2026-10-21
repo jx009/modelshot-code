@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, startTransition, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
+import { forwardRef, memo, startTransition, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import { Stage, Layer, Image as CanvasImage, Transformer, Text, Group, Line, Rect, Circle } from "react-konva";
 import CanvasArtwork from "./canvas/CanvasArtwork";
 import CanvasTextEditor from "./canvas/CanvasTextEditor";
@@ -148,7 +148,7 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, projectKey, read
       onCamera?.(camera);
       startTransition(() => {
         onZoom?.(camera.scale);
-        if (selection) onViewport?.({ left: camera.x + selection.x * camera.scale, top: camera.y + selection.y * camera.scale, width: selection.width * camera.scale, height: selection.height * camera.scale, viewportWidth: dimensions.width, viewportHeight: dimensions.height });
+        onViewport?.(selection ? { left: camera.x + selection.x * camera.scale, top: camera.y + selection.y * camera.scale, width: selection.width * camera.scale, height: selection.height * camera.scale, viewportWidth: dimensions.width, viewportHeight: dimensions.height } : null);
       });
     };
     if (typeof requestAnimationFrame === "function") cameraNotifyFrame.current = requestAnimationFrame(notify);
@@ -536,4 +536,4 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, projectKey, read
     {contextMenu && <CanvasContextMenu position={contextMenu} layers={layers} ids={selectedIds} onChange={onChange} onSelect={onSelect} onClose={closeContextMenu} onFit={fit} zh={zh} />}
   </div>;
 });
-export default StudioCanvas;
+export default memo(StudioCanvas);

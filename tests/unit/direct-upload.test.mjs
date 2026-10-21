@@ -9,6 +9,9 @@ const config = { enabled: true, directUploadEnabled: true, bucket: "fixture-1250
 it.each([10 * 1024 * 1024 + 1, 50 * 1024 * 1024])("accepts a direct upload of %i bytes", bytes => {
   expect(directUploadSchema.safeParse({ contentType: "image/png", bytes, checksum: "a".repeat(64) }).success).toBe(true);
 });
+it("accepts older clients that omit the optional checksum", () => {
+  expect(directUploadSchema.safeParse({ contentType: "image/png", bytes: 12 }).success).toBe(true);
+});
 it.each([0, 50 * 1024 * 1024 + 1])("rejects a direct upload of %i bytes", bytes => {
   expect(directUploadSchema.safeParse({ contentType: "image/png", bytes, checksum: "a".repeat(64) }).success).toBe(false);
 });
@@ -16,7 +19,7 @@ async function fixture() {
   const bytes = await sharp({ create: { width: 64, height: 32, channels: 3, background: "red" } }).jpeg().toBuffer();
   let intent, asset;
   const db = { assetUpload: { create: vi.fn(async ({ data }) => { intent = data; return data; }), findUnique: vi.fn(async () => intent) },
-    asset: { findUnique: vi.fn(async () => asset), upsert: vi.fn(async ({ create }) => { asset ||= { status: "active", ...create }; return asset; }) } };
+    asset: { findFirst: vi.fn(async () => null), findUnique: vi.fn(async () => asset), upsert: vi.fn(async ({ create }) => { asset ||= { status: "active", ...create }; return asset; }) } };
   const store = { assertPrivateBucket: vi.fn(), signedUpload: vi.fn(async () => "https://cos.example/signed-put"), head: vi.fn(async () => ({ etag: '"version-1"', "content-length": String(bytes.length) })), get: vi.fn(async () => bytes), copy: vi.fn() };
   const input = { contentType: "image/jpeg", bytes: bytes.length, checksum: createHash("sha256").update(bytes).digest("hex") };
   const plan = await prepareDirectUpload("owner", input, { db, store, config });
@@ -35,6 +38,20 @@ it("directly signs a bounded private PUT, validates bytes and freezes an immutab
   const url = new URL(await cosStorage(config).signedUpload("pending/image", "image/png", 100));
   expect(url.searchParams.get("q-header-list")).toBe("content-length;content-type;host");
   expect(url.href).not.toContain(config.secretKey + "&");
+});
+it("reuses a previously validated asset with the same user-scoped checksum", async () => {
+  const f = await fixture();
+  f.db.assetUpload.create.mockClear(); f.store.signedUpload.mockClear(); f.store.assertPrivateBucket.mockClear();
+  f.db.asset.findFirst.mockResolvedValueOnce({ id: "existing-asset", width: 64, height: 32 });
+  expect(await prepareDirectUpload("owner", f.input, { ...f, config })).toEqual({ mode: "existing", assetId: "existing-asset", url: "/api/assets/existing-asset", width: 64, height: 32 });
+  expect(f.store.signedUpload).not.toHaveBeenCalled();
+  expect(f.db.assetUpload.create).not.toHaveBeenCalled();
+});
+it("derives the canonical checksum from the validated COS bytes when an older intent has none", async () => {
+  const f = await fixture();
+  f.intent().checksum = "";
+  const result = await completeDirectUpload("owner", f.plan.uploadId, { ...f, config });
+  expect(result.checksum).toBe(f.input.checksum);
 });
 it("rejects other owners, expired intents, changed configuration and oversized or corrupt objects", async () => {
   const f = await fixture();

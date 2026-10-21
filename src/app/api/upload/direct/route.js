@@ -10,7 +10,9 @@ export async function POST(request) {
     const user = await requireUser();
     const input = await readJson(request, directUploadSchema);
     await rateLimit("direct-upload", user.id, 100, 600);
-    return Response.json(await prepareDirectUpload(user.id, input), { headers: { "Cache-Control": "no-store" } });
+    const plan = await prepareDirectUpload(user.id, input);
+    if (plan.mode === "existing") plan.assetDelivery = await assetDeliveryBatch(user.id, [plan.assetId]);
+    return Response.json(plan, { headers: { "Cache-Control": "no-store" } });
   } catch (error) { return errorResponse(error); }
 }
 export async function PATCH(request) {

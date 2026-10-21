@@ -11,15 +11,25 @@ import { enqueueCosAsset } from "./cos-delivery.js";
 import { IMAGE_UPLOAD_MAX_BYTES } from "../../image-upload-limits.js";
 
 export const directUploadSchema = z.object({ contentType: z.enum(["image/png", "image/jpeg", "image/webp"]),
-  bytes: z.number().int().positive().max(IMAGE_UPLOAD_MAX_BYTES), checksum: z.string().regex(/^[a-f0-9]{64}$/) }).strict();
+  bytes: z.number().int().positive().max(IMAGE_UPLOAD_MAX_BYTES), checksum: z.string().regex(/^[a-f0-9]{64}$/).optional() }).strict();
 export async function prepareDirectUpload(userId, input, { db = prisma, config, store } = {}) {
   input = directUploadSchema.parse(input);
   config ||= await getCosConfig(db);
   if (!config.enabled || !config.directUploadEnabled) return { mode: "proxy" };
+  if (!input.checksum) return { mode: "checksum-required" };
+  if (input.checksum) {
+    const existing = await db.asset.findFirst({
+      where: { userId, checksum: input.checksum, contentType: input.contentType, status: "active" },
+      select: { id: true, width: true, height: true },
+    });
+    if (existing) return { mode: "existing", assetId: existing.id, url: `/api/assets/${existing.id}`, width: existing.width, height: existing.height };
+  }
   store ||= cosStorage(config);
   await store.assertPrivateBucket();
   const id = randomUUID(), key = `${config.prefix}/uploads/pending/${userId}/${id}`;
-  await db.assetUpload.create({ data: { id, userId, objectKey: cosObjectKey(config, key), targetId: cosTargetId(config), ...input, expiresAt: new Date(Date.now() + 900000) } });
+  // The server derives the canonical checksum from the object it validates.
+  // Keeping this optional preserves compatibility with clients that still send one.
+  await db.assetUpload.create({ data: { id, userId, objectKey: cosObjectKey(config, key), targetId: cosTargetId(config), ...input, checksum: input.checksum || "", expiresAt: new Date(Date.now() + 900000) } });
   return { mode: "cos", uploadId: id, url: await store.signedUpload(key, input.contentType, input.bytes), headers: { "Content-Type": input.contentType } };
 }
 export async function completeDirectUpload(userId, id, { db = prisma, config, store } = {}) {
@@ -42,7 +52,9 @@ export async function completeDirectUpload(userId, id, { db = prisma, config, st
     if (!etag || Number(headers["content-length"]) !== intent.bytes) throw new AppError("UPLOAD_SIZE_MISMATCH", 422);
     // Conditional read/copy binds validation to the same bytes even if a PUT URL is replayed.
     const bytes = await store.get(source, etag);
-    if (bytes.length !== intent.bytes || createHash("sha256").update(bytes).digest("hex") !== intent.checksum) throw new AppError("UPLOAD_CHECKSUM_MISMATCH", 422);
+    if (bytes.length !== intent.bytes) throw new AppError("UPLOAD_SIZE_MISMATCH", 422);
+    const checksum = createHash("sha256").update(bytes).digest("hex");
+    if (intent.checksum && checksum !== intent.checksum) throw new AppError("UPLOAD_CHECKSUM_MISMATCH", 422);
     const metadata = await imageProcessing.run(async () => {
       try {
         const image = sharp(bytes, { limitInputPixels: 40_000_000, failOn: "warning" });
@@ -57,13 +69,13 @@ export async function completeDirectUpload(userId, id, { db = prisma, config, st
     await store.copy(source, key, etag, intent.contentType);
     let asset;
     try {
-      asset = await db.asset.upsert({ where: { id }, create: { id, userId, objectKey: cosObjectKey(config, key), kind: "upload", contentType: intent.contentType, bytes: intent.bytes, checksum: intent.checksum, ...metadata }, update: {} });
+      asset = await db.asset.upsert({ where: { id }, create: { id, userId, objectKey: cosObjectKey(config, key), kind: "upload", contentType: intent.contentType, bytes: intent.bytes, checksum, ...metadata }, update: {} });
     } catch (error) {
       // Prisma may emulate an empty-update upsert. A parallel completion can
       // win the insert after our initial read; return that identical asset.
       if (error.code !== "P2002") throw error;
       asset = await db.asset.findUnique({ where: { id } });
-      if (!asset || asset.checksum !== intent.checksum) throw error;
+      if (!asset || asset.checksum !== checksum) throw error;
     }
     if (asset.userId !== userId || asset.status !== "active") throw new AppError("ASSET_NOT_FOUND", 404);
     await enqueueCosAsset(id, { db, config });

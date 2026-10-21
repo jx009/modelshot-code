@@ -1,5 +1,5 @@
 "use client";
-import { createContext, Suspense, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { createContext, Suspense, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLocale } from "next-intl";
 import Modal from "@/components/ui/Modal";
@@ -54,7 +54,8 @@ export function AuthProvider({ children }) {
     else if (destination && destination !== `${current.pathname}${current.search}${current.hash}`) router.push(destination);
     else router.refresh();
   }, [request, locale, router]);
-  return <AuthContext.Provider value={{ open, close }}>{children}
+  const value = useMemo(() => ({ open, close }), [open, close]);
+  return <AuthContext.Provider value={value}>{children}
     <Suspense fallback={null}><AuthRouteEntry open={open} /></Suspense>
     {request && <Modal onClose={close} label={locale === "zh" ? "登录来塔绘梦" : "Sign in to 来塔绘梦"} className={styles.dialog}>
       <AuthPanel request={request} onClose={close} onSuccess={complete} />

@@ -4,7 +4,7 @@ import { imageCreditCost } from "@/lib/studio/image-pricing";
 
 import dynamic from "next/dynamic";
 import Image from "@/components/studio/AssetImage";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useSession } from "next-auth/react";
 import { useRecharge } from "@/components/billing/RechargeProvider";
 import { useLocale } from "next-intl";
@@ -12,6 +12,7 @@ import Link from "@/components/ui/NavigationLink";
 import { ArrowUp, ArrowDown, ArrowUpRight, Plus, X, FolderOpen, Download, Save, Undo2, Redo2, MousePointer2, Hand, ImagePlus, Type, Layers3, Sparkles, WandSparkles, Expand, Crop, Eraser, Move, ScanText, Scissors, Video, MessageCircle, Zap, ShoppingBag, ChevronDown, Check, LoaderCircle, ZoomIn, Minus, Maximize, Trash2, Eye, EyeOff, Copy, Coins, Play, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { api, requestKey } from "@/lib/client-api";
 import { uploadImage } from "@/lib/upload-image";
+import { mapWithConcurrency } from "@/lib/map-with-concurrency";
 import { IMAGE_UPLOAD_MAX_BYTES } from "@/lib/image-upload-limits";
 import { clipboardImageFiles, imagePasteDestination } from "@/lib/studio/image-paste";
 import BrandLogo, { BrandMark } from "@/components/BrandLogo";
@@ -29,27 +30,59 @@ import { useStudioProject } from "./useStudioProject";
 import StudioActivity from "./StudioActivity";
 import StudioTaskPopover from "./StudioTaskPopover";
 import StudioMessageHistory from "./StudioMessageHistory";
-import StudioImageViewer from "./StudioImageViewer";
+import StudioMessageList from "./StudioMessageList";
 import "./generation-price.css";
-import OcrResultPanel from "./OcrResultPanel";
 import { useStudioView } from "./useStudioView";
 import RecentProjects from "./RecentProjects";
-import StudioExportDialog from "./StudioExportDialog";
 import { selectedLayerIds } from "@/lib/studio/layer-operations";
-import LayerSelectionTools from "./LayerSelectionTools";
-import ToolPanel from "./ToolPanel";
 import ImageToolToolbar from "./ImageToolToolbar";
-import AdjustmentPanel from "./AdjustmentPanel";
 import { adjustedImage } from "@/lib/studio/adjustments";
 import { imageToolErrorMessage } from "@/lib/studio/image-tool-errors";
 import "./creative-tools.css";
-import PromptOptimizer from "./PromptOptimizer";
-import AssetLibrary from "./AssetLibrary";
 import UserMenu from "@/components/UserMenu";
 import Modal from "@/components/ui/Modal";
 import "./studio.css";
 
 const Canvas = dynamic(() => import("./StudioCanvas"), { ssr: false, loading: () => <div className="ms-loading"><LoaderCircle className="ms-spin" size={22} /></div> });
+const StudioImageViewer = dynamic(() => import("./StudioImageViewer"));
+const StudioExportDialog = dynamic(() => import("./StudioExportDialog"));
+const AssetLibrary = dynamic(() => import("./AssetLibrary"));
+const LayerSelectionTools = dynamic(() => import("./LayerSelectionTools"));
+const ToolPanel = dynamic(() => import("./ToolPanel"));
+const AdjustmentPanel = dynamic(() => import("./AdjustmentPanel"));
+const PromptOptimizer = dynamic(() => import("./PromptOptimizer"));
+const OcrResultPanel = dynamic(() => import("./OcrResultPanel"));
+const CANVAS_HANDLER_NAMES = ["onOpenOcr", "onUsePrompt", "onSelect", "onChange", "onFocusPoint", "onViewport", "onCamera", "onPreview", "onMoveRegions", "onMoveOffset", "onMovePreparing", "onMoveReady", "onMoveFailed", "onCrop", "onCropGrid", "onMaskChange", "onExpandPadding", "onZoom", "onUpload", "onError", "onChooseTool", "onCanvasChat", "onSaveToLibrary"];
+const EMPTY_CANVAS_ARRAY = Object.freeze([]);
+const EMPTY_CANVAS_OBJECT = Object.freeze({});
+function createCanvasViewStore() {
+  let zoom = 1, viewport = null;
+  const zoomListeners = new Set(), viewportListeners = new Set();
+  return {
+    getZoom: () => zoom,
+    getViewport: () => viewport,
+    subscribeZoom(listener) { zoomListeners.add(listener); return () => zoomListeners.delete(listener); },
+    subscribeViewport(listener) { viewportListeners.add(listener); return () => viewportListeners.delete(listener); },
+    setZoom(value) { if (value !== zoom) { zoom = value; zoomListeners.forEach(listener => listener()); } },
+    setViewport(value) {
+      if (value === viewport || value && viewport && Object.keys(value).every(key => value[key] === viewport[key])) return;
+      viewport = value;
+      viewportListeners.forEach(listener => listener());
+    },
+  };
+}
+const StudioZoomControls = memo(function StudioZoomControls({ store, canvas, zh, previewEnabled, onPreview }) {
+  const zoom = useSyncExternalStore(store.subscribeZoom, store.getZoom, store.getZoom);
+  const t = (cn, en) => zh ? cn : en;
+  return <div className="ms-zoom"><button className="ms-icon" title={t("缩小", "Zoom out")} onClick={() => canvas.current.zoom(0.8)}><Minus size={16} /></button><input aria-label={t("画布缩放", "Canvas zoom")} type="range" min="8" max="400" value={Math.round(zoom * 100)} onChange={event => canvas.current.zoom(Number(event.target.value) / 100 / zoom)} /><output>{Math.round(zoom * 100)}%</output><button className="ms-icon" title={t("放大", "Zoom in")} onClick={() => canvas.current.zoom(1.25)}><Plus size={16} /></button><button className="ms-icon" title={t("适应画布", "Fit canvas")} onClick={() => canvas.current.fit()}><Maximize size={16} /></button><button className="ms-icon" title={t("预览图片", "Preview image")} disabled={!previewEnabled} onClick={onPreview}><Eye size={17} /></button></div>;
+});
+const StudioCanvasOverlays = memo(function StudioCanvasOverlays({ store, selected, zh, toolId, showLayers, ocr, size, capabilities, singleSelection, onChoose, onChat, onSave }) {
+  const viewport = useSyncExternalStore(store.subscribeViewport, store.getViewport, store.getViewport);
+  return <>
+    {selected?.type === "image" && viewport && <div className="ms-image-dimensions" style={{ left: Math.max(85, Math.min(viewport.viewportWidth - 85, viewport.left + viewport.width / 2)), top: Math.max(44, Math.min(viewport.viewportHeight - 150, viewport.top + viewport.height + 14)) }}>W {selected.pixelWidth}<span>H {selected.pixelHeight}</span></div>}
+    {selected?.type === "image" && singleSelection && !showLayers && !toolId && !ocr && <ImageToolToolbar key={selected.id} size={size} selected={selected} viewport={viewport} capabilities={capabilities} zh={zh} onChoose={onChoose} onChat={onChat} onSave={onSave} />}
+  </>;
+});
 const ICONS = { generate: Sparkles, edit: WandSparkles, expand: Expand, upscale: ZoomIn, describe: WandSparkles, erase: Eraser, inpaint: Scissors, split: Layers3, move: Move, ocr: ScanText, "remove-bg": Scissors, crop: Crop, video: Video };
 const TERMINAL = ["succeeded", "failed", "cancelled"];
 const delay = (ms, signal) => new Promise((resolve, reject) => { const timer = setTimeout(resolve, ms); signal?.addEventListener("abort", () => { clearTimeout(timer); reject(new Error("SESSION_CLOSED")); }, { once: true }); });
@@ -107,11 +140,12 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
   const [selectionIds, setSelectionIds] = useState([]);
   const [selectedId, setSelected] = useState(null), [tab, setTab] = useState(initialMode === "quick" ? "quick" : "chat"), [mode, setMode] = useState("select");
   const [toolId, setTool] = useState(null), [toolParams, setParams] = useState({ size: initialSize, scale: 2, padding: 256, dx: 100, dy: 0, duration: 5, editPadding: 0.25, numLayers: 4 });
-  const params = { ...toolParams, size: draft.composer?.size || toolParams.size };
+  const params = useMemo(() => ({ ...toolParams, size: draft.composer?.size || toolParams.size }), [toolParams, draft.composer?.size]);
   const [hasMask, setHasMask] = useState(false);
   const [toolReferences, setToolReferences] = useState([]), [adjustments, setAdjustments] = useState({}), [compareOriginal, setCompareOriginal] = useState(false);
   const focusSession = useRef(0);
-  const [brush, setBrush] = useState(8), [zoom, setZoom] = useState(1), [capabilities, setCapabilities] = useState(null), [usage, setUsage] = useState(null);
+  const [brush, setBrush] = useState(8), [capabilities, setCapabilities] = useState(null), [usage, setUsage] = useState(null);
+  const canvasViewStore = useMemo(() => createCanvasViewStore(), []);
   const [modelProvider, setModelProvider] = useState(initialProvider);
   const prompt = draft.composer?.text ?? "";
   const fixedPrompt = draft.composer?.fixedPrompt || "", outputCount = draft.composer?.outputCount || 1;
@@ -120,7 +154,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
   const [referencePicker, setReferencePicker] = useState(false), [fixedOpen, setFixedOpen] = useState(false);
   const [objectSelection, setObjectSelection] = useState(null);
   const [panning, setPanning] = useState(false), [spaceHeld, setSpaceHeld] = useState(false);
-  const [chatCollapsed, setChatCollapsed] = useState(false), [viewport, setViewport] = useState(null);
+  const [chatCollapsed, setChatCollapsed] = useState(false);
   const [imagePreview, setImagePreview] = useState(null);
   const [previewSeed, setPreviewSeed] = useState(null);
   const moveUnchanged = objectSelection?.region ? JSON.stringify(params.moveSource) === JSON.stringify(params.moveTarget) : !params.dx && !params.dy;
@@ -137,11 +171,23 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
   const life = useRef(null), submission = useRef(false);
   const uploadDestination = useRef("canvas");
   const interaction = useRef({});
+  const canvasCallbacks = useRef({});
+  const canvasHandlers = useMemo(() => Object.fromEntries(CANVAS_HANDLER_NAMES.map(name => [name, (...args) => canvasCallbacks.current[name]?.(...args)])), []);
   useEffect(() => { interaction.current = { editing: Boolean(toolId) || busy, navigating: panning || spaceHeld }; }, [toolId, panning, spaceHeld, busy]);
   const onCamera = useStudioView({ documentId: draft.id, draftKey: draft.createKey, userId: session?.user?.id, ready, canvas });
   const selected = draft.layers.find(l => l.id === selectedId && l.visible);
-  const references = (draft.composer?.referenceIds?.length ? draft.composer.referenceIds.map(id => draft.layers.find(layer => layer.id === id)).filter(Boolean) : selected?.type === "image" ? [selected] : []);
-  const effectiveSelection = selectionIds.includes(selectedId) ? selectionIds.filter(id => draft.layers.some(l => l.id === id && l.visible)) : selectedId ? [selectedId] : [];
+  const references = useMemo(() => draft.composer?.referenceIds?.length
+    ? draft.composer.referenceIds.map(id => draft.layers.find(layer => layer.id === id)).filter(Boolean)
+    : selected?.type === "image" ? [selected] : [], [draft.composer, draft.layers, selected]);
+  const effectiveSelection = useMemo(() => selectionIds.includes(selectedId) ? selectionIds.filter(id => draft.layers.some(l => l.id === id && l.visible)) : selectedId ? [selectedId] : [], [selectionIds, selectedId, draft.layers]);
+  const ocrJobsKey = JSON.stringify(jobs.filter(job => job.tool === "ocr" && job.resultData?.ocr).map(job => [job.id, job.targetId]));
+  const { ids: ocrJobIds, byTargetId: ocrJobsByTargetId } = useMemo(() => {
+    const relevant = JSON.parse(ocrJobsKey);
+    return {
+      ids: new Set(relevant.map(([id]) => id)),
+      byTargetId: new Map(relevant.map(([id, targetId]) => [targetId, id])),
+    };
+  }, [ocrJobsKey]);
   function selectLayer(id, additive = false) {
     const ids = Array.isArray(id) ? id : selectedLayerIds(draftRef.current.layers, effectiveSelection, id, additive);
     setSelectionIds(ids); setSelected(ids.at(-1) || null); closeTool();
@@ -268,17 +314,22 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
     // result forever: reopening an older saved project must recover its jobs.
     task.then(() => { if (resultLoads.current.get(job.id) === task) resultLoads.current.delete(job.id); }, () => {});
     return task;
-  }, [update, draftRef, zh, t, notify]);
+  }, [update, draftRef, zh, t, notify, setPanning, setObjectSelection, setMobileChat]);
   useEffect(() => {
     if (!draft.id || !ready || !session?.user?.id) return;
     const abort = new AbortController();
-    let timer, stream, streamActive = false, signature = "";
+    let timer, stream, streamActive = false, snapshotSignature = "", statusSignature = "";
     function receive(rows) {
       if (abort.signal.aborted || !Array.isArray(rows)) return;
-      setJobs(rows); rows.toReversed().forEach(job => { collectResult(job).catch(() => {}); });
-      const next = rows.map(row => `${row.id}:${row.status}`).join("|");
-      if (signature !== next) {
-        signature = next;
+      const nextRows = rows.map(row => `${row.id}:${row.status}:${row.errorCode || ""}:${row.cancelRequested ? 1 : 0}:${row.updatedAt || ""}:${row.resultData?.assets?.map(asset => asset.id).join(",") || ""}:${row.resultData?.text?.length || 0}`).join("|");
+      if (snapshotSignature !== nextRows) {
+        snapshotSignature = nextRows;
+        startTransition(() => setJobs(rows));
+      }
+      rows.toReversed().forEach(job => { collectResult(job).catch(() => {}); });
+      const nextStatus = rows.map(row => `${row.id}:${row.status}`).join("|");
+      if (statusSignature !== nextStatus) {
+        statusSignature = nextStatus;
         api("/api/usage", { signal: abort.signal }).then(value => { if (!abort.signal.aborted) setUsage(value); }).catch(() => {});
       }
       const active = rows.some(row => !TERMINAL.includes(row.status));
@@ -303,7 +354,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
       } catch { if (!abort.signal.aborted) timer = setTimeout(poll, 4000); }
     }
     start(); return () => { abort.abort(); stream?.close(); clearTimeout(timer); };
-  }, [draft.id, ready, draft.jobs?.length, projectLoad, session?.user?.id, collectResult, notify]);
+  }, [draft.id, ready, projectLoad, session?.user?.id, collectResult, notify]);
 
   async function uploadFile(file) {
     if (!session?.user) throw new Error("UNAUTHORIZED");
@@ -319,20 +370,30 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
     const scope = draftRef.current.createKey, signal = life.current?.signal;
     const limit = destination === "reference" ? Math.max(0, referenceLimit - references.length) : 12;
     if (!limit) { setNotice(t("参考图片数量已达上限，请先移除一张。", "Reference limit reached. Remove an image first.")); return; }
-    const addedIds = [];
+    const selectedFiles = Array.from(files).slice(0, limit);
     submission.current = true; setBusy(true);
     try {
-      for (const file of Array.from(files).slice(0, limit)) {
-        const asset = await uploadFile(file), size = scaleToFit(asset.width, asset.height, 480);
-        if (signal?.aborted || scope !== draftRef.current.createKey) return;
-        if (draftRef.current.nameSource === "fallback") update(d => ({ ...d, name: promptTitle(file.name.replace(/\.[^.]+$/, "")), nameSource: "upload" }));
-        const current = draftRef.current.layers, id = requestKey();
-        commitLayers([...current, { id, assetId: asset.assetId, type: "image", name: file.name.slice(0, 150), x: current.length ? Math.max(...current.map(l => l.x + l.width)) + 48 : 90, y: 100, ...size, pixelWidth: asset.width, pixelHeight: asset.height, rotation: 0, opacity: 1, visible: true }]);
-        setSelected(id);
-        addedIds.push(id);
+      const results = await mapWithConcurrency(selectedFiles, 2, file => uploadFile(file));
+      if (signal?.aborted || scope !== draftRef.current.createKey) return;
+      const uploaded = results.flatMap((result, index) => result.status === "fulfilled" ? [{ file: selectedFiles[index], asset: result.value }] : []);
+      if (uploaded.length) {
+        const layers = [...draftRef.current.layers];
+        let x = layers.length ? Math.max(40, ...layers.map(layer => layer.x + layer.width)) + 48 : 90;
+        const addedIds = [];
+        for (const { file, asset } of uploaded) {
+          const size = scaleToFit(asset.width, asset.height, 480), id = requestKey();
+          layers.push({ id, assetId: asset.assetId, type: "image", name: file.name.slice(0, 150), x, y: 100, ...size, pixelWidth: asset.width, pixelHeight: asset.height, rotation: 0, opacity: 1, visible: true });
+          x += size.width + 48;
+          addedIds.push(id);
+        }
+        if (draftRef.current.nameSource === "fallback") update(d => ({ ...d, name: promptTitle(uploaded[0].file.name.replace(/\.[^.]+$/, "")), nameSource: "upload" }));
+        commitLayers(layers);
+        setSelected(addedIds.at(-1));
         if (destination === "reference") setComposer({ referenceIds: [...references.map(layer => layer.id), ...addedIds].slice(0, referenceLimit) });
+        setMobileChat(destination === "reference"); scheduleFit(150);
       }
-      setMobileChat(destination === "reference"); scheduleFit(150);
+      const failure = results.find(result => result.status === "rejected");
+      if (failure) notify(failure.reason);
     } catch (e) { notify(e); } finally { submission.current = false; setBusy(false); if (fileInput.current) fileInput.current.value = ""; }
   }
   useEffect(() => {
@@ -603,9 +664,50 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
     setPrompt(text); setMobileChat(true); setChatCollapsed(false);
     requestAnimationFrame(() => document.querySelector(".ms-composer > textarea:not(.ms-fixed-prompt)")?.focus());
   }
-  const ocrEntries = draft.layers.filter(layer => layer.type === "image" && layer.visible).flatMap(layer => {
-    const jobId = layer.ocrJobId || jobs.find(job => job.tool === "ocr" && job.targetId === layer.id && job.resultData?.ocr)?.id;
+  const openMessageImage = useCallback(assetId => {
+    const layer = draftRef.current.layers.find(item => item.assetId === assetId);
+    if (!layer) return;
+    setSelected(layer.id);
+    setMobileChat(false);
+    setTimeout(() => canvas.current?.fit(), 100);
+  }, [draftRef, setMobileChat]);
+  const showMessageImage = useCallback(assetId => setImagePreview(assetId), [setImagePreview]);
+  const ocrEntries = useMemo(() => draft.layers.filter(layer => layer.type === "image" && layer.visible).flatMap(layer => {
+    const jobId = layer.ocrJobId || ocrJobsByTargetId.get(layer.id);
     return jobId ? [{ layerId: layer.id, jobId }] : [];
+  }), [draft.layers, ocrJobsByTargetId]);
+  const canvasMoveRegions = useMemo(() => toolId === "move" && objectSelection?.region ? { source: toolParams.moveSource, target: toolParams.moveTarget } : null, [toolId, objectSelection?.region, toolParams.moveSource, toolParams.moveTarget]);
+  const canvasMoveOffset = useMemo(() => ({ dx: toolParams.dx, dy: toolParams.dy }), [toolParams.dx, toolParams.dy]);
+  const canvasAdjustmentPreview = useMemo(() => toolId === "adjust" ? compareOriginal ? EMPTY_CANVAS_OBJECT : adjustments : null, [toolId, compareOriginal, adjustments]);
+  // Refresh this latest-handler bridge on every commit while keeping the
+  // functions passed into the memoized canvas stable between unrelated renders.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useLayoutEffect(() => {
+    canvasCallbacks.current = {
+      onOpenOcr: openOcr,
+      onUsePrompt: useTextPrompt,
+      onSelect: selectLayer,
+      onChange: commitLayers,
+      onFocusPoint: addFocus,
+      onViewport: canvasViewStore.setViewport,
+      onCamera,
+      onPreview: (assetId, image) => { setPreviewSeed({ assetId, image }); setImagePreview(assetId); },
+      onMoveRegions: patch => setParams(current => ({ ...current, ...patch })),
+      onMoveOffset: offset => setParams(current => ({ ...current, ...offset })),
+      onMovePreparing: () => { setObjectSelection(null); setMode("object-preparing"); },
+      onMoveReady: value => { setObjectSelection(value); setParams(current => ({ ...current, dx: 0, dy: 0, ...(value.region ? { moveSource: { ...value.bounds, rotation: 0 }, moveTarget: { ...value.bounds, rotation: 0 } } : {}) })); setMode(toolId === "inpaint" ? "object-edit" : "move"); },
+      onMoveFailed: () => { setObjectSelection(null); setMode("object-select-rect"); },
+      onCrop: rect => setParams(current => ({ ...current, rect })),
+      onCropGrid: cropGrid => setParams(current => ({ ...current, cropGrid })),
+      onMaskChange: setHasMask,
+      onExpandPadding: padding => setParams(current => ({ ...current, padding })),
+      onZoom: canvasViewStore.setZoom,
+      onUpload: upload,
+      onError: notify,
+      onChooseTool: chooseTool,
+      onCanvasChat: () => { if (!selected) return; setMobileChat(true); setChatCollapsed(false); setComposer({ referenceIds: [selected.id], text: prompt }); },
+      onSaveToLibrary: () => selected?.type === "image" ? api("/api/library", { method: "POST", body: { assetId: selected.assetId, name: selected.name } }).then(() => setNotice(t("已保存到素材库", "Saved to asset library"))).catch(notify) : undefined,
+    };
   });
   const ActiveToolIcon = toolId ? (ICONS[toolId] || Sparkles) : Sparkles;
   return <div className="ms-studio" data-history={historyCount.past}>
@@ -613,7 +715,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
       <Link href="/" className="ms-brand" aria-label="来塔绘梦"><BrandLogo /></Link>
       <span className="ms-top-divider" />
       <button className="ms-project-trigger" disabled={busy} onClick={async () => { try { setProjects(await api("/api/studio/documents")); } catch (e) { notify(e); } }}><FolderOpen size={17} /><span>{draft.name === "Untitled" ? t("新建项目", "New project") : draft.name}<small>{saveState === "saving" ? t("正在保存…", "Saving…") : saveState === "retrying" ? t("连接波动，正在重试保存…", "Reconnecting, retrying save…") : saveState === "saved" ? t("已保存到云端", "Saved to cloud") : saveState === "error" ? (typeof navigator !== "undefined" && !navigator.onLine ? t("离线，修改已保存在此设备", "Offline — saved on this device") : t("保存失败，点击保存重试", "Save failed — retry")) : saveState === "conflict" ? t("版本冲突，本地修改已保留", "Conflict — local edits preserved") : saveState === "loading" ? t("正在打开…", "Opening…") : t("待同步到云端", "Waiting to sync")}</small></span><ChevronDown size={14} /></button>
-      <RecentProjects zh={zh} onChoose={openProject} disabled={busy || !ready} />
+      <RecentProjects zh={zh} onChoose={openProject} disabled={busy || !ready} userId={session?.user?.id} />
       <button className="ms-icon ms-new" title={t("新建项目", "New project")} disabled={busy || !ready} onClick={newProject}><Plus size={19} /></button>
       <div className="ms-top-actions">
         <button className="ms-button ms-save" data-action="save-studio" onClick={() => save().catch(notify)} disabled={busy || !ready}><Save size={15} />{t("保存", "Save")}</button>
@@ -629,14 +731,14 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
           {[["chat", MessageCircle, t("对话", "Chat")]].map(([id, Icon, label]) => <button role="tab" aria-selected={tab === id} key={id} onClick={() => setTab(id)}><Icon size={15} />{label}</button>)}<Link href="/commerce" className="ms-commerce-tab"><ShoppingBag size={15} />{t("电商套图", "Commerce")}</Link>
         </div>
         <div className="ms-conversation">
-          <StudioMessageHistory key={draft.id || draft.createKey} documentId={draft.id} messages={draft.messages} zh={zh} onError={notify} onImage={assetId => { setImagePreview(assetId); }} />
+          <StudioMessageHistory key={draft.id || draft.createKey} documentId={draft.id} messages={draft.messages} zh={zh} onError={notify} onImage={showMessageImage} />
           {!draft.messages.length && !jobs.some(job => job.origin === "chat") && pendingTask?.origin !== "chat" && <div className="ms-welcome">
             <div className="ms-orb"><BrandMark size={31} /></div><h1>{t("想象一下，然后实现它。", "Imagine it. Make it real.")}</h1>
             <p>{t("描述画面，上传灵感。和 AI 一起，让每个想法变成作品。", "Describe a scene. Bring a reference. Give your next idea a place to grow.")}</p>
             <div className="ms-suggestions">{[t("为我的商品设计一张自然光海报", "Create a natural-light product poster"), t("把这张图片变成电影感的画面", "Give this image a cinematic look"), t("帮我拆分主体和背景", "Separate the subject and background")].map((text, i) => <button key={text} onClick={() => { setPrompt(text); if (i === 2 && selected) chooseTool("split"); }}><span>{text}</span><ArrowUpRight size={15} /></button>)}</div>
             <span className="ms-model-note"><span className="ms-status-dot" />{t("每一步编辑，都保留原图", "Every edit keeps your original")}</span>
           </div>}
-          {draft.messages.map(m => <div className={`ms-message ${m.role}`} key={m.id}>{m.role === "assistant" && <span className="ms-speaker"><BrandMark size={17} />来塔绘梦</span>}<p>{m.text}</p>{jobs.find(job => job.id === m.id && job.resultData?.ocr) && <button className="ms-text-button ms-ocr-result-link" onClick={() => openOcr(jobs.find(job => job.id === m.id))}><ScanText size={14} />{t("查看文字", "View text")}</button>}{m.assetId && <button className="ms-message-image" onClick={() => { const layer = draft.layers.find(l => l.assetId === m.assetId); if (layer) { setSelected(layer.id); setMobileChat(false); setTimeout(() => canvas.current?.fit(), 100); } }}><Image unoptimized width={480} height={480} loading="lazy" src={previewUrl(m.assetId, 320)} alt={t("对话引用的图片", "Image referenced in conversation")} /></button>}</div>)}
+          <StudioMessageList messages={draft.messages} jobsById={ocrJobIds} zh={zh} onOpenOcr={canvasHandlers.onOpenOcr} onImage={openMessageImage} />
           {draft.plan && <div className="ms-plan"><span className="ms-eyebrow"><Sparkles size={13} />{t("创作计划", "CREATIVE PLAN")}</span><p>{draft.plan.summary}</p>{draft.plan.steps.map((step, i) => <div className="ms-plan-step" key={i}><span>{i < draft.plan.index ? <Check size={13} /> : i + 1}</span><div>{zh ? getTool(step.tool)?.zh : getTool(step.tool)?.en}<small>{step.explanation}</small></div></div>)}<button className="ms-button ms-primary" disabled={busy || planRunning || !pricesReady || draft.plan.status === "complete"} onClick={runPlan}>{draft.plan.status === "complete" ? t("已完成", "Complete") : draft.plan.index ? t("继续执行", "Continue") : t("确认并执行", "Run plan")}<span>{t("剩余预计", "Remaining")} {remainingPlanCost ?? "—"} {t("积分", "credits")}</span></button><button className="ms-text-button" disabled={busy || planRunning} onClick={() => update(d => ({ ...d, plan: null }))}>{t("移除计划", "Dismiss plan")}</button></div>}
         </div>
         <div className="ms-composer">
@@ -661,21 +763,18 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
             if (layer) { selectLayer(layer.id); setMobileChat(false); canvas.current?.focusLayer(layer.id); }
           }} />
         {chatCollapsed && <button className="ms-icon ms-chat-restore" title={t("展开聊天", "Open chat")} onClick={() => { setChatCollapsed(false); setMobileChat(true); }}><PanelLeftOpen size={18} /></button>}
-        <Canvas ref={canvas} projectKey={draft.createKey} readOnly={!ready} ocrEntries={ocrEntries} onOpenOcr={openOcr} onUsePrompt={useTextPrompt} layers={draft.layers} selectedId={selectedId} selectedIds={effectiveSelection} onSelect={selectLayer} onChange={commitLayers} mode={mode} brushSize={brush}
-          selectionTool={toolId} editPadding={params.editPadding} focusPoints={params.focusPoints || []} onFocusPoint={addFocus} adjustmentPreview={toolId === "adjust" ? (compareOriginal ? {} : adjustments) : null}
-          zh={zh} onViewport={setViewport} onCamera={onCamera} onPreview={(assetId, image) => { setPreviewSeed({ assetId, image }); setImagePreview(assetId); }}
-          moveRegions={toolId === "move" && objectSelection?.region ? { source: params.moveSource, target: params.moveTarget } : null} onMoveRegions={patch => setParams(p => ({ ...p, ...patch }))}
-          cropRect={params.rect} cropShape={params.cropShape} cropGrid={params.cropGrid} onCropGrid={cropGrid => setParams(p => ({ ...p, cropGrid }))} onMaskChange={setHasMask} panning={panning || spaceHeld} moveOffset={{ dx: params.dx, dy: params.dy }} onMoveOffset={offset => setParams(p => ({ ...p, ...offset }))} onMovePreparing={() => { setObjectSelection(null); setMode("object-preparing"); }} onMoveReady={value => { setObjectSelection(value); setParams(p => ({ ...p, dx: 0, dy: 0, ...(value.region ? { moveSource: { ...value.bounds, rotation: 0 }, moveTarget: { ...value.bounds, rotation: 0 } } : {}) })); setMode(toolId === "inpaint" ? "object-edit" : "move"); }} onMoveFailed={() => { setObjectSelection(null); setMode("object-select-rect"); }}
-          onCrop={rect => setParams(p => ({ ...p, rect }))} expandPadding={params.padding} onExpandPadding={padding => setParams(p => ({ ...p, padding }))}
-          onZoom={setZoom} onUpload={upload} onError={notify} label={t("图片编辑画布", "Image editing canvas")} />
+        <Canvas ref={canvas} projectKey={draft.createKey} readOnly={!ready} ocrEntries={ocrEntries} onOpenOcr={canvasHandlers.onOpenOcr} onUsePrompt={canvasHandlers.onUsePrompt} layers={draft.layers} selectedId={selectedId} selectedIds={effectiveSelection} onSelect={canvasHandlers.onSelect} onChange={canvasHandlers.onChange} mode={mode} brushSize={brush}
+          selectionTool={toolId} editPadding={params.editPadding} focusPoints={params.focusPoints || EMPTY_CANVAS_ARRAY} onFocusPoint={canvasHandlers.onFocusPoint} adjustmentPreview={canvasAdjustmentPreview}
+          zh={zh} onViewport={canvasHandlers.onViewport} onCamera={canvasHandlers.onCamera} onPreview={canvasHandlers.onPreview}
+          moveRegions={canvasMoveRegions} onMoveRegions={canvasHandlers.onMoveRegions}
+          cropRect={params.rect} cropShape={params.cropShape} cropGrid={params.cropGrid} onCropGrid={canvasHandlers.onCropGrid} onMaskChange={canvasHandlers.onMaskChange} panning={panning || spaceHeld} moveOffset={canvasMoveOffset} onMoveOffset={canvasHandlers.onMoveOffset} onMovePreparing={canvasHandlers.onMovePreparing} onMoveReady={canvasHandlers.onMoveReady} onMoveFailed={canvasHandlers.onMoveFailed}
+          onCrop={canvasHandlers.onCrop} expandPadding={params.padding} onExpandPadding={canvasHandlers.onExpandPadding}
+          onZoom={canvasHandlers.onZoom} onUpload={canvasHandlers.onUpload} onError={canvasHandlers.onError} label={t("图片编辑画布", "Image editing canvas")} />
         {effectiveSelection.length > 0 && (showLayers || effectiveSelection.length > 1) && !toolId && <LayerSelectionTools layers={draft.layers} ids={effectiveSelection} onChange={commitLayers} zh={zh} disabled={busy} />}
         <div className="ms-canvas-label"><span className="ms-status-dot" />{t("自由画布", "FREE CANVAS")}<span> / </span>{draft.layers.length} {t("个图层", "layers")}</div>
-        {selected?.type === "image" && viewport && !toolId && <div className="ms-image-dimensions" style={{ left: Math.max(85, Math.min(viewport.viewportWidth - 85, viewport.left + viewport.width / 2)), top: Math.max(44, Math.min(viewport.viewportHeight - 150, viewport.top + viewport.height + 14)) }}>W {selected.pixelWidth}<span>H {selected.pixelHeight}</span></div>}
         {!draft.layers.length && <div className="ms-empty-canvas"><div className="ms-empty-art"><div className="ms-art-frame back"><Image unoptimized width={480} height={480} loading="eager" src="/studio/scene-05.webp" alt="" /></div><div className="ms-art-frame front"><Image unoptimized width={480} height={480} loading="eager" src="/studio/scene-03.webp" alt="" /><span><Sparkles size={12} />{t("灵感，正在发生", "A place for possibilities")}</span></div><span className="ms-art-cross one">+</span><span className="ms-art-cross two">+</span></div><h2>{t("你的下一幅作品，从这里开始", "A blank canvas. Endless possibilities.")}</h2><p>{t("支持本地上传、拖入或 Ctrl / ⌘ + V 粘贴图片", "Upload, drop, or paste images with Ctrl / ⌘ + V")}</p><button className="ms-button ms-primary" disabled={busy || !ready} onClick={() => chooseLocalFiles()}><Plus size={17} />{t("上传第一张图片", "Upload your first image")}</button><small>PNG · JPG · WEBP · 50 MB</small></div>}
         <div className="ms-canvas-top-right"><button className={`ms-icon ${showLayers ? "active" : ""}`} title={t("图层", "Layers")} onClick={() => setShowLayers(!showLayers)}><Layers3 size={18} /></button></div>
-        {selected?.type === "image" && effectiveSelection.length === 1 && !showLayers && !toolId && !ocr && <ImageToolToolbar key={selected.id} size={params.size} selected={selected} viewport={viewport} capabilities={capabilities} zh={zh} onChoose={chooseTool}
-          onChat={() => { setMobileChat(true); setChatCollapsed(false); setComposer({ referenceIds: [selected.id], text: prompt }); }}
-          onSave={() => api("/api/library", { method: "POST", body: { assetId: selected.assetId, name: selected.name } }).then(() => setNotice(t("已保存到素材库", "Saved to asset library"))).catch(notify)} />}
+        <StudioCanvasOverlays store={canvasViewStore} selected={selected} zh={zh} toolId={toolId} showLayers={showLayers} ocr={ocr} size={params.size} capabilities={capabilities} singleSelection={effectiveSelection.length === 1} onChoose={canvasHandlers.onChooseTool} onChat={canvasHandlers.onCanvasChat} onSave={canvasHandlers.onSaveToLibrary} />
         {toolId === "adjust" && selected && <AdjustmentPanel value={adjustments} onChange={setAdjustments} zh={zh} onApply={applyAdjustments} onClose={closeTool} onCompare={setCompareOriginal} busy={busy} />}
         {toolId && toolId !== "adjust" && selected && <ToolPanel tool={tool} Icon={ActiveToolIcon} status={toolStatus} selected={selected} params={params} onParams={patch => { setParams(p => ({ ...p, ...patch })); if (patch.size) setComposer({ size: patch.size }); }}
           prompt={prompt} onPrompt={setPrompt} brush={brush} onBrush={setBrush} hasMask={hasMask} selection={objectSelection} busy={busy || !pricesReady} moveUnchanged={moveUnchanged} cost={toolCost} zh={zh}
@@ -690,7 +789,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
         {ocr && <OcrResultPanel result={ocr} zh={zh} cost={imageCreditCost(capabilities?.tools.find(c => c.id === "erase"), params.size)} canReplace={!busy && selected?.id === ocr.targetId && !!capabilities?.tools.find(c => c.id === "erase")?.available} onChange={setOcr} onReplace={replaceText} onClose={closeOcr} onError={notify} />}
         {showLayers && <div className="ms-layers"><div className="ms-panel-title">{t("图层", "Layers")}<span>{draft.layers.length}</span></div>{draft.layers.toReversed().map(layer => <div className={`ms-layer ${selectedId === layer.id ? "selected" : ""}`} key={layer.id}><button className="ms-layer-select" onClick={e => selectLayer(layer.id, e.shiftKey)}>{layer.type === "image" ? <Image unoptimized width={480} height={480} src={previewUrl(layer.assetId, 320)} alt="" /> : layer.type === "text" ? <Type size={18} /> : <Video size={18} />}<span>{layer.locked ? "▣ " : ""}{layer.name}</span></button><button className="ms-icon" title={t("显示/隐藏", "Show/hide")} onClick={() => commitLayers(draft.layers.map(l => l.id === layer.id ? { ...l, visible: !l.visible } : l))}>{layer.visible ? <Eye size={13} /> : <EyeOff size={13} />}</button></div>)}{selected && <div className="ms-layer-actions"><button className="ms-icon" title={t("上移一层", "Raise layer")} onClick={() => { const list = [...draft.layers], i = list.findIndex(l => l.id === selectedId); if (i < list.length - 1) { [list[i], list[i + 1]] = [list[i + 1], list[i]]; commitLayers(list); } }}><ArrowUp size={15} /></button><button className="ms-icon" title={t("下移一层", "Lower layer")} onClick={() => { const list = [...draft.layers], i = list.findIndex(l => l.id === selectedId); if (i > 0) { [list[i], list[i - 1]] = [list[i - 1], list[i]]; commitLayers(list); } }}><ArrowDown size={15} /></button><button className="ms-icon" title={t("复制图层", "Duplicate layer")} onClick={() => commitLayers([...draft.layers, { ...selected, id: requestKey(), x: selected.x + 24, y: selected.y + 24 }])}><Copy size={15} /></button><button className="ms-icon" title={t("删除图层", "Delete layer")} disabled={selected.locked} onClick={() => { commitLayers(draft.layers.filter(l => l.id !== selectedId)); setSelected(null); }}><Trash2 size={15} /></button></div>}</div>}
         <div className="ms-bottom-toolbar">{[["select", MousePointer2, t("选择", "Select")], ["hand", Hand, t("平移", "Pan")]].map(([id, Icon, title]) => <button key={id} className={`ms-icon ${(id === "hand" ? panning : !panning) ? "active" : ""}`} title={title} aria-pressed={id === "hand" ? panning : !panning} onClick={() => setPanning(id === "hand")}><Icon size={20} /></button>)}<span /><button className="ms-icon" title={t("上传图片", "Upload image")} disabled={busy || !ready} onClick={() => chooseLocalFiles()}><ImagePlus size={20} /></button><span /><button className="ms-icon" data-action="undo" title={t("撤销", "Undo")} disabled={!historyCount.past} onClick={() => undo()}><Undo2 size={19} /></button><button className="ms-icon" data-action="redo" title={t("重做", "Redo")} disabled={!historyCount.future} onClick={() => undo(true)}><Redo2 size={19} /></button></div>
-        <div className="ms-zoom"><button className="ms-icon" title={t("缩小", "Zoom out")} onClick={() => canvas.current.zoom(0.8)}><Minus size={16} /></button><input aria-label={t("画布缩放", "Canvas zoom")} type="range" min="8" max="400" value={Math.round(zoom * 100)} onChange={event => canvas.current.zoom(Number(event.target.value) / 100 / zoom)} /><output>{Math.round(zoom * 100)}%</output><button className="ms-icon" title={t("放大", "Zoom in")} onClick={() => canvas.current.zoom(1.25)}><Plus size={16} /></button><button className="ms-icon" title={t("适应画布", "Fit canvas")} onClick={() => canvas.current.fit()}><Maximize size={16} /></button><button className="ms-icon" title={t("预览图片", "Preview image")} disabled={selected?.type !== "image"} onClick={() => { setImagePreview(selected.assetId); }}><Eye size={17} /></button></div>
+        <StudioZoomControls store={canvasViewStore} canvas={canvas} zh={zh} previewEnabled={selected?.type === "image"} onPreview={() => { if (selected?.type === "image") setImagePreview(selected.assetId); }} />
       </main>
     </div>
     <button className="ms-mobile-toggle" onClick={() => setMobileChat(!mobileChat)}>{mobileChat ? <Layers3 size={17} /> : <PanelLeftOpen size={17} />}{mobileChat ? t("画布", "Canvas") : t("对话", "Chat")}</button>

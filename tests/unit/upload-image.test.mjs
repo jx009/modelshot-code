@@ -36,15 +36,17 @@ it("uses the existing multipart upload when the server selects proxy mode", asyn
 });
 it("sends only file bytes to COS and retries registration, not uploading again", async () => {
   const file = new File(["jpeg bytes"], "source.jpg", { type: "image/jpeg" });
-  mocks.api.mockResolvedValueOnce({ mode: "cos", url: "https://cos.example/staging?signature", uploadId: "upload", headers: { "Content-Type": file.type } })
+  mocks.api.mockResolvedValueOnce({ mode: "checksum-required" })
+    .mockResolvedValueOnce({ mode: "cos", url: "https://cos.example/staging?signature", uploadId: "upload", headers: { "Content-Type": file.type } })
     .mockRejectedValueOnce(new Error("Lost response")).mockResolvedValueOnce({ assetId: "upload" });
   const fetch = vi.fn(async () => ({ ok: true })); vi.stubGlobal("fetch", fetch);
   expect(await uploadImage(file)).toEqual({ assetId: "upload" });
   expect(fetch).toHaveBeenCalledTimes(1);
   expect(fetch.mock.calls[0][0]).toContain("cos.example"); expect(fetch.mock.calls[0][1]).toMatchObject({ method: "PUT", body: file, credentials: "omit" });
-  expect(mocks.api.mock.calls[0][1].body).toMatchObject({ bytes: file.size, contentType: "image/jpeg", checksum: expect.stringMatching(/^[a-f0-9]{64}$/) });
-  expect(mocks.api.mock.calls[1][1].body).toEqual({ uploadId: "upload" });
+  expect(mocks.api.mock.calls[0][1].body).toEqual({ bytes: file.size, contentType: "image/jpeg" });
+  expect(mocks.api.mock.calls[1][1].body).toMatchObject({ bytes: file.size, contentType: "image/jpeg", checksum: expect.stringMatching(/^[a-f0-9]{64}$/) });
   expect(mocks.api.mock.calls[2][1].body).toEqual({ uploadId: "upload" });
+  expect(mocks.api.mock.calls[3][1].body).toEqual({ uploadId: "upload" });
 });
 it("never silently uploads to the US after a COS/CORS failure", async () => {
   mocks.api.mockResolvedValue({ mode: "cos", uploadId: "upload", url: "https://cos.example/staging" });

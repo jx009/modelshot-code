@@ -22,14 +22,26 @@ export function useStudioProject({ userId, sessionLoading = false, initialDocume
   const [draft, setDraft] = useState(emptyProject), draftRef = useRef(draft);
   const [saveState, setSaveState] = useState("loading"), [ready, setReady] = useState(false);
   const loadController = useRef(null), loadTarget = useRef(null), editingReady = useRef(false);
-  const revision = useRef(0), savedRevision = useRef(0), epoch = useRef(0), queue = useRef(Promise.resolve()), localWrite = useRef(Promise.resolve());
+  const revision = useRef(0), savedRevision = useRef(0), epoch = useRef(0), queue = useRef(Promise.resolve()), localWrite = useRef(Promise.resolve()), localWriteTimer = useRef(null), pendingLocalWrite = useRef(null);
   const errorRef = useRef(onError); useEffect(() => { errorRef.current = onError; }, [onError]);
+  const flushLocal = useCallback(() => {
+    if (localWriteTimer.current) {
+      clearTimeout(localWriteTimer.current);
+      localWriteTimer.current = null;
+    }
+    const pending = pendingLocalWrite.current;
+    if (!pending) return localWrite.current;
+    pendingLocalWrite.current = null;
+    localWrite.current = localWrite.current.catch(() => {}).then(() => writeProjectDraft(pending.userId, pending.key, pending.value));
+    localWrite.current.catch(() => errorRef.current("LOCAL_SAVE_FAILED"));
+    return localWrite.current;
+  }, []);
   const persist = useCallback(value => {
     if (!userId) return;
     rememberProject(userId, value);
-    localWrite.current = writeProjectDraft(userId, value.id || value.createKey, value);
-    localWrite.current.catch(() => errorRef.current("LOCAL_SAVE_FAILED"));
-  }, [userId]);
+    pendingLocalWrite.current = { userId, key: value.id || value.createKey, value };
+    if (!localWriteTimer.current) localWriteTimer.current = setTimeout(() => { localWriteTimer.current = null; flushLocal(); }, 180);
+  }, [flushLocal, userId]);
   const update = useCallback(next => {
     if (!editingReady.current) return draftRef.current;
     const value = typeof next === "function" ? next(draftRef.current) : next;
@@ -46,6 +58,8 @@ export function useStudioProject({ userId, sessionLoading = false, initialDocume
     const task = async () => {
       if (scope !== epoch.current) throw new Error("SESSION_CLOSED");
       if (!userId) throw new Error("UNAUTHORIZED");
+      await flushLocal();
+      if (scope !== epoch.current) throw new Error("SESSION_CLOSED");
       const send = async body => {
         if (scope !== epoch.current) throw new Error("SESSION_CLOSED");
         draftRef.current = { ...draftRef.current, _pendingSave: body };
@@ -99,7 +113,7 @@ export function useStudioProject({ userId, sessionLoading = false, initialDocume
     });
     queue.current = pending;
     return pending;
-  }, [userId, persist]);
+  }, [userId, persist, flushLocal]);
 
   const load = useCallback(async (id, token, push = false, remoteOnly = false) => {
     const scope = ++epoch.current;
@@ -107,6 +121,8 @@ export function useStudioProject({ userId, sessionLoading = false, initialDocume
     loadTarget.current = { id, token, push, remoteOnly };
     loadController.current?.abort();
     setReady(false); setSaveState("loading");
+    await flushLocal().catch(() => {});
+    if (scope !== epoch.current) return;
     let cached = remoteOnly ? null : await readProjectDraft(userId, id || token).catch(() => null);
     if (!cached && !remoteOnly) {
       try {
@@ -157,7 +173,7 @@ export function useStudioProject({ userId, sessionLoading = false, initialDocume
     persist(value);
     if (conflict) errorRef.current("DOCUMENT_VERSION_CONFLICT");
     return value;
-  }, [userId, initialPrompt, initialSize, initialCount, initialFixed, persist]);
+  }, [userId, initialPrompt, initialSize, initialCount, initialFixed, persist, flushLocal]);
 
   useEffect(() => {
     if (!userId) {
@@ -212,7 +228,16 @@ export function useStudioProject({ userId, sessionLoading = false, initialDocume
     if (draftRef.current._dirty) await save();
     return load(null, requestKey(), true);
   }, [save, load]);
-  const flushLocal = useCallback(() => localWrite.current, []);
+  useEffect(() => {
+    const flush = () => { void flushLocal(); };
+    window.addEventListener("pagehide", flush);
+    window.addEventListener("beforeunload", flush);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      window.removeEventListener("beforeunload", flush);
+      void flushLocal();
+    };
+  }, [flushLocal]);
   const reloadCloud = useCallback(async () => {
     const value = draftRef.current;
     if (!value.id) return;

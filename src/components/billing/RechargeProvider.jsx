@@ -1,5 +1,5 @@
 "use client";
-import { createContext, Suspense, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { createContext, Suspense, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useLocale } from "next-intl";
 import Modal from "@/components/ui/Modal";
@@ -55,7 +55,8 @@ export function RechargeProvider({ children }) {
     close();
     auth.open({ callbackUrl: `${url.pathname}${url.search}${url.hash}` });
   }
-  return <RechargeContext.Provider value={{ open, close, openRecords, openInvite }}>
+  const value = useMemo(() => ({ open, close, openRecords, openInvite }), [open, close, openRecords, openInvite]);
+  return <RechargeContext.Provider value={value}>
     {children}
     <Suspense fallback={null}><RecordsRouteEntry openRecords={openRecords} openInvite={openInvite} /></Suspense>
     {view === "recharge" && <Modal onClose={close} returnFocusRef={returnFocusRef} label={locale === "zh" ? "积分充值" : "Buy credits"} className={styles.dialog}>

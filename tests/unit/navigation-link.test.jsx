@@ -6,22 +6,23 @@ import NavigationFeedback, { useNavigationFeedback } from "../../src/components/
 import NavigationContent from "../../src/components/ui/NavigationContent.jsx";
 import { useEffect, useRef, useState } from "react";
 
-const state = vi.hoisted(() => ({ pending: false }));
+const state = vi.hoisted(() => ({ pending: false, prefetch: null, skipNavigate: false }));
 vi.mock("next/link", () => ({ useLinkStatus: () => ({ pending: state.pending }) }));
 vi.mock("next-intl", () => ({ useLocale: () => "zh" }));
 vi.mock("@/components/auth/AuthProvider", () => ({ useAuth: () => null }));
-vi.mock("@/i18n/navigation", () => ({ Link: ({ children, prefetch, onNavigate, onClick, ...props }) => <a {...props} onClick={event => {
+vi.mock("@/i18n/navigation", () => ({ Link: ({ children, prefetch, onNavigate, onClick, ...props }) => { state.prefetch = prefetch; return <a {...props} onClick={event => {
   onClick?.(event);
-  if (!event.defaultPrevented && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey && props.target !== "_blank" && new URL(event.currentTarget.href).origin === window.location.origin) onNavigate?.({ preventDefault: () => event.preventDefault() });
+  if (!state.skipNavigate && !event.defaultPrevented && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey && props.target !== "_blank" && new URL(event.currentTarget.href).origin === window.location.origin) onNavigate?.({ preventDefault: () => event.preventDefault() });
   event.preventDefault();
-}}>{children}</a> }));
-afterEach(() => { cleanup(); state.pending = false; window.history.replaceState({}, "", "/"); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); });
+}}>{children}</a>; } }));
+afterEach(() => { cleanup(); state.pending = false; state.prefetch = null; state.skipNavigate = false; window.history.replaceState({}, "", "/"); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 const content = () => <NavigationContent><NavigationContent section="creative"><p>旧页面内容</p></NavigationContent></NavigationContent>;
 const navigation = () => <NavigationFeedback><NavigationLink href="/zh/assets">素材库</NavigationLink>{content()}</NavigationFeedback>;
 
-it("replaces old content with the destination before Next becomes pending or the URL changes", () => {
+it("shows the destination as soon as clicked, before Next starts navigation", () => {
   vi.useFakeTimers();
+  state.skipNavigate = true;
   render(navigation());
   fireEvent.click(screen.getByRole("link", { name: "素材库" }));
   expect(state.pending).toBe(false);
@@ -71,6 +72,16 @@ it("does not show feedback for a cancelled navigation", () => {
   expect(screen.getByText("旧页面内容").closest(".navigation-current").hidden).toBe(false);
 });
 
+it.each([
+  { href: "https://outside.example/", name: "external destination" },
+  { href: "/zh/assets", target: "_blank", name: "new tab" },
+  { href: "/zh/assets", download: "asset.zip", name: "download" },
+])("does not start navigation feedback for a $name", ({ href, ...props }) => {
+  render(<NavigationFeedback><NavigationLink href={href} {...props}>目标</NavigationLink>{content()}</NavigationFeedback>);
+  fireEvent.click(screen.getByRole("link", { name: "目标" }));
+  expect(screen.queryByRole("status")).toBeNull();
+});
+
 it("clears feedback when Next finishes the pending transition", () => {
   const view = render(navigation());
   fireEvent.click(screen.getByRole("link", { name: "素材库" }));
@@ -82,14 +93,16 @@ it("clears feedback when Next finishes the pending transition", () => {
   expect(screen.queryByRole("status")).toBeNull();
 });
 
-it("does not import optional heavy modules during idle prefetch", () => {
+it("prefetches the full route while idle without importing optional heavy modules", () => {
   vi.useFakeTimers();
   vi.stubGlobal("requestIdleCallback", undefined);
   vi.spyOn(document, "readyState", "get").mockReturnValue("complete");
   vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
   const preload = vi.fn();
   render(<NavigationLink href="/zh/studio-v2" prefetch="idle" onPrefetch={preload}>画布</NavigationLink>);
+  expect(state.prefetch).toBe(false);
   act(() => vi.advanceTimersByTime(4000));
+  expect(state.prefetch).toBe(true);
   expect(preload).not.toHaveBeenCalled();
   fireEvent.mouseEnter(screen.getByText("画布"));
   expect(preload).toHaveBeenCalledOnce();

@@ -81,6 +81,15 @@ describe("project lifecycle", () => {
     await act(() => result.current.save());
     expect(mocks.api).not.toHaveBeenCalled();
   });
+  it("coalesces rapid local edits and flushes the latest draft on demand", async () => {
+    const { result } = renderHook(() => useStudioProject({ userId: "user", paused: true, onError: vi.fn() }));
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    act(() => result.current.update(draft => ({ ...draft, name: "First edit" })));
+    act(() => result.current.update(draft => ({ ...draft, name: "Latest edit" })));
+    await act(async () => result.current.flushLocal());
+    expect(mocks.write).toHaveBeenCalledTimes(1);
+    expect(mocks.write.mock.calls[0][2]).toMatchObject({ name: "Latest edit" });
+  });
   it("keeps edits made during a save dirty and saves them at the acknowledged version", async () => {
     let resolve;
     mocks.api.mockImplementationOnce(() => new Promise(done => { resolve = done; })).mockImplementationOnce(async (_url, { body }) => ({ ...body, version: 2 }));

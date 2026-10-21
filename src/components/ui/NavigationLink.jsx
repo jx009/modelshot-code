@@ -27,16 +27,17 @@ export default function NavigationLink({ children, onNavigate, onClick, onMouseE
   const [idleHref, setIdleHref] = useState(null);
   const intentKey = JSON.stringify([props.href, props.locale]);
   const deferred = prefetch === "intent" || prefetch === "idle";
-  const fetchMode = deferred ? intentHref === intentKey ? true : idleHref === intentKey ? "auto" : false : prefetch;
+  const fetchMode = deferred ? intentHref === intentKey || idleHref === intentKey : prefetch;
   useEffect(() => {
-    if (prefetch !== "idle" || navigator.connection?.saveData || /(^|-)2g$/.test(navigator.connection?.effectiveType || "")) return;
+    if (prefetch !== "idle" || window.matchMedia?.("(hover: hover) and (pointer: fine)").matches === false || navigator.connection?.saveData || /(^|-)2g$/.test(navigator.connection?.effectiveType || "")) return;
     let timer, idle;
     const warm = () => {
       if (document.visibilityState !== "visible") return;
       setIdleHref(intentKey);
     };
-    // Only the small, fixed module navigation opts into this. Defer it until
-    // initial resources finish, then stagger routes so images keep priority.
+    // Only the small, fixed module navigation opts into this. Defer full route
+    // prefetch until initial resources finish, then stagger routes so images
+    // keep priority. The client route cache is short-lived for freshness.
     const schedule = () => { timer = setTimeout(() => {
       if (window.requestIdleCallback) idle = window.requestIdleCallback(warm, { timeout: 2500 });
       else warm();
@@ -64,12 +65,28 @@ export default function NavigationLink({ children, onNavigate, onClick, onMouseE
       auth.open({ callbackUrl: destination.searchParams.get("callbackUrl") || destination.searchParams.get("next"), refCode: destination.searchParams.get("ref") });
       return;
     }
-    if (event.currentTarget.href === window.location.href && !feedback?.isNavigating()) { event.preventDefault(); return; }
-    if (pending) { event.preventDefault(); return; }
+    const target = event.currentTarget.getAttribute("target")?.toLowerCase();
+    const clientNavigation = destination.origin === window.location.origin && (!target || target === "_self") && !event.currentTarget.hasAttribute("download");
+    if (clientNavigation && event.currentTarget.href === window.location.href && !feedback?.isNavigating()) { event.preventDefault(); return; }
+    if (clientNavigation && pending) { event.preventDefault(); return; }
+    if (!clientNavigation) return;
+
+    // Start the shell transition in the click handler instead of waiting for
+    // Next's `onNavigate`. Dynamic routes still need an RSC round trip, but
+    // the user gets an immediate response and can interrupt the transition.
     destinationHref.current = event.currentTarget.href;
+    navigationId.current = feedback?.begin(destinationHref.current) ?? null;
   }} onNavigate={event => {
     let cancelled = false;
     onNavigate?.({ preventDefault() { cancelled = true; event.preventDefault(); } });
-    if (!cancelled && destinationHref.current) navigationId.current = feedback?.begin(destinationHref.current);
+    if (cancelled) {
+      if (navigationId.current) feedback?.finish(navigationId.current);
+      navigationId.current = null;
+      destinationHref.current = null;
+      return;
+    }
+    // Keep this fallback for programmatic/native activations where the click
+    // callback did not run before Next invokes `onNavigate`.
+    if (!navigationId.current && destinationHref.current) navigationId.current = feedback?.begin(destinationHref.current) ?? null;
   }}>{children}<Feedback onPending={setPending} navigationId={navigationId} finish={feedback?.finish} /></Link>;
 }

@@ -2,6 +2,7 @@ import COS from "cos-nodejs-sdk-v5";
 import { randomUUID } from "node:crypto";
 import { requireCosCredentials } from "./cos-config.js";
 import { AppError } from "../../http.js";
+import { cdnImageUrl } from "../../asset-cdn.js";
 
 export function cosStorage(config, client) {
   requireCosCredentials(config);
@@ -11,13 +12,13 @@ export function cosStorage(config, client) {
   const base = { Bucket: config.bucket, Region: config.region };
   return {
     async put(key, bytes, contentType) {
-      return client.putObject({ ...base, Key: key, Body: bytes, ContentLength: bytes.length, ContentType: contentType, ACL: "private", CacheControl: `private, max-age=${config.signedUrlSeconds}`, ContentDisposition: "inline" });
+      return client.putObject({ ...base, Key: key, Body: bytes, ContentLength: bytes.length, ContentType: contentType, ACL: "private", CacheControl: contentType.startsWith("image/") ? "public, max-age=86400" : "private, no-store", ContentDisposition: "inline" });
     },
     async get(key, etag) { return Buffer.from((await client.getObject({ ...base, Key: key, ...(etag ? { IfMatch: etag } : {}) })).Body); },
     async head(key) { return (await client.headObject({ ...base, Key: key })).headers; },
     async copy(source, key, etag, contentType) {
       return client.putObjectCopy({ ...base, Key: key, CopySource: `${config.bucket}.cos.${config.region}.myqcloud.com/${source.split("/").map(encodeURIComponent).join("/")}`,
-        CopySourceIfMatch: etag, MetadataDirective: "Replaced", ContentType: contentType, ACL: "private", CacheControl: "private, max-age=300" });
+        CopySourceIfMatch: etag, MetadataDirective: "Replaced", ContentType: contentType, ACL: "private", CacheControl: "public, max-age=86400", ContentDisposition: "inline" });
     },
     signedUpload(key, contentType, bytes) {
       return new Promise((resolve, reject) => client.getObjectUrl({ ...base, Key: key, Method: "PUT", Sign: true, Protocol: "https:", Expires: 900,
@@ -57,7 +58,7 @@ export async function testCosConnection(config, store = cosStorage(config)) {
   const probe = `${config.prefix}/diagnostics/browser-probe.png`;
   const probeBytes = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADElEQVQImWP4//8/AAX+Av5Y8msOAAAAAElFTkSuQmCC", "base64");
   await store.put(probe, probeBytes, "image/png");
-  const result = { ok: true, probeUrl: await store.signedUrl(probe, 60) };
+  const result = { ok: true, probeUrl: cdnImageUrl(probe) };
   if (!config.enabled || !config.directUploadEnabled) return result;
   // Exercise the same signed PUT and headers as a real browser upload only when enabled.
   // Reuse the fixed private probe so repeated tests leave no new objects.

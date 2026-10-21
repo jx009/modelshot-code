@@ -11,9 +11,9 @@ import { GET } from "../../src/app/api/assets/[id]/route.js";
 const asset = { id: "asset-route-fixture", contentType: "image/png", checksum: "checksum", bytes: 3, objectKey: "private/asset" };
 const request = query => new Request(`http://localhost/api/assets/${asset.id}${query}`);
 const context = { params: Promise.resolve({ id: asset.id }) };
-beforeEach(() => { mocks.user.mockResolvedValue({ id: "owner" }); mocks.owned.mockResolvedValue(asset); mocks.delivery.mockResolvedValue("https://fixture.cos.ap-hongkong.myqcloud.com/signed"); mocks.stream.mockResolvedValue(new Uint8Array([1, 2, 3])); mocks.preview.mockResolvedValue(new Uint8Array([4, 5])); });
+beforeEach(() => { mocks.user.mockResolvedValue({ id: "owner" }); mocks.owned.mockResolvedValue(asset); mocks.delivery.mockImplementation(async (_asset, _variant, { download }) => download ? null : "https://quiz.iamshuaidi.com/letaidraw/originals/image.png"); mocks.stream.mockResolvedValue(new Uint8Array([1, 2, 3])); mocks.preview.mockResolvedValue(new Uint8Array([4, 5])); });
 
-it.each([401, 404])("does not sign any COS URL before authorization succeeds (%s)", async status => {
+it.each([401, 404])("does not return a CDN URL before authorization succeeds (%s)", async status => {
   if (status === 401) mocks.user.mockRejectedValue(new AppError("UNAUTHORIZED", 401));
   else mocks.owned.mockRejectedValue(new AppError("ASSET_NOT_FOUND", 404));
   expect((await GET(request("?delivery=auto"), context)).status).toBe(status);
@@ -22,7 +22,7 @@ it.each([401, 404])("does not sign any COS URL before authorization succeeds (%s
 it("redirects authorized image loads without caching bearer URLs", async () => {
   const response = await GET(request("?preview=320&delivery=auto"), context);
   expect(response.status).toBe(307); expect(response.headers.get("cache-control")).toBe("private, no-store");
-  expect(response.headers.get("x-asset-delivery")).toBe("cos");
+  expect(response.headers.get("x-asset-delivery")).toBe("cdn");
   expect(mocks.delivery).toHaveBeenCalledWith(asset, 320, { download: false }); expect(mocks.stream).not.toHaveBeenCalled();
 });
 it.each([null, new Error("cos unavailable")])("serves the canonical preview when COS is cold or unavailable", async outcome => {
@@ -32,9 +32,11 @@ it.each([null, new Error("cos unavailable")])("serves the canonical preview when
   expect(mocks.after).toHaveBeenCalledOnce();
   await mocks.after.mock.calls[0][0](); expect(mocks.enqueue).toHaveBeenCalledWith(asset.id);
 });
-it("routes ordinary downloads to COS and retains an explicit proxy fallback", async () => {
+it("uses CDN for display but preserves attachment downloads and proxy fallback", async () => {
   expect((await GET(request(""), context)).status).toBe(307);
-  expect((await GET(request("?download=1"), context)).status).toBe(307);
+  const download = await GET(request("?download=1"), context);
+  expect(download.status).toBe(200);
+  expect(download.headers.get("content-disposition")).toContain("attachment");
   expect(mocks.delivery).toHaveBeenLastCalledWith(asset, 0, { download: true });
   expect((await GET(request("?delivery=proxy"), context)).status).toBe(200);
   expect(mocks.delivery).toHaveBeenCalledTimes(2);

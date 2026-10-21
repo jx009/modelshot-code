@@ -3,6 +3,7 @@ import sharp from "sharp";
 import { COS_DEFAULTS, cosConfigSchema, cosConfigView, cosTargetId, mergeCosConfig } from "../../src/lib/infra/storage/cos-config.js";
 import { cosStorage, testCosConnection } from "../../src/lib/infra/storage/cos.js";
 import { assetDeliveryUrl, assetDeliveryBatch, cosAssetKey, documentAssetIds, enqueueCosAsset, processCosAsset, removeCosAsset } from "../../src/lib/domain/assets/cos-delivery.js";
+import { cdnImageUrl, ASSET_DELIVERY_REFRESH_MS } from "../../src/lib/asset-cdn.js";
 
 const config = { ...COS_DEFAULTS, enabled: true, bucket: "fixture-1250000000", secretId: "fixture-id", secretKey: "fixture-secret" };
 const asset = { id: "asset-fixture-0001", userId: "owner", checksum: "checksum", objectKey: "owner/upload/fixture.png", contentType: "image/png", status: "active" };
@@ -28,15 +29,15 @@ describe("COS configuration and credentials", () => {
     expect(times[1] - times[0]).toBe(300);
     expect(url.href).not.toContain("fixture-secret");
   });
-  it("tests private ACL, byte integrity and deletion; returns only a short browser probe", async () => {
+  it("tests private ACL, byte integrity and deletion and returns a CDN browser probe", async () => {
     const values = new Map();
     const store = { assertPrivateBucket: vi.fn(), put: vi.fn(async (k, b) => values.set(k, b)), get: vi.fn(async k => values.get(k)), delete: vi.fn(async k => values.delete(k)), signedUrl: vi.fn(async () => "https://fixture/probe"), signedUpload: vi.fn(async () => "https://fixture/upload-probe") };
     const result = await testCosConnection({ ...config, directUploadEnabled: true }, store);
-    expect(result).toEqual({ ok: true, probeUrl: "https://fixture/probe", uploadProbe: { url: "https://fixture/upload-probe", headers: { "Content-Type": "image/png" }, bodyBase64: expect.any(String) } });
+    expect(result).toEqual({ ok: true, probeUrl: cdnImageUrl("letaidraw/diagnostics/browser-probe.png"), uploadProbe: { url: "https://fixture/upload-probe", headers: { "Content-Type": "image/png" }, bodyBase64: expect.any(String) } });
     expect(store.assertPrivateBucket).toHaveBeenCalled(); expect(store.delete).toHaveBeenCalledOnce();
     expect([...values.keys()]).toEqual(["letaidraw/diagnostics/browser-probe.png"]);
     expect(await sharp(values.get("letaidraw/diagnostics/browser-probe.png")).raw().toBuffer()).toEqual(Buffer.from([255, 255, 255]));
-    expect(store.signedUrl).toHaveBeenCalledWith("letaidraw/diagnostics/browser-probe.png", 60);
+    expect(store.signedUrl).not.toHaveBeenCalled();
     const probeBytes = values.get("letaidraw/diagnostics/browser-probe.png");
     expect(Buffer.from(result.uploadProbe.bodyBase64, "base64")).toEqual(probeBytes);
     expect(store.signedUpload).toHaveBeenCalledWith("letaidraw/diagnostics/browser-probe.png", "image/png", probeBytes.length);
@@ -51,26 +52,48 @@ describe("COS configuration and credentials", () => {
   });
   it("does not sign a browser PUT probe when direct upload is off", async () => {
     const store = { assertPrivateBucket: vi.fn(), put: vi.fn(), get: vi.fn(async () => Buffer.from("letaidraw-private-storage-test")), delete: vi.fn(), signedUrl: vi.fn(async () => "https://fixture/read-probe"), signedUpload: vi.fn() };
-    expect(await testCosConnection(config, store)).toEqual({ ok: true, probeUrl: "https://fixture/read-probe" });
+    expect(await testCosConnection(config, store)).toEqual({ ok: true, probeUrl: cdnImageUrl("letaidraw/diagnostics/browser-probe.png") });
     expect(store.signedUpload).not.toHaveBeenCalled();
-    expect(store.signedUrl).toHaveBeenCalled();
+    expect(store.signedUrl).not.toHaveBeenCalled();
+  });
+
+  it("keeps COS objects private while setting image cache headers for CDN", async () => {
+    const client = { putObject: vi.fn(), putObjectCopy: vi.fn() };
+    const store = cosStorage(config, client);
+    await store.put("letaidraw/originals/image.png", Buffer.from("image"), "image/png");
+    expect(client.putObject).toHaveBeenCalledWith(expect.objectContaining({ ACL: "private", CacheControl: "public, max-age=86400" }));
+    await store.copy("letaidraw/uploads/pending/image", "letaidraw/originals/image.png", "etag", "image/png");
+    expect(client.putObjectCopy).toHaveBeenCalledWith(expect.objectContaining({ ACL: "private", CacheControl: "public, max-age=86400", ContentDisposition: "inline" }));
   });
 });
 
-describe("private replica delivery", () => {
+describe("CDN replica delivery", () => {
+  it("serves new object paths through CDN and preserves legacy target checks", async () => {
+    const primary = { ...asset, objectKey: "letaidraw/originals/owner/original/image.png" };
+    const foreign = { ...asset, id: "foreign", objectKey: `cos://other-1250000000/${config.region}/letaidraw/originals/image.png` };
+    const db = { assetDelivery: { findUnique: vi.fn(async () => null), findMany: vi.fn(async () => []) }, asset: { findMany: vi.fn(async () => [primary, foreign]) } };
+    expect(await assetDeliveryUrl(primary, 0, { config, db })).toBe(cdnImageUrl(primary.objectKey));
+    expect(await assetDeliveryUrl(foreign, 0, { config, db })).toBeNull();
+    expect(await assetDeliveryUrl(primary, 0, { config: { ...config, enabled: false }, db })).toBe(cdnImageUrl(primary.objectKey));
+    const batch = await assetDeliveryBatch(asset.userId, [primary.id, foreign.id], [0, 320], { config, db, now: 1000 });
+    expect(batch.items).toEqual([0, 320].map(variant => ({ assetId: primary.id, variant, url: cdnImageUrl(primary.objectKey) })));
+    expect(db.asset.findMany.mock.calls[0][0].where).not.toHaveProperty("objectKey");
+  });
+
   it("serves COS originals immediately without waiting for replica uploads", async () => {
     const primary = { ...asset, objectKey: `cos://${config.bucket}/${config.region}/letaidraw/originals/image.jpg` };
     const db = { assetDelivery: { findUnique: vi.fn(async () => null), findMany: vi.fn(async () => []) }, asset: { findMany: vi.fn(async () => [primary]) } };
     const store = { signedUrl: vi.fn(async () => "https://fixture/direct") };
-    expect(await assetDeliveryUrl(primary, 0, { config, db, store, download: true })).toBe("https://fixture/direct");
+    expect(await assetDeliveryUrl(primary, 0, { config, db, store })).toBe(cdnImageUrl("letaidraw/originals/image.jpg"));
+    expect(await assetDeliveryUrl(primary, 0, { config, db, store, download: true })).toBeNull();
     expect(db.assetDelivery.findUnique).not.toHaveBeenCalled();
-    expect(store.signedUrl).toHaveBeenCalledWith("letaidraw/originals/image.jpg", 300, true);
-    expect(await assetDeliveryUrl(primary, 320, { config, db, store })).toBe("https://fixture/direct");
+    expect(store.signedUrl).not.toHaveBeenCalled();
+    expect(await assetDeliveryUrl(primary, 320, { config, db, store })).toBe(cdnImageUrl("letaidraw/originals/image.jpg"));
     const batch = await assetDeliveryBatch(primary.userId, [primary.id], [0, 320], { config, db, store });
     expect(batch.items).toHaveLength(2);
     expect(batch.items.map(item => item.variant)).toEqual([0, 320]);
   });
-  it("batch signs only owned, active images and matching receipts with one scoped query", async () => {
+  it("returns CDN links only for owned active images and matching receipts", async () => {
     const key = cosAssetKey(config, asset, 320);
     const other = { ...asset, id: "other-image", userId: "other-user" };
     const db = { assetDelivery: { findMany: vi.fn(async () => [
@@ -82,8 +105,8 @@ describe("private replica delivery", () => {
     const result = await assetDeliveryBatch(asset.userId, [asset.id, asset.id, other.id], [320, 640], { config, db, store, now: 1000 });
     expect(db.assetDelivery.findMany).toHaveBeenCalledOnce();
     expect(db.assetDelivery.findMany.mock.calls[0][0].where).toEqual({ assetId: { in: [asset.id, other.id] }, targetId: cosTargetId(config), variant: { in: [320, 640] }, asset: { userId: asset.userId, status: "active", contentType: { startsWith: "image/" } } });
-    expect(result).toEqual({ userId: asset.userId, expiresAt: 301000, items: [{ assetId: asset.id, variant: 320, url: "https://fixture/signed" }] });
-    expect(store.signedUrl).toHaveBeenCalledOnce();
+    expect(result).toEqual({ userId: asset.userId, expiresAt: 1000 + ASSET_DELIVERY_REFRESH_MS, items: [{ assetId: asset.id, variant: 320, url: cdnImageUrl(key) }] });
+    expect(store.signedUrl).not.toHaveBeenCalled();
   });
   it("skips disabled or empty batches and degrades optional delivery failures to source", async () => {
     const db = { assetDelivery: { findMany: vi.fn(async () => { throw new Error("offline"); }) } };
@@ -111,12 +134,12 @@ describe("private replica delivery", () => {
     expect(await assetDeliveryUrl(asset, 320, { config, db, store })).toBeNull();
     expect(store.signedUrl).not.toHaveBeenCalled();
   });
-  it("signs a ready replica using a local receipt without a COS HEAD request", async () => {
+  it("uses a ready replica without signing or a COS HEAD request", async () => {
     const key = cosAssetKey(config, asset, 1280);
     const db = { assetDelivery: { findUnique: vi.fn(async () => ({ readyAt: new Date("2020-01-01"), objectKey: key })) } };
     const store = { signedUrl: vi.fn(async () => "https://fixture/signed") };
-    expect(await assetDeliveryUrl(asset, 1280, { config, db, store })).toBe("https://fixture/signed");
-    expect(store.signedUrl).toHaveBeenCalledWith(key);
+    expect(await assetDeliveryUrl(asset, 1280, { config, db, store })).toBe(cdnImageUrl(key));
+    expect(store.signedUrl).not.toHaveBeenCalled();
     expect(cosAssetKey(config, { ...asset, userId: "other" }, 1280)).not.toBe(key);
   });
   it("deduplicates durable enqueue requests within a time window and does not block generation on failure", async () => {

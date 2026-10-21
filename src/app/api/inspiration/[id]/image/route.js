@@ -8,7 +8,7 @@ export async function GET(_req, { params }) {
     if (new URL(_req.url).searchParams.get("delivery") !== "proxy") {
       const delivered = await inspirationDelivery({ items: [item] });
       const url = delivered.items[0].imageUrl;
-      if (url) return new Response(null, { status: 307, headers: { Location: url, "Cache-Control": "no-store", "X-Asset-Delivery": "cos" } });
+      if (url) return new Response(null, { status: 307, headers: { Location: url, "Cache-Control": "no-store", "X-Asset-Delivery": "cdn" } });
     }
     const { bytes, contentType } = await readInspirationImage(item);
     return new Response(bytes, { headers: { "Content-Type": contentType, "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });

@@ -1,3 +1,5 @@
+import { isCdnImageUrl } from "../asset-cdn.js";
+
 const links = new Map();
 let currentUser = null;
 let epoch = 0;
@@ -22,7 +24,8 @@ export function consumeAssetDelivery(data, requestEpoch) {
     if (!/^[a-zA-Z0-9_-]+$/.test(item.assetId) || ![0, 320, 640, 1280].includes(item.variant)) continue;
     let url;
     try { url = new URL(item.url); } catch { continue; }
-    if (url.protocol !== "https:" || url.username || url.password || !/^[a-z0-9-]+\.cos\.[a-z0-9-]+\.myqcloud\.com$/.test(url.hostname)) continue;
+    if (url.protocol !== "https:" || url.username || url.password ||
+      (!isCdnImageUrl(item.url) && !/^[a-z0-9-]+\.cos\.[a-z0-9-]+\.myqcloud\.com$/.test(url.hostname))) continue;
     const key = `${item.assetId}:${item.variant}`;
     links.delete(key);
     links.set(key, { url: item.url, expiresAt: assetDelivery.expiresAt });

@@ -11,10 +11,12 @@ it("writes COS originals, routes legacy objects, and preserves missing-object re
   mock.config.mockResolvedValue(config);
   const store = objectStorage(), bytes = Buffer.from("fixture");
   const key = await store.putImage("owner/original/image.png", bytes, "image/png");
-  expect(key).toBe("cos://fixture-1250000000/ap-guangzhou/letaidraw/originals/owner/original/image.png");
+  expect(key).toBe("letaidraw/originals/owner/original/image.png");
   expect(mock.send).not.toHaveBeenCalled();
   mock.cos.get.mockResolvedValue(bytes);
   expect(await store.get(key)).toEqual(bytes);
+  expect(await store.get(`cos://${config.bucket}/${config.region}/${key}`)).toEqual(bytes);
+  await expect(store.get(`cos://another-1250000000/${config.region}/${key}`)).rejects.toThrow("COS_PRIMARY_BUCKET_CHANGED");
   await store.delete(key);
   expect(mock.cos.delete).toHaveBeenCalledWith("letaidraw/originals/owner/original/image.png");
   mock.cos.put.mockRejectedValueOnce(new Error("COS unavailable"));

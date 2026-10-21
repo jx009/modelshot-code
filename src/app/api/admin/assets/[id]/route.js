@@ -2,6 +2,7 @@ import { prisma } from "../../../../../lib/prisma.js";
 import { requireAdmin } from "../../../../../lib/admin-auth.js";
 import { AppError, errorResponse } from "../../../../../lib/http.js";
 import { objectStorage } from "../../../../../lib/infra/storage/s3.js";
+import { assetDeliveryUrl } from "../../../../../lib/domain/assets/cos-delivery.js";
 
 export async function GET(request, context) {
   try {
@@ -11,6 +12,10 @@ export async function GET(request, context) {
     const asset = await prisma.asset.findUnique({ where: { id } });
     if (!asset || asset.status !== "active") throw new AppError("ASSET_NOT_FOUND", 404);
     await prisma.adminAuditLog.create({ data: { adminId: auth.user.id, action: "READ_ASSET", targetUserId: asset.userId, detail: JSON.stringify({ assetId: id, reason: "generation_audit" }) } });
+    if (new URL(request.url).searchParams.get("delivery") !== "proxy") {
+      const url = await assetDeliveryUrl(asset, 0).catch(() => null);
+      if (url) return new Response(null, { status: 307, headers: { Location: url, "Cache-Control": "private, no-store", "X-Asset-Delivery": "cdn" } });
+    }
     return new Response(await objectStorage().get(asset.objectKey), { headers: { "Content-Type": asset.contentType, "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" } });
   } catch (error) { return errorResponse(error); }
 }

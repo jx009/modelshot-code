@@ -4,6 +4,7 @@ import { AppError } from "../http.js";
 import { getCosConfig } from "../infra/storage/cos-config.js";
 import { cosStorage, cosError } from "../infra/storage/cos.js";
 import { announcementQrSchema } from "../announcements.js";
+import { cdnImageUrl } from "../asset-cdn.js";
 
 export const QR_MAX_BYTES = 5 * 1024 * 1024;
 // Credentials may rotate without moving or invalidating a permanent object.
@@ -35,11 +36,11 @@ export async function uploadAnnouncementQr(bytes, { config, store } = {}) {
     return { qrImage, region: config.region };
   } catch (error) { throw cosError(error); }
 }
-export async function announcementQrUrl(value, { config, store } = {}) {
+export async function announcementQrUrl(value, { config } = {}) {
   const parsed = announcementQrSchema.safeParse(value);
   if (!parsed.success) throw new AppError("QR_IMAGE_NOT_FOUND", 404);
   config = await configured(config);
   if (parsed.data.target !== qrTarget(config)) throw new AppError("QR_STORAGE_CHANGED", 409);
-  try { return { url: await (store || cosStorage(config)).signedUrl(qrKey(config, parsed.data.id)) }; }
+  try { return { url: cdnImageUrl(qrKey(config, parsed.data.id)) }; }
   catch (error) { throw cosError(error); }
 }

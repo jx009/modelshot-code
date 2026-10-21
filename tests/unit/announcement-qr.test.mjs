@@ -4,7 +4,7 @@ vi.mock("../../src/lib/infra/storage/cos-config.js", () => ({ getCosConfig: vi.f
 import { uploadAnnouncementQr, announcementQrUrl, qrTarget, QR_MAX_BYTES } from "../../src/lib/server/announcement-qr.js";
 const config = { enabled: true, bucket: "test-1250000000", region: "ap-guangzhou", prefix: "letaidraw", secretId: "test", secretKey: "test", signedUrlSeconds: 300 };
 const storage = () => ({ assertPrivateBucket: vi.fn(), put: vi.fn(), signedUrl: vi.fn(async key => `https://cos.example/${key}?signature=temporary`) });
-it("stores lossless full-sized PNG permanently and signs fresh direct COS URLs", async () => {
+it("stores lossless full-sized PNG permanently and returns stable CDN URLs", async () => {
   const store = storage();
   const bytes = await sharp({ create: { width: 300, height: 420, channels: 3, background: "white" } }).png().toBuffer();
   const result = await uploadAnnouncementQr(bytes, { config, store });
@@ -15,7 +15,8 @@ it("stores lossless full-sized PNG permanently and signs fresh direct COS URLs",
   expect(type).toBe("image/png");
   expect(await sharp(saved).metadata()).toMatchObject({ width: 300, height: 420, format: "png" });
   const url = await announcementQrUrl(result.qrImage, { config: { ...config, secretKey: "rotated" }, store });
-  expect(url.url).toContain(key);
+  expect(url.url).toBe(`https://quiz.iamshuaidi.com/${key}`);
+  expect(store.signedUrl).not.toHaveBeenCalled();
   expect(store.put).toHaveBeenCalledTimes(1);
   await expect(announcementQrUrl(result.qrImage, { config: { ...config, bucket: "different" }, store })).rejects.toMatchObject({ code: "QR_STORAGE_CHANGED" });
 });

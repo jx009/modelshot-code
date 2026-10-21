@@ -95,3 +95,14 @@ test("a successful empty response replaces the old public snapshot", async () =>
   expect(cache.readGalleryCache(3000)).toEqual(gallery);
   expect(JSON.parse(localStorage.getItem("letaidraw:inspiration:v1"))).toEqual({ gallery, savedAt: 2000 });
 });
+
+test("persists public CDN image paths across sessions without signature expiry", async () => {
+  const cache = await fixture();
+  const cdnGallery = { ...gallery, items: [{ id: "public-cover", imageUrl: "https://quiz.iamshuaidi.com/letaidraw/inspiration/image/original", thumbnailUrl: "https://quiz.iamshuaidi.com/letaidraw/inspiration/image/640.webp" }] };
+  cache.writeGalleryCache(cdnGallery, 1000);
+  expect(JSON.parse(localStorage.getItem("letaidraw:inspiration:v1")).gallery).toEqual(cdnGallery);
+  vi.stubGlobal("sessionStorage", { getItem: () => null });
+  vi.resetModules();
+  const reloaded = await import("../../src/lib/inspiration/client-cache.js");
+  expect(reloaded.readGalleryCache(86401000)).toEqual(cdnGallery);
+});

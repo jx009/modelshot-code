@@ -63,3 +63,13 @@ it("forgets failed variants without changing unrelated URLs", () => {
   expect(resolveAssetImage("/studio/scene-03.webp")).toBe("/studio/scene-03.webp");
   expect(resolveAssetImage("https://example.com/image.png")).toBe("https://example.com/image.png");
 });
+
+it("accepts the configured CDN but not lookalike domains", () => {
+  setAssetDeliveryUser("owner");
+  const url = "https://quiz.iamshuaidi.com/letaidraw/originals/image.png";
+  consumeAssetDelivery(payload({ items: [{ assetId: "asset-fixture", variant: 320, url }] }), assetDeliveryEpoch());
+  expect(resolveAssetImage(src)).toBe(url);
+  forgetAssetDelivery(src);
+  consumeAssetDelivery(payload({ items: [{ assetId: "asset-fixture", variant: 320, url: url.replace(".com/", ".com.evil.test/") }] }), assetDeliveryEpoch());
+  expect(resolveAssetImage(src)).toBe(src + "&delivery=auto");
+});

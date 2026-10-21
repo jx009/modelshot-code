@@ -59,7 +59,8 @@ it("mirrors builtins and published assets permanently with concurrent upload ded
   const delivered = await inspirationDelivery(gallery, options);
   expect(delivered.deliveryPending).toBe(false);
   for (const item of delivered.items) {
-    expect(item.imageUrl).toMatch(/^https:\/\/fixture\.cos\./);
+    expect(item.imageUrl).toMatch(/^https:\/\/quiz\.iamshuaidi\.com\//);
+    expect(new URL(item.imageUrl).search).toBe("");
     expect(item.thumbnailUrl).toContain("640.webp");
     const objectKey = new URL(item.imageUrl).pathname.slice(1);
     expect(objects.get(objectKey)).toEqual((await readInspirationImage(item, f.db, f.store)).bytes);

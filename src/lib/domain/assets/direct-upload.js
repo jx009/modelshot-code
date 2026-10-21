@@ -5,7 +5,7 @@ import { prisma } from "../../prisma.js";
 import { AppError } from "../../http.js";
 import { getCosConfig, cosTargetId } from "../../infra/storage/cos-config.js";
 import { cosStorage } from "../../infra/storage/cos.js";
-import { cosObjectKey, primaryCos } from "../../infra/storage/cos-primary.js";
+import { cosObjectKey, parseCosObjectKey, matchesCosTarget, primaryCos } from "../../infra/storage/cos-primary.js";
 import { imageTransfers, imageProcessing } from "../../infra/concurrency.js";
 import { enqueueCosAsset } from "./cos-delivery.js";
 
@@ -33,7 +33,9 @@ export async function completeDirectUpload(userId, id, { db = prisma, config, st
   config ||= await getCosConfig(db);
   if (intent.targetId !== cosTargetId(config)) throw new AppError("COS_UPLOAD_CONFIG_CHANGED", 409);
   store ||= cosStorage(config);
-  const source = intent.objectKey.split("/").slice(4).join("/");
+  const object = parseCosObjectKey(intent.objectKey);
+  if (!matchesCosTarget(object, config)) throw new AppError("COS_UPLOAD_CONFIG_CHANGED", 409);
+  const source = object.key;
   return imageTransfers.run(async () => {
     const headers = await store.head(source), etag = headers.etag;
     if (!etag || Number(headers["content-length"]) !== intent.bytes) throw new AppError("UPLOAD_SIZE_MISMATCH", 422);

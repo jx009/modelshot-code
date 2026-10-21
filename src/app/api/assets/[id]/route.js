@@ -24,9 +24,9 @@ export async function GET(request, context) {
       // Ownership is checked above, including for cached replica URLs.
       try {
         const url = await assetDeliveryUrl(asset, size || 0, { download });
-        if (url) return new Response(null, { status: 307, headers: { Location: url, "Cache-Control": "private, no-store", "Referrer-Policy": "no-referrer", "X-Asset-Delivery": "cos" } });
+        if (url) return new Response(null, { status: 307, headers: { Location: url, "Cache-Control": "private, no-store", "Referrer-Policy": "no-referrer", "X-Asset-Delivery": "cdn" } });
       } catch { /* An optional accelerator never blocks the original image. */ }
-      after(() => enqueueCosAsset(asset.id));
+      if (!download) after(() => enqueueCosAsset(asset.id));
     } else if (!video && delivery === "proxy") {
       after(async () => { try { await repairCosAsset(asset, size || 0); } catch { /* The source remains available. */ } });
     }

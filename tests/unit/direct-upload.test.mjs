@@ -20,7 +20,8 @@ it("directly signs a bounded private PUT, validates bytes and freezes an immutab
   const f = await fixture();
   const result = await completeDirectUpload("owner", f.plan.uploadId, { ...f, config });
   expect(result).toMatchObject({ userId: "owner", contentType: "image/jpeg", bytes: f.input.bytes, checksum: f.input.checksum, width: 64, height: 32 });
-  expect(parseCosObjectKey(result.objectKey)).toMatchObject({ bucket: config.bucket, region: config.region });
+  expect(result.objectKey).toBe(`letaidraw/originals/owner/upload/${f.plan.uploadId}.jpg`);
+  expect(parseCosObjectKey(result.objectKey)).toMatchObject({ key: result.objectKey });
   expect(f.store.get).toHaveBeenCalledWith(`letaidraw/uploads/pending/owner/${f.plan.uploadId}`, '"version-1"');
   expect(f.store.copy).toHaveBeenCalledWith(`letaidraw/uploads/pending/owner/${f.plan.uploadId}`, `letaidraw/originals/owner/upload/${f.plan.uploadId}.jpg`, '"version-1"', "image/jpeg");
   expect(await completeDirectUpload("owner", f.plan.uploadId, { ...f, config })).toEqual(result);
@@ -55,4 +56,12 @@ it("uses the existing upload endpoint with no COS calls when either switch is of
 it("finishes already uploaded images when direct upload is switched off", async () => {
   const f = await fixture();
   expect(await completeDirectUpload("owner", f.plan.uploadId, { ...f, config: { ...config, directUploadEnabled: false } })).toMatchObject({ id: f.plan.uploadId, checksum: f.input.checksum });
+});
+
+it("finishes upload intents created with a legacy COS locator", async () => {
+  const f = await fixture();
+  f.intent().objectKey = `cos://${config.bucket}/${config.region}/${f.intent().objectKey}`;
+  const result = await completeDirectUpload("owner", f.plan.uploadId, { ...f, config });
+  expect(result.objectKey).toBe(`letaidraw/originals/owner/upload/${f.plan.uploadId}.jpg`);
+  expect(f.store.head).toHaveBeenCalledWith(`letaidraw/uploads/pending/owner/${f.plan.uploadId}`);
 });

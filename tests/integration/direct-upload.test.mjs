@@ -26,7 +26,7 @@ it("concurrent finalize persists one COS asset and tools read its preserved JPEG
   const results = await Promise.all(Array.from({ length: 4 }, () => completeDirectUpload(owner.id, plan.uploadId, { db: fixture.db, config, store })));
   expect(new Set(results.map(row => row.id)).size).toBe(1);
   expect(results[0]).toMatchObject({ status: "active", bytes: bytes.length, contentType: "image/jpeg", width: 80, height: 48 });
-  expect(results[0].objectKey).toMatch(/^cos:\/\/fixture-1250000000\/ap-guangzhou\//);
+  expect(results[0].objectKey.startsWith(`${config.prefix}/originals/`)).toBe(true);
   expect(await fixture.db.asset.count({ where: { id: plan.uploadId } })).toBe(1);
   const png = await readOwnedImage(owner.id, plan.uploadId, fixture.db, store);
   expect(await sharp(png).metadata()).toMatchObject({ format: "png", width: 80, height: 48 });

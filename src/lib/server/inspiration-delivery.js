@@ -4,24 +4,11 @@ import { prisma } from "../prisma.js";
 import { getCosConfig, cosTargetId } from "../infra/storage/cos-config.js";
 import { cosStorage } from "../infra/storage/cos.js";
 import { findInspiration, readInspirationImage } from "./inspiration.js";
+import { cdnImageUrl } from "../asset-cdn.js";
 
 const hash = value => createHash("sha256").update(value).digest("hex");
 const builtinHashes = new Map();
-const signedLinks = new Map();
 const mirrorTasks = new Map();
-
-async function deliveryLinks(entry, config, target, now) {
-  const key = `${entry.key}:${config.signedUrlSeconds}`;
-  let cached = signedLinks.get(key);
-  if (!cached || cached.expiresAt <= now + 30000) {
-    if (signedLinks.size >= 600) signedLinks.delete(signedLinks.keys().next().value);
-    cached = { expiresAt: now + config.signedUrlSeconds * 1000, urls: Promise.all([target.signedUrl(entry.original), target.signedUrl(entry.thumbnail)]) };
-    signedLinks.set(key, cached);
-    cached.urls.catch(() => { if (signedLinks.get(key) === cached) signedLinks.delete(key); });
-  }
-  const [imageUrl, thumbnailUrl] = await cached.urls;
-  return { imageUrl, thumbnailUrl, expiresAt: cached.expiresAt };
-}
 
 async function sourceVersion(item, db) {
   if (item.cover.type === "builtin") {
@@ -80,28 +67,22 @@ async function descriptors(items, config, db) {
   }));
 }
 
-// Receipts are durable internal SystemConfig records, separate from the editable
-// gallery. They survive deploys; only the short-lived access signatures expire.
-export async function inspirationDelivery(gallery, { db = prisma, config, target, now = Date.now() } = {}) {
+export async function inspirationDelivery(gallery, { db = prisma, config } = {}) {
   try {
     config ||= await getCosConfig(db);
     if (!config.enabled) return gallery;
-    target ||= cosStorage(config);
     let pending = false;
-    let expiresAt = now + config.signedUrlSeconds * 1000;
     const resolved = await descriptors(gallery.items, config, db);
     const keys = resolved.filter(result => result.entry).map(result => result.entry.key);
     const receipts = keys.length ? await db.systemConfig.findMany({ where: { key: { in: keys } }, select: { key: true, value: true } }) : [];
     const receiptMap = new Map(receipts.map(receipt => [receipt.key, receipt.value]));
-    const items = await Promise.all(resolved.map(async ({ item, entry, error }) => {
+    const items = resolved.map(({ item, entry, error }) => {
       if (error || !entry || receiptMap.get(entry.key) !== "ready") { pending = true; return item; }
       try {
-        const { imageUrl, thumbnailUrl, expiresAt: linkExpiry } = await deliveryLinks(entry, config, target, now);
-        expiresAt = Math.min(expiresAt, linkExpiry);
-        return { ...item, imageUrl, thumbnailUrl };
+        return { ...item, imageUrl: cdnImageUrl(entry.original), thumbnailUrl: cdnImageUrl(entry.thumbnail) };
       } catch { pending = true; return item; }
-    }));
-    return { ...gallery, items, deliveryPending: pending, deliveryExpiresAt: expiresAt };
+    });
+    return { ...gallery, items, deliveryPending: pending };
   } catch { return gallery; }
 }
 

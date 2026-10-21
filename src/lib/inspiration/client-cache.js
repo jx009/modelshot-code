@@ -1,3 +1,5 @@
+import { isCdnImageUrl } from "../asset-cdn.js";
+
 // Public gallery metadata only. Never store user sessions, balances or private assets.
 const KEY = "letaidraw:inspiration:v1";
 let memory;
@@ -5,8 +7,8 @@ let memory;
 function withoutDeliveryLinks(gallery) {
   const snapshot = { ...gallery, items: gallery.items.map(item => {
     const cachedItem = { ...item };
-    delete cachedItem.imageUrl;
-    delete cachedItem.thumbnailUrl;
+    if (!isCdnImageUrl(cachedItem.imageUrl)) delete cachedItem.imageUrl;
+    if (!isCdnImageUrl(cachedItem.thumbnailUrl)) delete cachedItem.thumbnailUrl;
     return cachedItem;
   }) };
   delete snapshot.deliveryExpiresAt;

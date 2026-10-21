@@ -5,6 +5,7 @@ import { Cloud, Database, ShieldCheck, Save, PlugZap, ArrowRight } from "lucide-
 import toast from "react-hot-toast";
 import { useAdminReason } from "@/hooks/useAdminReason";
 import { uploadCosObject } from "@/lib/cos-upload";
+import { ASSET_CDN_ORIGIN } from "@/lib/asset-cdn";
 
 const fieldClass = "w-full min-w-0 rounded-xl border border-divider bg-bg-page px-3 py-2.5 text-sm text-primary-text disabled:opacity-60";
 const messages = {
@@ -29,7 +30,7 @@ async function responseBody(response) {
 function browserProbe(url) {
   return new Promise((resolve, reject) => {
     const image = new Image();
-    const timer = setTimeout(() => { image.src = ""; reject(new Error("浏览器读取超时，请检查 COS 跨域规则和网络。")); }, 10000);
+    const timer = setTimeout(() => { image.src = ""; reject(new Error("浏览器读取超时，请检查 CDN 回源、跨域规则和网络。")); }, 10000);
     image.crossOrigin = "anonymous";
     image.onload = () => {
       clearTimeout(timer);
@@ -39,7 +40,7 @@ function browserProbe(url) {
         resolve();
       } catch { reject(new Error("图片可访问，但画布跨域校验失败，请检查 CORS。")); }
     };
-    image.onerror = () => { clearTimeout(timer); reject(new Error("服务器读写成功；浏览器读取失败，请检查 COS 跨域规则或防盗链设置。")); };
+    image.onerror = () => { clearTimeout(timer); reject(new Error("COS 读写成功；CDN 图片读取失败，请检查 CDN 域名、回源鉴权、跨域规则或防盗链设置。")); };
     image.src = url;
   });
 }
@@ -104,9 +105,10 @@ export default function StorageSettings() {
         <Field label="SecretId" hint={info.credentialsConfigured ? "凭据已配置。留空保留，更新时建议同时填写两项。" : "在腾讯云访问管理 CAM 中创建专用子用户密钥。"}><input className={fieldClass} type="password" autoComplete="new-password" value={config.secretId} onChange={e => change("secretId", e.target.value)} /></Field>
         <Field label="SecretKey" hint="仅在服务端使用，加密保存；不会返回到浏览器。"><input className={fieldClass} type="password" autoComplete="new-password" value={config.secretKey} onChange={e => change("secretKey", e.target.value)} /></Field>
         <Field label="专用目录前缀" hint="建议保留 letaidraw。更换桶或目录后旧副本不会自动搬迁或清除。"><input className={fieldClass} value={config.prefix} onChange={e => change("prefix", e.target.value)} /></Field>
-        <Field label="签名链接有效期（秒）" hint="60–900 秒，默认 300 秒。仅访问链接过期，图片不会过期；再次访问会签发新链接。"><input className={fieldClass} type="number" min={60} max={900} step={1} value={config.signedUrlSeconds} onChange={e => change("signedUrlSeconds", Number(e.target.value))} /></Field>
+        <Field label="服务端读取签名有效期（秒）" hint="60–900 秒，仅用于服务端读取 COS。浏览图片使用固定 CDN 地址，不受此有效期影响。"><input className={fieldClass} type="number" min={60} max={900} step={1} value={config.signedUrlSeconds} onChange={e => change("signedUrlSeconds", Number(e.target.value))} /></Field>
       </fieldset>
-      <p className="flex items-start gap-2 text-xs leading-6 text-secondary-text"><ShieldCheck size={16} className="mt-1 shrink-0 text-primary" />使用私有读写存储桶，保留所有权校验。COS 原图需保留对应桶和读取凭据；关闭新图加速不会删除已有原图。已签发链接在到期前仍然可用。</p>
+      <p className="text-xs leading-6 text-secondary-text">图片 CDN：<code>{ASSET_CDN_ORIGIN}</code>。数据库保存对象路径，展示时拼接 CDN 域名，不保存临时签名地址。</p>
+      <p className="flex items-start gap-2 text-xs leading-6 text-secondary-text"><ShieldCheck size={16} className="mt-1 shrink-0 text-primary" />COS 桶保持私有，通过 CDN 回源鉴权读取。接口仍校验用户权限，但 CDN 图片链接是公开的，任何拿到链接的人均可读取；退出登录或关闭加速不会撤销已有 CDN 链接。</p>
       {error && <p role="alert" className="rounded-xl border border-error/25 bg-error/5 p-3 text-sm text-error">{error}</p>}
       {test && <p role="status" className="rounded-xl border border-primary/25 bg-primary/5 p-3 text-sm text-primary">{test}</p>}
       <div className="flex flex-wrap gap-3"><button className="button compact" disabled={!info.canManage || Boolean(busy)} onClick={() => submit("test")}><PlugZap size={15} />{busy === "test" ? "正在检测读写与跨域…" : "测试连接与跨域"}</button><button className="button primary compact" disabled={!info.canManage || Boolean(busy)} onClick={() => submit("save")}><Save size={15} />{busy === "save" ? "保存中…" : "保存配置"}</button></div>
@@ -117,7 +119,8 @@ export default function StorageSettings() {
         <li>在腾讯 COS 控制台选择中国内地或香港地域，新建「私有读写」存储桶；已有桶必须填写实际地域。</li>
         <li>检查桶的生命周期规则：项目目录不要设置到期删除或转归档。图片持续保留，用户主动删除并完成回收站清理后才删除对应 COS 对象。</li>
         <li>在访问管理 CAM 创建专用子用户，授权本桶 ACL 读取与专用目录内对象的上传、读取、复制和删除，再创建访问密钥。</li>
-        <li>在桶的「安全管理 → 跨域访问 CORS」添加规则：来源 <code>*</code>，方法 GET、HEAD，允许 Headers <code>*</code>，暴露 Headers <code>ETag, Content-Length, Content-Range</code>，缓存 600 秒。私有对象仍必须携带签名才能读取。</li>
+        <li>将 <code>{ASSET_CDN_ORIGIN}</code> 配置到当前 COS 桶，开启私有桶回源鉴权，保留对象完整路径；不要启用访问者 URL 签名鉴权。</li>
+        <li>在 CDN 响应头配置允许本站来源的 CORS，支持 GET、HEAD，暴露 <code>ETag, Content-Length, Content-Range</code>，确保图片可在画布中读取。CDN 端缓存规则也需允许缓存图片。</li>
         <li>暂时无法添加 PUT 时，保持「浏览器直传 COS（PUT）」关闭。以后在 CORS 中补上 PUT 后，再打开开关、测试并保存，切换到浏览器直传。</li>
       </ol>
       <p className="text-xs leading-6 text-secondary-text">请确保美国 worker 已更新并运行。COS 加速图片传输，不会消除登录、页面与生成接口的跨洋耗时；存储和流量费用按腾讯云实际计费。</p>

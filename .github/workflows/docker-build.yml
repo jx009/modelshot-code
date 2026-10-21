@@ -248,6 +248,7 @@ jobs:
           HK_SERVER_SSH_KEY: ${{ secrets.HK_SERVER_SSH_KEY }}
           HK_SERVER_KNOWN_HOSTS: ${{ secrets.HK_SERVER_KNOWN_HOSTS }}
           HK_SERVER_PORT: ${{ vars.HK_SERVER_PORT || '22' }}
+          HK_STATIC_BWLIMIT_KIB: ${{ vars.HK_STATIC_BWLIMIT_KIB || '0' }}
         run: bash scripts/deploy-hk-static.sh hk-static
       - name: Deployment summary
         run: echo 'Hong Kong static assets published additively. Old files retained; public image tags may now advance.' >> "$GITHUB_STEP_SUMMARY"

@@ -8,9 +8,9 @@ import { destinationPath } from "@/lib/navigation-destination";
 import { LOCAL_NAVIGATION_EVENT, LocalNavigationContext, PageVisibilityContext, useLocalNavigation } from "@/components/ui/LocalNavigation";
 import NavigationContent from "@/components/ui/NavigationContent";
 import CreativeShell from "./CreativeShell";
+import DiscoverHome from "./DiscoverHome";
 
 const loaders = {
-  "/": () => import("./DiscoverHome"),
   "/explore": () => import("./ExplorePage"),
   "/projects": () => import("./CreativeProjects"),
   "/assets": () => import("@/components/studio/AssetLibrary"),
@@ -18,7 +18,7 @@ const loaders = {
   "/studio-v2": () => import("@/components/studio/StudioPage"),
   "/pricing": () => import("@/components/billing/PricingPage"),
 };
-const pages = Object.fromEntries(Object.entries(loaders).map(([path, load]) => [path, lazy(load)]));
+const pages = { "/": DiscoverHome, ...Object.fromEntries(Object.entries(loaders).map(([path, load]) => [path, lazy(load)])) };
 const retained = new Set(["/", "/explore", "/projects", "/assets"]);
 const historyEvent = LOCAL_NAVIGATION_EVENT;
 const snapshot = () => destinationPath(window.location.pathname);
@@ -73,7 +73,9 @@ export default function CreativePages({ children }) {
     return true;
   }, [supports, visit]);
   const preload = useCallback(href => {
-    if (supports(href)) void loaders[destinationPath(href)]().catch(() => {});
+    if (!supports(href)) return;
+    const load = loaders[destinationPath(href)];
+    if (load) void load().catch(() => {});
   }, [supports]);
   const value = useMemo(() => ({ path, entry, visited, supports, navigate, visit, preload }), [path, entry, visited, supports, navigate, visit, preload]);
   return <LocalNavigationContext.Provider value={value}>{children}</LocalNavigationContext.Provider>;
@@ -89,12 +91,11 @@ class PageError extends Component {
 
 function RetainedPages({ children }) {
   const { path, entry, visited } = useLocalNavigation(), locale = useLocale();
-  const [initial] = useState(() => ({ path, children }));
   const supported = Object.hasOwn(pages, path);
   const standalone = path === "/studio-v2" || path === "/pricing";
   const ActivePage = supported && !retained.has(path) ? pages[path] : null;
   const active = supported && !retained.has(path) && <PageError key={`${path}:${entry}`} href={`/${locale}${path}`} zh={locale === "zh"}>
-    {path === initial.path && entry === 0 ? initial.children : <Suspense fallback={<p role="status">{locale === "zh" ? "正在打开模块…" : "Opening module…"}</p>}><ActivePage /></Suspense>}
+    <Suspense fallback={<p role="status">{locale === "zh" ? "正在打开模块…" : "Opening module…"}</p>}><ActivePage /></Suspense>
   </PageError>;
   return <><Activity mode={standalone ? "hidden" : "visible"}><CreativeShell>
     {visited.map(route => {
@@ -102,7 +103,7 @@ function RetainedPages({ children }) {
       return <Activity key={route} mode={visible ? "visible" : "hidden"}>
         <PageVisibilityContext.Provider value={visible}>
           <PageError href={`/${locale}${route === "/" ? "" : route}`} zh={locale === "zh"}>
-            {route === initial.path ? initial.children : <Suspense fallback={<p role="status">{locale === "zh" ? "正在打开页面…" : "Opening page…"}</p>}><Page /></Suspense>}
+            <Suspense fallback={<p role="status">{locale === "zh" ? "正在打开页面…" : "Opening page…"}</p>}><Page /></Suspense>
           </PageError>
         </PageVisibilityContext.Provider>
       </Activity>;

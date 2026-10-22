@@ -44,7 +44,7 @@ function subscribe(callback) {
   window.addEventListener("popstate", callback);
   return () => { window.removeEventListener("creative-test-history", callback); window.removeEventListener("popstate", callback); };
 }
-function Shell() {
+function Shell({ children = <h1>其他页面</h1> }) {
   return <CreativePages><nav>
     <NavigationLink href="/">首页</NavigationLink>
     <NavigationLink href="/explore">灵感</NavigationLink>
@@ -59,7 +59,7 @@ function Shell() {
     <NavigationLink href="/" locale="en">English</NavigationLink>
     <NavigationLink href="/explore" target="_blank">新窗口</NavigationLink>
     <NavigationLink href="/explore" download>下载</NavigationLink>
-  </nav><CreativePageContent><h1>其他页面</h1></CreativePageContent></CreativePages>;
+  </nav><CreativePageContent>{children}</CreativePageContent></CreativePages>;
 }
 beforeEach(() => {
   mocks.user = "user-a"; mocks.navigate.mockReset();
@@ -69,6 +69,37 @@ beforeEach(() => {
   vi.spyOn(window, "scrollTo").mockImplementation(() => {});
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+
+test("renders the homepage immediately instead of a stale layout route slot", () => {
+  render(<Shell><h1>旧的灵感路由插槽</h1></Shell>);
+  expect(screen.getByRole("heading", { name: "创作内容" })).toBeTruthy();
+  expect(screen.getByRole("textbox", { name: "草稿" })).toBeTruthy();
+  expect(screen.queryByRole("heading", { name: "旧的灵感路由插槽" })).toBeNull();
+});
+
+test("keeps the homepage draft when the server route slot changes", async () => {
+  const view = render(<Shell><h1>首页路由插槽</h1></Shell>);
+  fireEvent.change(screen.getByRole("textbox", { name: "草稿" }), { target: { value: "不要替换我的输入框" } });
+  fireEvent.click(screen.getByRole("link", { name: "灵感" }));
+  await screen.findByRole("heading", { name: "灵感内容" });
+  view.rerender(<Shell><h1>灵感路由插槽</h1></Shell>);
+  fireEvent.click(screen.getByRole("link", { name: "首页" }));
+  expect(screen.getByRole("textbox", { name: "草稿" }).value).toBe("不要替换我的输入框");
+  expect(screen.queryByRole("heading", { name: "灵感路由插槽" })).toBeNull();
+});
+
+test("does not replace the homepage with the entry route after session resolution", async () => {
+  mocks.user = null;
+  window.history.replaceState(null, "", "/zh/explore");
+  const view = render(<Shell><h1>首次打开的灵感路由插槽</h1></Shell>);
+  await screen.findByRole("heading", { name: "灵感内容" });
+  fireEvent.click(screen.getByRole("link", { name: "首页" }));
+  expect(screen.getByRole("textbox", { name: "草稿" })).toBeTruthy();
+  mocks.user = "user-a";
+  view.rerender(<Shell><h1>首次打开的灵感路由插槽</h1></Shell>);
+  expect(screen.getByRole("textbox", { name: "草稿" })).toBeTruthy();
+  expect(screen.queryByRole("heading", { name: "首次打开的灵感路由插槽" })).toBeNull();
+});
 
 test("switches visited pages locally while preserving drafts and filters", async () => {
   render(<Shell />);

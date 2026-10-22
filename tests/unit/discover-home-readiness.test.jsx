@@ -2,13 +2,17 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import DiscoverHome from "../../src/components/discover/DiscoverHome.jsx";
-import { PageVisibilityContext } from "../../src/components/ui/LocalNavigation.jsx";
+import CreativePages, { CreativePageContent } from "../../src/components/discover/CreativePages.jsx";
+import { PageVisibilityContext, useLocalNavigation } from "../../src/components/ui/LocalNavigation.jsx";
 
 const mocks = vi.hoisted(() => ({ read: vi.fn(), clear: vi.fn(), open: vi.fn() }));
 vi.mock("@/lib/studio/image-capabilities-client", () => ({ readImageCapabilities: mocks.read, clearImageCapabilities: mocks.clear }));
 vi.mock("@/components/auth/AuthProvider", () => ({ useAuth: () => ({ open: mocks.open }) }));
 vi.mock("next-auth/react", () => ({ useSession: () => ({ status: "authenticated", data: { user: { id: "user-a" } } }) }));
 vi.mock("next-intl", () => ({ useLocale: () => "zh" }));
+vi.mock("next/navigation", () => ({ usePathname: () => window.location.pathname }));
+vi.mock("../../src/components/discover/CreativeShell", () => ({ default: ({ children }) => <main>{children}</main> }));
+vi.mock("../../src/components/discover/ExplorePage", () => ({ default: () => <h1>灵感页面</h1> }));
 vi.mock("@/hooks/useNavigationRouter", () => ({ useNavigationRouter: () => ({ push: vi.fn() }) }));
 vi.mock("@/lib/client-api", () => ({ api: vi.fn(), requestKey: () => "test-key" }));
 vi.mock("@/components/studio/AssetImage", () => ({ default: ({ alt }) => <span>{alt}</span> }));
@@ -16,8 +20,29 @@ vi.mock("@/components/ui/NavigationLink", () => ({ default: ({ children, href })
 vi.mock("@/components/ui/ModelPicker", () => ({ default: ({ models, emptyLabel }) => <span>{models[0]?.label || emptyLabel}</span> }));
 vi.mock("@/components/ui/ImageSizePicker", () => ({ default: () => null }));
 vi.mock("next/dynamic", () => ({ default: () => () => <div data-testid="gallery-shell" /> }));
-beforeEach(() => { mocks.read.mockReset(); mocks.clear.mockReset(); });
+beforeEach(() => { mocks.read.mockReset(); mocks.clear.mockReset(); window.history.replaceState(null, "", "/zh"); });
 afterEach(cleanup);
+
+function PageLinks() {
+  const navigation = useLocalNavigation();
+  return <nav><button onClick={() => navigation.visit("/explore", { scroll: false })}>查看灵感</button><button onClick={() => navigation.visit("/", { scroll: false })}>回到首页</button></nav>;
+}
+
+test("keeps the actual composer visible through local navigation while models are pending", async () => {
+  mocks.read.mockImplementation(() => new Promise(() => {}));
+  render(<CreativePages><PageLinks /><CreativePageContent><h1>旧的服务端路由内容</h1></CreativePageContent></CreativePages>);
+  const composer = screen.getByRole("textbox", { name: "描述你的创意" });
+  fireEvent.change(composer, { target: { value: "切回来仍然可以继续写" } });
+  expect(screen.getByRole("button", { name: "开始创作" })).toBeTruthy();
+  expect(screen.queryByRole("heading", { name: "旧的服务端路由内容" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "查看灵感" }));
+  await screen.findByRole("heading", { name: "灵感页面" });
+  expect(screen.queryByRole("textbox", { name: "描述你的创意" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "回到首页" }));
+  expect(screen.getByRole("textbox", { name: "描述你的创意" })).toBe(composer);
+  expect(composer.value).toBe("切回来仍然可以继续写");
+  expect(screen.getByRole("button", { name: "开始创作" })).toBeTruthy();
+});
 
 test("renders the editable composer and gallery shell without waiting for models or an idle timer", async () => {
   let resolve;

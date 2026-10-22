@@ -1,10 +1,11 @@
 "use client";
 
-import { cloneElement, useEffect, useState } from "react";
+import { cloneElement, useCallback, useEffect, useRef, useState } from "react";
 import { LoaderCircle, Plus, X, Zap } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAdminReason } from "@/hooks/useAdminReason";
 import { CHANNEL_PRESETS, channelScope, channelCapability } from "@/lib/studio/model-channels";
+import { api } from "@/lib/client-api";
 
 const providerError = error => ["PROVIDER_BASE_URL_INVALID", "PROVIDER_PROXY_NOT_ALLOWED"].includes(error?.message)
   ? "模型接口地址格式不正确：请填写完整的 http:// 或 https:// 地址，可包含端口和路径，不要附带用户名、密码、查询参数或 #。"
@@ -21,6 +22,8 @@ export default function AdminProviders() {
   const reasonPrompt = useAdminReason();
   const [providers, setProviders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const loadController = useRef(null), mounted = useRef(false);
   const [savingId, setSavingId] = useState(null);
   const [testingId, setTestingId] = useState(null);
   const [testResult, setTestResult] = useState({});
@@ -28,21 +31,31 @@ export default function AdminProviders() {
   const [adding, setAdding] = useState(false);
   const [channel, setChannel] = useState(emptyChannel);
 
-  async function load() {
+  const load = useCallback(async () => {
+    if (!mounted.current) return;
+    loadController.current?.abort();
+    const controller = new AbortController();
+    loadController.current = controller;
+    setLoading(true); setLoadError("");
     try {
+      const data = await api("/api/admin/providers", { signal: controller.signal, timeoutMs: 15000 });
+      if (!Array.isArray(data)) throw new Error("INVALID_PROVIDER_RESPONSE");
+      if (!controller.signal.aborted && mounted.current) setProviders(data);
+    } catch (error) {
+      if (!controller.signal.aborted && mounted.current) setLoadError(error.code === "REQUEST_TIMEOUT" ? "读取模型配置超时，请重试。" : "加载模型配置失败，请重试。");
+    } finally { if (!controller.signal.aborted && mounted.current) setLoading(false); }
+  }, []);
+  useEffect(() => {
+    mounted.current = true;
+    const timer = setTimeout(() => {
       const requested = new URLSearchParams(window.location.search).get("category");
       if (["public", "language", "tool"].includes(requested)) setCategory(requested);
-      const res = await fetch("/api/admin/providers");
-      if (!res.ok) throw new Error();
-      setProviders(await res.json());
-    } catch { toast.error("加载模型配置失败"); }
-    finally { setLoading(false); }
-  }
-  useEffect(() => { const timer = setTimeout(() => {
-    load();
-    const purpose = new URLSearchParams(window.location.search).get("purpose");
-    if (["ocr", "upscale"].includes(purpose)) { setCategory("tool"); setChannel(dedicatedPreset(purpose)); setAdding(true); }
-  }, 0); return () => clearTimeout(timer); }, []);
+      load();
+      const purpose = new URLSearchParams(window.location.search).get("purpose");
+      if (["ocr", "upscale"].includes(purpose)) { setCategory("tool"); setChannel(dedicatedPreset(purpose)); setAdding(true); }
+    }, 0);
+    return () => { mounted.current = false; clearTimeout(timer); loadController.current?.abort(); };
+  }, [load]);
 
   const patch = async (id, data, note) => {
     const approval = await reasonPrompt.ask();
@@ -83,7 +96,8 @@ export default function AdminProviders() {
     finally { setTestingId(null); }
   };
 
-  if (loading) return <div className="flex items-center gap-2 text-secondary-text text-sm py-10"><LoaderCircle className="animate-spin" size={14} />加载模型配置…</div>;
+  if (loading) return <div role="status" className="flex items-center gap-2 text-secondary-text text-sm py-10"><LoaderCircle className="animate-spin" size={14} />加载模型配置…</div>;
+  if (loadError) return <div role="alert" className="space-y-3 py-10"><p>{loadError}</p><button type="button" className="px-4 py-2 rounded-[10px] border border-divider" onClick={load}>重新加载模型配置</button></div>;
 
   return <div className="space-y-5">
     {reasonPrompt.dialog}

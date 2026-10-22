@@ -12,14 +12,19 @@ function SessionRefresh({ onRecovered }) {
   const { data: session, status, update } = useSession();
   const hadSession = useRef(false);
   const recovering = useRef(false);
+  const onlineRefresh = useRef({ pending: false, startedAt: null });
   useEffect(() => {
     setAssetDeliveryUser(session?.user?.id);
     return () => setAssetDeliveryUser(null);
   }, [session?.user?.id]);
-  // SessionProvider already refreshes on focus and its interval. Calling update()
-  // on every navigation adds a CSRF round trip and temporarily sets loading.
   useEffect(() => {
-    const refresh = () => { if (session?.user?.id) void update(); };
+    const refresh = () => {
+      const state = onlineRefresh.current;
+      if (!session?.user?.id || state.pending || (state.startedAt !== null && Date.now() - state.startedAt < 30000)) return;
+      state.pending = true;
+      state.startedAt = Date.now();
+      void Promise.resolve().then(() => update()).catch(() => {}).finally(() => { state.pending = false; });
+    };
     window.addEventListener("online", refresh);
     return () => window.removeEventListener("online", refresh);
   }, [session?.user?.id, update]);
@@ -53,7 +58,7 @@ function SessionRefresh({ onRecovered }) {
 export function Providers({ children }) {
   const [recovery, setRecovery] = useState(null);
   return (
-    <SessionProvider key={recovery?.expires || "initial"} session={recovery || undefined} refetchInterval={60} refetchOnWindowFocus refetchWhenOffline={false}>
+    <SessionProvider key={recovery?.expires || "initial"} session={recovery || undefined} refetchInterval={60} refetchOnWindowFocus={false} refetchWhenOffline={false}>
       <SessionRefresh onRecovered={setRecovery} />
       <AuthProvider><RechargeProvider><NavigationFeedback>{children}</NavigationFeedback></RechargeProvider></AuthProvider>
     </SessionProvider>

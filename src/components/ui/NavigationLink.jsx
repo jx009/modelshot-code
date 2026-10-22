@@ -19,44 +19,69 @@ function Feedback({ onPending, navigationId, finish }) {
 
 // Prefetch a full destination on hover/focus, including dynamic pages. `auto`
 // alone stops at a loading boundary; prefetching every card floods HTTP/1.
-export default function NavigationLink({ children, onNavigate, onClick, onMouseEnter, onFocus, onTouchStart, onPrefetch, prefetch = "intent", prefetchDelay = 1000, ...props }) {
+export default function NavigationLink({ children, onNavigate, onClick, onMouseEnter, onMouseLeave, onFocus, onBlur, onTouchStart, onTouchEnd, onTouchCancel, onPrefetch, prefetch = "intent", prefetchDelay = 150, ...props }) {
   const auth = useAuth();
   const feedback = useNavigationFeedback();
   const navigationId = useRef(null), destinationHref = useRef(null);
   const [intentHref, setIntentHref] = useState(null);
-  const [idleHref, setIdleHref] = useState(null);
+  const intentTimer = useRef(null);
   const intentKey = JSON.stringify([props.href, props.locale]);
   const deferred = prefetch === "intent" || prefetch === "idle";
-  const fetchMode = deferred ? intentHref === intentKey || idleHref === intentKey : prefetch;
+  const fetchMode = deferred ? intentHref === intentKey : prefetch;
+  const cancelIntent = () => {
+    clearTimeout(intentTimer.current);
+    intentTimer.current = null;
+  };
+  const prepare = event => {
+    if (!deferred || event.defaultPrevented || intentHref === intentKey || intentTimer.current || navigator.connection?.saveData || /(^|-)2g$/.test(navigator.connection?.effectiveType || "")) return;
+    const target = event.currentTarget;
+    const destination = new URL(target.href);
+    if (destination.origin !== window.location.origin || target.hasAttribute("download") || (target.target && target.target !== "_self") || target.getAttribute("aria-current") === "page" || destination.href === window.location.href) return;
+    intentTimer.current = setTimeout(() => {
+      intentTimer.current = null;
+      if (!target.isConnected || document.visibilityState === "hidden" || window.getComputedStyle(target).visibility === "hidden" || !target.getClientRects().length) return;
+      setIntentHref(intentKey);
+      onPrefetch?.();
+    }, prefetchDelay);
+  };
   useEffect(() => {
-    if (prefetch !== "idle" || window.matchMedia?.("(hover: hover) and (pointer: fine)").matches === false || navigator.connection?.saveData || /(^|-)2g$/.test(navigator.connection?.effectiveType || "")) return;
-    let timer, idle;
-    const warm = () => {
-      if (document.visibilityState !== "visible") return;
-      setIdleHref(intentKey);
+    const hide = () => {
+      if (document.visibilityState === "hidden") {
+        clearTimeout(intentTimer.current);
+        intentTimer.current = null;
+        setIntentHref(null);
+      }
     };
-    // Only the small, fixed module navigation opts into this. Defer full route
-    // prefetch until initial resources finish, then stagger routes so images
-    // keep priority. The client route cache is short-lived for freshness.
-    const schedule = () => { timer = setTimeout(() => {
-      if (window.requestIdleCallback) idle = window.requestIdleCallback(warm, { timeout: 2500 });
-      else warm();
-    }, prefetchDelay); };
-    if (document.readyState === "complete") schedule();
-    else window.addEventListener("load", schedule, { once: true });
-    return () => { clearTimeout(timer); if (idle) window.cancelIdleCallback(idle); window.removeEventListener("load", schedule); };
-  }, [prefetch, prefetchDelay, intentKey]);
+    document.addEventListener("visibilitychange", hide);
+    return () => { clearTimeout(intentTimer.current); intentTimer.current = null; document.removeEventListener("visibilitychange", hide); };
+  }, [intentKey, prefetch]);
   const [pending, setPending] = useState(false);
   return <Link prefetch={fetchMode} {...props} aria-busy={pending || undefined} onMouseEnter={event => {
     onMouseEnter?.(event);
-    if (!event.defaultPrevented && deferred) { setIntentHref(intentKey); onPrefetch?.(); }
+    prepare(event);
+  }} onMouseLeave={event => {
+    onMouseLeave?.(event);
+    cancelIntent();
+    if (deferred) setIntentHref(null);
   }} onFocus={event => {
     onFocus?.(event);
-    if (!event.defaultPrevented && deferred) { setIntentHref(intentKey); onPrefetch?.(); }
+    if (event.currentTarget.matches(":focus-visible")) prepare(event);
+  }} onBlur={event => {
+    onBlur?.(event);
+    cancelIntent();
+    if (deferred) setIntentHref(null);
   }} onTouchStart={event => {
     onTouchStart?.(event);
-    if (!event.defaultPrevented && deferred) { setIntentHref(intentKey); onPrefetch?.(); }
+    prepare(event);
+  }} onTouchEnd={event => {
+    onTouchEnd?.(event);
+    cancelIntent();
+  }} onTouchCancel={event => {
+    onTouchCancel?.(event);
+    cancelIntent();
+    if (deferred) setIntentHref(null);
   }} onClick={event => {
+    cancelIntent();
     onClick?.(event);
     if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
     const destination = new URL(event.currentTarget.href);

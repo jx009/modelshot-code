@@ -3,6 +3,7 @@
 import { usePathname } from "@/i18n/navigation";
 import NavigationLink from "@/components/ui/NavigationLink";
 import { useNavigationPath } from "@/components/ui/NavigationFeedback";
+import { useAdminModules } from "./AdminModules";
 
 const LINKS = [
   { href: "/admin", label: "数据看板" },
@@ -26,7 +27,9 @@ const LINKS = [
 ];
 
 export default function AdminNav({ mobile = false }) {
-  const pathname = useNavigationPath("admin", usePathname());
+  const modules = useAdminModules();
+  const routePathname = usePathname();
+  const pathname = useNavigationPath("admin", modules?.path ?? routePathname);
 
   if (mobile) {
     return (
@@ -37,8 +40,8 @@ export default function AdminNav({ mobile = false }) {
             <NavigationLink
               key={l.href}
               href={l.href}
-              prefetch={!active && ["/admin", "/admin/users"].includes(l.href) ? "idle" : "intent"}
-              prefetchDelay={l.href === "/admin" ? 1500 : 3000}
+              prefetch={active || modules?.supports(l.href) ? false : "intent"}
+              onClick={modules?.navigate}
               aria-current={active ? "page" : undefined}
               className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${
                 active
@@ -62,8 +65,8 @@ export default function AdminNav({ mobile = false }) {
           <NavigationLink
             key={l.href}
             href={l.href}
-            prefetch={!active && ["/admin", "/admin/users"].includes(l.href) ? "idle" : "intent"}
-            prefetchDelay={l.href === "/admin" ? 1500 : 3000}
+            prefetch={active || modules?.supports(l.href) ? false : "intent"}
+            onClick={modules?.navigate}
             aria-current={active ? "page" : undefined}
             className={`relative z-10 block w-full cursor-pointer select-none px-5 py-2.5 text-xs font-bold transition-colors ${
               active

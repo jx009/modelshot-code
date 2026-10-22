@@ -58,26 +58,47 @@ function normalizeBaseURL(value) {
 }
 
 export async function GET(req) {
-  const auth = await requireAdmin(req);
-  if (auth.response) return auth.response;
-
-  const providers = await prisma.modelProvider.findMany({
-    orderBy: { priority: "asc" },
-  });
-  // 永远不回传 config 原文（含密文）——只回脱敏视图
-  return NextResponse.json(providers.map(p => ({
-    id: p.id,
-    name: p.name,
-    kind: p.kind || p.name,
-    displayName: p.displayName,
-    isActive: p.isActive,
-    isDefault: p.isDefault,
-    isPlanner: p.isPlanner,
-    priority: p.priority,
-    creditCost: p.creditCost,
-    costPerImage: p.costPerImage,
-    config: safeConfig(p.config, p),
-  })));
+  const started = performance.now(), timings = [];
+  let stage = "auth", stageStarted = started;
+  const completeStage = () => {
+    const now = performance.now();
+    timings.push({ name: stage, duration: now - stageStarted });
+    stageStarted = now;
+  };
+  const finish = response => {
+    const total = performance.now() - started;
+    response.headers.set("Cache-Control", "private, no-store");
+    response.headers.set("Server-Timing", [...timings, { name: "total", duration: total }].map(item => `${item.name};dur=${item.duration.toFixed(1)}`).join(", "));
+    if (total >= 1000) console.warn("[ADMIN_PROVIDERS_SLOW]", { status: response.status, stages: timings, totalMs: total });
+    return response;
+  };
+  try {
+    const auth = await requireAdmin(req);
+    completeStage();
+    if (auth.response) return finish(auth.response);
+    stage = "query";
+    const providers = await prisma.modelProvider.findMany({ orderBy: { priority: "asc" } });
+    completeStage();
+    stage = "serialize";
+    const response = NextResponse.json(providers.map(provider => ({
+      id: provider.id,
+      name: provider.name,
+      kind: provider.kind || provider.name,
+      displayName: provider.displayName,
+      isActive: provider.isActive,
+      isDefault: provider.isDefault,
+      isPlanner: provider.isPlanner,
+      priority: provider.priority,
+      creditCost: provider.creditCost,
+      costPerImage: provider.costPerImage,
+      config: safeConfig(provider.config, provider),
+    })));
+    completeStage();
+    return finish(response);
+  } catch (error) {
+    completeStage();
+    return finish(errorResponse(error));
+  }
 }
 
 export async function PATCH(req) {

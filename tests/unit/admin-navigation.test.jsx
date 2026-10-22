@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import AdminNav from "../../src/components/admin/AdminNav.js";
 import NavigationFeedback from "../../src/components/ui/NavigationFeedback.jsx";
 import NavigationContent from "../../src/components/ui/NavigationContent.jsx";
@@ -9,6 +9,7 @@ const state = vi.hoisted(() => ({ locale: "zh", pathname: "/admin/storage", navi
 vi.mock("next-intl", () => ({ useLocale: () => state.locale }));
 vi.mock("next/link", () => ({ useLinkStatus: () => ({ pending: false }) }));
 vi.mock("@/components/auth/AuthProvider", () => ({ useAuth: () => null }));
+vi.mock("@/components/admin/AdminModules", () => ({ useAdminModules: () => null }));
 vi.mock("@/i18n/navigation", () => ({
   usePathname: () => state.pathname,
   Link: ({ href, children, prefetch, onClick, onNavigate, ...props }) => (
@@ -22,6 +23,10 @@ vi.mock("@/i18n/navigation", () => ({
     }}>{children}</a>
   ),
 }));
+beforeEach(() => {
+  vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+  vi.spyOn(HTMLElement.prototype, "getClientRects").mockReturnValue([{ width: 20, height: 20 }]);
+});
 afterEach(() => { cleanup(); state.locale = "zh"; state.pathname = "/admin/storage"; window.history.replaceState({}, "", "/"); state.navigate.mockClear(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 test.each([false, true])("admin navigation uses locale-aware client transitions (mobile=%s)", mobile => {
@@ -37,27 +42,29 @@ test.each([false, true])("admin navigation uses locale-aware client transitions 
 });
 
 test("does not eagerly prefetch every admin route and warms only the intended link", () => {
+  vi.useFakeTimers();
   render(<AdminNav />);
   const navigation = screen.getByRole("navigation");
   expect(within(navigation).getAllByRole("link").every(link => link.dataset.prefetch === "false")).toBe(true);
   fireEvent.mouseEnter(screen.getByRole("link", { name: "用户管理" }));
+  act(() => vi.advanceTimersByTime(150));
   expect(screen.getByRole("link", { name: "用户管理" }).dataset.prefetch).toBe("true");
   expect(screen.getByRole("link", { name: "云存储与图片加速" }).dataset.prefetch).toBe("false");
 });
 
-test("staggers full-route prefetch for only the dashboard and users", () => {
+test("does not prefetch any administrator module simply because the page is idle", () => {
   vi.useFakeTimers();
   vi.stubGlobal("requestIdleCallback", undefined);
   vi.spyOn(document, "readyState", "get").mockReturnValue("complete");
   vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
   render(<AdminNav />);
-  act(() => vi.advanceTimersByTime(1500));
-  expect(screen.getByRole("link", { name: "数据看板" }).dataset.prefetch).toBe("true");
+  act(() => vi.advanceTimersByTime(30000));
+  expect(screen.getByRole("link", { name: "数据看板" }).dataset.prefetch).toBe("false");
   expect(screen.getByRole("link", { name: "用户管理" }).dataset.prefetch).toBe("false");
-  act(() => vi.advanceTimersByTime(1500));
-  expect(screen.getByRole("link", { name: "用户管理" }).dataset.prefetch).toBe("true");
+  expect(screen.getByRole("link", { name: "用户管理" }).dataset.prefetch).toBe("false");
   expect(screen.getByRole("link", { name: "生成审计" }).dataset.prefetch).toBe("false");
   fireEvent.mouseEnter(screen.getByRole("link", { name: "用户管理" }));
+  act(() => vi.advanceTimersByTime(150));
   expect(screen.getByRole("link", { name: "用户管理" }).dataset.prefetch).toBe("true");
 });
 

@@ -1,7 +1,7 @@
 import { beforeEach, expect, it, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ auth: vi.fn(), audit: vi.fn(), update: vi.fn(), create: vi.fn(), invalidate: vi.fn() }));
+const mocks = vi.hoisted(() => ({ auth: vi.fn(), audit: vi.fn(), update: vi.fn(), create: vi.fn(), invalidate: vi.fn(), list: vi.fn() }));
 vi.mock("../../src/lib/admin-auth", () => ({ requireAdmin: mocks.auth }));
-vi.mock("../../src/lib/prisma", () => ({ prisma: {} }));
+vi.mock("../../src/lib/prisma", () => ({ prisma: { modelProvider: { findMany: mocks.list } } }));
 vi.mock("../../src/lib/domain/identity/admin-operation.js", () => ({ auditedOperation: mocks.audit }));
 vi.mock("../../src/lib/ai/runner", () => ({ invalidateProviderConfig: mocks.invalidate, invokeModel: vi.fn() }));
 vi.mock("../../src/lib/domain/studio/providers", () => ({ vision: vi.fn(), studioConfig: vi.fn(), generateImage: vi.fn() }));
@@ -9,9 +9,10 @@ vi.mock("../../src/lib/domain/studio/cloud", () => ({ segmentCloudImage: vi.fn()
 vi.mock("../../src/lib/domain/studio/volc-visual", () => ({ entityLabels: vi.fn() }));
 vi.mock("../../src/lib/domain/studio/ocr.js", () => ({ recognizeText: vi.fn() }));
 vi.mock("../../src/lib/domain/studio/upscale.js", () => ({ upscaleVolcImage: vi.fn() }));
-import { PATCH, PUT } from "../../src/app/api/admin/providers/route.js";
+import { GET, PATCH, PUT } from "../../src/app/api/admin/providers/route.js";
 
 beforeEach(() => {
+  mocks.list.mockReset().mockResolvedValue([{ id: "model", name: "gateway", kind: "openai", config: JSON.stringify({ model: "image-model", apiKeyEnc: "" }) }]);
   mocks.auth.mockResolvedValue({ user: { id: "root", role: "root" } });
   const tx = { $queryRaw: vi.fn(), modelProvider: {
     findUnique: vi.fn(async () => ({ id: "model", name: "gateway", kind: "openai", config: JSON.stringify({ model: "gpt-image-2.5-flare", scope: "public", studioCapability: "image", baseURL: "http://152.53.36.159:3000/v1", apiKeyEnc: "existing-encrypted-key" }) })),
@@ -19,6 +20,23 @@ beforeEach(() => {
   } };
   mocks.create.mockResolvedValue({ id: "new", name: "gateway", kind: "openai", displayName: "Gateway" });
   mocks.audit.mockImplementation(async (_id, _key, _action, _input, mutate) => { const result = await mutate(tx); return { ok: true, ...result.response }; });
+});
+it("times the authenticated model read without calling a model or returning raw configuration", async () => {
+  const response = await GET(new Request("http://localhost/api/admin/providers"));
+  expect(response.status).toBe(200);
+  expect(response.headers.get("cache-control")).toBe("private, no-store");
+  expect(response.headers.get("server-timing")).toMatch(/auth;dur=[\d.]+, query;dur=[\d.]+, serialize;dur=[\d.]+, total;dur=[\d.]+/);
+  const rows = await response.json();
+  expect(rows[0]).toMatchObject({ id: "model", name: "gateway" });
+  expect(rows[0].config).not.toHaveProperty("apiKeyEnc");
+  expect(mocks.list).toHaveBeenCalledTimes(1);
+});
+it("denies a model read before querying and does not share private responses", async () => {
+  mocks.auth.mockResolvedValue({ response: new Response("Forbidden", { status: 403 }) });
+  const response = await GET(new Request("http://localhost/api/admin/providers"));
+  expect(response.status).toBe(403);
+  expect(response.headers.get("cache-control")).toBe("private, no-store");
+  expect(mocks.list).not.toHaveBeenCalled();
 });
 function request(method, body) {
   return new Request("http://localhost/api/admin/providers", { method, headers: { "Content-Type": "application/json", "Idempotency-Key": "provider-http-fixture-key" }, body: JSON.stringify({ reason: "Configure self-hosted model gateway", ...body }) });

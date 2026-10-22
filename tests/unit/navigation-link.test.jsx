@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import NavigationLink from "../../src/components/ui/NavigationLink.jsx";
 import NavigationFeedback, { useNavigationFeedback } from "../../src/components/ui/NavigationFeedback.jsx";
 import NavigationContent from "../../src/components/ui/NavigationContent.jsx";
@@ -15,6 +15,10 @@ vi.mock("@/i18n/navigation", () => ({ Link: ({ children, prefetch, onNavigate, o
   if (!state.skipNavigate && !event.defaultPrevented && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey && props.target !== "_blank" && new URL(event.currentTarget.href).origin === window.location.origin) onNavigate?.({ preventDefault: () => event.preventDefault() });
   event.preventDefault();
 }}>{children}</a>; } }));
+beforeEach(() => {
+  vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+  vi.spyOn(HTMLElement.prototype, "getClientRects").mockReturnValue([{ width: 20, height: 20 }]);
+});
 afterEach(() => { cleanup(); state.pending = false; state.prefetch = null; state.skipNavigate = false; window.history.replaceState({}, "", "/"); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 const content = () => <NavigationContent><NavigationContent section="creative"><p>旧页面内容</p></NavigationContent></NavigationContent>;
@@ -93,7 +97,7 @@ it("clears feedback when Next finishes the pending transition", () => {
   expect(screen.queryByRole("status")).toBeNull();
 });
 
-it("prefetches the full route while idle without importing optional heavy modules", () => {
+it("does not send unsolicited route requests even for the legacy idle mode", () => {
   vi.useFakeTimers();
   vi.stubGlobal("requestIdleCallback", undefined);
   vi.spyOn(document, "readyState", "get").mockReturnValue("complete");
@@ -102,10 +106,60 @@ it("prefetches the full route while idle without importing optional heavy module
   render(<NavigationLink href="/zh/studio-v2" prefetch="idle" onPrefetch={preload}>画布</NavigationLink>);
   expect(state.prefetch).toBe(false);
   act(() => vi.advanceTimersByTime(4000));
-  expect(state.prefetch).toBe(true);
+  expect(state.prefetch).toBe(false);
   expect(preload).not.toHaveBeenCalled();
   fireEvent.mouseEnter(screen.getByText("画布"));
+  expect(preload).not.toHaveBeenCalled();
+  act(() => vi.advanceTimersByTime(150));
+  expect(state.prefetch).toBe(true);
   expect(preload).toHaveBeenCalledOnce();
+});
+
+it("does not prefetch links passed over while moving the pointer to another module", () => {
+  vi.useFakeTimers();
+  const preload = vi.fn();
+  render(<NavigationLink href="/zh/assets" onPrefetch={preload}>素材库</NavigationLink>);
+  const link = screen.getByText("素材库");
+  fireEvent.mouseEnter(link);
+  act(() => vi.advanceTimersByTime(100));
+  fireEvent.mouseLeave(link);
+  act(() => vi.advanceTimersByTime(1000));
+  expect(state.prefetch).toBe(false);
+  expect(preload).not.toHaveBeenCalled();
+  fireEvent.mouseEnter(link);
+  act(() => vi.advanceTimersByTime(150));
+  expect(state.prefetch).toBe(true);
+  expect(preload).toHaveBeenCalledOnce();
+  fireEvent.mouseLeave(link);
+  expect(state.prefetch).toBe(false);
+});
+
+it("cancels a touch prefetch timer when the user taps immediately", () => {
+  vi.useFakeTimers();
+  const preload = vi.fn();
+  render(<NavigationLink href="/zh/assets" onPrefetch={preload}>素材库</NavigationLink>);
+  const link = screen.getByText("素材库");
+  fireEvent.touchStart(link);
+  fireEvent.touchEnd(link);
+  fireEvent.click(link);
+  act(() => vi.advanceTimersByTime(1000));
+  expect(state.prefetch).toBe(false);
+  expect(preload).not.toHaveBeenCalled();
+});
+
+it("does not warm hidden links and cancels timers when unmounted", () => {
+  vi.useFakeTimers();
+  const preload = vi.fn();
+  vi.mocked(HTMLElement.prototype.getClientRects).mockReturnValue([]);
+  const view = render(<NavigationLink href="/zh/assets" onPrefetch={preload}>素材库</NavigationLink>);
+  fireEvent.mouseEnter(screen.getByText("素材库"));
+  act(() => vi.advanceTimersByTime(150));
+  expect(state.prefetch).toBe(false);
+  expect(preload).not.toHaveBeenCalled();
+  fireEvent.mouseEnter(screen.getByText("素材库"));
+  view.unmount();
+  act(() => vi.advanceTimersByTime(1000));
+  expect(preload).not.toHaveBeenCalled();
 });
 
 it("does not let an earlier link clear the latest navigation feedback", () => {

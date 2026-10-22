@@ -10,6 +10,7 @@ import { invalidateProjectLists, peekProjectList, readProjectList } from "@/lib/
 import { previewUrl } from "@/lib/studio/image-url";
 import Modal from "@/components/ui/Modal";
 import { useDebouncedValue } from "@/components/ui/useDebouncedValue";
+import { usePageVisible } from "@/components/ui/LocalNavigation";
 import "./projects.css";
 
 export default function CreativeProjects() {
@@ -19,6 +20,7 @@ export default function CreativeProjects() {
 }
 
 function ProjectLibrary({ userId, status }) {
+  const visible = usePageVisible();
   const locale = useLocale(), zh = locale === "zh";
   const [rows, setRows] = useState(null), [search, setSearch] = useState(""), [filter, setFilter] = useState("all");
   const [cursor, setCursor] = useState(null), [loading, setLoading] = useState(false), [error, setError] = useState("");
@@ -31,7 +33,7 @@ function ProjectLibrary({ userId, status }) {
   const displayedQuery = useRef(null), readRevision = useRef(0), mutation = useRef(false);
   useEffect(() => { activeQuery.current = query; }, [query]);
   useEffect(() => {
-    if (status !== "authenticated") return;
+    if (status !== "authenticated" || !visible) return;
     const abort = new AbortController();
     const revision = ++readRevision.current;
     async function load() {
@@ -66,9 +68,9 @@ function ProjectLibrary({ userId, status }) {
       void load();
     });
     return () => abort.abort();
-  }, [query, status, userId, saving, refresh]);
+  }, [query, status, userId, saving, refresh, visible]);
   useEffect(() => {
-    if (!menu) return;
+    if (!menu || !visible) return;
     const close = event => {
       if (event.type === "keydown") {
         if (event.key !== "Escape") return;
@@ -78,7 +80,7 @@ function ProjectLibrary({ userId, status }) {
     };
     document.addEventListener("pointerdown", close); document.addEventListener("keydown", close);
     return () => { document.removeEventListener("pointerdown", close); document.removeEventListener("keydown", close); };
-  }, [menu]);
+  }, [menu, visible]);
   async function rename(row) {
     if (!name.trim()) return;
     await mutate(row, { method: "PATCH", body: { name: name.trim(), version: row.version } }, name.trim());

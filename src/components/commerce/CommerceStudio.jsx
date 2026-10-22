@@ -4,7 +4,7 @@ import { imageCreditCost } from "@/lib/studio/image-pricing";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useLocale } from "next-intl";
-import { useRouter } from "@/i18n/navigation";
+import { useNavigationRouter as useRouter } from "@/hooks/useNavigationRouter";
 import Link from "@/components/ui/NavigationLink";
 import { ArrowUp, ImagePlus, Sparkles, LoaderCircle, Download, LayoutGrid, RefreshCw, X, FolderOpen, Plus, Check, MessageSquare, ScanEye } from "lucide-react";
 import CaseArtwork from "@/components/discover/CaseArtwork";
@@ -22,6 +22,7 @@ import { IMAGE_UPLOAD_MAX_BYTES } from "@/lib/image-upload-limits";
 import { fetchImageBlob } from "@/lib/image-download";
 import { previewUrl } from "@/lib/studio/image-url";
 import { preloadCanvas } from "@/lib/studio/preload-canvas";
+import { clearImageCapabilities, readImageCapabilities } from "@/lib/studio/image-capabilities-client";
 import "./agent.css";
 
 function initialBrief(locale, caseId, description) {
@@ -117,20 +118,21 @@ export default function CommerceStudio({ caseId = "", description = "", document
 
   useEffect(() => {
     if (!ready || doc) return;
-    const timer = setTimeout(() => {
+    const persist = () => {
       try { localStorage.setItem(storageKey, JSON.stringify({ owner: session?.user?.id || "guest", brief, ...sources, message, pending: pending.current })); } catch { /* Cloud projects still work without local storage. */ }
-    }, 400);
-    return () => clearTimeout(timer);
+    };
+    const timer = setTimeout(persist, 400);
+    return () => { clearTimeout(timer); persist(); };
   }, [ready, doc, brief, sources, message, storageKey, session?.user?.id]);
 
   useEffect(() => {
-    if (status !== "authenticated") return;
-    const controller = new AbortController();
-    api(`/api/studio/capabilities${provider ? `?imageProvider=${encodeURIComponent(provider)}` : ""}`, { signal: controller.signal }).then(result => {
-      if (!controller.signal.aborted) setCaps({ ...result, requestedProvider: provider });
-    }).catch(e => { if (!controller.signal.aborted) notify(e); });
-    return () => controller.abort();
-  }, [status, provider, notify]);
+    if (!session?.user?.id) return;
+    let active = true;
+    readImageCapabilities(session.user.id, provider).then(result => {
+      if (active) setCaps({ ...result, requestedProvider: provider });
+    }).catch(error => { if (active) notify(error); });
+    return () => { active = false; };
+  }, [session?.user?.id, provider, notify]);
 
   useEffect(() => {
     if (!doc?.id) return;
@@ -222,7 +224,8 @@ export default function CommerceStudio({ caseId = "", description = "", document
       jobsRef.current = [...result.jobs, ...jobsRef.current.filter(j => !result.jobs.some(n => n.id === j.id))]; setJobs(jobsRef.current);
       setJobRefresh(value => value + 1);
       if (result.failure === "PRICE_CHANGED") {
-        await api(`/api/studio/capabilities?imageProvider=${encodeURIComponent(provider)}`).then(result => setCaps({ ...result, requestedProvider: provider })).catch(() => {});
+        clearImageCapabilities();
+        await readImageCapabilities(session?.user?.id, provider).then(result => setCaps({ ...result, requestedProvider: provider })).catch(() => {});
       }
       if (result.failure) throw new Error(result.failure);
     });

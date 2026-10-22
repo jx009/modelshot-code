@@ -1,16 +1,19 @@
 "use client";
 import { useEffect, useRef } from "react";
+import { usePageVisible } from "./LocalNavigation";
 
 export default function Modal({ children, onClose, label, className = "workflow-dialog", returnFocusRef }) {
   const ref = useRef(null);
+  const visible = usePageVisible();
   const backdropPress = useRef(false);
   useEffect(() => {
+    if (!visible) return;
     const dialog = ref.current;
     const focused = document.activeElement;
     const returnTarget = returnFocusRef?.current || focused;
     dialog.showModal();
     return () => { dialog.close(); if (returnTarget?.isConnected) returnTarget.focus(); };
-  }, [returnFocusRef]);
+  }, [returnFocusRef, visible]);
   function outside(event) {
     if (event.target !== event.currentTarget) return false;
     const rect = event.currentTarget.getBoundingClientRect();

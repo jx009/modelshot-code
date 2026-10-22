@@ -1,4 +1,4 @@
-const CREATIVE_ROUTES = ["/explore", "/commerce", "/projects", "/assets"];
+const CREATIVE_ROUTES = ["/explore", "/commerce", "/projects", "/assets", "/studio-v2", "/pricing"];
 
 export function destinationPath(href) {
   const pathname = new URL(href, "https://navigation.local").pathname;

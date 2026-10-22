@@ -31,6 +31,7 @@ import { loadImage } from "@/lib/studio/image-processor";
 import { maskHash as hashMask } from "@/lib/studio/mask-hash";
 import { promptTitle } from "@/lib/studio/project-title";
 import { useStudioProject } from "./useStudioProject";
+import { usePageVisible } from "@/components/ui/LocalNavigation";
 import { useStudioJobs } from "./useStudioJobs";
 import StudioActivity from "./StudioActivity";
 import StudioTaskPopover from "./StudioTaskPopover";
@@ -93,6 +94,7 @@ const TERMINAL = ["succeeded", "failed", "cancelled"];
 const delay = (ms, signal) => new Promise((resolve, reject) => { const timer = setTimeout(resolve, ms); signal?.addEventListener("abort", () => { clearTimeout(timer); reject(new Error("SESSION_CLOSED")); }, { once: true }); });
 
 export default function StudioWorkbench({ initialDocument = "", initialPrompt = "", initialMode = "chat", initialProvider = "", initialSize = "1024x1024", initialCount = 1, initialFixed = "" }) {
+  const pageVisible = usePageVisible();
   const recharge = useRecharge();
   const locale = useLocale(), zh = locale === "zh", { data: session, status } = useSession();
   const t = useCallback((cn, en) => zh ? cn : en, [zh]);

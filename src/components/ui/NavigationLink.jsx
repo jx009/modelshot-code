@@ -5,6 +5,7 @@ import { useLinkStatus } from "next/link";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { Link } from "@/i18n/navigation";
 import { useNavigationFeedback } from "./NavigationFeedback";
+import { useLocalNavigation } from "./LocalNavigation";
 
 function Feedback({ onPending, navigationId, finish }) {
   const { pending } = useLinkStatus();
@@ -22,18 +23,21 @@ function Feedback({ onPending, navigationId, finish }) {
 export default function NavigationLink({ children, onNavigate, onClick, onMouseEnter, onMouseLeave, onFocus, onBlur, onTouchStart, onTouchEnd, onTouchCancel, onPrefetch, prefetch = "intent", prefetchDelay = 150, ...props }) {
   const auth = useAuth();
   const feedback = useNavigationFeedback();
+  const localNavigation = useLocalNavigation();
+  const local = localNavigation?.supports(props.href, props.locale);
   const navigationId = useRef(null), destinationHref = useRef(null);
   const [intentHref, setIntentHref] = useState(null);
   const intentTimer = useRef(null);
   const intentKey = JSON.stringify([props.href, props.locale]);
-  const deferred = prefetch === "intent" || prefetch === "idle";
-  const fetchMode = deferred ? intentHref === intentKey : prefetch;
+  const deferred = !local && (prefetch === "intent" || prefetch === "idle");
+  const localIntent = local && prefetch !== false;
+  const fetchMode = local ? false : deferred ? intentHref === intentKey : prefetch;
   const cancelIntent = () => {
     clearTimeout(intentTimer.current);
     intentTimer.current = null;
   };
   const prepare = event => {
-    if (!deferred || event.defaultPrevented || intentHref === intentKey || intentTimer.current || navigator.connection?.saveData || /(^|-)2g$/.test(navigator.connection?.effectiveType || "")) return;
+    if ((!deferred && !localIntent) || event.defaultPrevented || intentHref === intentKey || intentTimer.current || navigator.connection?.saveData || /(^|-)2g$/.test(navigator.connection?.effectiveType || "")) return;
     const target = event.currentTarget;
     const destination = new URL(target.href);
     if (destination.origin !== window.location.origin || target.hasAttribute("download") || (target.target && target.target !== "_self") || target.getAttribute("aria-current") === "page" || destination.href === window.location.href) return;
@@ -41,6 +45,7 @@ export default function NavigationLink({ children, onNavigate, onClick, onMouseE
       intentTimer.current = null;
       if (!target.isConnected || document.visibilityState === "hidden" || window.getComputedStyle(target).visibility === "hidden" || !target.getClientRects().length) return;
       setIntentHref(intentKey);
+      if (local) localNavigation.preload?.(props.href);
       onPrefetch?.();
     }, prefetchDelay);
   };
@@ -95,6 +100,10 @@ export default function NavigationLink({ children, onNavigate, onClick, onMouseE
     if (clientNavigation && event.currentTarget.href === window.location.href && !feedback?.isNavigating()) { event.preventDefault(); return; }
     if (clientNavigation && pending) { event.preventDefault(); return; }
     if (!clientNavigation) return;
+    if (local && !feedback?.isNavigating()) {
+      onNavigate?.({ preventDefault() { event.preventDefault(); } });
+      if (event.defaultPrevented || localNavigation.navigate(event)) return;
+    }
 
     // Start the shell transition in the click handler instead of waiting for
     // Next's `onNavigate`. Dynamic routes still need an RSC round trip, but

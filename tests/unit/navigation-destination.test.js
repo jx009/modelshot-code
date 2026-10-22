@@ -1,11 +1,12 @@
 import { expect, test } from "vitest";
 import { contentTransition, destinationPath, destinationSection } from "../../src/lib/navigation-destination.js";
 
-test("normalizes locale prefixes without treating the canvas as a creative layout", () => {
+test("normalizes locale prefixes and includes the canvas in the creative layout", () => {
   expect(destinationPath("https://example.com/zh/admin/users?page=2")).toBe("/admin/users");
   expect(destinationPath("/en/")).toBe("/");
   expect(destinationSection("/zh/explore/example")).toBe("creative");
-  expect(destinationSection("/zh/studio-v2")).toBe("root");
+  expect(destinationSection("/zh/studio-v2")).toBe("creative");
+  expect(destinationSection("/zh/pricing")).toBe("creative");
   expect(destinationSection("/zh/admin/users")).toBe("admin");
 });
 
@@ -17,7 +18,7 @@ test("keeps the shared shell for navigation within a section", () => {
 });
 
 test("replaces the root content when the destination uses another layout", () => {
-  const navigation = { from: "/zh/explore", href: "/zh/studio-v2" };
+  const navigation = { from: "/zh/explore", href: "/zh/admin" };
   expect(contentTransition(navigation, "root")).toBe(true);
   expect(contentTransition(navigation, "creative")).toBe(false);
 });

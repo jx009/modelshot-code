@@ -23,6 +23,8 @@ vi.mock("@/i18n/navigation", () => ({
 }));
 vi.mock("../../src/app/[locale]/admin/page.js", () => ({ default: () => <h1>看板内容</h1> }));
 vi.mock("../../src/app/[locale]/admin/users/page.js", () => ({ default: () => <h1>用户列表内容</h1> }));
+vi.mock("../../src/app/[locale]/admin/orders/page.js", () => ({ default: () => <h1>订单列表内容</h1> }));
+vi.mock("../../src/app/[locale]/admin/announcements/page.js", () => ({ default: () => <h1>公告管理内容</h1> }));
 vi.mock("../../src/app/[locale]/admin/providers/page.js", async () => {
   const { useEffect } = await import("react");
   return { default: function Providers() {
@@ -82,12 +84,16 @@ test("browser history selects the corresponding module and keeps the locale", as
   expect(screen.getByRole("link", { name: "数据看板" }).getAttribute("aria-current")).toBe("page");
 });
 
-test("modified clicks remain ordinary links and unsupported pages use Next navigation", async () => {
+test("modified clicks remain ordinary links and the remaining admin modules also navigate locally", async () => {
   render(<Shell />);
   await screen.findByRole("heading", { name: "看板内容" });
   fireEvent.click(screen.getByRole("link", { name: "用户管理" }), { ctrlKey: true });
   expect(window.history.pushState).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("link", { name: "订单管理" }));
-  expect(mocks.nextNavigation).toHaveBeenCalledWith("/admin/orders");
-  expect(window.history.pushState).not.toHaveBeenCalled();
+  await screen.findByRole("heading", { name: "订单列表内容" });
+  fireEvent.click(screen.getByRole("link", { name: "公告管理" }));
+  await screen.findByRole("heading", { name: "公告管理内容" });
+  expect(mocks.nextNavigation).not.toHaveBeenCalled();
+  const navigationLabels = new Set(["数据看板", "运行与账务", "模型配置", "分辨率积分", "工具配置", "云存储与图片加速", "用户管理", "生成审计", "灵感管理", "订单管理", "充值与支付", "成本利润", "分销佣金", "系统设置", "公告管理", "模特预设", "场景预设", "Prompt 模板"]);
+  for (const link of screen.getAllByRole("link")) if (navigationLabels.has(link.textContent.trim())) expect(link.dataset.prefetch).toBe("false");
 });

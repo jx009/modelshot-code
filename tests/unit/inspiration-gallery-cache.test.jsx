@@ -2,7 +2,8 @@
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import InspirationGallery from "../../src/components/discover/InspirationGallery.jsx";
-import { readGalleryCache, writeGalleryCache } from "../../src/lib/inspiration/client-cache.js";
+import { galleryRefreshDelay, readGalleryCache, writeGalleryCache } from "../../src/lib/inspiration/client-cache.js";
+import { PageVisibilityContext } from "../../src/components/ui/LocalNavigation.jsx";
 
 const mocks = vi.hoisted(() => ({ api: vi.fn() }));
 vi.mock("@/lib/client-api", () => ({ api: mocks.api }));
@@ -22,6 +23,33 @@ beforeEach(() => {
   writeGalleryCache(cached, Date.now() - 2 * 86400000);
 });
 afterEach(() => { cleanup(); localStorage.clear(); sessionStorage.clear(); });
+
+test("reuses a fresh public gallery without another mount or focus fetch", async () => {
+  writeGalleryCache(cached);
+  const view = render(<InspirationGallery zh explore />);
+  await screen.findByText("上次的灵感");
+  act(() => window.dispatchEvent(new Event("focus")));
+  expect(mocks.api).not.toHaveBeenCalled();
+  view.unmount();
+  render(<InspirationGallery zh />);
+  await screen.findByText("上次的灵感");
+  expect(mocks.api).not.toHaveBeenCalled();
+});
+
+test("does not refresh a retained hidden gallery", async () => {
+  render(<PageVisibilityContext.Provider value={false}><InspirationGallery zh /></PageVisibilityContext.Provider>);
+  await act(async () => window.dispatchEvent(new Event("focus")));
+  expect(mocks.api).not.toHaveBeenCalled();
+});
+
+test("refreshes pending delivery and expiring signatures before the normal cache window", () => {
+  const now = Date.now();
+  writeGalleryCache({ ...cached, deliveryPending: true }, now);
+  expect(galleryRefreshDelay(now + 1000)).toBe(14000);
+  writeGalleryCache({ ...cached, deliveryExpiresAt: now + 35000 }, now);
+  expect(galleryRefreshDelay(now + 1000)).toBe(4000);
+  expect(galleryRefreshDelay(now + 6000)).toBe(0);
+});
 
 test("shows a two-day-old list during a slow refresh then replaces it with the response", async () => {
   let resolve;

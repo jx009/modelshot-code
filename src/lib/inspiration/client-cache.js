@@ -40,3 +40,10 @@ export function writeGalleryCache(gallery, now = Date.now()) {
   try { sessionStorage.setItem(KEY, JSON.stringify(memory)); } catch { /* In-memory reuse still works. */ }
   try { localStorage.setItem(KEY, JSON.stringify({ gallery: withoutDeliveryLinks(gallery), savedAt: now })); } catch {}
 }
+
+export function galleryRefreshDelay(now = Date.now()) {
+  if (!readGalleryCache(now) || !memory) return 0;
+  const { gallery, savedAt } = memory;
+  const refreshAt = Math.min(savedAt + (gallery.deliveryPending ? 15000 : 60000), gallery.deliveryExpiresAt ? gallery.deliveryExpiresAt - 30000 : Infinity);
+  return Math.max(0, refreshAt - now);
+}

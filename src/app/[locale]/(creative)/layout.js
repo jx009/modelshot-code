@@ -1,5 +1,5 @@
-import CreativeShell from "@/components/discover/CreativeShell";
+import CreativePages, { CreativePageContent } from "@/components/discover/CreativePages";
 
 export default function CreativeLayout({ children }) {
-  return <CreativeShell>{children}</CreativeShell>;
+  return <CreativePages><CreativePageContent>{children}</CreativePageContent></CreativePages>;
 }

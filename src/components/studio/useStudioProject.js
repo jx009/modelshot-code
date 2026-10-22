@@ -12,6 +12,7 @@ export const emptyProject = () => ({ id: null, version: null, name: "Untitled", 
 const meaningful = draft => draft.id || draft.layers.length || draft.messages.length || draft.plan;
 function projectURL(id, createKey, push = false) {
   const url = new URL(window.location.href);
+  if (!/^\/(?:zh\/|en\/)?studio-v2\/?$/.test(url.pathname)) return;
   url.searchParams.delete("prompt"); url.searchParams.delete("document"); url.searchParams.delete("draft");
   url.searchParams.delete("new");
   url.searchParams.set(id ? "document" : "draft", id || createKey);
@@ -217,6 +218,7 @@ export function useStudioProject({ userId, sessionLoading = false, initialDocume
     }).catch(error => { if (active) { setSaveState("load-error"); errorRef.current(error); } });
     const pop = () => {
       const url = new URL(window.location.href);
+      if (!/^\/(?:zh\/|en\/)?studio-v2\/?$/.test(url.pathname)) return;
       load(url.searchParams.get("document"), url.searchParams.get("draft") || requestKey()).catch(error => errorRef.current(error));
     };
     window.addEventListener("popstate", pop);

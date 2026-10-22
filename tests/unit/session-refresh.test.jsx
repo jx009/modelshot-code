@@ -2,13 +2,27 @@
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { Providers } from "../../src/app/providers";
+import { readImageCapabilities } from "../../src/lib/studio/image-capabilities-client.js";
 
-const state = vi.hoisted(() => ({ session: null, status: "authenticated", update: vi.fn(), getSession: vi.fn(), providerProps: null }));
+const state = vi.hoisted(() => ({ session: null, status: "authenticated", update: vi.fn(), getSession: vi.fn(), providerProps: null, api: vi.fn() }));
+vi.mock("@/lib/client-api", () => ({ api: state.api }));
 vi.mock("next-auth/react", () => ({ SessionProvider: ({ children, ...props }) => { state.providerProps = props; return children; }, useSession: () => ({ data: state.session, status: state.status, update: state.update }), getSession: state.getSession }));
 vi.mock("@/components/auth/AuthProvider", () => ({ AuthProvider: ({ children }) => children }));
 vi.mock("@/components/billing/RechargeProvider", () => ({ RechargeProvider: ({ children }) => children }));
 beforeEach(() => { state.session = { user: { id: "user" } }; state.status = "authenticated"; state.update.mockReset().mockResolvedValue(null); state.getSession.mockReset().mockResolvedValue(null); });
 afterEach(() => { cleanup(); vi.useRealTimers(); });
+
+it("clears the model catalog when logout changes the verified session", async () => {
+  state.api.mockReset().mockResolvedValue({ imageModels: [], imageProvider: null });
+  const view = render(<Providers><span>Home</span></Providers>);
+  await readImageCapabilities("user");
+  state.session = null; state.status = "unauthenticated";
+  view.rerender(<Providers><span>Home</span></Providers>);
+  state.session = { user: { id: "user" } }; state.status = "authenticated";
+  view.rerender(<Providers><span>Home</span></Providers>);
+  await readImageCapabilities("user");
+  expect(state.api).toHaveBeenCalledTimes(2);
+});
 
 it("does not refresh on page renders, but still refreshes on network recovery", async () => {
   const view = render(<Providers><span>Home</span></Providers>);

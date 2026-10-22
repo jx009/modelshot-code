@@ -14,7 +14,7 @@ import { generateCloudImage } from "./cloud.js";
 import { IMAGE_REQUEST_TIMEOUT_MS, imageFetch } from "../../ai/image-request.js";
 
 // Resolve user-visible image selection separately from administrator-owned tool stages.
-export function resolveStudioConfig(rows, toolRows = [], channelName, capability = "image", toolId = null, { pinned = false, skipPreview = false } = {}) {
+export function resolveStudioConfig(rows, toolRows = [], channelName, capability = "image", toolId = null, { pinned = false, skipPreview = false, imageOnly = false } = {}) {
   const tool = TOOLS.find(t => t.id === toolId);
   const setting = toolRows.find(row => row.toolId === toolId);
   const routing = tool ? toolRouting(tool, setting) : null;
@@ -48,7 +48,7 @@ export function resolveStudioConfig(rows, toolRows = [], channelName, capability
       ...(candidate.kind === "volc-visual" ? { accessKeyId: parsed.accessKeyIdEnc ? decryptSecret(parsed.accessKeyIdEnc) : undefined, secretAccessKey: parsed.secretAccessKeyEnc ? decryptSecret(parsed.secretAccessKeyEnc) : undefined } : {}), creditCost: candidate.creditCost, displayName: candidate.displayName };
   };
   let segmentChannel = null;
-  if (!skipPreview) {
+  if (!skipPreview && !imageOnly) {
     try { segmentChannel = external("segment"); }
     catch (error) { if (!tool?.previewOptional || capability === "segment") throw error; }
   }
@@ -68,7 +68,7 @@ export function resolveStudioConfig(rows, toolRows = [], channelName, capability
     videoKey: process.env.ARK_API_KEY, videoModel: process.env.ARK_VIDEO_MODEL,
     videoURL: process.env.ARK_BASE_URL || "https://ark.cn-beijing.volces.com/api/v3",
     toolsURL: process.env.STUDIO_TOOLS_URL, toolsKey: process.env.STUDIO_TOOLS_KEY,
-    segmentChannel, splitChannel: external("split"), ocrChannel: external("ocr"), upscaleChannel: external("upscale"),
+    segmentChannel, splitChannel: imageOnly ? null : external("split"), ocrChannel: imageOnly ? null : external("ocr"), upscaleChannel: imageOnly ? null : external("upscale"),
   };
 }
 
@@ -85,12 +85,12 @@ export async function studioConfig(db = prisma, channelName, capability = "image
   return resolveStudioConfig(rows, settings, channelName, capability, toolId, options);
 }
 
-export async function capabilities(db = prisma, config, channelName) {
+export async function capabilities(db = prisma, config, channelName, { imageOnly = false } = {}) {
   // One request-local snapshot: no duplicated queries or stale shared credentials.
   const toolsURL = config ? config.toolsURL : process.env.STUDIO_TOOLS_URL;
   const toolsKey = config ? config.toolsKey : process.env.STUDIO_TOOLS_KEY;
   const externalRequest = (async () => {
-    if (!toolsURL || !toolsKey) return [];
+    if (imageOnly || !toolsURL || !toolsKey) return [];
     try {
       const res = await fetch(`${toolsURL}/capabilities`, { headers: { Authorization: `Bearer ${toolsKey}` }, signal: AbortSignal.timeout(2000) });
       return res.ok ? (await res.json()).tools || [] : [];
@@ -99,13 +99,13 @@ export async function capabilities(db = prisma, config, channelName) {
   const [{ rows, settings }, surcharges, external] = await Promise.all([
     routingSnapshot(db), getResolutionSurcharges(db), externalRequest,
   ]);
-  const c = config || resolveStudioConfig(rows, settings, channelName);
+  const c = config || resolveStudioConfig(rows, settings, channelName, "image", null, { imageOnly });
   const imageModels = rows.filter(row => channelScope(row) === "public" && channelCapability(row) === "image").filter(row => { const parsed = JSON.parse(row.config || "{}"); return Boolean(parsed.apiKeyEnc || row.kind === "openai" && (process.env.OPENAI_API_KEY || process.env.STUDIO_API_KEY)); }).map(row => ({ id: row.name, label: row.displayName, creditCost: row.creditCost ?? 18, resolutionSurcharges: surcharges, maxReferenceImages: supportsImageTask(JSON.parse(row.config || "{}"), "edit") ? 3 : 0 }));
   return { imageModel: c.imageDisplayName, imageProvider: c.toolId ? c.requestedProvider : c.imageProvider, imageModels, planningCost: c.plannerCreditCost, planningAvailable: Boolean(c.visionApiKey && c.chatModel),
-    tools: TOOLS.map(tool => {
+    tools: TOOLS.filter(tool => !imageOnly || ["generate", "edit"].includes(tool.id)).map(tool => {
       const setting = settings.find(row => row.toolId === tool.id), enabled = setting?.isEnabled !== false;
       let chosen, error;
-      try { chosen = c.toolId === tool.id ? c : resolveStudioConfig(rows, settings, c.requestedProvider, "image", tool.id);
+      try { chosen = c.toolId === tool.id ? c : resolveStudioConfig(rows, settings, c.requestedProvider, "image", tool.id, { imageOnly });
         // Explicit configurations are also used by isolated provider diagnostics.
         if (!("requestedProvider" in c) && !setting?.routing) chosen = { ...chosen, ...c }; }
       catch (e) { error = e.code; chosen = {}; }

@@ -1,12 +1,13 @@
 "use client";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { memo } from "react";
 import { useSearchParams } from "next/navigation";
 import { ArrowUpRight, Search, Sparkles } from "lucide-react";
 import Link from "@/components/ui/NavigationLink";
 import { INSPIRATION_CATEGORIES } from "@/lib/inspiration/presentation";
 import InspirationCover from "./InspirationCover";
-import { readGalleryCache, writeGalleryCache } from "@/lib/inspiration/client-cache";
+import { galleryRefreshDelay, readGalleryCache, writeGalleryCache } from "@/lib/inspiration/client-cache";
+import { usePageVisible } from "@/components/ui/LocalNavigation";
 import { api } from "@/lib/client-api";
 
 const GalleryCard = memo(function GalleryCard({ item, mode, zh }) {
@@ -19,9 +20,11 @@ export default function InspirationGallery(props) {
   return <Suspense fallback={null}><Gallery {...props} /></Suspense>;
 }
 function Gallery({ zh, explore }) {
+  const pageVisible = usePageVisible();
   const params = useSearchParams();
   const [gallery, setGallery] = useState(null), [error, setError] = useState(false), [reload, setReload] = useState(0), [category, setCategory] = useState(() => INSPIRATION_CATEGORIES.some(c => c[0] === params.get("category")) ? params.get("category") : "all"), [query, setQuery] = useState("");
   useEffect(() => {
+    if (!pageVisible) return;
     const abort = new AbortController();
     let timer, refreshing = false;
     async function refresh() {
@@ -29,6 +32,14 @@ function Gallery({ zh, explore }) {
       if (document.visibilityState === "hidden") return;
       refreshing = true;
       clearTimeout(timer);
+      const remaining = galleryRefreshDelay();
+      if (remaining > 0) {
+        setGallery(readGalleryCache());
+        setError(false);
+        refreshing = false;
+        timer = setTimeout(refresh, remaining);
+        return;
+      }
       let delay = 60000;
       try {
         const next = await api("/api/inspiration", { signal: abort.signal });
@@ -52,7 +63,14 @@ function Gallery({ zh, explore }) {
     window.addEventListener("focus", refresh);
     document.addEventListener("visibilitychange", refresh);
     return () => { abort.abort(); window.removeEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh); clearTimeout(timer); };
-  }, [reload]);
+  }, [reload, pageVisible]);
+  const requestedCategory = params.get("category");
+  const previousCategory = useRef(requestedCategory);
+  useEffect(() => {
+    if (!explore || !pageVisible || previousCategory.current === requestedCategory) return;
+    previousCategory.current = requestedCategory;
+    setCategory(INSPIRATION_CATEGORIES.some(category => category[0] === requestedCategory) ? requestedCategory : "all");
+  }, [explore, pageVisible, requestedCategory]);
   if (!gallery) return <section className="ig-section"><p role={error ? "alert" : "status"}>{zh ? (error ? "灵感库暂时无法加载。" : "正在加载灵感作品…") : (error ? "The gallery is unavailable." : "Loading inspiration…")}</p>{error && <button onClick={() => setReload(v => v + 1)}>{zh ? "重试" : "Try again"}</button>}</section>;
   const visible = gallery.items.filter(i => (category === "all" || i.category === category) && `${i.title} ${i.titleEn} ${i.description} ${i.prompt}`.toLowerCase().includes(query.toLowerCase().trim()));
   const { layout } = gallery;

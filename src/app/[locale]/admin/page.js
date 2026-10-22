@@ -13,7 +13,10 @@ export default function AdminDashboard() {
     api("/api/admin/stats", { signal: controller.signal })
       .then(data => { if (!controller.signal.aborted) setStats(data); })
       .catch(error => {
-        if (!controller.signal.aborted) setError(error.code === "REQUEST_TIMEOUT" ? "加载超时，请重试。" : "加载失败，请重试。");
+        if (!controller.signal.aborted) {
+          if ([401, 403].includes(error.status)) setStats(null);
+          setError(error.code === "REQUEST_TIMEOUT" ? "加载超时，请重试。" : "加载失败，请重试。");
+        }
       });
     return () => controller.abort();
   }, [reload]);

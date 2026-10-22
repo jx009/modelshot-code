@@ -11,6 +11,7 @@ import { previewUrl, imageUrl, downloadUrl } from "@/lib/studio/image-url";
 import Modal from "@/components/ui/Modal";
 import { useDebouncedValue } from "@/components/ui/useDebouncedValue";
 import Link from "@/components/ui/NavigationLink";
+import { usePageVisible } from "@/components/ui/LocalNavigation";
 import "./asset-library.css";
 
 const libraryCache = new Map();
@@ -34,6 +35,7 @@ function invalidateUserCache(userId) {
 }
 
 export default function AssetLibrary({ onSelect, maxSelection = 10 }) {
+  const visible = usePageVisible();
   const zh = useLocale() === "zh", { data: session, status } = useSession(), fileInput = useRef(null);
   const userId = session?.user?.id;
   const [selecting, setSelecting] = useState(false);
@@ -58,11 +60,16 @@ export default function AssetLibrary({ onSelect, maxSelection = 10 }) {
   const activeQuery = useRef(snapshotKey);
   useEffect(() => { activeQuery.current = snapshotKey; }, [snapshotKey]);
   useEffect(() => {
-    if (status !== "authenticated") return;
+    if (status !== "authenticated" || !visible) return;
     const abort = new AbortController();
     async function load() {
       setLoadError("");
       try {
+        const cached = readCache(libraryCache, cacheKey, LIBRARY_CACHE_MS);
+        if (cached) {
+          setItemSnapshot(current => current.key === snapshotKey ? current : { key: snapshotKey, ...cached });
+          return;
+        }
         const data = await api(`/api/library?${query}`, { signal: abort.signal });
         if (abort.signal.aborted) return;
         const value = { items: data.items, cursor: data.nextCursor };
@@ -73,18 +80,19 @@ export default function AssetLibrary({ onSelect, maxSelection = 10 }) {
     }
     load();
     return () => abort.abort();
-  }, [cacheKey, query, refresh, snapshotKey, status]);
+  }, [cacheKey, query, refresh, snapshotKey, status, visible]);
   useEffect(() => {
-    if (status !== "authenticated") return;
+    if (status !== "authenticated" || !visible) return;
     const abort = new AbortController();
-    api("/api/library/categories", { signal: abort.signal }).then(groups => {
+    const cached = readCache(categoryCache, userId, CATEGORY_CACHE_MS);
+    (cached ? Promise.resolve(cached) : api("/api/library/categories", { signal: abort.signal })).then(groups => {
       if (!abort.signal.aborted) {
-        if (userId) writeCache(categoryCache, userId, groups, 30);
+        if (userId && !cached) writeCache(categoryCache, userId, groups, 30);
         setCategorySnapshot({ userId, refresh, rows: groups });
       }
     }).catch(err => { if (!abort.signal.aborted) setError(err.message); });
     return () => abort.abort();
-  }, [refresh, status, userId]);
+  }, [refresh, status, userId, visible]);
   async function mutate(id, body) {
     setBusy(true); setError("");
     try { await api(`/api/library/${id}`, { method: "PATCH", body }); invalidateUserCache(userId); setRefresh(value => value + 1); setRenaming(null); setSelected(current => current.filter(item => item.id !== id)); }

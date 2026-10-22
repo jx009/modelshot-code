@@ -3,6 +3,22 @@ import { capabilities } from "../../src/lib/domain/studio/providers.js";
 
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
+it("does not contact the tool service for the homepage image catalog", async () => {
+  vi.stubEnv("STUDIO_TOOLS_URL", "https://tools.example");
+  vi.stubEnv("STUDIO_TOOLS_KEY", "test-key");
+  const fetcher = vi.fn(() => new Promise(() => {}));
+  vi.stubGlobal("fetch", fetcher);
+  const db = {
+    modelProvider: { findMany: async () => [] },
+    studioToolConfig: { findMany: async () => [] },
+    systemConfig: { findUnique: async () => null },
+  };
+  const result = await capabilities(db, undefined, undefined, { imageOnly: true });
+  expect(fetcher).not.toHaveBeenCalled();
+  expect(result.tools.map(tool => tool.id).sort()).toEqual(["edit", "generate"]);
+  expect(result.imageModels).toEqual([]);
+});
+
 function deferred() {
   let resolve;
   const promise = new Promise(done => { resolve = done; });

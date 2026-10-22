@@ -7,6 +7,7 @@ import { AuthProvider } from "@/components/auth/AuthProvider";
 import { RechargeProvider } from "@/components/billing/RechargeProvider";
 import { setAssetDeliveryUser } from "@/lib/studio/asset-delivery";
 import NavigationFeedback from "@/components/ui/NavigationFeedback";
+import { setImageCapabilitiesUser } from "@/lib/studio/image-capabilities-client";
 
 function SessionRefresh({ onRecovered }) {
   const { data: session, status, update } = useSession();
@@ -15,7 +16,8 @@ function SessionRefresh({ onRecovered }) {
   const onlineRefresh = useRef({ pending: false, startedAt: null });
   useEffect(() => {
     setAssetDeliveryUser(session?.user?.id);
-    return () => setAssetDeliveryUser(null);
+    setImageCapabilitiesUser(session?.user?.id);
+    return () => { setAssetDeliveryUser(null); setImageCapabilitiesUser(null); };
   }, [session?.user?.id]);
   useEffect(() => {
     const refresh = () => {

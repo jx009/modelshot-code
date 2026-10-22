@@ -5,10 +5,19 @@ import { usePathname } from "next/navigation";
 import { useLocale } from "next-intl";
 import { useSession } from "next-auth/react";
 import { destinationPath } from "@/lib/navigation-destination";
+import { readCachedInspiration } from "@/lib/inspiration/client-cache";
 import { LOCAL_NAVIGATION_EVENT, LocalNavigationContext, PageVisibilityContext, useLocalNavigation } from "@/components/ui/LocalNavigation";
 import NavigationContent from "@/components/ui/NavigationContent";
 import CreativeShell from "./CreativeShell";
 import DiscoverHome from "./DiscoverHome";
+import InspirationDetailImage from "./InspirationDetailImage";
+
+const loadInspirationDetail = () => import("./InspirationDetail");
+const InspirationDetail = lazy(loadInspirationDetail);
+function cachedInspiration(href) {
+  const match = destinationPath(href).match(/^\/explore\/([a-zA-Z0-9_-]{1,80})$/);
+  return match ? readCachedInspiration(match[1]) : null;
+}
 
 const loaders = {
   "/explore": () => import("./ExplorePage"),
@@ -31,19 +40,23 @@ function subscribe(callback) {
 export default function CreativePages({ children }) {
   const pathname = usePathname(), locale = useLocale();
   const path = useSyncExternalStore(subscribe, snapshot, () => destinationPath(pathname));
+  useEffect(() => { window.dispatchEvent(new Event(historyEvent)); }, [pathname]);
   const [entry, setEntry] = useState(0);
+  const [details, setDetails] = useState({});
   const [visited, setVisited] = useState(() => retained.has(path) ? [path] : []);
   const supports = useCallback((href, targetLocale) => {
     if (typeof href !== "string" || !href.startsWith("/") || href.startsWith("//") || targetLocale && targetLocale !== locale) return false;
     const url = new URL(href, "https://navigation.local");
     const prefix = url.pathname.match(/^\/(zh|en)(?=\/|$)/)?.[1];
-    return (!prefix || prefix === locale) && Object.hasOwn(pages, destinationPath(href));
+    return (!prefix || prefix === locale) && (Object.hasOwn(pages, destinationPath(href)) || Boolean(cachedInspiration(href)));
   }, [locale]);
   const visit = useCallback((href, { replace = false, scroll = true, locale: targetLocale } = {}) => {
     if (!supports(href, targetLocale)) return false;
     const target = new URL(href, window.location.origin);
     if (!/^\/(zh|en)(?=\/|$)/.test(target.pathname)) target.pathname = `/${locale}${target.pathname === "/" ? "" : target.pathname}`;
     if (target.href === window.location.href) return true;
+    const item = cachedInspiration(target.href);
+    if (item) setDetails(current => ({ ...current, [destinationPath(target.href)]: item }));
     const source = new URL(window.location.href);
     const samePage = destinationPath(target.href) === destinationPath(window.location.href);
     const sameEntry = samePage && target.search === source.search;
@@ -74,10 +87,10 @@ export default function CreativePages({ children }) {
   }, [supports, visit]);
   const preload = useCallback(href => {
     if (!supports(href)) return;
-    const load = loaders[destinationPath(href)];
+    const load = loaders[destinationPath(href)] || (cachedInspiration(href) ? loadInspirationDetail : null);
     if (load) void load().catch(() => {});
   }, [supports]);
-  const value = useMemo(() => ({ path, entry, visited, supports, navigate, visit, preload }), [path, entry, visited, supports, navigate, visit, preload]);
+  const value = useMemo(() => ({ path, entry, visited, details, supports, navigate, visit, preload }), [path, entry, visited, details, supports, navigate, visit, preload]);
   return <LocalNavigationContext.Provider value={value}>{children}</LocalNavigationContext.Provider>;
 }
 
@@ -90,7 +103,8 @@ class PageError extends Component {
 }
 
 function RetainedPages({ children }) {
-  const { path, entry, visited } = useLocalNavigation(), locale = useLocale();
+  const { path, entry, visited, details } = useLocalNavigation(), locale = useLocale();
+  const detail = details[path];
   const supported = Object.hasOwn(pages, path);
   const standalone = path === "/studio-v2" || path === "/pricing";
   const ActivePage = supported && !retained.has(path) ? pages[path] : null;
@@ -109,7 +123,11 @@ function RetainedPages({ children }) {
       </Activity>;
     })}
     {!standalone && active}
-    {!supported && children}
+    {detail ? <PageError key={path} href={`/${locale}${path}`} zh={locale === "zh"}>
+      <Suspense fallback={<article className="ig-detail"><h1>{locale === "zh" ? detail.title : detail.titleEn || detail.title}</h1><div className="ig-full-image"><InspirationDetailImage item={detail} /></div></article>}>
+        <InspirationDetail item={detail} />
+      </Suspense>
+    </PageError> : !supported && children}
   </CreativeShell></Activity>{standalone && active}</>;
 }
 

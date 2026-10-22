@@ -41,6 +41,15 @@ export function writeGalleryCache(gallery, now = Date.now()) {
   try { localStorage.setItem(KEY, JSON.stringify({ gallery: withoutDeliveryLinks(gallery), savedAt: now })); } catch {}
 }
 
+export function readCachedInspiration(id, now = Date.now()) {
+  const gallery = memory && memory.savedAt <= now ? memory.gallery : readGalleryCache(now);
+  const item = gallery?.items.find(item => item.id === id && item.enabled !== false);
+  if (!item) return null;
+  return gallery.deliveryExpiresAt && gallery.deliveryExpiresAt <= now + 30000
+    ? withoutDeliveryLinks({ items: [item] }).items[0]
+    : item;
+}
+
 export function galleryRefreshDelay(now = Date.now()) {
   if (!readGalleryCache(now) || !memory) return 0;
   const { gallery, savedAt } = memory;

@@ -12,6 +12,27 @@ async function fixture() {
 }
 const gallery = { items: [], layout: { mode: "masonry", columns: 4, gap: 16 } };
 
+test("detail link checks reuse memory instead of parsing browser storage for every card", async () => {
+  const cache = await fixture();
+  const item = { id: "public-one", title: "Public" };
+  cache.writeGalleryCache({ ...gallery, items: [item] }, 1000);
+  const sessionRead = vi.spyOn(sessionStorage, "getItem");
+  const persistentRead = vi.spyOn(localStorage, "getItem");
+  for (let index = 0; index < 200; index += 1) expect(cache.readCachedInspiration(item.id, 2000)).toEqual(item);
+  expect(sessionRead).not.toHaveBeenCalled();
+  expect(persistentRead).not.toHaveBeenCalled();
+});
+
+test("detail cache omits disabled entries and strips expired signed delivery URLs", async () => {
+  const cache = await fixture();
+  const item = { id: "public-one", title: "Public", imageUrl: "https://images.invalid/original?sign=1", thumbnailUrl: "https://images.invalid/thumb?sign=1" };
+  cache.writeGalleryCache({ ...gallery, items: [item, { id: "disabled", enabled: false }], deliveryExpiresAt: 61000 }, 1000);
+  expect(cache.readCachedInspiration(item.id, 2000)).toEqual(item);
+  expect(cache.readCachedInspiration(item.id, 31000)).toEqual({ id: item.id, title: item.title });
+  expect(cache.readCachedInspiration("disabled", 2000)).toBeNull();
+  expect(cache.readCachedInspiration("missing", 2000)).toBeNull();
+});
+
 test("gallery metadata survives a reload without a time-based display cutoff", async () => {
   const first = await fixture();
   first.writeGalleryCache(gallery, 1000);

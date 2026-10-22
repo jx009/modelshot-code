@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
-import { useState, useSyncExternalStore } from "react";
+import { useInsertionEffect, useState, useSyncExternalStore } from "react";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import CreativePages, { CreativePageContent } from "../../src/components/discover/CreativePages.jsx";
 import NavigationLink from "../../src/components/ui/NavigationLink.jsx";
 import { usePageVisible } from "../../src/components/ui/LocalNavigation.jsx";
+import { writeGalleryCache } from "../../src/lib/inspiration/client-cache.js";
 
-const mocks = vi.hoisted(() => ({ navigate: vi.fn(), user: "user-a" }));
+const mocks = vi.hoisted(() => ({ navigate: vi.fn(), user: "user-a", pathname: null }));
 vi.mock("next-intl", () => ({ useLocale: () => "zh" }));
 vi.mock("next-auth/react", () => ({ useSession: () => ({ data: mocks.user ? { user: { id: mocks.user } } : null }) }));
 vi.mock("next/link", () => ({ useLinkStatus: () => ({ pending: false }) }));
@@ -20,7 +21,12 @@ vi.mock("@/components/studio/AssetLibrary", () => ({ default: function Assets() 
 vi.mock("../../src/components/discover/CommercePage", () => ({ default: () => <h1>电商内容</h1> }));
 vi.mock("@/components/studio/StudioPage", () => ({ default: () => <h1>画布内容</h1> }));
 vi.mock("@/components/billing/PricingPage", () => ({ default: () => <h1>充值内容</h1> }));
-vi.mock("next/navigation", () => ({ usePathname: () => useSyncExternalStore(subscribe, () => window.location.pathname) }));
+vi.mock("next/navigation", () => ({ usePathname: () => {
+  const pathname = useSyncExternalStore(subscribe, () => window.location.pathname);
+  return mocks.pathname ?? pathname;
+} }));
+vi.mock("../../src/components/discover/InspirationDetail", () => ({ default: ({ item }) => <h1>详情：{item.title}</h1> }));
+vi.mock("../../src/components/discover/InspirationDetailImage", () => ({ default: ({ item }) => <span>{item.title}预览</span> }));
 vi.mock("@/i18n/navigation", () => ({ Link: ({ href, locale = "zh", prefetch, children, onClick, onNavigate, ...props }) => <a {...props} href={`/${locale}${href}`} data-prefetch={String(prefetch)} onClick={event => {
   onClick?.(event);
   if (!event.defaultPrevented && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey && !event.currentTarget.target && !event.currentTarget.hasAttribute("download")) {
@@ -36,7 +42,7 @@ vi.mock("../../src/components/discover/DiscoverHome", () => ({ default: function
 } }));
 vi.mock("../../src/components/discover/ExplorePage", () => ({ default: function Explore() {
   const [query, setQuery] = useState("");
-  return <section><h1>灵感内容</h1><input aria-label="筛选" value={query} onChange={event => setQuery(event.target.value)} /></section>;
+  return <section><h1>灵感内容</h1><input aria-label="筛选" value={query} onChange={event => setQuery(event.target.value)} /><NavigationLink href="/explore/public-one">打开灵感图片</NavigationLink><NavigationLink href="/explore/legacy">打开旧案例</NavigationLink></section>;
 } }));
 
 function subscribe(callback) {
@@ -63,12 +69,67 @@ function Shell({ children = <h1>其他页面</h1> }) {
 }
 beforeEach(() => {
   mocks.user = "user-a"; mocks.navigate.mockReset();
+  mocks.pathname = null;
+  writeGalleryCache({ items: [], layout: { mode: "masonry", columns: 4, gap: 16 } });
   window.history.replaceState(null, "", "/zh");
   const push = window.history.pushState.bind(window.history);
   vi.spyOn(window.history, "pushState").mockImplementation((...args) => { push(...args); window.dispatchEvent(new Event("creative-test-history")); });
   vi.spyOn(window, "scrollTo").mockImplementation(() => {});
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+
+test("opens a cached inspiration on the first click and preserves filters on return", async () => {
+  const item = { id: "public-one", title: "已加载的灵感", enabled: true };
+  writeGalleryCache({ items: [item], layout: { mode: "masonry", columns: 4, gap: 16 } });
+  render(<Shell />);
+  fireEvent.click(screen.getByRole("link", { name: "灵感", exact: true }));
+  await screen.findByRole("heading", { name: "灵感内容" });
+  fireEvent.change(screen.getByLabelText("筛选"), { target: { value: "保留筛选" } });
+  fireEvent.click(screen.getByRole("link", { name: "打开灵感图片" }));
+  await screen.findByRole("heading", { name: "详情：已加载的灵感" });
+  expect(window.location.pathname).toBe("/zh/explore/public-one");
+  expect(screen.queryByRole("heading", { name: "灵感内容" })).toBeNull();
+  expect(mocks.navigate).not.toHaveBeenCalled();
+  act(() => { window.history.replaceState(null, "", "/zh/explore"); window.dispatchEvent(new PopStateEvent("popstate")); });
+  expect(screen.getByLabelText("筛选").value).toBe("保留筛选");
+  act(() => { window.history.replaceState(null, "", "/zh/explore/public-one"); window.dispatchEvent(new PopStateEvent("popstate")); });
+  expect(screen.getByRole("heading", { name: "详情：已加载的灵感" })).toBeTruthy();
+});
+
+function NextHistoryCommit({ pathname, children }) {
+  useInsertionEffect(() => { window.history.replaceState(null, "", pathname); }, [pathname]);
+  return children;
+}
+
+test("observes a Next route commit that updates history after render without popstate", async () => {
+  mocks.pathname = "/zh/explore";
+  window.history.replaceState(null, "", mocks.pathname);
+  const view = render(<NextHistoryCommit pathname={mocks.pathname}><Shell /></NextHistoryCommit>);
+  await screen.findByRole("heading", { name: "灵感内容" });
+  fireEvent.click(screen.getByRole("link", { name: "打开旧案例" }));
+  expect(mocks.navigate).toHaveBeenCalledExactlyOnceWith("/explore/legacy");
+  mocks.pathname = "/zh/explore/legacy";
+  view.rerender(<NextHistoryCommit pathname={mocks.pathname}><Shell><h1>服务端旧案例详情</h1></Shell></NextHistoryCommit>);
+  expect(await screen.findByRole("heading", { name: "服务端旧案例详情" })).toBeTruthy();
+  expect(screen.queryByRole("heading", { name: "灵感内容" })).toBeNull();
+});
+
+test("direct detail visits keep server validation instead of trusting stored gallery entries", () => {
+  writeGalleryCache({ items: [{ id: "public-one", title: "已过期的灵感" }], layout: { mode: "masonry", columns: 4, gap: 16 } });
+  window.history.replaceState(null, "", "/zh/explore/public-one");
+  render(<Shell><h1>服务端核验过的详情</h1></Shell>);
+  expect(screen.getByRole("heading", { name: "服务端核验过的详情" })).toBeTruthy();
+  expect(screen.queryByRole("heading", { name: "详情：已过期的灵感" })).toBeNull();
+});
+
+test("disabled inspiration entries still use the validated server route", async () => {
+  writeGalleryCache({ items: [{ id: "public-one", title: "已下架", enabled: false }], layout: { mode: "masonry", columns: 4, gap: 16 } });
+  window.history.replaceState(null, "", "/zh/explore");
+  render(<Shell />);
+  await screen.findByRole("heading", { name: "灵感内容" });
+  fireEvent.click(screen.getByRole("link", { name: "打开灵感图片" }));
+  expect(mocks.navigate).toHaveBeenCalledExactlyOnceWith("/explore/public-one");
+});
 
 test("renders the homepage immediately instead of a stale layout route slot", () => {
   render(<Shell><h1>旧的灵感路由插槽</h1></Shell>);

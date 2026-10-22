@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import DiscoverHome from "../../src/components/discover/DiscoverHome.jsx";
 
@@ -86,4 +86,19 @@ it("does not upload twice when another image is pasted during an upload", async 
   expect(screen.getByRole("alert").textContent).toContain("正在处理");
   finish({ assetId: "uploaded-image", width: 640, height: 480 });
   await waitFor(() => expect(screen.getByLabelText("移除参考图1")).toBeTruthy());
+});
+
+it("shows the first uploaded image while a second image is still uploading", async () => {
+  let finishSlow;
+  mocks.upload.mockResolvedValueOnce({ assetId: "first-image", width: 640, height: 480 })
+    .mockImplementationOnce(() => new Promise(resolve => { finishSlow = resolve; }));
+  render(<DiscoverHome />);
+  paste(document.body, [image(), new File(["image"], "slow.png", { type: "image/png" })]);
+  expect(screen.getByRole("region", { name: "图片上传状态" })).toBeTruthy();
+  await waitFor(() => expect(screen.getByLabelText("移除参考图1")).toBeTruthy());
+  expect(screen.queryByLabelText("移除参考图2")).toBeNull();
+  expect(screen.getByRole("region", { name: "图片上传状态" }).textContent).toContain("slow.png");
+  await act(async () => finishSlow({ assetId: "second-image", width: 640, height: 480 }));
+  expect(screen.getByLabelText("移除参考图2")).toBeTruthy();
+  expect(screen.queryByRole("region", { name: "图片上传状态" })).toBeNull();
 });

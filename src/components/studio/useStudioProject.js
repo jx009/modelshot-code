@@ -5,6 +5,8 @@ import { api, requestKey } from "@/lib/client-api";
 import { documentContent } from "@/lib/studio/project-title";
 import { submitDocument, transientSaveError } from "@/lib/studio/save-document";
 import { activeProject, rememberProject, readProjectDraft, writeProjectDraft } from "@/lib/studio/project-storage";
+import { invalidateProjectLists } from "@/lib/studio/project-list";
+import { mapWithConcurrency } from "@/lib/map-with-concurrency";
 
 export const emptyProject = () => ({ id: null, version: null, name: "Untitled", nameSource: "fallback", createKey: requestKey(), layers: [], messages: [], jobs: [], appliedJobs: [], plan: null });
 const meaningful = draft => draft.id || draft.layers.length || draft.messages.length || draft.plan;
@@ -21,6 +23,7 @@ export function useStudioProject({ userId, sessionLoading = false, initialDocume
   const awaitingSession = !userId && sessionLoading;
   const [draft, setDraft] = useState(emptyProject), draftRef = useRef(draft);
   const [saveState, setSaveState] = useState("loading"), [ready, setReady] = useState(false);
+  const [switching, setSwitching] = useState(false), switchOperation = useRef(null);
   const loadController = useRef(null), loadTarget = useRef(null), editingReady = useRef(false);
   const revision = useRef(0), savedRevision = useRef(0), epoch = useRef(0), queue = useRef(Promise.resolve()), localWrite = useRef(Promise.resolve()), localWriteTimer = useRef(null), pendingLocalWrite = useRef(null);
   const errorRef = useRef(onError); useEffect(() => { errorRef.current = onError; }, [onError]);
@@ -43,7 +46,7 @@ export function useStudioProject({ userId, sessionLoading = false, initialDocume
     if (!localWriteTimer.current) localWriteTimer.current = setTimeout(() => { localWriteTimer.current = null; flushLocal(); }, 180);
   }, [flushLocal, userId]);
   const update = useCallback(next => {
-    if (!editingReady.current) return draftRef.current;
+    if (!editingReady.current || switchOperation.current) return draftRef.current;
     const value = typeof next === "function" ? next(draftRef.current) : next;
     if (value === draftRef.current) return value;
     revision.current++;
@@ -58,14 +61,16 @@ export function useStudioProject({ userId, sessionLoading = false, initialDocume
     const task = async () => {
       if (scope !== epoch.current) throw new Error("SESSION_CLOSED");
       if (!userId) throw new Error("UNAUTHORIZED");
-      await flushLocal();
+      await flushLocal().catch(() => {});
       if (scope !== epoch.current) throw new Error("SESSION_CLOSED");
       const send = async body => {
         if (scope !== epoch.current) throw new Error("SESSION_CLOSED");
         draftRef.current = { ...draftRef.current, _pendingSave: body };
         persist(draftRef.current);
         try {
-          return await submitDocument(body, { isCurrent: () => scope === epoch.current, onRetry: () => setSaveState("retrying") });
+          const result = await submitDocument(body, { isCurrent: () => scope === epoch.current, onRetry: () => setSaveState("retrying") });
+          invalidateProjectLists(userId);
+          return result;
         } catch (error) {
           if (scope === epoch.current && !transientSaveError(error)) {
             draftRef.current = { ...draftRef.current, _pendingSave: undefined };
@@ -152,8 +157,16 @@ export function useStudioProject({ userId, sessionLoading = false, initialDocume
           value = cached;
         }
         if (!cached?._dirty && remote.layerCount > remote.content.layers.length) {
-          const chunks = await Promise.all(Array.from({ length: Math.ceil(remote.layerCount / 100) - 1 }, (_, index) => api(`/api/studio/documents/${encodeURIComponent(id)}/layers?offset=${(index + 1) * 100}&version=${remote.version}`, { signal: controller.signal })));
-          remote.content.layers = [...remote.content.layers, ...chunks.flatMap(chunk => chunk.items)];
+          const offsets = Array.from({ length: Math.ceil(remote.layerCount / 100) - 1 }, (_, index) => (index + 1) * 100);
+          const chunks = await mapWithConcurrency(offsets, 2, async offset => {
+            controller.signal.throwIfAborted();
+            try {
+              return await api(`/api/studio/documents/${encodeURIComponent(id)}/layers?offset=${offset}&version=${remote.version}`, { signal: controller.signal });
+            } catch (error) { controller.abort(error); throw error; }
+          });
+          const failed = chunks.find(chunk => chunk.status === "rejected");
+          if (failed) throw failed.reason;
+          remote.content.layers = [...remote.content.layers, ...chunks.flatMap(chunk => chunk.value.items)];
           if (remote.content.layers.length !== remote.layerCount) throw new Error("DOCUMENT_INCOMPLETE");
         }
         if (cached?._dirty && cached.version !== remote.version) conflict = true;
@@ -176,10 +189,12 @@ export function useStudioProject({ userId, sessionLoading = false, initialDocume
   }, [userId, initialPrompt, initialSize, initialCount, initialFixed, persist, flushLocal]);
 
   useEffect(() => {
+    switchOperation.current = null;
     if (!userId) {
       let active = true;
       Promise.resolve().then(() => {
         if (!active) return;
+        setSwitching(false);
         epoch.current++;
         const empty = { ...emptyProject(), composer: { text: initialPrompt, size: initialSize, outputCount: initialCount, fixedPrompt: initialFixed } };
         editingReady.current = !awaitingSession;
@@ -193,6 +208,7 @@ export function useStudioProject({ userId, sessionLoading = false, initialDocume
     let active = true;
     Promise.resolve().then(async () => {
       if (!active) return;
+      setSwitching(false);
       try { return await load(initialDocument || current?.id, token); }
       catch (error) {
         if (current && error.code === "DOCUMENT_NOT_FOUND") return load(null, requestKey());
@@ -204,7 +220,7 @@ export function useStudioProject({ userId, sessionLoading = false, initialDocume
       load(url.searchParams.get("document"), url.searchParams.get("draft") || requestKey()).catch(error => errorRef.current(error));
     };
     window.addEventListener("popstate", pop);
-    const invalidate = () => { epoch.current++; editingReady.current = false; loadController.current?.abort(); };
+    const invalidate = () => { epoch.current++; switchOperation.current = null; editingReady.current = false; loadController.current?.abort(); };
     return () => { active = false; invalidate(); window.removeEventListener("popstate", pop); };
   }, [userId, awaitingSession, initialDocument, initialPrompt, initialSize, initialCount, initialFixed, load]);
 
@@ -220,14 +236,23 @@ export function useStudioProject({ userId, sessionLoading = false, initialDocume
     window.addEventListener("online", online);
     return () => window.removeEventListener("online", online);
   }, [save]);
-  const open = useCallback(async id => {
-    if (draftRef.current._dirty) await save();
-    return load(id, null, true);
+  const switchProject = useCallback(async (id, token) => {
+    if (switchOperation.current || !editingReady.current) throw new Error("DOCUMENT_LOADING");
+    const operation = {};
+    switchOperation.current = operation;
+    setSwitching(true);
+    try {
+      if (draftRef.current._dirty || draftRef.current._pendingSave) await save();
+      if (switchOperation.current !== operation) throw new Error("SESSION_CLOSED");
+      const loaded = await load(id, token, true);
+      if (switchOperation.current !== operation || !loaded) throw new Error("SESSION_CLOSED");
+      return loaded;
+    } finally {
+      if (switchOperation.current === operation) { switchOperation.current = null; setSwitching(false); }
+    }
   }, [save, load]);
-  const create = useCallback(async () => {
-    if (draftRef.current._dirty) await save();
-    return load(null, requestKey(), true);
-  }, [save, load]);
+  const open = useCallback(id => switchProject(id, null), [switchProject]);
+  const create = useCallback(() => switchProject(null, requestKey()), [switchProject]);
   useEffect(() => {
     const flush = () => { void flushLocal(); };
     window.addEventListener("pagehide", flush);
@@ -249,5 +274,5 @@ export function useStudioProject({ userId, sessionLoading = false, initialDocume
     const target = loadTarget.current;
     if (target) return load(target.id, target.token, target.push, target.remoteOnly).catch(error => errorRef.current(error));
   }, [load]);
-  return { draft, draftRef, update, save, saveState, ready, open, create, flushLocal, reloadCloud, retryLoad };
+  return { draft, draftRef, update, save, saveState, ready: ready && !switching, switching, open, create, flushLocal, reloadCloud, retryLoad };
 }

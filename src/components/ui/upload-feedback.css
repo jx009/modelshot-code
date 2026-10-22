@@ -1,0 +1,11 @@
+.upload-feedback{margin:12px 0;padding:10px;border:1px solid var(--divider);border-radius:12px;background:var(--bg-card);color:var(--primary-text);font-size:12px}
+.upload-feedback ul{list-style:none;margin:0;padding:0;max-height:220px;overflow:auto}
+.upload-feedback li{display:flex;align-items:center;gap:10px;padding:6px 0}
+.upload-feedback img{flex-shrink:0;width:48px;height:48px;object-fit:contain;border-radius:6px}
+.upload-feedback li>div{flex:1;min-width:0}
+.upload-feedback span,.upload-feedback small{display:block;overflow-wrap:anywhere}
+.upload-feedback small{margin-top:3px;color:var(--secondary-text)}
+.upload-feedback button{flex-shrink:0;padding:6px 10px;font-size:18px}
+.upload-feedback-floating{position:absolute;z-index:20;right:16px;bottom:80px;width:min(320px,calc(100% - 32px));box-shadow:0 8px 24px #0002}
+.ms-chat>.upload-feedback{display:none}
+@media(max-width:760px){.ms-chat>.upload-feedback{display:block;flex-shrink:0;margin:8px 12px}}

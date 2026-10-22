@@ -17,6 +17,61 @@ beforeEach(() => { mocks.api.mockReset(); mocks.read.mockReset().mockResolvedVal
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 const message = { id: "first-message", role: "user", text: "生成一只猫" };
 describe("project lifecycle", () => {
+  it("signals switching immediately while saving and blocks duplicate switches and edits", async () => {
+    let finishSave;
+    mocks.api.mockImplementationOnce(() => new Promise(resolve => { finishSave = resolve; }))
+      .mockResolvedValueOnce({ id: "project-b", version: 1, name: "B", content: { layers: [], messages: [], jobs: [] } });
+    const { result } = renderHook(() => useStudioProject({ userId: "user", paused: true, onError: vi.fn() }));
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    act(() => result.current.update(draft => ({ ...draft, messages: [message] })));
+    let opening;
+    act(() => { opening = result.current.open("project-b"); });
+    expect(result.current.switching).toBe(true);
+    expect(result.current.ready).toBe(false);
+    act(() => result.current.update(draft => ({ ...draft, name: "Must not overwrite the outgoing snapshot" })));
+    expect(result.current.draft.name).toBe("Untitled");
+    await act(async () => { await expect(result.current.open("project-c")).rejects.toThrow("DOCUMENT_LOADING"); });
+    await waitFor(() => expect(mocks.api).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      finishSave({ id: "project-a", version: 1, name: "A", content: mocks.api.mock.calls[0][1].body.content });
+      await opening;
+    });
+    expect(result.current.switching).toBe(false);
+    expect(result.current.ready).toBe(true);
+    expect(result.current.draft.id).toBe("project-b");
+  });
+  it("keeps the outgoing project editable after a failed switch-time save", async () => {
+    mocks.api.mockRejectedValue(Object.assign(new Error("DOCUMENT_VERSION_CONFLICT"), { code: "DOCUMENT_VERSION_CONFLICT" }));
+    const { result } = renderHook(() => useStudioProject({ userId: "user", paused: true, onError: vi.fn() }));
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    act(() => result.current.update(draft => ({ ...draft, messages: [message] })));
+    const key = result.current.draft.createKey;
+    await act(async () => { await expect(result.current.open("project-b")).rejects.toThrow("DOCUMENT_VERSION_CONFLICT"); });
+    expect(result.current.ready).toBe(true);
+    expect(result.current.switching).toBe(false);
+    expect(result.current.draft.createKey).toBe(key);
+    expect(result.current.draft._dirty).toBe(true);
+    expect(mocks.api).toHaveBeenCalledTimes(1);
+  });
+  it("loads additional layer pages with at most two concurrent requests and preserves order", async () => {
+    const layers = Array.from({ length: 401 }, (_, index) => ({ id: `layer-${index}` }));
+    const pending = new Map();
+    mocks.api.mockImplementation(url => {
+      if (url.includes("pagedLayers")) return Promise.resolve({ id: "large-project", version: 1, name: "Large", layerCount: layers.length, content: { layers: layers.slice(0, 100), messages: [], jobs: [] } });
+      const offset = Number(new URL(url, "https://example.test").searchParams.get("offset"));
+      return new Promise(resolve => pending.set(offset, () => { pending.delete(offset); resolve({ items: layers.slice(offset, offset + 100) }); }));
+    });
+    const { result } = renderHook(() => useStudioProject({ userId: "user", initialDocument: "large-project", paused: true, onError: vi.fn() }));
+    await waitFor(() => expect(pending.size).toBe(2));
+    expect([...pending.keys()]).toEqual([100, 200]);
+    await act(async () => pending.get(200)());
+    expect([...pending.keys()]).toEqual([100, 300]);
+    await act(async () => pending.get(300)());
+    expect([...pending.keys()]).toEqual([100, 400]);
+    await act(async () => { pending.get(400)(); pending.get(100)(); });
+    expect(result.current.ready).toBe(true);
+    expect(result.current.draft.layers).toEqual(layers);
+  });
   it("does not reload or reset an authenticated canvas during session refresh", async () => {
     mocks.api.mockResolvedValue({ id: "project-a", version: 1, name: "Cloud", content: { layers: [], messages: [], jobs: [] } });
     const { result, rerender } = renderHook(({ sessionLoading }) => useStudioProject({ userId: "user", sessionLoading, initialDocument: "project-a", paused: true, onError: vi.fn() }), { initialProps: { sessionLoading: false } });
@@ -89,6 +144,27 @@ describe("project lifecycle", () => {
     await act(async () => result.current.flushLocal());
     expect(mocks.write).toHaveBeenCalledTimes(1);
     expect(mocks.write.mock.calls[0][2]).toMatchObject({ name: "Latest edit" });
+  });
+  it("reports local storage failure without preventing ordinary cloud saves", async () => {
+    const onError = vi.fn();
+    mocks.write.mockRejectedValue(new Error("QuotaExceededError"));
+    mocks.api.mockImplementation(async (_url, { body }) => ({ id: "project-a", version: 1, name: body.name, content: body.content }));
+    const { result } = renderHook(() => useStudioProject({ userId: "user", paused: true, onError }));
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    act(() => result.current.update(draft => ({ ...draft, messages: [message] })));
+    await act(async () => { await result.current.save(); });
+    expect(onError).toHaveBeenCalledWith("LOCAL_SAVE_FAILED");
+    expect(mocks.api).toHaveBeenCalledTimes(1);
+    expect(result.current.draft.id).toBe("project-a");
+    expect(result.current.saveState).toBe("saved");
+  });
+  it("keeps explicit durability flush failures observable to task submission", async () => {
+    const { result } = renderHook(() => useStudioProject({ userId: "user", paused: true, onError: vi.fn() }));
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    mocks.write.mockRejectedValue(new Error("LOCAL_SAVE_FAILED"));
+    act(() => result.current.update(draft => ({ ...draft, pendingSubmit: { key: "task-key" } })));
+    await act(async () => { await expect(result.current.flushLocal()).rejects.toThrow("LOCAL_SAVE_FAILED"); });
+    expect(mocks.api).not.toHaveBeenCalled();
   });
   it("keeps edits made during a save dirty and saves them at the acknowledged version", async () => {
     let resolve;

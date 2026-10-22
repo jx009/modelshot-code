@@ -6,33 +6,11 @@ import { useSession } from "next-auth/react";
 import Link from "@/components/ui/NavigationLink";
 import { Plus, FolderOpen, Search, X, MoreHorizontal, Pencil, Trash2, LoaderCircle } from "lucide-react";
 import { api } from "@/lib/client-api";
+import { invalidateProjectLists, peekProjectList, readProjectList } from "@/lib/studio/project-list";
 import { previewUrl } from "@/lib/studio/image-url";
 import Modal from "@/components/ui/Modal";
 import { useDebouncedValue } from "@/components/ui/useDebouncedValue";
 import "./projects.css";
-
-const projectPages = new Map();
-const PROJECT_CACHE_MS = 30_000;
-
-function readProjectPage(key) {
-  const cached = projectPages.get(key);
-  if (!cached) return null;
-  if (Date.now() - cached.savedAt > PROJECT_CACHE_MS) {
-    projectPages.delete(key);
-    return null;
-  }
-  return cached;
-}
-
-function writeProjectPage(key, items, nextCursor) {
-  projectPages.delete(key);
-  projectPages.set(key, { items, nextCursor, savedAt: Date.now() });
-  if (projectPages.size > 40) projectPages.delete(projectPages.keys().next().value);
-}
-
-function clearProjectPages(userId) {
-  for (const key of projectPages.keys()) if (key.startsWith(`${userId}:`)) projectPages.delete(key);
-}
 
 export default function CreativeProjects() {
   const { status, data: session } = useSession();
@@ -46,43 +24,49 @@ function ProjectLibrary({ userId, status }) {
   const [cursor, setCursor] = useState(null), [loading, setLoading] = useState(false), [error, setError] = useState("");
   const [menu, setMenu] = useState(null), [editing, setEditing] = useState(null), [name, setName] = useState("");
   const [removing, setRemoving] = useState(null), [saving, setSaving] = useState(false);
+  const [refresh, setRefresh] = useState(0);
   const debouncedSearch = useDebouncedValue(search);
   const query = new URLSearchParams({ paged: "1", q: debouncedSearch, kind: filter }).toString();
-  const cacheKey = userId ? `${userId}:${query}` : null;
   const activeQuery = useRef(query);
+  const displayedQuery = useRef(null), readRevision = useRef(0), mutation = useRef(false);
   useEffect(() => { activeQuery.current = query; }, [query]);
   useEffect(() => {
     if (status !== "authenticated") return;
     const abort = new AbortController();
+    const revision = ++readRevision.current;
     async function load() {
-      setLoading(true); setError("");
+      setLoading(true);
       try {
-        const data = await api(`/api/studio/documents?${query}`, { signal: abort.signal });
-        if (abort.signal.aborted) return;
+        const data = await readProjectList(userId, query, { signal: abort.signal });
+        if (abort.signal.aborted || revision !== readRevision.current) return;
         setRows(data.items);
         setCursor(data.nextCursor);
-        if (cacheKey) writeProjectPage(cacheKey, data.items, data.nextCursor);
       }
       catch (err) {
-        if (abort.signal.aborted) return;
+        if (abort.signal.aborted || revision !== readRevision.current) return;
         if ([401, 403].includes(err.status)) {
-          clearProjectPages(userId);
+          invalidateProjectLists(userId);
           setRows(null);
           setCursor(null);
         }
         setError(err.message);
       }
-      finally { if (!abort.signal.aborted) setLoading(false); }
+      finally { if (!abort.signal.aborted && revision === readRevision.current) setLoading(false); }
     }
     void Promise.resolve().then(() => {
       if (abort.signal.aborted) return;
-      const cached = cacheKey ? readProjectPage(cacheKey) : null;
-      setRows(cached?.items ?? null);
-      setCursor(cached?.nextCursor ?? null);
+      if (displayedQuery.current !== query) {
+        const cached = peekProjectList(userId, query);
+        setRows(cached?.items ?? null);
+        setCursor(cached?.nextCursor ?? null);
+        setError("");
+        displayedQuery.current = query;
+      }
+      if (saving) { setLoading(false); return; }
       void load();
     });
     return () => abort.abort();
-  }, [cacheKey, query, status, userId]);
+  }, [query, status, userId, saving, refresh]);
   useEffect(() => {
     if (!menu) return;
     const close = event => {
@@ -96,36 +80,55 @@ function ProjectLibrary({ userId, status }) {
     return () => { document.removeEventListener("pointerdown", close); document.removeEventListener("keydown", close); };
   }, [menu]);
   async function rename(row) {
-    if (!name.trim() || saving) return;
-    setSaving(true); setError("");
-    try { const result = await api(`/api/studio/documents/${row.id}`, { method: "PATCH", body: { name: name.trim(), version: row.version } }); clearProjectPages(userId); setRows(current => current.map(item => item.id === row.id ? { ...item, ...result } : item)); setEditing(null); }
-    catch (err) { setError(err.code === "DOCUMENT_VERSION_CONFLICT" ? zh ? "项目已在其他页面更新，请刷新后重试" : "Project changed elsewhere. Refresh and retry." : err.message); }
-    finally { setSaving(false); }
+    if (!name.trim()) return;
+    await mutate(row, { method: "PATCH", body: { name: name.trim(), version: row.version } }, name.trim());
   }
   async function more() {
-    if (!cursor || loading) return;
+    if (!cursor || loading || mutation.current) return;
+    const revision = readRevision.current;
     setLoading(true);
-    try { const data = await api(`/api/studio/documents?${query}&cursor=${encodeURIComponent(cursor)}`); if (activeQuery.current !== query) return; setRows(current => [...current, ...data.items.filter(item => !current.some(row => row.id === item.id))]); setCursor(data.nextCursor); }
-    catch (err) { if (activeQuery.current === query) setError(err.message); }
-    finally { if (activeQuery.current === query) setLoading(false); }
+    try { const data = await readProjectList(userId, `${query}&cursor=${encodeURIComponent(cursor)}`); if (activeQuery.current !== query || revision !== readRevision.current) return; setRows(current => [...(current || []), ...data.items.filter(item => !current?.some(row => row.id === item.id))]); setCursor(data.nextCursor); }
+    catch (err) { if (activeQuery.current === query && revision === readRevision.current) setError(err.message); }
+    finally { if (activeQuery.current === query && revision === readRevision.current) setLoading(false); }
   }
   async function remove() {
-    setSaving(true);
-    try { await api(`/api/studio/documents/${removing.id}`, { method: "DELETE" }); clearProjectPages(userId); setRows(current => current.filter(row => row.id !== removing.id)); setRemoving(null); }
-    catch (err) { setError(err.message); } finally { setSaving(false); }
+    if (removing) await mutate(removing, { method: "DELETE" });
   }
   async function restore(row) {
-    setSaving(true);
+    await mutate(row, { method: "PATCH", body: { restore: true } });
+  }
+  async function mutate(row, options, nextName) {
+    if (mutation.current) return;
+    mutation.current = true;
+    readRevision.current++;
+    const originalIndex = rows.findIndex(item => item.id === row.id);
+    invalidateProjectLists(userId);
+    setSaving(true); setError(""); setEditing(null); setRemoving(null);
+    setRows(current => nextName === undefined ? current.filter(item => item.id !== row.id) : current.map(item => item.id === row.id ? { ...item, name: nextName } : item));
     try {
-      await api(`/api/studio/documents/${row.id}`, { method: "PATCH", body: { restore: true } });
-      clearProjectPages(userId);
-      setRows(current => current.filter(item => item.id !== row.id));
-    } catch (err) { setError(err.message); } finally { setSaving(false); }
+      const result = await api(`/api/studio/documents/${row.id}`, { ...options, timeoutMs: 15000 });
+      if (activeQuery.current === query && nextName !== undefined) setRows(current => current?.map(item => item.id === row.id ? { ...item, ...result } : item) ?? null);
+    } catch (err) {
+      if (activeQuery.current === query) {
+        setRows(current => {
+          if (!current) return current;
+          if (current.some(item => item.id === row.id)) return current.map(item => item.id === row.id ? row : item);
+          const restored = [...current]; restored.splice(Math.max(0, originalIndex), 0, row); return restored;
+        });
+        setError(err.code === "DOCUMENT_VERSION_CONFLICT" ? zh ? "项目已在其他页面更新，请刷新后重试" : "Project changed elsewhere. Refresh and retry." : err.message);
+      }
+    } finally {
+      invalidateProjectLists(userId);
+      mutation.current = false;
+      setSaving(false);
+      setRefresh(value => value + 1);
+    }
   }
   return <><section className="mp-library">
     <header className="mp-heading"><h1>{zh ? "我的项目" : "My projects"}</h1><label className="mp-search"><Search size={18} /><input type="search" aria-label={zh ? "搜索项目" : "Search projects"} placeholder={zh ? "搜索项目" : "Search projects"} value={search} onChange={event => setSearch(event.target.value)} />{search && <button aria-label={zh ? "清空搜索" : "Clear search"} onClick={() => setSearch("")}><X size={15} /></button>}</label></header>
     <div className="mp-filters">{[["all", "全部", "All"], ["canvas", "自由画布", "Canvas"], ["commerce", "电商套图", "Commerce"], ["trash", "已删除", "Deleted"]].map(([id, cn, en]) => <button key={id} aria-pressed={filter === id} onClick={() => setFilter(id)}>{zh ? cn : en}</button>)}</div>
     {error && <p role="alert" className="mp-error">{error}</p>}
+    {saving && <p role="status">{zh ? "正在同步项目修改…" : "Syncing project changes…"}</p>}
     {status === "unauthenticated" ? <div className="mp-empty"><FolderOpen size={36} /><p>{zh ? "登录后查看和继续你的项目" : "Sign in to continue your projects"}</p><Link href="/login?callbackUrl=/projects">{zh ? "登录" : "Sign in"}</Link></div> : <>
       <div className="mp-grid" aria-busy={loading}>
         <Link href="/studio-v2?new=1" className="mp-new"><span><Plus size={28} /></span><strong>{zh ? "新建项目" : "New project"}</strong></Link>

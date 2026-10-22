@@ -45,17 +45,17 @@ test("does not eagerly prefetch every admin route and warms only the intended li
   expect(screen.getByRole("link", { name: "云存储与图片加速" }).dataset.prefetch).toBe("false");
 });
 
-test("staggers automatic prefetch for only the dashboard and users", () => {
+test("staggers full-route prefetch for only the dashboard and users", () => {
   vi.useFakeTimers();
   vi.stubGlobal("requestIdleCallback", undefined);
   vi.spyOn(document, "readyState", "get").mockReturnValue("complete");
   vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
   render(<AdminNav />);
   act(() => vi.advanceTimersByTime(1500));
-  expect(screen.getByRole("link", { name: "数据看板" }).dataset.prefetch).toBe("auto");
+  expect(screen.getByRole("link", { name: "数据看板" }).dataset.prefetch).toBe("true");
   expect(screen.getByRole("link", { name: "用户管理" }).dataset.prefetch).toBe("false");
   act(() => vi.advanceTimersByTime(1500));
-  expect(screen.getByRole("link", { name: "用户管理" }).dataset.prefetch).toBe("auto");
+  expect(screen.getByRole("link", { name: "用户管理" }).dataset.prefetch).toBe("true");
   expect(screen.getByRole("link", { name: "生成审计" }).dataset.prefetch).toBe("false");
   fireEvent.mouseEnter(screen.getByRole("link", { name: "用户管理" }));
   expect(screen.getByRole("link", { name: "用户管理" }).dataset.prefetch).toBe("true");

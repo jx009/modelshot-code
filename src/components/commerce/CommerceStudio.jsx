@@ -16,6 +16,7 @@ import { CASES, getCase } from "@/lib/commerce/catalog";
 import { normalizeBrief } from "@/lib/commerce/schema-client";
 import { commerceContent } from "@/lib/commerce/project";
 import { api, requestKey, terminalStatus } from "@/lib/client-api";
+import { invalidateProjectLists } from "@/lib/studio/project-list";
 import { uploadImage } from "@/lib/upload-image";
 import { IMAGE_UPLOAD_MAX_BYTES } from "@/lib/image-upload-limits";
 import { fetchImageBlob } from "@/lib/image-download";
@@ -70,7 +71,10 @@ export default function CommerceStudio({ caseId = "", description = "", document
     };
     setNotice(labels[code] || `${t("操作未完成：", "Could not complete: ")}${code}`);
   }, [t]);
-  const accept = useCallback(next => { docRef.current = next; setDoc(next); }, []);
+  const accept = useCallback(next => {
+    if (next && (docRef.current?.id !== next.id || docRef.current?.version !== next.version)) invalidateProjectLists(session?.user?.id);
+    docRef.current = next; setDoc(next);
+  }, [session?.user?.id]);
   const hydrate = useCallback(next => {
     const c = next.content?.commerce;
     if (!c) throw new Error("NOT_COMMERCE_PROJECT");

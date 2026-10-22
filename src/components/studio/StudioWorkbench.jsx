@@ -4,15 +4,19 @@ import { imageCreditCost } from "@/lib/studio/image-pricing";
 
 import dynamic from "next/dynamic";
 import Image from "@/components/studio/AssetImage";
-import { memo, startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { lazy, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useSession } from "next-auth/react";
 import { useRecharge } from "@/components/billing/RechargeProvider";
 import { useLocale } from "next-intl";
 import Link from "@/components/ui/NavigationLink";
 import { ArrowUp, ArrowDown, ArrowUpRight, Plus, X, FolderOpen, Download, Save, Undo2, Redo2, MousePointer2, Hand, ImagePlus, Type, Layers3, Sparkles, WandSparkles, Expand, Crop, Eraser, Move, ScanText, Scissors, Video, MessageCircle, Zap, ShoppingBag, ChevronDown, Check, LoaderCircle, ZoomIn, Minus, Maximize, Trash2, Eye, EyeOff, Copy, Coins, Play, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { api, requestKey } from "@/lib/client-api";
+import ProjectManager from "./ProjectManager";
 import { uploadImage } from "@/lib/upload-image";
 import { mapWithConcurrency } from "@/lib/map-with-concurrency";
+import { useUploadFeedback } from "@/hooks/useUploadFeedback";
+import UploadFeedback from "@/components/ui/UploadFeedback";
+import DeferredTool, { ToolLoading } from "@/components/ui/DeferredTool";
 import { IMAGE_UPLOAD_MAX_BYTES } from "@/lib/image-upload-limits";
 import { clipboardImageFiles, imagePasteDestination } from "@/lib/studio/image-paste";
 import BrandLogo, { BrandMark } from "@/components/BrandLogo";
@@ -27,6 +31,7 @@ import { loadImage } from "@/lib/studio/image-processor";
 import { maskHash as hashMask } from "@/lib/studio/mask-hash";
 import { promptTitle } from "@/lib/studio/project-title";
 import { useStudioProject } from "./useStudioProject";
+import { useStudioJobs } from "./useStudioJobs";
 import StudioActivity from "./StudioActivity";
 import StudioTaskPopover from "./StudioTaskPopover";
 import StudioMessageHistory from "./StudioMessageHistory";
@@ -44,14 +49,14 @@ import Modal from "@/components/ui/Modal";
 import "./studio.css";
 
 const Canvas = dynamic(() => import("./StudioCanvas"), { ssr: false, loading: () => <div className="ms-loading"><LoaderCircle className="ms-spin" size={22} /></div> });
-const StudioImageViewer = dynamic(() => import("./StudioImageViewer"));
-const StudioExportDialog = dynamic(() => import("./StudioExportDialog"));
-const AssetLibrary = dynamic(() => import("./AssetLibrary"));
-const LayerSelectionTools = dynamic(() => import("./LayerSelectionTools"));
-const ToolPanel = dynamic(() => import("./ToolPanel"));
-const AdjustmentPanel = dynamic(() => import("./AdjustmentPanel"));
-const PromptOptimizer = dynamic(() => import("./PromptOptimizer"));
-const OcrResultPanel = dynamic(() => import("./OcrResultPanel"));
+const StudioImageViewer = lazy(() => import("./StudioImageViewer"));
+const StudioExportDialog = lazy(() => import("./StudioExportDialog"));
+const AssetLibrary = dynamic(() => import("./AssetLibrary"), { loading: ToolLoading });
+const LayerSelectionTools = dynamic(() => import("./LayerSelectionTools"), { loading: ToolLoading });
+const ToolPanel = dynamic(() => import("./ToolPanel"), { loading: ToolLoading });
+const AdjustmentPanel = dynamic(() => import("./AdjustmentPanel"), { loading: ToolLoading });
+const PromptOptimizer = dynamic(() => import("./PromptOptimizer"), { loading: ToolLoading });
+const OcrResultPanel = dynamic(() => import("./OcrResultPanel"), { loading: ToolLoading });
 const CANVAS_HANDLER_NAMES = ["onOpenOcr", "onUsePrompt", "onSelect", "onChange", "onFocusPoint", "onViewport", "onCamera", "onPreview", "onMoveRegions", "onMoveOffset", "onMovePreparing", "onMoveReady", "onMoveFailed", "onCrop", "onCropGrid", "onMaskChange", "onExpandPadding", "onZoom", "onUpload", "onError", "onChooseTool", "onCanvasChat", "onSaveToLibrary"];
 const EMPTY_CANVAS_ARRAY = Object.freeze([]);
 const EMPTY_CANVAS_OBJECT = Object.freeze({});
@@ -136,8 +141,9 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
       : "";
     setNotice((descriptions[code] || imageToolErrorMessage(code, zh)) + detail);
   }, [t, zh]);
-  const { draft, draftRef, update, save, saveState, ready, open: loadProject, create: createProject, flushLocal, reloadCloud, retryLoad } = useStudioProject({ userId: session?.user?.id, sessionLoading: status === "loading", initialDocument, initialPrompt, initialSize, initialCount, initialFixed, paused: busy, onError: error => notify(error) });
+  const { draft, draftRef, update, save, saveState, ready, switching, open: loadProject, create: createProject, flushLocal, reloadCloud, retryLoad } = useStudioProject({ userId: session?.user?.id, sessionLoading: status === "loading", initialDocument, initialPrompt, initialSize, initialCount, initialFixed, paused: busy, onError: error => notify(error) });
   const [selectionIds, setSelectionIds] = useState([]);
+  const uploadFeedback = useUploadFeedback(`${session?.user?.id || "guest"}:${draft.createKey}`);
   const [selectedId, setSelected] = useState(null), [tab, setTab] = useState(initialMode === "quick" ? "quick" : "chat"), [mode, setMode] = useState("select");
   const [toolId, setTool] = useState(null), [toolParams, setParams] = useState({ size: initialSize, scale: 2, padding: 256, dx: 100, dy: 0, duration: 5, editPadding: 0.25, numLayers: 4 });
   const params = useMemo(() => ({ ...toolParams, size: draft.composer?.size || toolParams.size }), [toolParams, draft.composer?.size]);
@@ -315,46 +321,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
     task.then(() => { if (resultLoads.current.get(job.id) === task) resultLoads.current.delete(job.id); }, () => {});
     return task;
   }, [update, draftRef, zh, t, notify, setPanning, setObjectSelection, setMobileChat]);
-  useEffect(() => {
-    if (!draft.id || !ready || !session?.user?.id) return;
-    const abort = new AbortController();
-    let timer, stream, streamActive = false, snapshotSignature = "", statusSignature = "";
-    function receive(rows) {
-      if (abort.signal.aborted || !Array.isArray(rows)) return;
-      const nextRows = rows.map(row => `${row.id}:${row.status}:${row.errorCode || ""}:${row.cancelRequested ? 1 : 0}:${row.updatedAt || ""}:${row.resultData?.assets?.map(asset => asset.id).join(",") || ""}:${row.resultData?.text?.length || 0}`).join("|");
-      if (snapshotSignature !== nextRows) {
-        snapshotSignature = nextRows;
-        startTransition(() => setJobs(rows));
-      }
-      rows.toReversed().forEach(job => { collectResult(job).catch(() => {}); });
-      const nextStatus = rows.map(row => `${row.id}:${row.status}`).join("|");
-      if (statusSignature !== nextStatus) {
-        statusSignature = nextStatus;
-        api("/api/usage", { signal: abort.signal }).then(value => { if (!abort.signal.aborted) setUsage(value); }).catch(() => {});
-      }
-      const active = rows.some(row => !TERMINAL.includes(row.status));
-      if (!active) { stream?.close(); streamActive = false; clearTimeout(timer); }
-      return active;
-    }
-    async function poll() {
-      try {
-        const rows = await api(`/api/studio/jobs?documentId=${encodeURIComponent(draft.id)}&recover=1`, { signal: abort.signal });
-        if (!receive(rows)) return;
-      } catch { if (abort.signal.aborted) return; }
-      if (!abort.signal.aborted && !streamActive) timer = setTimeout(poll, 4000);
-    }
-    async function start() {
-      try {
-        const rows = await api(`/api/studio/jobs?documentId=${encodeURIComponent(draft.id)}&recover=1`, { signal: abort.signal });
-        if (!receive(rows) || abort.signal.aborted) return;
-        stream = new EventSource(`/api/studio/events?documentId=${encodeURIComponent(draft.id)}`);
-        streamActive = true;
-        stream.addEventListener("jobs", event => { try { receive(JSON.parse(event.data)); } catch { /* a complete snapshot follows on reconnect */ } });
-        stream.onerror = () => { stream.close(); streamActive = false; clearTimeout(timer); if (!abort.signal.aborted) timer = setTimeout(poll, 2000); };
-      } catch { if (!abort.signal.aborted) timer = setTimeout(poll, 4000); }
-    }
-    start(); return () => { abort.abort(); stream?.close(); clearTimeout(timer); };
-  }, [draft.id, ready, projectLoad, session?.user?.id, collectResult, notify]);
+  useStudioJobs({ documentId: draft.id, ready, userId: session?.user?.id, revision: projectLoad, onJobs: setJobs, onResult: collectResult, onUsage: setUsage });
 
   async function uploadFile(file) {
     if (!session?.user) throw new Error("UNAUTHORIZED");
@@ -371,30 +338,39 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
     const limit = destination === "reference" ? Math.max(0, referenceLimit - references.length) : 12;
     if (!limit) { setNotice(t("参考图片数量已达上限，请先移除一张。", "Reference limit reached. Remove an image first.")); return; }
     const selectedFiles = Array.from(files).slice(0, limit);
+    const feedback = uploadFeedback.start(selectedFiles);
+    let firstUploaded = false;
     submission.current = true; setBusy(true);
     try {
-      const results = await mapWithConcurrency(selectedFiles, 2, file => uploadFile(file));
-      if (signal?.aborted || scope !== draftRef.current.createKey) return;
-      const uploaded = results.flatMap((result, index) => result.status === "fulfilled" ? [{ file: selectedFiles[index], asset: result.value }] : []);
-      if (uploaded.length) {
-        const layers = [...draftRef.current.layers];
-        let x = layers.length ? Math.max(40, ...layers.map(layer => layer.x + layer.width)) + 48 : 90;
-        const addedIds = [];
-        for (const { file, asset } of uploaded) {
+      const results = await mapWithConcurrency(selectedFiles, 2, async (file, index) => {
+        if (!feedback.isCurrent() || signal?.aborted || scope !== draftRef.current.createKey) return;
+        feedback.update(index, "uploading");
+        try {
+          const asset = await uploadFile(file);
+          if (!feedback.isCurrent() || signal?.aborted || scope !== draftRef.current.createKey) return;
+          const current = draftRef.current.layers;
+          const x = current.length ? Math.max(40, ...current.map(layer => layer.x + layer.width)) + 48 : 90;
           const size = scaleToFit(asset.width, asset.height, 480), id = requestKey();
-          layers.push({ id, assetId: asset.assetId, type: "image", name: file.name.slice(0, 150), x, y: 100, ...size, pixelWidth: asset.width, pixelHeight: asset.height, rotation: 0, opacity: 1, visible: true });
-          x += size.width + 48;
-          addedIds.push(id);
+          if (draftRef.current.nameSource === "fallback") update(d => ({ ...d, name: promptTitle(file.name.replace(/\.[^.]+$/, "")), nameSource: "upload" }));
+          commitLayers([...current, { id, assetId: asset.assetId, type: "image", name: file.name.slice(0, 150), x, y: 100, ...size, pixelWidth: asset.width, pixelHeight: asset.height, rotation: 0, opacity: 1, visible: true }]);
+          if (destination === "reference") {
+            const ids = draftRef.current.composer?.referenceIds?.length ? draftRef.current.composer.referenceIds : references.map(layer => layer.id);
+            setComposer({ referenceIds: [...ids, id].slice(0, referenceLimit) });
+          }
+          if (!firstUploaded) { firstUploaded = true; setSelected(id); setMobileChat(destination === "reference"); scheduleFit(150); }
+          feedback.update(index, "done");
+        } catch (error) {
+          feedback.update(index, "error", error.message);
+          throw error;
         }
-        if (draftRef.current.nameSource === "fallback") update(d => ({ ...d, name: promptTitle(uploaded[0].file.name.replace(/\.[^.]+$/, "")), nameSource: "upload" }));
-        commitLayers(layers);
-        setSelected(addedIds.at(-1));
-        if (destination === "reference") setComposer({ referenceIds: [...references.map(layer => layer.id), ...addedIds].slice(0, referenceLimit) });
-        setMobileChat(destination === "reference"); scheduleFit(150);
-      }
+      });
+      if (!feedback.isCurrent() || signal?.aborted || scope !== draftRef.current.createKey) return;
       const failure = results.find(result => result.status === "rejected");
       if (failure) notify(failure.reason);
-    } catch (e) { notify(e); } finally { submission.current = false; setBusy(false); if (fileInput.current) fileInput.current.value = ""; }
+    } catch (e) { notify(e); } finally {
+      if (signal?.aborted || scope !== draftRef.current.createKey) feedback.cancel();
+      submission.current = false; setBusy(false); if (fileInput.current) fileInput.current.value = "";
+    }
   }
   useEffect(() => {
     const paste = event => {
@@ -504,7 +480,9 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
     const job = await api("/api/studio/jobs", { method: "POST", key, body });
     assertCurrent();
     update(d => ({ ...d, pendingSubmit: null, jobs: [...new Set([...d.jobs, job.id])].slice(-100) }));
-    setJobs(current => [job, ...current.filter(j => j.id !== job.id)]); setPendingTask(null); return job;
+    setJobs(current => [job, ...current.filter(j => j.id !== job.id)]);
+    setProjectLoad(value => value + 1);
+    setPendingTask(null); return job;
     } catch (error) {
       if (error.code === "PRICE_CHANGED") {
         update(d => ({ ...d, pendingSubmit: null }));
@@ -615,6 +593,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
   async function openProject(id) {
     try {
       if (id === draftRef.current.id && saveState !== "conflict") { setProjects(null); return; }
+      setProjects(null);
       await loadProject(id); setOcr(null);
       history.current = { past: [], future: [] }; setHistoryCount({ past: 0, future: 0 }); setSelected(null); setTool(null); setProjects(null); setJobs([]); setPendingTask(null);
       setMode("select"); setObjectSelection(null); canvas.current?.clearMask(); setProjectLoad(value => value + 1);
@@ -622,6 +601,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
   }
   async function newProject() {
     try {
+      setProjects(null);
       await createProject(); setOcr(null);
       setSelected(null); setJobs([]); setPendingTask(null); setResultStates({}); setTool(null); setObjectSelection(null); setMode("select");
       setPrompt(""); setProjects(null); canvas.current?.clearMask();
@@ -714,7 +694,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
     <header className="ms-topbar">
       <Link href="/" className="ms-brand" aria-label="来塔绘梦"><BrandLogo /></Link>
       <span className="ms-top-divider" />
-      <button className="ms-project-trigger" disabled={busy} onClick={async () => { try { setProjects(await api("/api/studio/documents")); } catch (e) { notify(e); } }}><FolderOpen size={17} /><span>{draft.name === "Untitled" ? t("新建项目", "New project") : draft.name}<small>{saveState === "saving" ? t("正在保存…", "Saving…") : saveState === "retrying" ? t("连接波动，正在重试保存…", "Reconnecting, retrying save…") : saveState === "saved" ? t("已保存到云端", "Saved to cloud") : saveState === "error" ? (typeof navigator !== "undefined" && !navigator.onLine ? t("离线，修改已保存在此设备", "Offline — saved on this device") : t("保存失败，点击保存重试", "Save failed — retry")) : saveState === "conflict" ? t("版本冲突，本地修改已保留", "Conflict — local edits preserved") : saveState === "loading" ? t("正在打开…", "Opening…") : t("待同步到云端", "Waiting to sync")}</small></span><ChevronDown size={14} /></button>
+      <button className="ms-project-trigger" disabled={busy || !ready} onClick={() => setProjects(true)}><FolderOpen size={17} /><span>{draft.name === "Untitled" ? t("新建项目", "New project") : draft.name}<small>{saveState === "saving" ? t("正在保存…", "Saving…") : saveState === "retrying" ? t("连接波动，正在重试保存…", "Reconnecting, retrying save…") : saveState === "saved" ? t("已保存到云端", "Saved to cloud") : saveState === "error" ? (typeof navigator !== "undefined" && !navigator.onLine ? t("离线，修改已保存在此设备", "Offline — saved on this device") : t("保存失败，点击保存重试", "Save failed — retry")) : saveState === "conflict" ? t("版本冲突，本地修改已保留", "Conflict — local edits preserved") : saveState === "loading" ? t("正在打开…", "Opening…") : t("待同步到云端", "Waiting to sync")}</small></span><ChevronDown size={14} /></button>
       <RecentProjects zh={zh} onChoose={openProject} disabled={busy || !ready} userId={session?.user?.id} />
       <button className="ms-icon ms-new" title={t("新建项目", "New project")} disabled={busy || !ready} onClick={newProject}><Plus size={19} /></button>
       <div className="ms-top-actions">
@@ -730,6 +710,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
         <div className="ms-tabs" role="tablist">
           {[["chat", MessageCircle, t("对话", "Chat")]].map(([id, Icon, label]) => <button role="tab" aria-selected={tab === id} key={id} onClick={() => setTab(id)}><Icon size={15} />{label}</button>)}<Link href="/commerce" className="ms-commerce-tab"><ShoppingBag size={15} />{t("电商套图", "Commerce")}</Link>
         </div>
+        <UploadFeedback items={uploadFeedback.items} onDismiss={uploadFeedback.dismiss} zh={zh} />
         <div className="ms-conversation">
           <StudioMessageHistory key={draft.id || draft.createKey} documentId={draft.id} messages={draft.messages} zh={zh} onError={notify} onImage={showMessageImage} />
           {!draft.messages.length && !jobs.some(job => job.origin === "chat") && pendingTask?.origin !== "chat" && <div className="ms-welcome">
@@ -751,7 +732,8 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
         </div>
       </aside>
       <main className="ms-canvas-space">
-        {!ready && saveState === "loading" && <div className="ms-project-loading" role="status"><span><LoaderCircle className="ms-spin" size={16} />{t("正在打开项目…", "Opening project…")}</span></div>}
+        <UploadFeedback items={uploadFeedback.items} onDismiss={uploadFeedback.dismiss} zh={zh} floating />
+        {!ready && (switching || saveState === "loading") && <div className="ms-project-loading" role="status"><span><LoaderCircle className="ms-spin" size={16} />{switching && saveState !== "loading" ? t("正在保存当前修改，随后切换项目…", "Saving changes before switching projects…") : t("正在打开项目…", "Opening project…")}</span></div>}
         {saveState === "load-error" && <div className="ms-save-conflict" role="alert"><span>{t("项目暂时无法打开，已有草稿仍保留在此设备", "The project could not be opened. Existing drafts remain on this device.")}</span><button onClick={retryLoad}>{t("重试打开", "Retry opening")}</button></div>}
         <div className="ms-canvas-import"><button type="button" className="ms-button" disabled={busy || !ready} onClick={() => chooseLocalFiles()}><ImagePlus size={17} />{t("本地上传", "Upload from computer")}</button><button type="button" className="ms-button" disabled={busy || !ready} onClick={() => setLibraryOpen(true)}><FolderOpen size={17} />{t("素材库", "Asset library")}</button></div>
         {saveState === "conflict" && <div className="ms-save-conflict" role="alert"><span>{t("云端项目已更新，本地修改已保留", "The cloud project changed. Your local edits are preserved.")}</span><button onClick={() => save(true).catch(notify)}>{t("另存为新项目", "Save as new project")}</button><button onClick={() => reloadCloud().catch(notify)}>{t("打开云端版本", "Open cloud version")}</button></div>}
@@ -795,10 +777,10 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
     <button className="ms-mobile-toggle" onClick={() => setMobileChat(!mobileChat)}>{mobileChat ? <Layers3 size={17} /> : <PanelLeftOpen size={17} />}{mobileChat ? t("画布", "Canvas") : t("对话", "Chat")}</button>
     <input className="ms-file-input" ref={fileInput} type="file" accept="image/png,image/jpeg,image/webp" multiple aria-label={t("上传图片文件", "Upload image files")} onChange={e => upload(e.target.files, uploadDestination.current)} />
     {notice && <div className="ms-notice" role="alert"><span>{notice}</span><button className="ms-icon" title={t("关闭提示", "Dismiss")} onClick={() => setNotice(null)}><X size={16} /></button></div>}
-    {exportOpen && <StudioExportDialog zh={zh} selected={selected && selected.type !== "video"} onClose={() => setExportOpen(false)} onExport={options => canvas.current.exportImage({ ...options, name: draft.name })} />}
-    {projects && <Modal className="ms-project-modal" label={t("项目管理", "Projects")} onClose={() => setProjects(null)}><div className="ms-panel-title">{t("我的项目", "Your projects")}<button className="ms-icon" title={t("关闭", "Close")} onClick={() => setProjects(null)}><X size={18} /></button></div><label>{t("当前项目名称", "Current project name")}<input value={draft.name} maxLength={100} onChange={e => update(d => ({ ...d, name: e.target.value, nameSource: "manual" }))} /></label><div className="ms-project-buttons"><button className="ms-button ms-primary" onClick={() => save().then(() => setProjects(null)).catch(notify)}><Save size={15} />{t("保存项目", "Save project")}</button><button className="ms-button" onClick={() => save(true).then(() => setProjects(null)).catch(notify)}>{t("另存为", "Save as new")}</button></div><div className="ms-project-list">{projects.length ? projects.map(p => <button key={p.id} onClick={() => openProject(p.id)}><FolderOpen size={20} /><span>{p.name}<small>{new Date(p.updatedAt).toLocaleString(locale)}</small></span><ArrowUpRight size={15} /></button>) : <p>{t("还没有云端项目。保存你的第一个作品。", "No cloud projects yet. Save your first creation.")}</p>}</div></Modal>}
+    {exportOpen && <DeferredTool label={t("导出作品", "Export artwork")} onClose={() => setExportOpen(false)}><StudioExportDialog zh={zh} selected={selected && selected.type !== "video"} onClose={() => setExportOpen(false)} onExport={options => canvas.current.exportImage({ ...options, name: draft.name })} /></DeferredTool>}
+    {projects && <ProjectManager key={session?.user?.id || "guest"} userId={session?.user?.id} locale={locale} draft={draft} ready={ready} update={update} save={save} onChoose={openProject} onClose={() => setProjects(null)} onError={notify} />}
     {libraryOpen && <Modal label={t("选择素材", "Choose assets")} className="ml-picker-dialog" onClose={() => setLibraryOpen(false)}><button className="ms-icon" title={t("关闭", "Close")} onClick={() => setLibraryOpen(false)}><X size={18} /></button><AssetLibrary maxSelection={libraryOpen === "tool" ? Math.max(0, 2 - toolReferences.length) : libraryOpen === "reference" ? Math.max(0, referenceLimit - references.length) : 10} onSelect={importLibrary} /></Modal>}
-    {imagePreview && <StudioImageViewer assetId={imagePreview} initialImage={previewSeed?.assetId === imagePreview ? previewSeed.image : null} layers={draft.layers.filter(layer => layer.type === "image")} zh={zh} onSelect={setImagePreview} onClose={() => setImagePreview(null)} />}
+    {imagePreview && <DeferredTool label={t("图片预览", "Image preview")} onClose={() => setImagePreview(null)}><StudioImageViewer assetId={imagePreview} initialImage={previewSeed?.assetId === imagePreview ? previewSeed.image : null} layers={draft.layers.filter(layer => layer.type === "image")} zh={zh} onSelect={setImagePreview} onClose={() => setImagePreview(null)} /></DeferredTool>}
     {preview && <Modal className="ms-video-modal" label={t("视频预览", "Video preview")} onClose={() => setPreview(null)}><button className="ms-icon" title={t("关闭视频", "Close video")} onClick={() => setPreview(null)}><X size={20} /></button><video src={imageUrl(preview)} controls autoPlay playsInline /></Modal>}
   </div>;
 }

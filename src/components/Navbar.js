@@ -22,7 +22,7 @@ export default function Navbar() {
   const zh = useLocale() === "zh";
   const path = usePathname();
   const [open, setOpen] = useState(false);
-  if (path === "/admin" || path.startsWith("/admin/") || path === "/" || path === "/projects" || path === "/assets" || path === "/commerce" || path === "/explore" || path.startsWith("/explore/") || path === "/studio-v2") return null;
+  if (path === "/admin" || path.startsWith("/admin/") || path === "/" || path === "/projects" || path === "/assets" || path === "/commerce" || path === "/creation" || path === "/explore" || path.startsWith("/explore/") || path === "/studio-v2") return null;
   const links = [
     { href: "/pricing", label: tn("pricing"), icon: CreditCard },
   ];

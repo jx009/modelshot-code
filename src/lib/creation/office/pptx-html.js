@@ -1,0 +1,141 @@
+import { randomUUID } from "node:crypto";
+import { officePackage, officeFail } from "./package.js";
+import { children, descendants, attribute, textContent } from "../references/office-xml.js";
+import { htmlDocumentSchema } from "../html/document.js";
+
+const EMU = 914400, PX = 96;
+const esc = value => String(value).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const attr = (node, name) => node ? attribute(node, name) : undefined;
+const child = (node, ns, name) => children(node, ns, name)[0];
+const id = () => `ppt_${randomUUID().replaceAll("-", "")}`;
+const px = value => Math.round(Number(value || 0) / EMU * PX * 100) / 100;
+const color = node => {
+  if (!node) return null;
+  const rgb = descendants(node, "a", "srgbClr")[0];
+  const scheme = descendants(node, "a", "schemeClr")[0];
+  const value = attr(rgb, "val") || ({ lt1: "FFFFFF", dk1: "000000", accent1: "4472C4", accent2: "ED7D31", accent3: "A5A5A5", accent4: "FFC000", accent5: "5B9BD5", accent6: "70AD47" })[attr(scheme, "val")];
+  return /^[0-9a-f]{6}$/i.test(value || "") ? `#${value}` : null;
+};
+function shapeHtml(shape, rels, pkg, media, warnings) {
+  const sp = child(shape, "p", "sp") || child(shape, "p", "graphicFrame") || child(shape, "p", "pic") || child(shape, "p", "cxnSp");
+  if (!sp) return "";
+  if (sp.local === "graphicFrame") {
+    const graphic = child(sp, "a", "graphic"), graphicData = child(graphic, "a", "graphicData");
+    const uri = attr(graphicData, "uri") || "";
+    if (uri.endsWith("/table")) {
+      const table = child(graphicData, "a", "tbl");
+      const xfrm = child(sp, "p", "xfrm"), off = child(xfrm, "a", "off"), ext = child(xfrm, "a", "ext");
+      if (!table || !ext) { warnings.add("PPTX_TABLE_RETAINED_IN_ORIGINAL"); return ""; }
+      const x = px(attr(off, "x")), y = px(attr(off, "y")), width = Math.max(1, px(attr(ext, "cx"))), height = Math.max(1, px(attr(ext, "cy")));
+      const rows = children(table, "a", "tr").map(row => `<tr>${children(row, "a", "tc").map(cell => {
+        const properties = child(cell, "a", "tcPr"), gridSpan = Math.max(1, Number(attr(properties, "gridSpan") || 1)), rowSpan = Math.max(1, Number(attr(properties, "rowSpan") || 1));
+        if (attr(properties, "hMerge") === "1" || attr(properties, "vMerge") === "1") warnings.add("PPTX_TABLE_MERGE_SIMPLIFIED");
+        const paras = children(cell, "a", "txBody").flatMap(body => children(body, "a", "p"));
+        const text = paras.map(paragraph => descendants(paragraph, "a", "t").map(textContent).join("")).map(esc).join("<br>");
+        const fill = color(child(properties, "a", "solidFill"));
+        return `<td${gridSpan > 1 ? ` colspan="${gridSpan}"` : ""}${rowSpan > 1 ? ` rowspan="${rowSpan}"` : ""}${fill ? ` style="background:${fill}"` : ""}>${text}</td>`;
+      }).join("")}</tr>`).join("");
+      const markup = `<table data-node-id="${id()}" style="position:absolute;left:${x}px;top:${y}px;width:${width}px;height:${height}px;border-collapse:collapse;table-layout:fixed"><tbody>${rows}</tbody></table>`;
+      if (children(table, "a", "tr").some(row => children(row, "a", "tc").some(cell => children(child(cell, "a", "txBody"), "a", "p").some(paragraph => descendants(paragraph, "a", "rPr").length > 1)))) warnings.add("PPTX_TABLE_TEXT_FORMATTING_SIMPLIFIED");
+      return markup;
+    }
+    if (uri.endsWith("/chart")) {
+      const relationId = attribute(child(graphicData, "c", "chart"), "id", "r"), relation = rels.get(relationId);
+      if (!relation || relation.external || !relation.target.startsWith("ppt/charts/")) { warnings.add("PPTX_CHART_RELATION_UNSUPPORTED"); return ""; }
+      const chartXml = pkg.xml(relation.target), root = chartXml.root, plot = descendants(root, "c", "plotArea")[0];
+      const typeNode = (plot?.children || []).find(node => ["barChart", "lineChart", "pieChart"].includes(node.local) && node.uri?.includes("chart"));
+      if (!typeNode) { warnings.add("PPTX_CHART_TYPE_UNSUPPORTED"); return ""; }
+      const type = ({ barChart: "bar", lineChart: "line", pieChart: "pie" })[typeNode.local];
+      const pointValues = (container, cacheName) => {
+        const cache = descendants(container, "c", cacheName)[0];
+        return cache ? descendants(cache, "c", "pt").map(point => {
+          const index = Number(attr(point, "idx")), value = descendants(point, "c", "v")[0];
+          return Number.isInteger(index) && index >= 0 && value ? [index, textContent(value)] : null;
+        }).filter(Boolean) : [];
+      };
+      const series = children(typeNode, "c", "ser").map(item => {
+        const nameNode = descendants(item, "c", "tx")[0], nameValue = descendants(nameNode, "c", "v")[0];
+        const categories = descendants(item, "c", "cat")[0], values = descendants(item, "c", "val")[0];
+        const labels = pointValues(categories, "strCache").length ? pointValues(categories, "strCache") : pointValues(categories, "numCache");
+        const numbers = pointValues(values, "numCache");
+        const read = (points, numeric = false) => points.sort((a, b) => a[0] - b[0]).map(([, value]) => numeric ? Number(value) : value);
+        const seriesColor = color(descendants(item, "a", "solidFill")[0]) || "#4472C4";
+        return { name: nameValue ? textContent(nameValue) : "Series", labels: read(labels), values: read(numbers, true), color: seriesColor };
+      });
+      const labels = series[0]?.labels || [], chartSeries = series.map(item => ({ name: item.name, values: item.values, color: item.color }));
+      if (!labels.length || labels.length > 100 || !chartSeries.length || chartSeries.length > 10 || chartSeries.some(item => item.values.length !== labels.length) || type === "pie" && (chartSeries.length !== 1 || chartSeries[0].values.some(value => value < 0) || chartSeries[0].values.every(value => value === 0))) {
+        warnings.add("PPTX_CHART_DATA_UNSUPPORTED"); return "";
+      }
+      const chartTitle = descendants(root, "c", "title")[0], title = descendants(chartTitle, "a", "t").map(textContent).join("").slice(0, 160);
+      const data = JSON.stringify({ type, title, labels, series: chartSeries });
+      const xfrm = child(sp, "p", "xfrm"), off = child(xfrm, "a", "off"), ext = child(xfrm, "a", "ext");
+      const x = px(attr(off, "x")), y = px(attr(off, "y")), width = Math.max(1, px(attr(ext, "cx"))), height = Math.max(1, px(attr(ext, "cy")));
+      warnings.add("PPTX_CHART_STYLE_SIMPLIFIED");
+      return `<div data-node-id="${id()}" data-chart="${esc(data)}" style="position:absolute;left:${x}px;top:${y}px;width:${width}px;height:${height}px"></div>`;
+    }
+    warnings.add("PPTX_GRAPHIC_RETAINED_IN_ORIGINAL");
+    return "";
+  }
+  const nv = child(sp, "p", "nvSpPr") || child(sp, "p", "nvPicPr") || child(sp, "p", "nvGraphicFramePr") || child(sp, "p", "nvCxnSpPr");
+  const name = attr(child(nv, "p", "cNvPr"), "name") || "";
+  const xfrm = child(child(sp, "p", "spPr") || child(sp, "p", "xfrm"), "a", "xfrm") || child(sp, "p", "xfrm");
+  const off = child(xfrm, "a", "off"), ext = child(xfrm, "a", "ext");
+  const x = px(attr(off, "x")), y = px(attr(off, "y")), width = Math.max(1, px(attr(ext, "cx"))), height = Math.max(1, px(attr(ext, "cy")));
+  const rotation = Number(attr(xfrm, "rot") || 0) / 60000;
+  const transform = `position:absolute;left:${x}px;top:${y}px;width:${width}px;height:${height}px;box-sizing:border-box;overflow:hidden;${rotation ? `transform:rotate(${rotation}deg);transform-origin:center;` : ""}`;
+  const blip = descendants(sp, "a", "blip")[0];
+  if (blip) {
+    const relationId = attribute(blip, "embed", "r"), relation = rels.get(relationId);
+    if (relation && !relation.external && /\/media\//.test(relation.target)) {
+      if (media.length >= 16) { warnings.add("PPTX_MEDIA_LIMIT"); return ""; }
+      const bytes = pkg.read(relation.target), mediaId = id();
+      media.push({ id: mediaId, bytes });
+      return `<img data-node-id="${mediaId}" alt="${esc(name)}" src="asset:${mediaId}" style="${transform}object-fit:contain">`;
+    }
+    warnings.add("PPTX_IMAGE_RELATION_UNSUPPORTED"); return "";
+  }
+  const paragraphs = descendants(sp, "a", "p");
+  const text = paragraphs.map(paragraph => descendants(paragraph, "a", "t").map(textContent).join("")).join("\n");
+  if (!text.trim()) {
+    const fill = color(child(child(sp, "p", "spPr"), "a", "solidFill"));
+    const geometry = child(child(sp, "p", "spPr"), "a", "prstGeom");
+    if (geometry || fill) return `<div data-node-id="${id()}" aria-label="${esc(name)}" style="${transform}background:${fill || "transparent"};border:1px solid #404040;${attr(geometry, "prst") === "ellipse" ? "border-radius:50%;" : ""}"></div>`;
+    return "";
+  }
+  if (paragraphs.length > 1 || descendants(sp, "a", "rPr").length > 1) warnings.add("PPTX_TEXT_FORMATTING_SIMPLIFIED");
+  const run = descendants(sp, "a", "rPr")[0], font = descendants(sp, "a", "latin")[0];
+  const size = Math.min(512, Math.max(6, Number(attr(run, "sz") || 1800) / 100));
+  const fill = color(child(run, "a", "solidFill")) || "#202124";
+  const align = attr(paragraphs[0], "algn");
+  const textStyle = `font:${attr(run, "b") === "1" ? "bold " : ""}${size}px ${JSON.stringify(attr(font, "typeface") || "Arial")},sans-serif;color:${fill};text-align:${({ ctr: "center", r: "right", l: "left" })[align] || "left"};white-space:pre-wrap;overflow-wrap:anywhere;`;
+  return `<div data-node-id="${id()}" style="${transform}${textStyle}">${esc(text)}</div>`;
+}
+
+export function importPresentationHtml(bytes, { title = "Imported presentation" } = {}) {
+  const pkg = officePackage(bytes);
+  const presentationPath = "ppt/presentation.xml";
+  if (!pkg.has(presentationPath)) officeFail("OFFICE_PRESENTATION_INVALID");
+  const presentation = pkg.xml(presentationPath), slideRefs = descendants(presentation.root, "p", "sldId"), rels = pkg.relationships(presentationPath);
+  const dimensions = child(presentation.root, "p", "sldSz"), width = Math.max(1, Math.min(8192, px(attr(dimensions, "cx")))), height = Math.max(1, Math.min(8192, px(attr(dimensions, "cy"))));
+  if (!slideRefs.length || slideRefs.length > 100) officeFail("OFFICE_SLIDE_LIMIT");
+  const warnings = new Set(), media = [], pages = [];
+  for (const [index, reference] of slideRefs.entries()) {
+    const relationId = attribute(reference, "id", "r"), relation = rels.get(relationId);
+    if (!relation || relation.external || !relation.target.startsWith("ppt/slides/")) officeFail("OFFICE_RELATIONSHIP_INVALID");
+    const xml = pkg.xml(relation.target), slideRels = pkg.relationships(relation.target), tree = child(xml.root, "p", "cSld"), shapeTree = child(tree, "p", "spTree");
+    const objects = (shapeTree?.children || []).filter(node => ["sp", "pic", "graphicFrame", "cxnSp"].includes(node.local) && node.uri?.includes("presentationml"));
+    if ((shapeTree?.children || []).some(node => node.local === "grpSp")) warnings.add("PPTX_GROUPED_SHAPES_RETAINED_IN_ORIGINAL");
+    const body = objects.map(node => shapeHtml({ children: [node] }, slideRels, pkg, media, warnings)).join("");
+    const notesRelation = [...slideRels.values()].find(item => !item.external && item.type.endsWith("/notesSlide"));
+    const notesXml = notesRelation ? pkg.xml(notesRelation.target) : null;
+    const notesShape = notesXml && descendants(notesXml.root, "p", "sp").find(item => descendants(child(item, "p", "nvSpPr"), "p", "ph").some(placeholder => attr(placeholder, "type") === "body"));
+    const notes = notesShape ? descendants(notesShape, "a", "p").map(paragraph => descendants(paragraph, "a", "t").map(textContent).join("")).join("\n") : "";
+    if (notesXml && !notesShape && descendants(notesXml.root, "a", "t").length) warnings.add("PPTX_NOTES_LAYOUT_UNSUPPORTED");
+    const background = color(child(child(tree, "p", "bg"), "p", "bgPr")) || "#ffffff";
+    const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="vimg-width" content="${width}"><meta name="vimg-height" content="${height}"><style>html,body{margin:0;width:${width}px;height:${height}px;background:${background};font-family:Arial,"Microsoft YaHei",sans-serif}body{position:relative;overflow:hidden}</style></head><body>${body}</body></html>`;
+    pages.push({ id: id(), title: `Slide ${index + 1}`, width, height, html, notes, hidden: attr(xml.root, "show") === "0" });
+  }
+  const document = htmlDocumentSchema.parse({ schemaVersion: 3, format: "html-slides", kind: "slides", title: title.replace(/\.pptx$/i, "").slice(0, 160) || "Imported presentation",
+    theme: { name: "Imported", primary: "#4472C4", accent: "#ED7D31", background: "#FFFFFF", fontFamily: "sans" }, pages, metadata: { importedFrom: "pptx", warnings: [...warnings] }, templates: [] });
+  return { content: document, media, warnings: [...warnings] };
+}

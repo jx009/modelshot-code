@@ -1,0 +1,34 @@
+import { z } from "zod";
+import { layoutId } from "./layout.js";
+import { documentLanguageInputSchema } from "./document-language.js";
+import { sheetAddressesSchema } from "./sheet.js";
+import { webId } from "./web.js";
+import { nativeSheetTargetSchema } from "./native-sheet-edit.js";
+import { nativeDocumentTargetSchema } from "./native-document-edit.js";
+import { posterImageRequestSchema } from "./poster-image.js";
+
+const layoutContentRunSchema = z.object({
+  kind: z.enum(["poster", "slides"]), prompt: z.string().trim().min(1).max(12000), locale: z.enum(["zh", "en"]).default("zh"),
+  maxCredits: z.number().int().min(0).max(200000), assetIds: z.array(layoutId).max(8).default([]), referenceIds: z.array(layoutId).max(8).default([]),
+  width: z.number().int().min(1).max(8192), height: z.number().int().min(1).max(8192),
+  pageCount: z.number().int().min(1).max(100).default(1),
+  image: posterImageRequestSchema.optional(),
+  target: z.object({ artifactId: layoutId, baseRevision: z.number().int().positive(), pageId: layoutId, nodeIds: z.array(layoutId).max(100).default([]) }).strict().optional(),
+}).strict().superRefine((input, ctx) => {
+  if (input.width * input.height > 40000000) ctx.addIssue({ code: "custom", message: "CANVAS_TOO_LARGE" });
+  if (input.kind === "poster" && input.pageCount !== 1) ctx.addIssue({ code: "custom", message: "POSTER_REQUIRES_ONE_PAGE" });
+  if (input.image && (input.kind !== "poster" || input.target)) ctx.addIssue({ code: "custom", message: "POSTER_IMAGE_REQUIRES_NEW_POSTER" });
+  if (input.image && input.assetIds.length > 7) ctx.addIssue({ code: "custom", message: "POSTER_IMAGE_ASSET_LIMIT" });
+});
+const documentEdit = documentLanguageInputSchema.options.find(schema => schema.shape.purpose.value === "document.edit");
+export const documentContentRunSchema = z.object({
+  kind: z.literal("document"), prompt: z.string().trim().min(1).max(12000), locale: z.enum(["zh", "en"]).default("zh"),
+  maxCredits: z.number().int().min(0).max(200000), assetIds: z.array(layoutId).max(8).default([]), referenceIds: z.array(layoutId).max(8).default([]),
+  sectionCount: z.number().int().min(1).max(50).default(6), audience: z.string().max(500).default(""),
+  target: z.union([documentEdit.pick({ artifactId: true, baseRevision: true, sectionId: true, blockIds: true, range: true }), nativeDocumentTargetSchema]).optional(),
+}).strict();
+const sheetEdit = z.union([z.object({ artifactId: layoutId, baseRevision: z.number().int().positive(), sheetId: layoutId, addresses: sheetAddressesSchema }).strict(), nativeSheetTargetSchema]);
+export const sheetContentRunSchema = z.object({ kind: z.literal("sheet"), prompt: z.string().trim().min(1).max(12000), locale: z.enum(["zh", "en"]).default("zh"), maxCredits: z.number().int().min(0).max(200000), assetIds: z.array(layoutId).max(8).default([]), referenceIds: z.array(layoutId).max(8).default([]), sheetCount: z.number().int().min(1).max(5).default(1), targetRows: z.number().int().min(1).max(100).default(20), target: sheetEdit.optional() }).strict();
+const webEdit = z.object({ artifactId: webId, baseRevision: z.number().int().positive(), fileIds: z.array(webId).min(1).max(20), paths: z.array(z.string().min(1).max(240)).min(1).max(20) }).strict();
+export const webContentRunSchema = z.object({ kind: z.literal("web"), prompt: z.string().trim().min(1).max(12000), locale: z.enum(["zh", "en"]).default("zh"), maxCredits: z.number().int().min(0).max(200000), assetIds: z.array(layoutId).max(8).default([]), referenceIds: z.array(layoutId).max(8).default([]), pageCount: z.number().int().min(1).max(20).default(1), target: webEdit.optional() }).strict();
+export const contentRunSchema = z.union([layoutContentRunSchema, documentContentRunSchema, sheetContentRunSchema, webContentRunSchema]);

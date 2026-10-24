@@ -8,6 +8,7 @@ import { settleReservation } from "../billing/ledger.js";
 import { providerAdapter } from "./providers.js";
 import { ACTIVE, TERMINAL, LIMITS, batchState } from "./contracts.js";
 import { IMAGE_REQUEST_TIMEOUT_MS } from "../../ai/image-request.js";
+import { enqueueRun } from "../creation/events.js";
 
 export function safeProviderError(error, fallback) {
   if (error instanceof AppError) return error.code;
@@ -86,6 +87,7 @@ export async function finishOutput(id, fence, { asset, resultData, errorCode, ca
       for (const kind of ["delivery", "qa"]) await tx.outboxEvent.upsert({ where: { businessKey: `${kind}:${id}:initial` }, create: { businessKey: `${kind}:${id}:initial`, kind, entityId: id }, update: {} });
     }
     await aggregateBatch(tx, output.batchJobId);
+    if (output.snapshot?.creationRunId) await enqueueRun(tx, output.snapshot.creationRunId, `output:${id}:${fence}`);
     return true;
   });
 }
@@ -102,8 +104,9 @@ export async function deferOutput(claim, errorCode, retry, db) {
       nextAttemptAt: availableAt,
     } });
     await tx.generationAttempt.update({ where: { id: claim.attempt.id }, data: { state: retry ? "retryable" : "reconciling", errorCode } });
-    await tx.outboxEvent.upsert({ where: { businessKey: `generate:${output.id}:${output.fence}` },
-      create: { businessKey: `generate:${output.id}:${output.fence}`, kind: "generate", entityId: output.id, availableAt }, update: {} });
+    const dispatchKind = output.executionQueue === "creation-language" ? "creation-language" : "generate";
+    await tx.outboxEvent.upsert({ where: { businessKey: `${dispatchKind}:${output.id}:${output.fence}` },
+      create: { businessKey: `${dispatchKind}:${output.id}:${output.fence}`, kind: dispatchKind, entityId: output.id, availableAt }, update: {} });
   });
 }
 
@@ -116,6 +119,7 @@ export async function cancelOutput(userId, id, db = prisma) {
       await settleReservation(tx, output, "release");
       await tx.tryOn.update({ where: { id }, data: { status: "cancelled", cancelRequestedAt: new Date(), leaseUntil: null, fence: { increment: 1 }, qaStatus: "skipped", exportStatus: "skipped" } });
       await aggregateBatch(tx, output.batchJobId);
+      if (output.snapshot?.creationRunId) await enqueueRun(tx, output.snapshot.creationRunId, `cancel-output:${id}`);
       return { status: "cancelled", cancelled: true };
     }
     await tx.tryOn.update({ where: { id }, data: { cancelRequestedAt: new Date() } });
@@ -125,7 +129,14 @@ export async function cancelOutput(userId, id, db = prisma) {
 }
 
 export async function executeOutput(id, { db = prisma, store = objectStorage(), adapterFactory = providerAdapter, timeoutMs = IMAGE_REQUEST_TIMEOUT_MS } = {}) {
-  const kind = await db.tryOn.findUnique({ where: { id }, select: { snapshot: true } });
+  const kind = await db.tryOn.findUnique({ where: { id }, select: { snapshot: true, executionQueue: true } });
+  // A legacy/replayed dispatch may reach the old queue. Redirect without
+  // starting a language request in an image or payment worker slot.
+  if (kind?.executionQueue === "creation-language") {
+    await db.outboxEvent.upsert({ where: { businessKey: `creation-language:${id}:redirect` },
+      create: { businessKey: `creation-language:${id}:redirect`, kind: "creation-language", entityId: id }, update: {} });
+    return;
+  }
   if (kind?.snapshot?.kind === "language") {
     const { recoverLanguageCall } = await import("../studio/language.js");
     return recoverLanguageCall(id, db);
@@ -218,11 +229,11 @@ export async function executeOutput(id, { db = prisma, store = objectStorage(), 
 }
 
 export async function recoverLeases(db = prisma) {
-  const expired = await db.tryOn.findMany({ where: { status: { in: ACTIVE }, OR: [{ leaseUntil: { lt: new Date() } }, { leaseUntil: null }] }, select: { id: true, fence: true }, take: 200 });
+  const expired = await db.tryOn.findMany({ where: { status: { in: ACTIVE }, OR: [{ leaseUntil: { lt: new Date() } }, { leaseUntil: null }] }, select: { id: true, fence: true, executionQueue: true }, take: 200 });
   for (const row of expired) {
     // A new durable dispatch record also repairs Redis data loss after earlier delivery.
     const key = `recovery:${row.id}:${row.fence}:${Math.floor(Date.now() / 60_000)}`;
-    await db.outboxEvent.createMany({ data: [{ id: randomUUID(), businessKey: key, kind: "generate", entityId: row.id }], skipDuplicates: true });
+    await db.outboxEvent.createMany({ data: [{ id: randomUUID(), businessKey: key, kind: row.executionQueue === "creation-language" ? "creation-language" : "generate", entityId: row.id }], skipDuplicates: true });
   }
   return expired.length;
 }

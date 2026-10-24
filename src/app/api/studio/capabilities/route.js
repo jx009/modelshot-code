@@ -14,7 +14,13 @@ export async function GET(request) {
     await requireUser();
     authorized = performance.now();
     const query = new URL(request.url).searchParams;
-    return finish(Response.json(await capabilities(undefined, undefined, query.get("imageProvider") || undefined, { imageOnly: query.get("scope") === "images" })));
+    const imageOnly = query.get("scope") === "images";
+    const caps = await capabilities(undefined, undefined, query.get("imageProvider") || undefined, { imageOnly });
+    const creationEnabled = process.env.CREATION_RUNS_ENABLED === "true" && process.env.CREATION_WORKSPACE_ENABLED === "true" && caps.planningAvailable;
+    return finish(Response.json({ ...caps, creationTypes: {
+      poster: Boolean(creationEnabled && process.env.CREATION_POSTER_ENABLED === "true"),
+      slides: Boolean(creationEnabled && process.env.CREATION_SLIDES_ENABLED === "true"),
+    }, ...(!imageOnly ? { creationRunsAvailable: process.env.CREATION_RUNS_ENABLED === "true" } : {}) }));
   }
   catch (error) { return finish(errorResponse(error)); }
 }

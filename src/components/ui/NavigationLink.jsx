@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useLinkStatus } from "next/link";
 import { useAuth } from "@/components/auth/AuthProvider";
-import { Link } from "@/i18n/navigation";
+import { Link, useRouter } from "@/i18n/navigation";
+import { deferNavigation, hasNavigationGuard } from "@/lib/navigation-guard";
 import { useNavigationFeedback } from "./NavigationFeedback";
 import { useLocalNavigation } from "./LocalNavigation";
 
@@ -22,6 +23,7 @@ function Feedback({ onPending, navigationId, finish }) {
 // alone stops at a loading boundary; prefetching every card floods HTTP/1.
 export default function NavigationLink({ children, onNavigate, onClick, onMouseEnter, onMouseLeave, onFocus, onBlur, onTouchStart, onTouchEnd, onTouchCancel, onPrefetch, prefetch = "intent", prefetchDelay = 150, ...props }) {
   const auth = useAuth();
+  const router = useRouter();
   const feedback = useNavigationFeedback();
   const localNavigation = useLocalNavigation();
   const local = localNavigation?.supports(props.href, props.locale);
@@ -100,6 +102,19 @@ export default function NavigationLink({ children, onNavigate, onClick, onMouseE
     if (clientNavigation && event.currentTarget.href === window.location.href && !feedback?.isNavigating()) { event.preventDefault(); return; }
     if (clientNavigation && pending) { event.preventDefault(); return; }
     if (!clientNavigation) return;
+    if (hasNavigationGuard()) {
+      onNavigate?.({ preventDefault() { event.preventDefault(); } });
+      if (event.defaultPrevented) return;
+      event.preventDefault();
+      const href = `${destination.pathname}${destination.search}${destination.hash}`;
+      deferNavigation(() => {
+        if (!feedback?.isNavigating() && localNavigation?.visit(href, { replace: Boolean(props.replace), scroll: props.scroll, locale: props.locale })) return;
+        const id = feedback?.begin(destination.href);
+        try { router[props.replace ? "replace" : "push"](props.href, { scroll: props.scroll, ...(props.locale ? { locale: props.locale } : {}) }); }
+        catch (error) { if (id) feedback?.finish(id); throw error; }
+      });
+      return;
+    }
     if (local && !feedback?.isNavigating()) {
       onNavigate?.({ preventDefault() { event.preventDefault(); } });
       if (event.defaultPrevented || localNavigation.navigate(event)) return;

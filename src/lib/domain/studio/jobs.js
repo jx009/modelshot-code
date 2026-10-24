@@ -12,9 +12,48 @@ import { imageSizeChoice, imageSizeError } from "../../studio/image-size.js";
 import { imageCreditCost, billingResolution } from "../../studio/image-pricing.js";
 import { upscaleInputError } from "../../studio/upscale.js";
 import { GUIDED_EDIT_TOOLS, editOutputSize, editTargetSize } from "../../studio/edit-geometry.js";
+import { nextImageSource } from "../../creation/contracts/runs.js";
+import { POSTER_IMAGE_TOOL, posterImageStepSchema } from "../../creation/contracts/poster-image.js";
+import { lockRun } from "../creation/runs.js";
+import { appendRunEvent } from "../creation/events.js";
 
 export async function submitStudioJob(userId, input, key, db = prisma, deps = {}) {
   const data = jobSchema.parse(input);
+  return submitAdmittedJob(userId, data, key, db, deps);
+}
+
+// The public studio schema continues to require a real owned canvas document.
+// Only this server entry can admit a document-free poster image, from a locked,
+// persisted step. Both paths use the same pricing, ledger, queue and executor.
+export async function submitCreationPosterImageStep(userId, runId, stepId, sequence, { db = prisma, config, capabilities: caps, now = new Date() } = {}) {
+  return db.$transaction(async tx => {
+    const run = await lockRun(tx, userId, runId), step = run.steps.find(item => item.id === stepId);
+    if (run.kind !== "poster" || !run.projectId || step?.tool !== POSTER_IMAGE_TOOL) throw new AppError("CREATION_STEP_CHANGED", 409);
+    const input = posterImageStepSchema.parse(step.params);
+    if (step.jobId) {
+      const old = await tx.tryOn.findFirst({ where: { id: step.jobId, userId } });
+      if (old?.snapshot?.kind !== "studio" || old.snapshot.tool !== "generate" || old.snapshot.creationRunId !== run.id || old.snapshot.creationStepId !== step.id || old.snapshot.creationAttempt !== step.attempt) throw new AppError("CREATION_STEP_CHANGED", 409);
+      return presentJob(old);
+    }
+    if (run.eventSequence !== sequence || run.cancelRequestedAt || !["queued", "running"].includes(run.status) || step.status !== "ready" || step.position !== 0) throw new AppError("CREATION_STEP_CHANGED", 409);
+    if (!await tx.creationProject.findFirst({ where: { id: run.projectId, userId, deletedAt: null }, select: { id: true } })) throw new AppError("CREATION_PROJECT_NOT_FOUND", 404);
+    const worker = await tx.serviceHeartbeat.findUnique({ where: { id: "worker" } });
+    if (!worker || worker.updatedAt <= new Date(+now - 90000)) throw new AppError("CREATION_WORKER_UNAVAILABLE", 503);
+    const selected = config || await studioConfig(db, input.provider, "image", "generate", { pinned: Boolean(input.provider), skipPreview: true });
+    if ((input.provider || null) !== (selected.imageProvider || null)) throw new AppError("PROVIDER_CONFIGURATION_CHANGED", 409);
+    const output = await submitAdmittedJob(userId, { origin: "chat", tool: "generate", params: input.params, provider: input.provider,
+      referenceAssetIds: input.referenceAssetIds, expectedCost: step.expectedCost }, `creation-poster-${step.id}-${step.attempt}`, db,
+    { config: selected, capabilities: caps, transaction: tx }, { run, step });
+    await tx.creationStepAttempt.create({ data: { stepId: step.id, number: step.attempt, jobId: output.id, cost: output.cost } });
+    await tx.creationStep.update({ where: { id: step.id }, data: { jobId: output.id, status: "queued", errorCode: null } });
+    await appendRunEvent(tx, run.id, "step.queued", { stepId: step.id, jobId: output.id, cost: output.cost }, {
+      status: "running", errorCode: null, committedCredits: { increment: output.cost }, nextCheckAt: new Date(+now + 30000),
+    });
+    return output;
+  }, { timeout: 15000 });
+}
+
+async function submitAdmittedJob(userId, data, key, db, deps, posterContext = null) {
   if (!/^[a-zA-Z0-9_-]{16,128}$/.test(key || "")) throw new AppError("IDEMPOTENCY_KEY_REQUIRED");
   const config = deps.config || await studioConfig(db, data.provider, "image", data.tool, { skipPreview: Boolean(data.maskId) });
   if (data.tool === "inpaint" && config.imageKind === "dashscope" && data.referenceAssetIds?.length > 1) throw new AppError("TOO_MANY_EDIT_REFERENCES", 422);
@@ -23,7 +62,7 @@ export async function submitStudioJob(userId, input, key, db = prisma, deps = {}
   // A replay may follow an unrelated document save; the immutable source and
   // actual operation still must match. Document version is an admission check.
   const digest = digestJson({ ...data, documentVersion: undefined, expectedCost: undefined });
-  return db.$transaction(async tx => {
+  const submit = async tx => {
     const user = await lockUser(tx, userId);
     const old = await tx.tryOn.findUnique({ where: { requestId } });
     if (old) {
@@ -36,9 +75,27 @@ export async function submitStudioJob(userId, input, key, db = prisma, deps = {}
     // mask exists, an outage of the preview service must not block image editing.
     if (!tool?.available && !(tool?.reason === "SEGMENTATION_NOT_CONFIGURED" && data.maskId)) throw new AppError(tool?.reason || "TOOL_UNAVAILABLE", 503);
     if (data.expectedCost !== undefined && data.expectedCost !== cost) throw new AppError("PRICE_CHANGED", 409);
-    const document = await tx.studioDocument.findFirst({ where: { id: data.documentId, userId, deletedAt: null } });
-    if (!document) throw new AppError("DOCUMENT_NOT_FOUND", 404);
-    if (document.version !== data.documentVersion) throw new AppError("DOCUMENT_VERSION_CONFLICT", 409);
+    const document = posterContext ? null : await tx.studioDocument.findFirst({ where: { id: data.documentId, userId, deletedAt: null } });
+    if (!posterContext && !document) throw new AppError("DOCUMENT_NOT_FOUND", 404);
+    // Only the server scheduler can supply this context. Verify it against the
+    // persisted run; request JSON cannot opt out of canvas admission checks.
+    let creation;
+    if (posterContext) {
+      const { run, step } = posterContext;
+      if (run.committedCredits + cost > run.maxCredits) throw new AppError("CREATION_BUDGET_EXCEEDED", 409);
+      creation = { creationRunId: run.id, creationStepId: step.id, creationAttempt: step.attempt };
+    } else if (deps.creationStepId) {
+      const step = await tx.creationStep.findUnique({ where: { id: deps.creationStepId } });
+      const run = step && await tx.creationRun.findUnique({ where: { id: step.runId } });
+      if (!run || run.userId !== userId || run.documentId !== data.documentId || run.cancelRequestedAt || !["queued", "running"].includes(run.status) || step.status !== "ready" || step.jobId) throw new AppError("CREATION_STEP_CHANGED", 409);
+      const previous = step.position ? await tx.creationStep.findUnique({ where: { runId_position: { runId: run.id, position: step.position - 1 } } }) : null;
+      const previousJob = previous?.jobId ? await tx.tryOn.findUnique({ where: { id: previous.jobId } }) : null;
+      if (step.position && (previous?.status !== "succeeded" || previousJob?.status !== "succeeded")) throw new AppError("CREATION_DEPENDENCY_PENDING", 409);
+      const source = nextImageSource(run, previous, previousJob);
+      if (step.tool !== data.tool || digestJson(step.params) !== digestJson(data.params) || step.expectedCost !== cost || (run.input.provider || undefined) !== data.provider || data.assetId !== (source?.assetId || undefined) || data.targetId !== (source?.targetId || undefined)) throw new AppError("CREATION_STEP_CHANGED", 409);
+      if (run.committedCredits + cost > run.maxCredits) throw new AppError("CREATION_BUDGET_EXCEEDED", 409);
+      creation = { creationRunId: run.id, creationStepId: step.id, creationAttempt: step.attempt };
+    } else if (document.version !== data.documentVersion) throw new AppError("DOCUMENT_VERSION_CONFLICT", 409);
     if (data.sectionId) {
       const commerce = document.content.commerce;
       const section = commerce?.sections.find(s => s.id === data.sectionId);
@@ -48,8 +105,8 @@ export async function submitStudioJob(userId, input, key, db = prisma, deps = {}
       const asset = await ownedAsset(userId, ref, tx);
       if (!["image/png", "image/jpeg", "image/webp"].includes(asset.contentType)) throw new AppError("INVALID_SOURCE");
     }
-    const target = document.content.layers.find(l => l.id === data.targetId);
-    if (getTool(data.tool).source && (!target || target.assetId !== data.assetId || target.type !== "image")) throw new AppError("TARGET_CHANGED", 409);
+    const target = document?.content.layers.find(l => l.id === data.targetId);
+    if (!creation && getTool(data.tool).source && (!target || target.assetId !== data.assetId || target.type !== "image")) throw new AppError("TARGET_CHANGED", 409);
     const inputAsset = data.assetId ? await ownedAsset(userId, data.assetId, tx) : null;
     if (inputAsset && !["image/png", "image/jpeg", "image/webp"].includes(inputAsset.contentType)) throw new AppError("INVALID_SOURCE");
     if (data.tool === "upscale") {
@@ -80,7 +137,7 @@ export async function submitStudioJob(userId, input, key, db = prisma, deps = {}
     if (await tx.tryOn.count({ where: { userId, status: { in: ACTIVE } } }) >= LIMITS.activePerUser) throw new AppError("USER_QUEUE_FULL", 429);
     const channel = ["split", "ocr", "upscale"].includes(data.tool) ? config[`${data.tool}Channel`] : getTool(data.tool).dependency === "vision" ? { name: config.plannerProvider, kind: config.plannerKind, model: config.chatModel, baseURL: config.visionBaseURL } : null;
     const output = await tx.tryOn.create({ data: { id: randomUUID(), userId, requestId, personImage: "", clothesImage: inputAsset ? `/api/assets/${inputAsset.id}` : "", prompt: data.params.prompt, provider: data.tool === "video" ? "ark" : channel?.name || config.imageProvider || "studio", creditCost: cost, billingType: "credits",
-      snapshot: { kind: "studio", ...data, provider: channel?.name || config.imageProvider, providerKind: channel?.kind || config.imageKind || "openai", providerBaseURL: (channel ? channel.baseURL : config.baseURL) || null, digest, checksum: inputAsset?.checksum || null, price: cost, priceVersion: "studio-base-plus-resolution-v3", pricing: { mode: tool.resolutionSurcharges ? "base-plus-resolution" : "fixed", basePrice: tool.cost, resolutionSurcharge: cost - tool.cost, resolution: billingResolution(tool, data.params.size), requestedResolution: imageSizeChoice(data.params.size).resolution, unitPrice: cost }, imageModel: channel?.model || config.imageModel, chatModel: config.chatModel || null, videoModel: config.videoModel || null } } });
+      snapshot: { kind: "studio", ...data, ...creation, provider: channel?.name || config.imageProvider, providerKind: channel?.kind || config.imageKind || "openai", providerBaseURL: (channel ? channel.baseURL : config.baseURL) || null, digest, checksum: inputAsset?.checksum || null, price: cost, priceVersion: "studio-base-plus-resolution-v3", pricing: { mode: tool.resolutionSurcharges ? "base-plus-resolution" : "fixed", basePrice: tool.cost, resolutionSurcharge: cost - tool.cost, resolution: billingResolution(tool, data.params.size), requestedResolution: imageSizeChoice(data.params.size).resolution, unitPrice: cost }, imageModel: channel?.model || config.imageModel, chatModel: config.chatModel || null, videoModel: config.videoModel || null } } });
     if (cost) {
       const allocations = await reserveCreditLots(tx, user, cost);
       await tx.creditReservation.create({ data: { userId, tryOnId: output.id, channel: "credits", amount: cost, allocations } });
@@ -88,7 +145,8 @@ export async function submitStudioJob(userId, input, key, db = prisma, deps = {}
     for (const assetId of new Set([data.assetId, data.maskId, data.moveBundle?.objectAssetId, data.moveBundle?.holeAssetId, ...(data.referenceAssetIds || [])].filter(Boolean))) await tx.assetReference.create({ data: { assetId, entityId: output.id, kind: "generation_input" } });
     await tx.outboxEvent.create({ data: { businessKey: `generate:${output.id}:0`, kind: "generate", entityId: output.id } });
     return presentJob(output);
-  }, { timeout: 30000 });
+  };
+  return deps.transaction ? submit(deps.transaction) : db.$transaction(submit, { timeout: 30000 });
 }
 
 export function presentJob(row) {

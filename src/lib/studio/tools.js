@@ -68,7 +68,7 @@ export const contentSchema = z.object({
   messages: z.array(z.object({ id, role: z.enum(["user", "assistant"]), text: z.string().max(8000), assetId: id.optional() }).strict()).max(20000),
   jobs: z.array(id).max(100),
   appliedJobs: z.array(id).max(20000).default([]),
-  plan: z.object({ id, summary: z.string().max(1000), steps: z.array(z.object({ tool: z.enum(TOOLS.map(t => t.id)), params: paramsSchema, explanation: z.string().max(500) }).strict()).min(1).max(4), credits: z.number().int().nonnegative(), attempt: z.number().int().min(0).max(100).default(0), index: z.number().int().min(0).max(4), targetId: id.nullable(), activeJob: id.nullable(), status: z.enum(["ready", "running", "paused", "complete"]) }).strict().nullable().optional(),
+  plan: z.object({ id, serverRunId: id.optional(), summary: z.string().max(1000), steps: z.array(z.object({ tool: z.enum(TOOLS.map(t => t.id)), params: paramsSchema, explanation: z.string().max(500) }).strict()).min(1).max(4), credits: z.number().int().nonnegative(), attempt: z.number().int().min(0).max(100).default(0), index: z.number().int().min(0).max(4), targetId: id.nullable(), activeJob: id.nullable(), status: z.enum(["ready", "running", "paused", "complete"]) }).strict().nullable().optional(),
 }).strict().superRefine((content, ctx) => {
   if (new Set(content.layers.map(l => l.id)).size !== content.layers.length) ctx.addIssue({ code: "custom", message: "DUPLICATE_LAYER" });
   for (const l of content.layers) if (l.type !== "text" && !l.assetId) ctx.addIssue({ code: "custom", message: "ASSET_REQUIRED" });

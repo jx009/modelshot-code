@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { Queue, Worker } from "bullmq";
 import { prisma } from "../lib/prisma.js";
-import { queueConnection, workQueue, QUEUE_NAME, MIRROR_QUEUE_NAME, GENERATION_QUEUE_NAME, dispatchOutbox } from "../lib/infra/queue/index.js";
+import { queueConnection, workQueue, QUEUE_NAME, MIRROR_QUEUE_NAME, GENERATION_QUEUE_NAME, CREATION_QUEUE_NAME, CREATION_LANGUAGE_QUEUE_NAME, CREATION_EXPORT_QUEUE_NAME, dispatchOutbox } from "../lib/infra/queue/index.js";
 import { getExecutionConfig, executionDefaults } from "../lib/infra/execution-config.js";
 import { imageTransfers, imageProcessing } from "../lib/infra/concurrency.js";
 import { processCosAsset, processCosRemoval } from "../lib/domain/assets/cos-delivery.js";
@@ -23,6 +23,9 @@ const connection = queueConnection();
 const queue = workQueue(connection);
 const mirrorQueue = new Queue(MIRROR_QUEUE_NAME, { connection });
 const generationQueue = new Queue(GENERATION_QUEUE_NAME, { connection });
+const creationQueue = new Queue(CREATION_QUEUE_NAME, { connection });
+const languageQueue = new Queue(CREATION_LANGUAGE_QUEUE_NAME, { connection });
+const exportQueue = new Queue(CREATION_EXPORT_QUEUE_NAME, { connection });
 const initialLimits = await getExecutionConfig().catch(() => executionDefaults());
 imageTransfers.setLimit(initialLimits.transferConcurrency);
 imageProcessing.setLimit(initialLimits.processingConcurrency);
@@ -76,7 +79,7 @@ async function tick() {
       await recoverWork(prisma);
     }
     if (iteration % 1800 === 1) { await cleanupStorage(); await cleanupDirectUploads(); }
-    await dispatchOutbox(prisma, queue, 500, mirrorQueue, generationQueue);
+    await dispatchOutbox(prisma, queue, 500, mirrorQueue, generationQueue, creationQueue, languageQueue, exportQueue);
     await prisma.serviceHeartbeat.upsert({ where: { id: "worker" }, create: { id: "worker", details: { queue: QUEUE_NAME } }, update: { updatedAt: new Date() } });
   } catch { console.error(JSON.stringify({ code: "DISPATCH_RETRY_PENDING" })); }
   finally { dispatching = false; }
@@ -105,6 +108,9 @@ async function shutdown() {
     await queue.close();
     await mirrorQueue.close();
     await generationQueue.close();
+    await creationQueue.close();
+    await languageQueue.close();
+    await exportQueue.close();
     await connection.quit();
     await prisma.$disconnect();
     console.log(JSON.stringify({ code: "WORKER_STOPPED", durationMs: Date.now() - started }));

@@ -11,6 +11,7 @@ import { previewUrl } from "@/lib/studio/image-url";
 import Modal from "@/components/ui/Modal";
 import { useDebouncedValue } from "@/components/ui/useDebouncedValue";
 import { usePageVisible } from "@/components/ui/LocalNavigation";
+import { projectHref, projectIdentity, isCreationProject } from "@/lib/creation/project-links";
 import "./projects.css";
 
 export default function CreativeProjects() {
@@ -28,7 +29,7 @@ function ProjectLibrary({ userId, status }) {
   const [removing, setRemoving] = useState(null), [saving, setSaving] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const debouncedSearch = useDebouncedValue(search);
-  const query = new URLSearchParams({ paged: "1", q: debouncedSearch, kind: filter }).toString();
+  const query = new URLSearchParams({ paged: "1", scope: "creation", q: debouncedSearch, kind: filter }).toString();
   const activeQuery = useRef(query);
   const displayedQuery = useRef(null), readRevision = useRef(0), mutation = useRef(false);
   useEffect(() => { activeQuery.current = query; }, [query]);
@@ -83,13 +84,13 @@ function ProjectLibrary({ userId, status }) {
   }, [menu, visible]);
   async function rename(row) {
     if (!name.trim()) return;
-    await mutate(row, { method: "PATCH", body: { name: name.trim(), version: row.version } }, name.trim());
+    await mutate(row, { method: "PATCH", body: { name: name.trim(), ...(isCreationProject(row) ? { updatedAt: row.updatedAt } : { version: row.version }) } }, name.trim());
   }
   async function more() {
     if (!cursor || loading || mutation.current) return;
     const revision = readRevision.current;
     setLoading(true);
-    try { const data = await readProjectList(userId, `${query}&cursor=${encodeURIComponent(cursor)}`); if (activeQuery.current !== query || revision !== readRevision.current) return; setRows(current => [...(current || []), ...data.items.filter(item => !current?.some(row => row.id === item.id))]); setCursor(data.nextCursor); }
+    try { const data = await readProjectList(userId, `${query}&cursor=${encodeURIComponent(cursor)}`); if (activeQuery.current !== query || revision !== readRevision.current) return; setRows(current => [...(current || []), ...data.items.filter(item => !current?.some(row => projectIdentity(row) === projectIdentity(item)))]); setCursor(data.nextCursor); }
     catch (err) { if (activeQuery.current === query && revision === readRevision.current) setError(err.message); }
     finally { if (activeQuery.current === query && revision === readRevision.current) setLoading(false); }
   }
@@ -103,21 +104,21 @@ function ProjectLibrary({ userId, status }) {
     if (mutation.current) return;
     mutation.current = true;
     readRevision.current++;
-    const originalIndex = rows.findIndex(item => item.id === row.id);
+    const originalIndex = rows.findIndex(item => projectIdentity(item) === projectIdentity(row));
     invalidateProjectLists(userId);
     setSaving(true); setError(""); setEditing(null); setRemoving(null);
-    setRows(current => nextName === undefined ? current.filter(item => item.id !== row.id) : current.map(item => item.id === row.id ? { ...item, name: nextName } : item));
+    setRows(current => nextName === undefined ? current.filter(item => projectIdentity(item) !== projectIdentity(row)) : current.map(item => projectIdentity(item) === projectIdentity(row) ? { ...item, name: nextName } : item));
     try {
-      const result = await api(`/api/studio/documents/${row.id}`, { ...options, timeoutMs: 15000 });
-      if (activeQuery.current === query && nextName !== undefined) setRows(current => current?.map(item => item.id === row.id ? { ...item, ...result } : item) ?? null);
+      const result = await api(`${isCreationProject(row) ? "/api/creation/projects" : "/api/studio/documents"}/${row.id}`, { ...options, timeoutMs: 15000 });
+      if (activeQuery.current === query && nextName !== undefined) setRows(current => current?.map(item => projectIdentity(item) === projectIdentity(row) ? { ...item, ...result } : item) ?? null);
     } catch (err) {
       if (activeQuery.current === query) {
         setRows(current => {
           if (!current) return current;
-          if (current.some(item => item.id === row.id)) return current.map(item => item.id === row.id ? row : item);
+          if (current.some(item => projectIdentity(item) === projectIdentity(row))) return current.map(item => projectIdentity(item) === projectIdentity(row) ? row : item);
           const restored = [...current]; restored.splice(Math.max(0, originalIndex), 0, row); return restored;
         });
-        setError(err.code === "DOCUMENT_VERSION_CONFLICT" ? zh ? "项目已在其他页面更新，请刷新后重试" : "Project changed elsewhere. Refresh and retry." : err.message);
+        setError(err.code === "DOCUMENT_VERSION_CONFLICT" ? zh ? "项目已在其他页面更新，请刷新后重试" : "Project changed elsewhere. Refresh and retry." : err.code === "CREATION_PROJECT_BUSY" ? zh ? "该项目仍有创作任务，请先完成或取消任务后再删除。" : "Finish or cancel the project's active task before deleting it." : err.message);
       }
     } finally {
       invalidateProjectLists(userId);
@@ -128,16 +129,16 @@ function ProjectLibrary({ userId, status }) {
   }
   return <><section className="mp-library">
     <header className="mp-heading"><h1>{zh ? "我的项目" : "My projects"}</h1><label className="mp-search"><Search size={18} /><input type="search" aria-label={zh ? "搜索项目" : "Search projects"} placeholder={zh ? "搜索项目" : "Search projects"} value={search} onChange={event => setSearch(event.target.value)} />{search && <button aria-label={zh ? "清空搜索" : "Clear search"} onClick={() => setSearch("")}><X size={15} /></button>}</label></header>
-    <div className="mp-filters">{[["all", "全部", "All"], ["canvas", "自由画布", "Canvas"], ["commerce", "电商套图", "Commerce"], ["trash", "已删除", "Deleted"]].map(([id, cn, en]) => <button key={id} aria-pressed={filter === id} onClick={() => setFilter(id)}>{zh ? cn : en}</button>)}</div>
+    <div className="mp-filters">{[["all", "全部", "All"], ["canvas", "自由画布", "Canvas"], ["commerce", "电商套图", "Commerce"], ["poster", "海报", "Posters"], ["slides", "演示文稿", "Presentations"], ["trash", "已删除", "Deleted"]].map(([id, cn, en]) => <button key={id} aria-pressed={filter === id} onClick={() => setFilter(id)}>{zh ? cn : en}</button>)}</div>
     {error && <p role="alert" className="mp-error">{error}</p>}
     {saving && <p role="status">{zh ? "正在同步项目修改…" : "Syncing project changes…"}</p>}
     {status === "unauthenticated" ? <div className="mp-empty"><FolderOpen size={36} /><p>{zh ? "登录后查看和继续你的项目" : "Sign in to continue your projects"}</p><Link href="/login?callbackUrl=/projects">{zh ? "登录" : "Sign in"}</Link></div> : <>
       <div className="mp-grid" aria-busy={loading}>
         <Link href="/studio-v2?new=1" className="mp-new"><span><Plus size={28} /></span><strong>{zh ? "新建项目" : "New project"}</strong></Link>
-        {rows === null ? Array.from({ length: 5 }, (_, i) => <div className="mp-skeleton" key={i} />) : rows.map(row => <article className="mp-card" key={row.id}>
-          <Link className="mp-cover" href={`/${row.kind === "commerce" ? "commerce" : "studio-v2"}?document=${row.id}`} aria-label={row.name} aria-disabled={filter === "trash"} onClick={event => { if (filter === "trash") event.preventDefault(); }}>{row.coverAssetId ? <Image unoptimized src={previewUrl(row.coverAssetId, 640)} alt="" fill sizes="(max-width:600px) 90vw, 320px" /> : <FolderOpen size={40} strokeWidth={1} />}</Link>
-          <div className="mp-card-footer"><div>{editing === row.id ? <form onSubmit={event => { event.preventDefault(); rename(row); }}><input autoFocus aria-label={zh ? "项目名称" : "Project name"} maxLength={100} value={name} disabled={saving} onChange={event => setName(event.target.value)} onKeyDown={event => { if (event.key === "Escape") setEditing(null); }} /><button disabled={saving || !name.trim()}>{zh ? "保存" : "Save"}</button><button type="button" disabled={saving} onClick={() => setEditing(null)}>{zh ? "取消" : "Cancel"}</button></form> : <h2 title={row.name}>{row.name}</h2>}<time dateTime={row.updatedAt}>{zh ? "更新于 " : "Updated "}{new Date(row.updatedAt).toLocaleString(locale, { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}</time></div>
-            <div className="mp-card-menu">{filter === "trash" ? <button disabled={saving} onClick={() => restore(row)}>{zh ? "恢复" : "Restore"}</button> : <button aria-label={zh ? `项目菜单：${row.name}` : `Project menu: ${row.name}`} aria-expanded={menu === row.id} onClick={() => setMenu(menu === row.id ? null : row.id)}><MoreHorizontal size={20} /></button>}{menu === row.id && <div><button onClick={() => { setEditing(row.id); setName(row.name); setMenu(null); }}><Pencil size={14} />{zh ? "重命名" : "Rename"}</button><button onClick={() => { setRemoving(row); setMenu(null); }}><Trash2 size={14} />{zh ? "删除" : "Delete"}</button></div>}</div>
+        {rows === null ? Array.from({ length: 5 }, (_, i) => <div className="mp-skeleton" key={i} />) : rows.map(row => <article className="mp-card" key={projectIdentity(row)}>
+          <Link className="mp-cover" href={projectHref(row)} aria-label={row.name} aria-disabled={filter === "trash"} onClick={event => { if (filter === "trash") event.preventDefault(); }}>{row.coverAssetId ? <Image unoptimized src={previewUrl(row.coverAssetId, 640)} alt="" fill sizes="(max-width:600px) 90vw, 320px" /> : <FolderOpen size={40} strokeWidth={1} />}</Link>
+          <div className="mp-card-footer"><div>{editing === projectIdentity(row) ? <form onSubmit={event => { event.preventDefault(); rename(row); }}><input autoFocus aria-label={zh ? "项目名称" : "Project name"} maxLength={100} value={name} disabled={saving} onChange={event => setName(event.target.value)} onKeyDown={event => { if (event.key === "Escape") setEditing(null); }} /><button disabled={saving || !name.trim()}>{zh ? "保存" : "Save"}</button><button type="button" disabled={saving} onClick={() => setEditing(null)}>{zh ? "取消" : "Cancel"}</button></form> : <h2 title={row.name}>{row.name}</h2>}<time dateTime={row.updatedAt}>{zh ? "更新于 " : "Updated "}{new Date(row.updatedAt).toLocaleString(locale, { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}</time></div>
+            <div className="mp-card-menu">{filter === "trash" ? <button disabled={saving} onClick={() => restore(row)}>{zh ? "恢复" : "Restore"}</button> : <button aria-label={zh ? `项目菜单：${row.name}` : `Project menu: ${row.name}`} aria-expanded={menu === projectIdentity(row)} onClick={() => setMenu(menu === projectIdentity(row) ? null : projectIdentity(row))}><MoreHorizontal size={20} /></button>}{menu === projectIdentity(row) && <div><button onClick={() => { setEditing(projectIdentity(row)); setName(row.name); setMenu(null); }}><Pencil size={14} />{zh ? "重命名" : "Rename"}</button><button onClick={() => { setRemoving(row); setMenu(null); }}><Trash2 size={14} />{zh ? "删除" : "Delete"}</button></div>}</div>
           </div>
         </article>)}
       </div>

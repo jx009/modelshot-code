@@ -1,0 +1,9 @@
+{
+  "name": "modelshot-creation-raster-runtime",
+  "private": true,
+  "version": "1.0.0",
+  "dependencies": {
+    "skia-canvas": "4.0.0",
+    "playwright-core": "1.63.0"
+  }
+}

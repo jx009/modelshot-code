@@ -1,0 +1,25 @@
+# Build only in a dedicated, sufficiently provisioned CI environment. The base
+# must be the validated application image containing the matching Prisma client.
+ARG CREATION_APP_IMAGE
+FROM ${CREATION_APP_IMAGE}
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends fontconfig fonts-noto-core fonts-noto-cjk fonts-noto-mono \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /opt/creation-raster
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/creation-browsers
+COPY docker/creation-export/package.json docker/creation-export/package-lock.json ./
+RUN npm ci --omit=dev --no-audit --no-fund \
+    && test ! -e /app/node_modules/skia-canvas \
+    && ln -s /opt/creation-raster/node_modules/skia-canvas /app/node_modules/skia-canvas \
+    && test ! -e /app/node_modules/playwright-core \
+    && ln -s /opt/creation-raster/node_modules/playwright-core /app/node_modules/playwright-core \
+    && node node_modules/playwright-core/cli.js install --with-deps chromium \
+    && chmod -R a+rX /opt/creation-browsers
+WORKDIR /app
+# A source update here lets this image accompany the same application release;
+# deployment must still use a base with the required schema/client and packages.
+COPY --chown=node:node src ./src
+ENV CREATION_RASTER_RUNTIME=true CREATION_HTML_RUNTIME=true SKIA_CANVAS_THREADS=1
+USER node
+ENTRYPOINT ["node"]
+CMD ["src/workers/creation-export-main.mjs"]

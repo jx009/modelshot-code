@@ -4,7 +4,8 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import CreativePages, { CreativePageContent } from "../../src/components/discover/CreativePages.jsx";
 import NavigationLink from "../../src/components/ui/NavigationLink.jsx";
-import { usePageVisible } from "../../src/components/ui/LocalNavigation.jsx";
+import { usePageVisible, useLocalNavigation } from "../../src/components/ui/LocalNavigation.jsx";
+import { registerNavigationGuard } from "../../src/lib/navigation-guard.js";
 import { writeGalleryCache } from "../../src/lib/inspiration/client-cache.js";
 
 const mocks = vi.hoisted(() => ({ navigate: vi.fn(), user: "user-a", pathname: null }));
@@ -27,7 +28,7 @@ vi.mock("next/navigation", () => ({ usePathname: () => {
 } }));
 vi.mock("../../src/components/discover/InspirationDetail", () => ({ default: ({ item }) => <h1>详情：{item.title}</h1> }));
 vi.mock("../../src/components/discover/InspirationDetailImage", () => ({ default: ({ item }) => <span>{item.title}预览</span> }));
-vi.mock("@/i18n/navigation", () => ({ Link: ({ href, locale = "zh", prefetch, children, onClick, onNavigate, ...props }) => <a {...props} href={`/${locale}${href}`} data-prefetch={String(prefetch)} onClick={event => {
+vi.mock("@/i18n/navigation", () => ({ useRouter: () => ({ push: mocks.navigate, replace: mocks.navigate }), Link: ({ href, locale = "zh", prefetch, children, onClick, onNavigate, ...props }) => <a {...props} href={`/${locale}${href}`} data-prefetch={String(prefetch)} onClick={event => {
   onClick?.(event);
   if (!event.defaultPrevented && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey && !event.currentTarget.target && !event.currentTarget.hasAttribute("download")) {
     onNavigate?.({ preventDefault: () => event.preventDefault() });
@@ -77,6 +78,19 @@ beforeEach(() => {
   vi.spyOn(window, "scrollTo").mockImplementation(() => {});
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+
+test("defers a direct local visit until saving completes, without changing the history early", async () => {
+  let release; const prepare = vi.fn(() => new Promise(resolve => { release = resolve; })), remove = registerNavigationGuard({ prepare });
+  function Direct() { const navigation = useLocalNavigation(); return <button onClick={() => navigation.visit("/assets")}>Direct visit</button>; }
+  try {
+    render(<CreativePages><Direct /><CreativePageContent /></CreativePages>);
+    fireEvent.click(screen.getByText("Direct visit"));
+    expect(window.location.pathname).toBe("/zh"); expect(prepare).toHaveBeenCalledOnce(); expect(window.history.pushState).not.toHaveBeenCalled();
+    await act(async () => release());
+    await screen.findByRole("heading", { name: "素材内容" });
+    expect(window.history.pushState).toHaveBeenCalledTimes(1); expect(mocks.navigate).not.toHaveBeenCalled();
+  } finally { remove(); }
+});
 
 test("opens a cached inspiration on the first click and preserves filters on return", async () => {
   const item = { id: "public-one", title: "已加载的灵感", enabled: true };

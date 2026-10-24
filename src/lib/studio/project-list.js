@@ -34,7 +34,8 @@ export function readProjectList(userId, query = "paged=1", { signal } = {}) {
     const controller = new AbortController();
     entry = { userId, controller, readers: 0, pending: true };
     entries.set(key, entry);
-    entry.promise = api(`/api/studio/documents?${normalized.query}`, { signal: controller.signal }).then(data => {
+    const endpoint = new URLSearchParams(normalized.query).get("scope") === "creation" ? "/api/creation/project-library" : "/api/studio/documents";
+    entry.promise = api(`${endpoint}?${normalized.query}`, { signal: controller.signal }).then(data => {
       if (entries.get(key) === entry && !controller.signal.aborted) {
         entry.data = data;
         entry.savedAt = Date.now();

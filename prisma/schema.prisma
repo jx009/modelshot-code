@@ -44,7 +44,11 @@ model User {
   credits       Int       @default(0)
   sessionVersion Int     @default(0)
   assets Asset[]
+  creationReferences CreationReference[]
   studioDocuments StudioDocument[]
+  creationRuns CreationRun[]
+  creationProjects CreationProject[]
+  webPublications WebPublication[]
   libraryItems LibraryItem[]
   libraryCategories LibraryCategory[]
   role          String    @default("user")       // user | agent | admin | root（四级，层级校验见 lib/admin-auth）
@@ -509,6 +513,9 @@ model TryOn {
   projectId String?
   sku String @default("")
   snapshot Json?
+  executionQueue String @default("generation")
+  creationResultBlobId String? @unique
+  creationResultBlob CreationBlob? @relation(fields: [creationResultBlobId], references: [id], onDelete: Restrict)
   resultData Json?
   originalAssetId String?
   deliveryAssetId String?
@@ -557,6 +564,7 @@ model TryOn {
   @@index([userId, createTime])
   @@index([userId, projectId, sku])
   @@index([status])
+  @@index([executionQueue, status, nextAttemptAt, leaseUntil])
   @@index([createTime])
   @@index([qaStatus, reviewDecision])
 }
@@ -581,9 +589,300 @@ model StudioDocument {
   messages StudioMessage[]
   appliedResults StudioAppliedResult[]
   view StudioDocumentView?
+  creationRuns CreationRun[]
   @@index([userId, updatedAt])
   @@unique([userId, createKey])
   @@index([userId, deletedAt, updatedAt, id])
+}
+
+// Durable orchestration. Existing TryOn jobs remain the billing/execution unit.
+model CreationRun {
+  id String @id @default(cuid())
+  userId String
+  documentId String?
+  projectId String?
+  sessionId String?
+  requestId String @unique
+  digest String
+  kind String
+  input Json
+  status String @default("queued")
+  maxCredits Int
+  committedCredits Int @default(0)
+  eventSequence Int @default(0)
+  errorCode String?
+  cancelRequestedAt DateTime?
+  nextCheckAt DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  document StudioDocument? @relation(fields: [documentId], references: [id], onDelete: Restrict)
+  project CreationProject? @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  session CreationSession? @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  steps CreationStep[]
+  events CreationEvent[]
+  @@index([userId, createdAt, id])
+  @@index([userId, status])
+  @@index([documentId, createdAt])
+  @@index([projectId, createdAt])
+  @@index([sessionId, createdAt])
+  @@index([status, nextCheckAt])
+}
+
+model CreationStep {
+  id String @id @default(cuid())
+  runId String
+  position Int
+  dependsOn String[] @default([])
+  tool String
+  params Json
+  explanation String
+  status String @default("blocked")
+  expectedCost Int
+  attempt Int @default(0)
+  jobId String? @unique
+  result Json?
+  errorCode String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  run CreationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  attempts CreationStepAttempt[]
+  @@unique([runId, position])
+}
+
+model CreationStepAttempt {
+  id String @id @default(cuid())
+  stepId String
+  number Int
+  jobId String @unique
+  cost Int
+  createdAt DateTime @default(now())
+  step CreationStep @relation(fields: [stepId], references: [id], onDelete: Cascade)
+  @@unique([stepId, number])
+}
+
+model CreationEvent {
+  id String @id @default(cuid())
+  runId String
+  sequence Int
+  type String
+  payload Json
+  createdAt DateTime @default(now())
+  run CreationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  @@unique([runId, sequence])
+  @@index([createdAt])
+}
+
+model CreationProject {
+  id String @id @default(cuid())
+  userId String
+  createKey String
+  name String
+  kind String
+  coverAssetId String?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  sessions CreationSession[]
+  artifacts CreationArtifact[]
+  imports CreationImport[]
+  runs CreationRun[]
+  @@unique([userId, createKey])
+  @@index([userId, deletedAt, updatedAt, id])
+}
+
+model CreationSession {
+  id String @id @default(cuid())
+  projectId String
+  title String
+  sequence Int @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  project CreationProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  messages CreationMessage[]
+  runs CreationRun[]
+  references CreationReference[]
+  @@index([projectId, updatedAt, id])
+}
+
+model CreationReference {
+  id String @id
+  userId String
+  sessionId String
+  name String
+  fileType String
+  contentType String
+  bytes Int
+  checksum String
+  objectKey String @unique
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session CreationSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  @@index([userId, sessionId, deletedAt, createdAt])
+}
+
+model CreationMessage {
+  id String @id @default(cuid())
+  sessionId String
+  clientKey String
+  sequence Int
+  role String
+  text String
+  references Json
+  createdAt DateTime @default(now())
+  session CreationSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  @@unique([sessionId, clientKey])
+  @@unique([sessionId, sequence])
+}
+
+model CreationArtifact {
+  id String @id @default(cuid())
+  projectId String
+  createKey String
+  name String
+  kind String
+  currentRevision Int @default(1)
+  schemaVersion Int @default(1)
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  project CreationProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  revisions ArtifactRevision[]
+  webPublication WebPublication?
+  @@unique([projectId, createKey])
+  @@index([projectId, deletedAt, updatedAt, id])
+}
+
+model ArtifactRevision {
+  id String @id @default(cuid())
+  artifactId String
+  revision Int
+  baseRevision Int
+  saveKey String
+  inputDigest String
+  blobId String
+  source String
+  sourceRunId String?
+  createdAt DateTime @default(now())
+  artifact CreationArtifact @relation(fields: [artifactId], references: [id], onDelete: Cascade)
+  blob CreationBlob @relation(fields: [blobId], references: [id], onDelete: Restrict)
+  exports ArtifactExport[]
+  webPublicationRevisions WebPublicationRevision[]
+  @@unique([artifactId, revision])
+  @@unique([artifactId, saveKey])
+  @@index([blobId])
+}
+
+model CreationBlob {
+  id String @id @default(cuid())
+  userId String
+  objectKey String @unique
+  checksum String
+  bytes Int
+  state String @default("staging")
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  revisions ArtifactRevision[]
+  imports CreationImport[]
+  outputs TryOn[]
+  exports ArtifactExport[]
+  @@index([state, expiresAt])
+}
+
+model CreationImport {
+  id String @id
+  userId String
+  projectId String
+  importKey String
+  name String
+  format String
+  sourceBlobId String
+  status String @default("queued")
+  attempt Int @default(0)
+  leaseUntil DateTime?
+  deadlineAt DateTime
+  nextCheckAt DateTime @default(now())
+  errorCode String?
+  artifactId String?
+  report Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  project CreationProject @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  sourceBlob CreationBlob @relation(fields: [sourceBlobId], references: [id], onDelete: Restrict)
+  @@unique([projectId, importKey])
+  @@index([userId, status])
+  @@index([status, nextCheckAt])
+  @@index([sourceBlobId])
+}
+
+model WebPublication {
+  id String @id @default(cuid())
+  userId String
+  artifactId String @unique
+  slug String @unique
+  status String @default("revoked")
+  currentRevision Int?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  artifact CreationArtifact @relation(fields: [artifactId], references: [id], onDelete: Restrict)
+  revisions WebPublicationRevision[]
+  commands WebPublicationCommand[]
+  @@index([userId, updatedAt])
+  @@index([status, slug])
+}
+
+model WebPublicationRevision {
+  id String @id @default(cuid())
+  publicationId String
+  revision Int
+  sourceRevision Int
+  artifactRevisionId String
+  createdAt DateTime @default(now())
+  publication WebPublication @relation(fields: [publicationId], references: [id], onDelete: Cascade)
+  artifactRevision ArtifactRevision @relation(fields: [artifactRevisionId], references: [id], onDelete: Restrict)
+  @@unique([publicationId, revision])
+  @@index([artifactRevisionId])
+}
+
+model WebPublicationCommand {
+  id String @id @default(cuid())
+  publicationId String
+  saveKey String
+  action String
+  resultRevision Int?
+  createdAt DateTime @default(now())
+  publication WebPublication @relation(fields: [publicationId], references: [id], onDelete: Cascade)
+  @@unique([publicationId, saveKey])
+  @@index([publicationId, createdAt])
+}
+
+model ArtifactExport {
+  id String @id @default(cuid())
+  userId String
+  revisionId String
+  format String
+  exporterVersion String
+  fingerprint String @unique
+  status String @default("queued")
+  attempt Int @default(0)
+  attemptLimit Int @default(3)
+  retryKey String?
+  leaseUntil DateTime?
+  deadlineAt DateTime
+  nextCheckAt DateTime @default(now())
+  errorCode String?
+  blobId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  revision ArtifactRevision @relation(fields: [revisionId], references: [id], onDelete: Restrict)
+  blob CreationBlob? @relation(fields: [blobId], references: [id], onDelete: Restrict)
+  @@index([userId, status])
+  @@index([status, nextCheckAt])
+  @@index([revisionId])
+  @@index([blobId])
 }
 
 model StudioMessage {

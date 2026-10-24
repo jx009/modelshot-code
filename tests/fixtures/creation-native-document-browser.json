@@ -1,0 +1,176 @@
+{
+  "schemaVersion": 2,
+  "kind": "document",
+  "title": "历史导航保存验证",
+  "engine": "univer",
+  "engineVersion": "1.2.0",
+  "assetIds": [],
+  "snapshot": {
+    "id": "history-document",
+    "locale": "zhCN",
+    "title": "历史导航保存验证",
+    "tableSource": {},
+    "drawings": {},
+    "drawingsOrder": [],
+    "headers": {},
+    "footers": {
+      "footer2": {
+        "footerId": "footer2",
+        "body": {
+          "dataStream": "\u001f1\u001e\r\n",
+          "textRuns": [],
+          "paragraphs": [
+            {
+              "paragraphId": "p4",
+              "startIndex": 3,
+              "paragraphStyle": {
+                "horizontalAlign": 2
+              }
+            }
+          ],
+          "sectionBreaks": [
+            {
+              "sectionId": "sec5",
+              "startIndex": 4,
+              "sectionType": 1
+            }
+          ],
+          "tables": [],
+          "customBlocks": [],
+          "customRanges": [
+            {
+              "startIndex": 0,
+              "endIndex": 2,
+              "rangeId": "range3",
+              "rangeType": 1,
+              "wholeEntity": false,
+              "properties": {
+                "instruction": "PAGE",
+                "fieldType": "PAGE",
+                "cachedResult": "1"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "notes": {},
+    "noteSettings": {},
+    "body": {
+      "dataStream": "原始后退时保存：文档内容。\r\n",
+      "textRuns": [
+        {
+          "st": 2,
+          "ed": 8,
+          "ts": {
+            "cl": {
+              "rgb": "#202124"
+            }
+          }
+        }
+      ],
+      "paragraphs": [
+        {
+          "paragraphId": "p0",
+          "startIndex": 13,
+          "paragraphStyle": {
+            "horizontalAlign": 1,
+            "lineSpacing": 1.5,
+            "spacingRule": 0,
+            "spaceAbove": {
+              "v": 0,
+              "u": 0
+            },
+            "spaceBelow": {
+              "v": 8,
+              "u": 0
+            }
+          }
+        }
+      ],
+      "sectionBreaks": [
+        {
+          "sectionId": "sec1",
+          "startIndex": 14,
+          "sectionType": 1
+        }
+      ],
+      "tables": [],
+      "customBlocks": [],
+      "customRanges": [],
+      "customDecorations": []
+    },
+    "documentStyle": {
+      "pageSize": {
+        "width": 793.7007874015749,
+        "height": 1122.5196850393702
+      },
+      "documentFlavor": 1,
+      "marginTop": 72,
+      "marginBottom": 72,
+      "marginRight": 72,
+      "marginLeft": 72,
+      "autoHyphenation": 1,
+      "doNotHyphenateCaps": 0,
+      "consecutiveHyphenLimit": 2,
+      "defaultHeaderId": "",
+      "defaultFooterId": "footer2",
+      "evenPageHeaderId": "",
+      "evenPageFooterId": "",
+      "firstPageHeaderId": "",
+      "firstPageFooterId": "",
+      "evenAndOddHeaders": 0,
+      "useFirstPageHeaderFooter": 0,
+      "marginHeader": 24,
+      "marginFooter": 24,
+      "pageOrient": 0,
+      "textStyle": {
+        "ff": "Arial",
+        "fs": 12,
+        "cl": {
+          "rgb": "#202124"
+        }
+      },
+      "pageNumberStart": 1
+    },
+    "settings": {},
+    "lists": {},
+    "resources": [
+      {
+        "name": "DOC_OBJECT_PERMISSION_PLUGIN",
+        "data": "[]"
+      },
+      {
+        "name": "DOC_WORD_STYLES_PLUGIN",
+        "data": ""
+      },
+      {
+        "name": "DOC_NOTE_PLUGIN",
+        "data": ""
+      }
+    ],
+    "custom": {
+      "modelshot": {
+        "adapterVersion": "semantic-document-1",
+        "sections": [
+          {
+            "sourceId": "section",
+            "title": "计划",
+            "sectionId": "sec1"
+          }
+        ],
+        "mappings": [
+          {
+            "sectionId": "section",
+            "blockId": "paragraph",
+            "type": "paragraph",
+            "leafId": "paragraph",
+            "paragraphIds": [
+              "p0"
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

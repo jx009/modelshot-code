@@ -5,12 +5,14 @@ import NavigationLink from "../../src/components/ui/NavigationLink.jsx";
 import NavigationFeedback, { useNavigationFeedback } from "../../src/components/ui/NavigationFeedback.jsx";
 import NavigationContent from "../../src/components/ui/NavigationContent.jsx";
 import { useEffect, useRef, useState } from "react";
+import { registerNavigationGuard } from "../../src/lib/navigation-guard.js";
+import { LocalNavigationContext } from "../../src/components/ui/LocalNavigation.jsx";
 
-const state = vi.hoisted(() => ({ pending: false, prefetch: null, skipNavigate: false }));
+const state = vi.hoisted(() => ({ pending: false, prefetch: null, skipNavigate: false, push: vi.fn(), replace: vi.fn() }));
 vi.mock("next/link", () => ({ useLinkStatus: () => ({ pending: state.pending }) }));
 vi.mock("next-intl", () => ({ useLocale: () => "zh" }));
 vi.mock("@/components/auth/AuthProvider", () => ({ useAuth: () => null }));
-vi.mock("@/i18n/navigation", () => ({ Link: ({ children, prefetch, onNavigate, onClick, ...props }) => { state.prefetch = prefetch; return <a {...props} onClick={event => {
+vi.mock("@/i18n/navigation", () => ({ useRouter: () => ({ push: state.push, replace: state.replace }), Link: ({ children, prefetch, onNavigate, onClick, ...props }) => { state.prefetch = prefetch; return <a {...props} onClick={event => {
   onClick?.(event);
   if (!state.skipNavigate && !event.defaultPrevented && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey && props.target !== "_blank" && new URL(event.currentTarget.href).origin === window.location.origin) onNavigate?.({ preventDefault: () => event.preventDefault() });
   event.preventDefault();
@@ -23,6 +25,46 @@ afterEach(() => { cleanup(); state.pending = false; state.prefetch = null; state
 
 const content = () => <NavigationContent><NavigationContent section="creative"><p>旧页面内容</p></NavigationContent></NavigationContent>;
 const navigation = () => <NavigationFeedback><NavigationLink href="/zh/assets">素材库</NavigationLink>{content()}</NavigationFeedback>;
+
+it("preserves the old page until save resolves and invokes link callbacks once", async () => {
+  let release; const save = vi.fn(() => new Promise(resolve => { release = resolve; })), onClick = vi.fn(), onNavigate = vi.fn();
+  const remove = registerNavigationGuard({ prepare: save }); state.push.mockClear();
+  try {
+    render(<NavigationFeedback><NavigationLink href="/zh/assets" onClick={onClick} onNavigate={onNavigate}>素材库</NavigationLink>{content()}</NavigationFeedback>);
+    fireEvent.click(screen.getByRole("link"));
+    expect(screen.getByText("旧页面内容").closest(".navigation-current").hidden).toBe(false); expect(state.push).not.toHaveBeenCalled();
+    await act(async () => release());
+    expect(state.push).toHaveBeenCalledWith("/zh/assets", { scroll: undefined }); expect(onClick).toHaveBeenCalledOnce(); expect(onNavigate).toHaveBeenCalledOnce();
+  } finally { remove(); }
+});
+
+it("resumes a guarded local link through visit with no full route request", async () => {
+  const visit = vi.fn(() => true), navigate = vi.fn(), remove = registerNavigationGuard({ prepare: async () => {} });
+  state.push.mockClear();
+  try {
+    render(<LocalNavigationContext.Provider value={{ supports: () => true, visit, navigate }}><NavigationLink href="/zh/assets" scroll={false}>素材库</NavigationLink></LocalNavigationContext.Provider>);
+    await act(async () => fireEvent.click(screen.getByRole("link")));
+    expect(visit).toHaveBeenCalledWith("/zh/assets", { replace: false, scroll: false, locale: undefined }); expect(navigate).not.toHaveBeenCalled(); expect(state.push).not.toHaveBeenCalled();
+  } finally { remove(); }
+});
+
+it("completes a guarded navigation after its mobile link unmounts", async () => {
+  let release; const remove = registerNavigationGuard({ prepare: () => new Promise(resolve => { release = resolve; }) }); state.push.mockClear();
+  function Menu() { const [open, setOpen] = useState(true); return open && <NavigationLink href="/zh/assets" onClick={() => setOpen(false)}>Mobile assets</NavigationLink>; }
+  try {
+    render(<Menu />); fireEvent.click(screen.getByText("Mobile assets")); expect(screen.queryByText("Mobile assets")).toBeNull();
+    await act(async () => release()); expect(state.push).toHaveBeenCalledOnce();
+  } finally { remove(); }
+});
+
+it("does not save for cancelled, modified, download or new-tab link activations", async () => {
+  const prepare = vi.fn(), remove = registerNavigationGuard({ prepare });
+  try {
+    render(<><NavigationLink href="/zh/assets" onNavigate={event => event.preventDefault()}>Cancelled</NavigationLink><NavigationLink href="/zh/assets">Modified</NavigationLink><NavigationLink href="/zh/assets" download="file">Download</NavigationLink><NavigationLink href="/zh/assets" target="_blank">New tab</NavigationLink></>);
+    fireEvent.click(screen.getByText("Cancelled")); fireEvent.click(screen.getByText("Modified"), { ctrlKey: true }); fireEvent.click(screen.getByText("Download")); fireEvent.click(screen.getByText("New tab"));
+    expect(prepare).not.toHaveBeenCalled();
+  } finally { remove(); }
+});
 
 it("shows the destination as soon as clicked, before Next starts navigation", () => {
   vi.useFakeTimers();

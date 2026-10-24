@@ -30,7 +30,8 @@ export async function api(url, { method = "GET", body, key, signal, timeoutMs = 
     controller.abort();
   }, timeoutMs) : null;
   try {
-    const response = await fetch(url, { method, signal: controller.signal, headers: { ...(body ? { "Content-Type": "application/json" } : {}), ...(key ? { "Idempotency-Key": key } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
+    const multipart = typeof FormData !== "undefined" && body instanceof FormData;
+    const response = await fetch(url, { method, signal: controller.signal, headers: { ...(body && !multipart ? { "Content-Type": "application/json" } : {}), ...(key ? { "Idempotency-Key": key } : {}) }, ...(body ? { body: multipart ? body : JSON.stringify(body) } : {}) });
     const data = await response.json().catch(error => {
       if (controller.signal.aborted || error.name !== "SyntaxError") throw error;
       return {};

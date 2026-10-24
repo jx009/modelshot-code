@@ -22,6 +22,10 @@ it("writes COS originals, routes legacy objects, and preserves missing-object re
   mock.cos.put.mockRejectedValueOnce(new Error("COS unavailable"));
   expect(await store.putImage("owner/original/fallback.png", bytes, "image/png")).toBe("owner/original/fallback.png");
   expect(mock.send.mock.calls[0][0].constructor.name).toBe("PutObjectCommand");
+  await store.delete("owner/original/staging.json");
+  const deletion = mock.send.mock.calls.at(-1);
+  expect(deletion[0].constructor.name).toBe("DeleteObjectCommand");
+  expect(deletion[1].abortSignal).toBeInstanceOf(AbortSignal);
   const missing = Object.assign(new Error("missing"), { name: "NoSuchKey", $metadata: { httpStatusCode: 404 } });
   mock.send.mockRejectedValue(missing);
   expect(await store.get("owner/original/recover.png")).toEqual(bytes);

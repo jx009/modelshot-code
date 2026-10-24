@@ -1,0 +1,192 @@
+{
+  "schemaVersion": 2,
+  "kind": "sheet",
+  "title": "发布预算",
+  "engine": "univer",
+  "engineVersion": "1.2.0",
+  "assetIds": [],
+  "snapshot": {
+    "id": "native-sheet",
+    "sheetOrder": [
+      "sheet0"
+    ],
+    "name": "发布预算",
+    "appVersion": "1.2.0",
+    "locale": "zhCN",
+    "styles": {
+      "style0": {
+        "bl": 1
+      },
+      "style1": {},
+      "JdjD9g": {
+        "cl": {
+          "rgb": "#1B1C1F"
+        }
+      }
+    },
+    "sheets": {
+      "sheet0": {
+        "id": "sheet0",
+        "name": "预算",
+        "cellData": {
+          "0": {
+            "0": {
+              "s": "style0",
+              "custom": {
+                "modelshot": {
+                  "cellId": "cell-A1"
+                }
+              },
+              "v": "项目",
+              "t": 1
+            },
+            "1": {
+              "s": "style0",
+              "custom": {
+                "modelshot": {
+                  "cellId": "cell-B1"
+                }
+              },
+              "v": "预算",
+              "t": 1
+            }
+          },
+          "1": {
+            "0": {
+              "s": "style1",
+              "custom": {
+                "modelshot": {
+                  "cellId": "cell-A2"
+                }
+              },
+              "v": "视觉设计",
+              "t": 1
+            },
+            "1": {
+              "s": "JdjD9g",
+              "custom": {
+                "modelshot": {
+                  "cellId": "cell-B2"
+                }
+              },
+              "v": 4200,
+              "t": 2
+            }
+          },
+          "2": {
+            "0": {
+              "s": "style1",
+              "custom": {
+                "modelshot": {
+                  "cellId": "cell-A3"
+                }
+              },
+              "v": "活动物料",
+              "t": 1
+            },
+            "1": {
+              "s": "style1",
+              "custom": {
+                "modelshot": {
+                  "cellId": "cell-B3"
+                }
+              },
+              "v": 2000,
+              "t": 2
+            }
+          },
+          "3": {
+            "0": {
+              "s": "style1",
+              "custom": {
+                "modelshot": {
+                  "cellId": "cell-A4"
+                }
+              },
+              "v": "合计",
+              "t": 1
+            },
+            "1": {
+              "s": "style1",
+              "custom": {
+                "modelshot": {
+                  "cellId": "cell-B4"
+                }
+              },
+              "f": "=SUM(B2:B3)",
+              "v": 6200,
+              "t": 2
+            }
+          }
+        },
+        "rowCount": 200,
+        "columnCount": 26,
+        "freeze": {
+          "xSplit": 0,
+          "ySplit": 0,
+          "startRow": -1,
+          "startColumn": -1
+        },
+        "hidden": 0,
+        "tabColor": "",
+        "zoomRatio": 1,
+        "scrollTop": 0,
+        "scrollLeft": 0,
+        "defaultColumnWidth": 96,
+        "defaultRowHeight": 24,
+        "rowData": {},
+        "columnData": {},
+        "mergeData": [],
+        "rowHeader": {
+          "width": 46
+        },
+        "columnHeader": {
+          "height": 24
+        },
+        "showGridlines": 1,
+        "rightToLeft": 0,
+        "custom": {
+          "modelshot": {
+            "sheetId": "budget"
+          }
+        }
+      }
+    },
+    "resources": [
+      {
+        "name": "SHEET_RANGE_PROTECTION_PLUGIN",
+        "data": ""
+      },
+      {
+        "name": "SHEET_AuthzIoMockService_PLUGIN",
+        "data": "{}"
+      },
+      {
+        "name": "SHEET_WORKSHEET_PROTECTION_PLUGIN",
+        "data": "{}"
+      },
+      {
+        "name": "SHEET_WORKSHEET_PROTECTION_POINT_PLUGIN",
+        "data": "{}"
+      },
+      {
+        "name": "SHEET_DEFINED_NAME_PLUGIN",
+        "data": ""
+      },
+      {
+        "name": "SHEET_RANGE_THEME_MODEL_PLUGIN",
+        "data": "{}"
+      }
+    ],
+    "custom": {
+      "modelshot": {
+        "adapterVersion": "semantic-sheet-1"
+      }
+    },
+    "calculationSettings": {
+      "iterativeCalculation": false,
+      "maxIterations": 100,
+      "maxChange": 0.001
+    }
+  }
+}

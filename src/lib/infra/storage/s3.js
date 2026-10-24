@@ -70,7 +70,7 @@ export function objectStorage() {
     async delete(key) {
       const primary = await primaryCos(key);
       if (primary) return primary.store.delete(primary.key);
-      await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
+      await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }), { abortSignal: AbortSignal.timeout(15_000) });
     },
   };
   return storage;

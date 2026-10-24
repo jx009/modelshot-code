@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useLocale } from "next-intl";
 import { useSession } from "next-auth/react";
 import { destinationPath } from "@/lib/navigation-destination";
+import { deferNavigation } from "@/lib/navigation-guard";
 import { readCachedInspiration } from "@/lib/inspiration/client-cache";
 import { LOCAL_NAVIGATION_EVENT, LocalNavigationContext, PageVisibilityContext, useLocalNavigation } from "@/components/ui/LocalNavigation";
 import NavigationContent from "@/components/ui/NavigationContent";
@@ -25,6 +26,7 @@ const loaders = {
   "/assets": () => import("@/components/studio/AssetLibrary"),
   "/commerce": () => import("./CommercePage"),
   "/studio-v2": () => import("@/components/studio/StudioPage"),
+  "/creation": () => import("@/components/creation/CreationPage"),
   "/pricing": () => import("@/components/billing/PricingPage"),
 };
 const pages = { "/": DiscoverHome, ...Object.fromEntries(Object.entries(loaders).map(([path, load]) => [path, lazy(load)])) };
@@ -50,11 +52,12 @@ export default function CreativePages({ children }) {
     const prefix = url.pathname.match(/^\/(zh|en)(?=\/|$)/)?.[1];
     return (!prefix || prefix === locale) && (Object.hasOwn(pages, destinationPath(href)) || Boolean(cachedInspiration(href)));
   }, [locale]);
-  const visit = useCallback((href, { replace = false, scroll = true, locale: targetLocale } = {}) => {
+  const visit = useCallback(function visit(href, { replace = false, scroll = true, locale: targetLocale } = {}) {
     if (!supports(href, targetLocale)) return false;
     const target = new URL(href, window.location.origin);
     if (!/^\/(zh|en)(?=\/|$)/.test(target.pathname)) target.pathname = `/${locale}${target.pathname === "/" ? "" : target.pathname}`;
     if (target.href === window.location.href) return true;
+    if (deferNavigation(() => visit(href, { replace, scroll, locale: targetLocale }))) return true;
     const item = cachedInspiration(target.href);
     if (item) setDetails(current => ({ ...current, [destinationPath(target.href)]: item }));
     const source = new URL(window.location.href);

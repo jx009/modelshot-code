@@ -35,6 +35,55 @@ async function select(page,name="参考图片 1") {
   await page.getByRole("button",{name:"图层",exact:true}).click();
 }
 
+for (const width of [1440, 1024, 390]) test(`workspace density keeps local-edit artwork clear and painting usable at ${width}px`, async ({ page }, info) => {
+  const f = await fixture(page);
+  await page.route("**/api/studio/events?**", route => route.abort());
+  await page.setViewportSize({ width, height: 900 });
+  await page.goto("/zh/studio-v2?document=creative-doc");
+  const composer = page.getByLabel("创作描述", { exact: true });
+  if (width > 760) {
+    await expect(composer).toBeEnabled();
+    const composerHeight = () => composer.evaluate(el => el.getBoundingClientRect().height);
+    await expect.poll(composerHeight).toBeGreaterThan(0);
+    await expect.poll(composerHeight).toBeLessThanOrEqual(60);
+    await composer.fill("修改要求\n".repeat(40));
+    await expect.poll(composerHeight).toBeLessThanOrEqual(134);
+    await composer.fill("");
+    await expect.poll(composerHeight).toBeLessThanOrEqual(60);
+  } else await page.getByRole("button", { name: "画布", exact: true }).click();
+  await select(page); await tool(page, "局部修改");
+  const panel = page.locator(".ms-editor-inpaint"), stage = page.locator(".ms-stage");
+  await expect(panel).toBeVisible();
+  // Wait for the animated fit to the newly measured stage/panel geometry.
+  const rect = async () => {
+    const box = await stage.boundingBox(), camera = JSON.parse(await stage.getAttribute("data-camera"));
+    return { x: box.x + camera.x + 90 * camera.scale, y: box.y + camera.y + 100 * camera.scale, width: 320 * camera.scale, height: 240 * camera.scale };
+  };
+  await expect.poll(async () => {
+    const image = await rect(), controls = await panel.boundingBox(), box = await stage.boundingBox();
+    return image.x >= box.x && image.y >= box.y && image.x + image.width <= box.x + box.width + 1 && image.y + image.height <= (width > 1100 ? box.y + box.height : controls.y) + 1;
+  }).toBe(true);
+  if (width > 1100) {
+    const box = await stage.boundingBox(), controls = await panel.boundingBox();
+    expect(box.x + box.width).toBeLessThanOrEqual(controls.x);
+    expect((await rect()).width).toBeGreaterThan(400);
+  }
+  await panel.getByLabel("局部修改描述").fill("将涂抹区域变成墨绿色");
+  const image = await rect();
+  await page.mouse.move(image.x + image.width * .4, image.y + image.height * .5);
+  await page.mouse.down();
+  await page.mouse.move(image.x + image.width * .6, image.y + image.height * .5, { steps: 6 });
+  await page.mouse.up();
+  const apply = panel.getByRole("button", { name: "生成修改 18 积分", exact: true });
+  await expect(apply).toBeEnabled(); await expect(apply).toBeInViewport();
+  await page.screenshot({ path: info.outputPath(`local-edit-${width}.png`) });
+  await apply.click();
+  await expect.poll(() => f.posted.length).toBe(1);
+  expect(f.posted[0]).toMatchObject({ tool: "inpaint", targetId: "layer-0" });
+  expect(f.uploads.length).toBeGreaterThan(0);
+  expect(f.errors).toEqual([]);
+});
+
 test("a failed task replaces processing feedback on the open canvas without a reload", async ({ page }) => {
   const f = await fixture(page);
   const job = { id: "old-edit", tool: "inpaint", status: "running", documentId: "creative-doc", assetId: "image-0", targetId: "layer-0", createdAt: "2020-01-01T00:00:00Z" };

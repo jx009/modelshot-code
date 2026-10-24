@@ -5,6 +5,7 @@ import { useLocale } from "next-intl";
 import { useRouter } from "@/i18n/navigation";
 import { useNavigationFeedback } from "@/components/ui/NavigationFeedback";
 import { useLocalNavigation } from "@/components/ui/LocalNavigation";
+import { deferNavigation } from "@/lib/navigation-guard";
 
 export function useNavigationRouter() {
   const router = useRouter();
@@ -16,6 +17,7 @@ export function useNavigationRouter() {
   return useMemo(() => {
     const navigate = (method, href, options) => {
       if (!mounted.current) return;
+      if (deferNavigation(() => navigate(method, href, options))) return;
       if (!navigation?.isNavigating() && visit?.(href, { ...options, replace: method === "replace" })) return;
       let id;
       if (typeof href === "string" && href.startsWith("/") && !href.startsWith("//")) {
@@ -25,6 +27,11 @@ export function useNavigationRouter() {
       try { return router[method](href, options); }
       catch (error) { if (id) navigation?.finish(id); throw error; }
     };
-    return { ...router, push: (href, options) => navigate("push", href, options), replace: (href, options) => navigate("replace", href, options) };
+    const history = method => {
+      if (!mounted.current) return;
+      if (deferNavigation(() => { if (mounted.current) router[method](); })) return;
+      return router[method]();
+    };
+    return { ...router, push: (href, options) => navigate("push", href, options), replace: (href, options) => navigate("replace", href, options), back: () => history("back"), forward: () => history("forward") };
   }, [router, locale, navigation, visit]);
 }

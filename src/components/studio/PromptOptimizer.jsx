@@ -4,7 +4,7 @@ import { LoaderCircle, WandSparkles, X } from "lucide-react";
 import { api, requestKey } from "@/lib/client-api";
 import Modal from "@/components/ui/Modal";
 
-export default function PromptOptimizer({ prompt, disabled, available, cost, zh, onApply, onCharged }) {
+export default function PromptOptimizer({ prompt, disabled, available, cost, zh, onApply, onCharged, compact = false }) {
   const [busy, setBusy] = useState(false), [result, setResult] = useState(null), [error, setError] = useState("");
   const attempt = useRef(null), lock = useRef(false);
   async function optimize() {
@@ -22,8 +22,8 @@ export default function PromptOptimizer({ prompt, disabled, available, cost, zh,
     finally { lock.current = false; setBusy(false); }
   }
   return <>
-    <button className="ms-text-button" disabled={disabled || busy || !available || !prompt.trim()} onClick={optimize} title={available ? zh ? "使用后台语言模型优化，生成成功后扣费" : "Uses the configured language model; charged on success" : zh ? "管理员尚未配置后台语言模型" : "No backend language model configured"}>
-      {busy ? <LoaderCircle size={13} className="ms-spin" /> : <WandSparkles size={13} />}{busy ? zh ? "正在优化…" : "Improving…" : zh ? `优化提示词 · ${cost} 积分` : `Improve prompt · ${cost} credits`}
+    <button className="ms-text-button" aria-label={zh ? `优化提示词 · ${cost} 积分` : `Improve prompt · ${cost} credits`} disabled={disabled || busy || !available || !prompt.trim()} onClick={optimize} title={available ? zh ? "使用后台语言模型优化，生成成功后扣费" : "Uses the configured language model; charged on success" : zh ? "管理员尚未配置后台语言模型" : "No backend language model configured"}>
+      {busy ? <LoaderCircle size={13} className="ms-spin" /> : <WandSparkles size={13} />}{busy ? zh ? "正在优化…" : "Improving…" : compact ? zh ? `润色 · ${cost}` : `Improve · ${cost}` : zh ? `优化提示词 · ${cost} 积分` : `Improve prompt · ${cost} credits`}
     </button>
     {error && <span role="alert">{zh ? "优化失败，原文已保留：" : "Optimization failed; original kept: "}{error}</span>}
     {result !== null && <Modal label={zh ? "优化后的提示词" : "Improved prompt"} onClose={() => setResult(null)}><div className="ms-export-dialog">

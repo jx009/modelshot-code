@@ -2,13 +2,13 @@
 #
 # 与本地编排的三个关键差别：
 #   1. 数据库、Redis、私有存储不对宿主机暴露端口，只在内部网络互通；
-#   2. Web 与 Worker 拆成两个容器，共用同一个镜像，各自独立重启；
+#   2. Web、普通 Worker、创作调度和创作语言 Worker 独立运行，共用同一个镜像；
 #   3. 迁移是独立的一次性服务，Web/Worker 等它成功后才启动，不在每个副本里自动迁移。
 #
 # 用法（必须带 --env-file，Compose 的变量替换读的是它，不是项目里的 .env）：
 #   docker compose --env-file .env.production -f compose.prod.yaml up -d --build
 #   docker compose --env-file .env.production -f compose.prod.yaml ps
-#   docker compose --env-file .env.production -f compose.prod.yaml logs -f web worker
+#   docker compose --env-file .env.production -f compose.prod.yaml logs -f web worker creation-worker creation-language
 #
 # 想省掉参数，可在服务器 shell 里导出：
 #   export COMPOSE_FILE=compose.prod.yaml COMPOSE_ENV_FILES=.env.production
@@ -226,6 +226,37 @@ services:
     stop_grace_period: 30s
     networks:
       - app
+
+  # 创作调度：海报、演示文稿、文档、表格、网页共用的独立编排队列。
+  # 普通 worker 不消费此队列；缺少本服务时创作入口会显示“服务尚未就绪”。
+  creation-worker:
+    <<: *modelshot-service
+    command: ["node", "src/workers/creation-main.mjs"]
+    init: true
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      storage-init:
+        condition: service_completed_successfully
+    stop_grace_period: 30s
+
+  # 创作语言：调用管理员配置的语言/规划模型，与图片和支付队列分离。
+  # 与 web / worker / creation-worker 使用同版本镜像，启动后定期写入能力心跳。
+  # Office 参考附件的隔离解析与文件导出需另行配置，不能仅靠设置隔离标志启用。
+  creation-language:
+    <<: *modelshot-service
+    command: ["node", "src/workers/creation-language-main.mjs"]
+    init: true
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      storage-init:
+        condition: service_completed_successfully
+    stop_grace_period: 210s
 
   # ---- 以下为一次性工具，不会随 up 启动，用 --profile tools run 调用 ----
   # 初始化供应商、预设模特、场景和提示词模板（幂等，可重复执行）。

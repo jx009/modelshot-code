@@ -108,7 +108,7 @@ MODELSHOT_TOOLS_IMAGE=jx009/modelshot:tools-latest
 本地工具服务只用 rembg 处理一键抠图，不再负责物体分割。在“模型配置 → 工具专用模型”新增火山智能视觉 EntitySegment，填写 AK/SK；“工具配置”可为物体移动和局部修改指定该通道。不要反复对整套服务执行 `--force-recreate`，这会重置抠图模型加载。若先前启动被依赖检查中断，在数据库、Redis、存储和迁移已成功的前提下，用以下命令恢复应用容器：
 
 ```bash
-docker compose --env-file .env.production -f compose.prod.yaml up -d --no-build --no-deps web worker
+docker compose --env-file .env.production -f compose.prod.yaml up -d --no-build --no-deps web worker creation-worker creation-language
 docker compose --env-file .env.production -f compose.prod.yaml ps
 ```
 
@@ -119,6 +119,12 @@ docker compose --env-file .env.production -f compose.prod.yaml ps
 画布及对话使用私有 WebP 预览（`/api/assets/:id?preview=1280` 或 `320`），下载、导出和模型输入仍使用原始图片。排查等待时间时，分割接口的 `Server-Timing` 区分准备、模型调用及存储；图片预览接口区分鉴权及预览生成；任务结果的 `timings.modelMs`、`timings.persistMs` 区分工具执行与结果存储。
 
 日常应用更新优先用 `sh scripts/deploy-update.sh`；仅在工具镜像也更新时加 `--tools`。修改 Compose 后应同步服务器的 `compose.prod.yaml`，单独 `pull` 镜像不会更新编排文件。持续 unhealthy 时查看 tools 日志和健康检查输出，不应把真实加载失败当成冷启动延迟。
+
+创作功能还需要常驻 `creation-worker`（调度）和 `creation-language`（语言模型调用）。它们已加入生产编排，并由更新脚本与 `web`、`worker` 同步更新；四个服务必须使用同版本应用镜像。仅启动普通 `worker` 不会消费创作队列，root 也会看到灰色入口。更新旧部署时，先同步新的 `compose.prod.yaml` 和 `scripts/deploy-update.sh`，再执行更新脚本。
+
+启动后用 `docker compose logs --tail=100 creation-worker creation-language` 检查 `CREATION_WORKER_READY` 和 `CREATION_LANGUAGE_WORKER_READY`，同时检查是否出现心跳、数据库或 Redis 错误。页面能力接口要求 90 秒内的新鲜心跳及匹配的流水线版本，Worker 每 30 秒更新一次。管理员还须配置可用的语言/规划模型及 API 密钥；仅有生图模型不足以启用海报、演示文稿等创作。服务正常后刷新首页。
+
+root 只绕过创作开放权限，不能绕过服务就绪条件。独立导出服务仍使用 `compose.creation-export.yaml` 部署；不要为了点亮入口给普通语言容器设置 `CREATION_REFERENCE_ISOLATED=true`，Office 参考附件需要专门的隔离部署。
 
 图像工具默认同时处理 2 个请求（`TOOLS_CONCURRENCY=2`，上限 4）。8 核单机先保持默认值，压测 CPU、内存和抠图 P95 耗时后再逐步调到 3 或 4；超过并发槽的请求最多等待 20 秒，之后返回 429。调高此值不能增加外部图像生成供应商的额度。
 

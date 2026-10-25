@@ -14,11 +14,11 @@ for service in postgres redis storage; do
     exit 1
   fi
 done
-compose pull web worker migrate
+compose pull web worker creation-worker creation-language migrate
 compose run --rm --no-deps migrate
 if [ "${1:-}" = "--tools" ]; then
   compose pull tools
   compose up -d --no-deps --no-build --wait tools
 fi
-compose up -d --no-deps --no-build --wait web worker
+compose up -d --no-deps --no-build --wait web worker creation-worker creation-language
 compose ps

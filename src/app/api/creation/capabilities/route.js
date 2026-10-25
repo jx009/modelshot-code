@@ -1,3 +1,4 @@
+import { getCreationEnv } from "@/lib/creation/access";
 import { AGENT_PIPELINE_VERSION, AGENT_SCHEDULER_HEARTBEAT, AGENT_LANGUAGE_HEARTBEAT } from "@/lib/creation/contracts/agent";
 import { HTML_PIPELINE_VERSION, HTML_SCHEDULER_HEARTBEAT, HTML_LANGUAGE_HEARTBEAT } from "@/lib/creation/contracts/html-runtime";
 import { requireUser } from "@/lib/require-user";
@@ -21,9 +22,10 @@ const runtimes = {
 
 export async function GET() {
   try {
-    await requireUser();
-    const baseEnabled = process.env.CREATION_RUNS_ENABLED === "true" && process.env.CREATION_WORKSPACE_ENABLED === "true";
-    const configuredKinds = Object.entries(runtimes).filter(([, value]) => baseEnabled && process.env[value.enabled] === "true");
+    const user = await requireUser();
+    const env = await getCreationEnv(user.id);
+    const baseEnabled = env.CREATION_RUNS_ENABLED === "true" && env.CREATION_WORKSPACE_ENABLED === "true";
+    const configuredKinds = Object.entries(runtimes).filter(([, value]) => baseEnabled && env[value.enabled] === "true");
     const workerIds = [...new Set(configuredKinds.flatMap(([, value]) => value.workers))];
     if (configuredKinds.some(([kind]) => kind === "poster")) workerIds.push(POSTER_IMAGE_SCHEDULER_HEARTBEAT, POSTER_IMAGE_LANGUAGE_HEARTBEAT);
     const rows = workerIds.length ? await prisma.serviceHeartbeat.findMany({
@@ -34,7 +36,7 @@ export async function GET() {
     const configured = Boolean(config?.visionApiKey && config?.chatModel);
     const workers = new Map(rows.map(row => [row.id, row]));
     const available = Object.fromEntries(Object.entries(runtimes).map(([kind, runtime]) => {
-      const enabled = baseEnabled && process.env[runtime.enabled] === "true";
+      const enabled = baseEnabled && env[runtime.enabled] === "true";
       const ready = runtime.workers.every(id => workers.has(id))
         && (runtime.version === undefined || runtime.workers.filter(id => id !== "worker").every(id => workers.get(id)?.details?.version === runtime.version));
       return [kind, Boolean(enabled && configured && ready)];

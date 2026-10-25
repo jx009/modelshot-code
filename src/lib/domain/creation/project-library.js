@@ -14,11 +14,12 @@ function decode(raw, kind, q) {
 }
 // Two bounded metadata queries are merged using the same total ordering. Never
 // load document JSON, revisions, messages or per-project counts for a list card.
-export async function listProjectLibrary(userId, { kind = "all", q = "", cursor: raw } = {}, db = prisma) {
+export async function listProjectLibrary(userId, { kind = "all", q = "", cursor: raw, allowedKinds } = {}, db = prisma) {
   kind ||= "all"; q = q.trim().slice(0, 100);
   if (!kinds.includes(kind)) throw new AppError("INVALID_PROJECT_KIND");
   const cursor = decode(raw, kind, q), limit = 24;
   const where = source => ({ userId, deletedAt: kind === "trash" ? { not: null } : null,
+    ...(source === "creation" && allowedKinds ? { AND: [{ kind: { in: allowedKinds } }] } : {}),
     ...(q ? { name: { contains: q, mode: "insensitive" } } : {}),
     ...(!["all", "trash"].includes(kind) ? { kind } : {}),
     ...(cursor ? { OR: [{ updatedAt: { lt: cursor.date } }, { updatedAt: cursor.date, id: { lt: cursor.id } },

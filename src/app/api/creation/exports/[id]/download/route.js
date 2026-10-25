@@ -1,4 +1,4 @@
-import { requireUser } from "@/lib/require-user";
+import { requireCreationUser as requireUser } from "@/lib/creation/require-user";
 import { errorResponse, AppError } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 import { ownedExport } from "@/lib/domain/creation/exports";
@@ -9,7 +9,7 @@ import { createHash } from "node:crypto";
 
 export async function GET(request, context) {
   try {
-    const user = await requireUser(), { id } = await context.params;
+    const user = await requireUser({ resource: "export", id: (await context.params).id }), { id } = await context.params;
     await rateLimit("creation-export-download", user.id, 30, 60);
     const row = await ownedExport(user.id, id);
     const descriptor = exportFormat(row.format);

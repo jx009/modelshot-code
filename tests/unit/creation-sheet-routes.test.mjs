@@ -5,7 +5,7 @@ import { POST as copy } from "../../src/app/api/creation/artifacts/[id]/sheet/co
 import { POST as restore } from "../../src/app/api/creation/artifacts/[id]/sheet/restore/route.js";
 import { rateLimit } from "../../src/lib/domain/identity/rate-limit";
 const mock = vi.hoisted(() => ({ project: vi.fn(), create: vi.fn(), read: vi.fn(), save: vi.fn(), copy: vi.fn(), restore: vi.fn() }));
-vi.mock("../../src/lib/require-user", () => ({ requireUser: async () => ({ id: "u" }) }));
+vi.mock("../../src/lib/creation/require-user", () => ({ requireCreationUser: async () => ({ id: "u", creationEnv: process.env }) }));
 vi.mock("../../src/lib/domain/identity/rate-limit", () => ({ rateLimit: vi.fn() }));
 vi.mock("../../src/lib/prisma", () => ({ prisma: { creationProject: { findFirst: (...args) => mock.project(...args) } } }));
 vi.mock("../../src/lib/domain/creation/sheet-artifacts", () => ({ createSheetArtifact: (...args) => mock.create(...args), readSheetArtifact: (...args) => mock.read(...args), modifySheetArtifact: (...args) => mock.save(...args), copySheetArtifact: (...args) => mock.copy(...args), restoreSheetArtifact: (...args) => mock.restore(...args) }));

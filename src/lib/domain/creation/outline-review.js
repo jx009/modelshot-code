@@ -1,3 +1,4 @@
+import { getCreationEnv } from "../../creation/access.js";
 import { verifiedAgentParent, wakeAgentParent } from "./agent-links.js";
 import { createHash, randomUUID } from "node:crypto";
 import { prisma } from "../../prisma.js";
@@ -57,7 +58,8 @@ export async function readOutlineReview(userId, id, { db = prisma, store = objec
     confirmed: Boolean(step.result?.confirmation), canConfirm: run.status === "awaiting_input" && run.errorCode === OUTLINE_CONFIRMATION_REQUIRED && !run.cancelRequestedAt };
 }
 
-export async function confirmOutline(userId, id, input, { db = prisma, store = objectStorage(), env = process.env, configFor = creationLanguageConfig, ensureWorkers = ensureContentWorkers } = {}) {
+export async function confirmOutline(userId, id, input, { db = prisma, store = objectStorage(), env, configFor = creationLanguageConfig, ensureWorkers = ensureContentWorkers } = {}) {
+  env ??= await getCreationEnv(userId, { db });
   const data = confirmOutlineSchema.parse(input), digest = digestJson(data);
   const current = await ownedRun(userId, id, db), old = replay(current, data.saveKey, digest);
   if (old) return old;

@@ -10,15 +10,20 @@ import { toNativeDocumentArtifact } from "../../creation/native-document-adapter
 import { toNativeSheetArtifact } from "../../creation/native-sheet-adapter.js";
 import { assertNativeOfficeRuntimeContent } from "../../creation/client/native-office-policy.js";
 import { convertNativeOfficeArtifactSchema } from "../../creation/contracts/native-office.js";
+import { getCreationEnv, assertCreationAccess } from "../../creation/access.js";
 
-export const nativeOfficeConversionEnabled = () => process.env.CREATION_WORKSPACE_ENABLED === "true" && process.env.CREATION_NATIVE_OFFICE_ENABLED === "true";
-const admission = () => { if (!nativeOfficeConversionEnabled()) throw new AppError("NATIVE_OFFICE_NOT_ENABLED", 503); };
+export const nativeOfficeConversionEnabled = (env = process.env) => env.CREATION_WORKSPACE_ENABLED === "true" && env.CREATION_NATIVE_OFFICE_ENABLED === "true";
 
 // Convert a fixed, owned source revision into a separate artifact. The source
 // remains in its existing AI/export workflow; conversion is not a format flip.
 export async function convertNativeOfficeArtifact(userId, id, input, { db = prisma, store = objectStorage() } = {}) {
   const { baseRevision, saveKey } = convertNativeOfficeArtifactSchema.parse(input);
   const metadata = await ownedArtifact(userId, id, db);
+  const admission = async (tx = db) => {
+    const env = await getCreationEnv(userId, { db: tx });
+    assertCreationAccess(env, { kind: metadata.kind });
+    if (!nativeOfficeConversionEnabled(env)) throw new AppError("NATIVE_OFFICE_NOT_ENABLED", 503);
+  };
   if (!["document", "sheet"].includes(metadata.kind)) throw new AppError("ARTIFACT_KIND_MISMATCH", 422);
   const read = metadata.kind === "document" ? readDocumentArtifact : readSheetArtifact;
   const source = await read(userId, id, baseRevision, { db, store });

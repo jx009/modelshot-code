@@ -7,7 +7,7 @@ import { toNativeSheetArtifact } from "../../src/lib/creation/native-sheet-adapt
 import { NATIVE_OFFICE_REQUEST_BYTES } from "../../src/lib/creation/contracts/native-office.js";
 import { AppError } from "../../src/lib/http.js";
 const ports = vi.hoisted(() => ({ user: vi.fn(), owned: vi.fn(), rate: vi.fn(), read: vi.fn(), save: vi.fn(), copy: vi.fn(), restore: vi.fn() }));
-vi.mock("../../src/lib/require-user", () => ({ requireUser: (...args) => ports.user(...args) }));
+vi.mock("../../src/lib/creation/require-user", () => ({ requireCreationUser: async (...args) => ({ ...await ports.user(...args), creationEnv: process.env }) }));
 vi.mock("../../src/lib/domain/identity/rate-limit", () => ({ rateLimit: (...args) => ports.rate(...args) }));
 vi.mock("../../src/lib/domain/creation/artifacts", () => ({ ownedArtifact: (...args) => ports.owned(...args) }));
 vi.mock("../../src/lib/domain/creation/native-office-artifacts", () => ({ readNativeOfficeArtifact: (...args) => ports.read(...args), saveNativeOfficeArtifact: (...args) => ports.save(...args), copyNativeOfficeArtifact: (...args) => ports.copy(...args), restoreNativeOfficeArtifact: (...args) => ports.restore(...args) }));

@@ -1,3 +1,4 @@
+import { getCreationEnv } from "../../creation/access.js";
 import { POSTER_IMAGE_TOOL, posterImageStepSchema } from "../../creation/contracts/poster-image.js";
 import { posterImageQuote } from "./poster-images.js";
 import { submitCreationPosterImageStep } from "../studio/jobs.js";
@@ -30,7 +31,8 @@ export async function ensureAgentWorkers(db, env = process.env) {
   const rows = await db.serviceHeartbeat.findMany({ where: { id: { in: ids }, updatedAt: { gt: new Date(Date.now() - 90000) } } });
   if (ids.some(id => !rows.some(row => row.id === id && row.details?.version === AGENT_PIPELINE_VERSION))) throw new AppError("CREATION_WORKER_UNAVAILABLE", 503);
 }
-export async function createAgentRun(userId, sessionId, input, key, { db = prisma, env = process.env, configFor = creationLanguageConfig, ensureWorkers = ensureAgentWorkers, quoteImage = posterImageQuote } = {}) {
+export async function createAgentRun(userId, sessionId, input, key, { db = prisma, env, configFor = creationLanguageConfig, ensureWorkers = ensureAgentWorkers, quoteImage = posterImageQuote } = {}) {
+  env ??= await getCreationEnv(userId, { db });
   const data = agentRequestSchema.parse(input), digest = creationInputDigest(data);
   if (!/^[a-zA-Z0-9_-]{16,128}$/.test(key || "")) throw new AppError("IDEMPOTENCY_KEY_REQUIRED");
   const requestId = createHash("sha256").update(`creation-agent:${userId}:${sessionId}:${key}`).digest("hex");
@@ -219,7 +221,8 @@ async function settleChild(initial, step, child, { db, cancelling = false }) {
   });
 }
 
-export async function resumeAgentRun(userId, current, data, { db = prisma, ensureWorkers = ensureAgentWorkers, env = process.env, configFor = creationLanguageConfig, quoteImage = posterImageQuote } = {}) {
+export async function resumeAgentRun(userId, current, data, { db = prisma, ensureWorkers = ensureAgentWorkers, env, configFor = creationLanguageConfig, quoteImage = posterImageQuote } = {}) {
+  env ??= await getCreationEnv(userId, { db });
   await ensureWorkers(db, env);
   const config = await configFor(db, current.input.languageProvider), unitCost = config.plannerCreditCost ?? 1;
   if (!config.visionApiKey || !config.chatModel) throw new AppError("VISION_NOT_CONFIGURED", 503);
@@ -266,7 +269,7 @@ export async function resumeAgentRun(userId, current, data, { db = prisma, ensur
   if (step) {
     const child = await db.creationRun.findFirst({ where: { id: step.result.childRunId, userId }, include });
     if (child && [...RUN_WAITING, "failed"].includes(child.status) && child.errorCode !== "CREATION_OUTLINE_CONFIRMATION_REQUIRED") {
-      await resumeRun(userId, child.id, { expectedSequence: child.eventSequence, maxCredits: run.maxCredits - run.committedCredits + (step.result.accountedCredits || 0), retryFailed: data.retryFailed }, db);
+      await resumeRun(userId, child.id, { expectedSequence: child.eventSequence, maxCredits: run.maxCredits - run.committedCredits + (step.result.accountedCredits || 0), retryFailed: data.retryFailed }, db, { env });
     }
   }
   return presentRun(await db.creationRun.findFirst({ where: { id: current.id, userId }, include }));

@@ -1,12 +1,12 @@
 import { createHash } from "node:crypto";
-import { requireUser } from "@/lib/require-user";
+import { requireCreationUser as requireUser } from "@/lib/creation/require-user";
 import { AppError, errorResponse } from "@/lib/http";
 import { ownedOfficeImport, OFFICE_IMPORT_BYTES } from "@/lib/domain/creation/office-imports";
 import { objectStorage } from "@/lib/infra/storage/s3";
 
 export async function GET(_request, context) {
   try {
-    const user = await requireUser(), { id } = await context.params;
+    const user = await requireUser({ resource: "import", id: (await context.params).id }), { id } = await context.params;
     const row = await ownedOfficeImport(user.id, id), blob = row.sourceBlob;
     if (blob.userId !== user.id || blob.state !== "ready" || blob.bytes > OFFICE_IMPORT_BYTES) throw new AppError("OFFICE_SOURCE_INVALID", 422);
     const bytes = await objectStorage().get(blob.objectKey);

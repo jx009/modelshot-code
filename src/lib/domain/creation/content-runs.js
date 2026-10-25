@@ -1,3 +1,4 @@
+import { getCreationEnv } from "../../creation/access.js";
 import { sheetGenerationCalls } from "../../creation/contracts/sheet-batch.js";
 import { verifiedAgentParent, wakeAgentParent } from "./agent-links.js";
 import { dependencyReferencesSchema } from "../../creation/contracts/dependency-references.js";
@@ -51,7 +52,8 @@ export async function ensureContentWorkers(db = prisma, { language = true, kind,
   if (html && rows.some(row => [HTML_SCHEDULER_HEARTBEAT, HTML_LANGUAGE_HEARTBEAT].includes(row.id) && row.details?.version !== HTML_PIPELINE_VERSION)) throw new AppError("CREATION_WORKER_UNAVAILABLE", 503);
 }
 
-export async function createContentRun(userId, sessionId, input, key, { db = prisma, store, env = process.env, configFor = creationLanguageConfig, ensureWorkers = ensureContentWorkers, quoteImage = posterImageQuote, agentLink, dependencyRefs } = {}) {
+export async function createContentRun(userId, sessionId, input, key, { db = prisma, store, env, configFor = creationLanguageConfig, ensureWorkers = ensureContentWorkers, quoteImage = posterImageQuote, agentLink, dependencyRefs } = {}) {
+  env ??= await getCreationEnv(userId, { db });
   const data = contentRunSchema.parse(input);
   if (!/^[a-zA-Z0-9_-]{16,128}$/.test(key || "")) throw new AppError("IDEMPOTENCY_KEY_REQUIRED");
   const requestId = createHash("sha256").update(`creation-content:${userId}:${sessionId}:${key}`).digest("hex"), digest = creationInputDigest(data);
@@ -143,7 +145,8 @@ export async function createContentRun(userId, sessionId, input, key, { db = pri
   }, { timeout: 15000 });
 }
 
-export async function resumeContentRun(userId, current, data, { db = prisma, env = process.env, configFor = creationLanguageConfig, ensureWorkers = ensureContentWorkers, quoteImage = posterImageQuote } = {}) {
+export async function resumeContentRun(userId, current, data, { db = prisma, env, configFor = creationLanguageConfig, ensureWorkers = ensureContentWorkers, quoteImage = posterImageQuote } = {}) {
+  env ??= await getCreationEnv(userId, { db });
   if (!validateRunDependencyGraph(current.steps)) throw new AppError("CREATION_DEPENDENCY_GRAPH_INVALID", 409);
   const remaining = current.steps.filter(step => step.status !== "succeeded");
   const jobs = await db.tryOn.findMany({ where: { id: { in: remaining.map(step => step.jobId).filter(Boolean) }, userId }, select: { id: true, status: true } });

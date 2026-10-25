@@ -8,15 +8,16 @@ vi.mock("../../src/lib/domain/creation/artifacts.js", () => ({ ownedArtifact: (.
 vi.mock("../../src/lib/domain/creation/document-artifacts.js", () => ({ readDocumentArtifact: (...args) => ports.document(...args) }));
 vi.mock("../../src/lib/domain/creation/sheet-artifacts.js", () => ({ readSheetArtifact: (...args) => ports.sheet(...args) }));
 vi.mock("../../src/lib/domain/creation/native-office-artifacts.js", () => ({ createNativeOfficeArtifact: (...args) => ports.create(...args) }));
-vi.mock("../../src/lib/require-user", () => ({ requireUser: (...args) => ports.user(...args) }));
+vi.mock("../../src/lib/creation/require-user", () => ({ requireCreationUser: async (...args) => ({ ...await ports.user(...args), creationEnv: process.env }) }));
 vi.mock("../../src/lib/domain/identity/rate-limit", () => ({ rateLimit: (...args) => ports.rate(...args) }));
+vi.mock("../../src/lib/creation/access.js", () => ({ getCreationEnv: async () => process.env, assertCreationAccess: vi.fn() }));
 const request = { baseRevision: 3, saveKey: "convert-key-1234567" }, options = { db: {}, store: {} };
 const document = () => ({ schemaVersion: 1, kind: "document", title: "Report", sections: [{ id: "s", title: "Topic", blocks: [{ id: "p", type: "paragraph", runs: [{ text: "Original" }] }] }] });
 beforeEach(() => {
   Object.values(ports).forEach(port => port.mockReset());
   vi.stubEnv("CREATION_WORKSPACE_ENABLED", "true"); vi.stubEnv("CREATION_NATIVE_OFFICE_ENABLED", "true");
   ports.owned.mockResolvedValue({ kind: "document" }); ports.document.mockResolvedValue({ projectId: "project", revision: 3, content: document() });
-  ports.create.mockImplementation(async (_user, _project, _content, _key, settings) => { settings.hooks.beforeStage(); settings.hooks.beforeCommit(); return { artifactId: "copy", revision: 1, replayed: false }; });
+  ports.create.mockImplementation(async (_user, _project, _content, _key, settings) => { await settings.hooks.beforeStage(); await settings.hooks.beforeCommit(); return { artifactId: "copy", revision: 1, replayed: false }; });
   ports.user.mockResolvedValue({ id: "u" });
 });
 afterEach(() => vi.unstubAllEnvs());

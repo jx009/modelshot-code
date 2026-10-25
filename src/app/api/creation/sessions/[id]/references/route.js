@@ -1,4 +1,4 @@
-import { requireUser } from "@/lib/require-user";
+import { requireCreationUser as requireUser } from "@/lib/creation/require-user";
 import { AppError, errorResponse, readBytes, sameOrigin } from "@/lib/http";
 import { rateLimit } from "@/lib/domain/identity/rate-limit";
 import { listCreationReferences, uploadCreationReference } from "@/lib/domain/creation/reference-files";
@@ -12,7 +12,7 @@ const uploads = new ConcurrencyGate(2);
 
 export async function GET(_request, context) {
   try {
-    const user = await requireUser(), { id } = await context.params;
+    const user = await requireUser({ resource: "session", id: (await context.params).id }), { id } = await context.params;
     const items = await listCreationReferences(user.id, id);
     return Response.json({ items, officeEnabled: await officeReferencesAvailable(prisma) }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) { return errorResponse(error); }
@@ -21,7 +21,7 @@ export async function GET(_request, context) {
 export async function POST(request, context) {
   try {
     sameOrigin(request);
-    const user = await requireUser(), { id } = await context.params;
+    const user = await requireUser({ resource: "session", id: (await context.params).id }), { id } = await context.params;
     await rateLimit("creation-reference-upload", user.id, 30, 600);
     const contentType = request.headers.get("content-type") || "";
     if (!contentType.toLowerCase().startsWith("multipart/form-data;")) throw new AppError("MULTIPART_REQUIRED", 415);

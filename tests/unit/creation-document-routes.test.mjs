@@ -5,7 +5,7 @@ import { POST as copy } from "../../src/app/api/creation/artifacts/[id]/document
 import { POST as restore } from "../../src/app/api/creation/artifacts/[id]/document/restore/route.js";
 
 const mock = vi.hoisted(() => ({ project: vi.fn(), create: vi.fn(), read: vi.fn(), save: vi.fn(), copy: vi.fn(), restore: vi.fn() }));
-vi.mock("../../src/lib/require-user", () => ({ requireUser: async () => ({ id: "user" }) }));
+vi.mock("../../src/lib/creation/require-user", () => ({ requireCreationUser: async () => ({ id: "user", creationEnv: process.env }) }));
 vi.mock("../../src/lib/domain/identity/rate-limit", () => ({ rateLimit: vi.fn() }));
 vi.mock("../../src/lib/prisma", () => ({ prisma: { creationProject: { findFirst: (...args) => mock.project(...args) } } }));
 vi.mock("../../src/lib/domain/creation/document-artifacts", () => ({ createDocumentArtifact: (...args) => mock.create(...args), readDocumentArtifact: (...args) => mock.read(...args), modifyDocumentArtifact: (...args) => mock.save(...args), copyDocumentArtifact: (...args) => mock.copy(...args), restoreDocumentArtifact: (...args) => mock.restore(...args) }));

@@ -1,3 +1,4 @@
+import { getCreationEnv } from "../../creation/access.js";
 import { createHash, randomUUID } from "node:crypto";
 import { prisma } from "../../prisma.js";
 import { AppError } from "../../http.js";
@@ -45,7 +46,7 @@ async function priceSteps(steps, provider, db) {
 }
 
 export async function createImageRun(userId, input, key, db = prisma, deps = {}) {
-  if (!creationAdmissionEnabled(deps.env)) throw new AppError("CREATION_NOT_ENABLED", 503);
+  if (!creationAdmissionEnabled(deps.env ?? await getCreationEnv(userId, { db }))) throw new AppError("CREATION_NOT_ENABLED", 503);
   const data = imageRunSchema.parse(input);
   if (!/^[a-zA-Z0-9_-]{16,128}$/.test(key || "")) throw new AppError("IDEMPOTENCY_KEY_REQUIRED");
   const requestId = createHash("sha256").update(`creation:${userId}:${key}`).digest("hex");
@@ -142,7 +143,7 @@ export async function resumeRun(userId, id, input, db = prisma, deps = {}) {
     const { resumeContentRun } = await import("./content-runs.js");
     return resumeContentRun(userId, current, data, { ...deps, db });
   }
-  if (!creationAdmissionEnabled(deps.env)) throw new AppError("CREATION_NOT_ENABLED", 503);
+  if (!creationAdmissionEnabled(deps.env ?? await getCreationEnv(userId, { db }))) throw new AppError("CREATION_NOT_ENABLED", 503);
   await (deps.ensureWorkers || ensureWorkers)(db);
   const quote = await (deps.priceSteps || priceSteps)(remaining, current.input.provider || undefined, db);
   return db.$transaction(async tx => {

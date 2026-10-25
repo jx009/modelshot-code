@@ -1,11 +1,11 @@
-import { requireUser } from "@/lib/require-user";
+import { requireCreationUser as requireUser } from "@/lib/creation/require-user";
 import { AppError, errorResponse } from "@/lib/http";
 import { readRun } from "@/lib/domain/creation/runs";
 import { createRunStream } from "@/lib/domain/creation/event-stream";
 
 export async function GET(request, context) {
   try {
-    const user = await requireUser(), { id } = await context.params;
+    const user = await requireUser({ resource: "run", id: (await context.params).id, runs: true }), { id } = await context.params;
     const raw = request.headers.get("Last-Event-ID") || new URL(request.url).searchParams.get("after") || "0";
     if (!/^\d{1,10}$/.test(raw) || Number(raw) > 2147483647) throw new AppError("INVALID_EVENT_CURSOR");
     await readRun(user.id, id);

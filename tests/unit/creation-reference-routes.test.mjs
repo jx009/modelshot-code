@@ -3,7 +3,7 @@ import { GET, POST } from "../../src/app/api/creation/sessions/[id]/references/r
 import { AppError } from "../../src/lib/http.js";
 
 const mock = vi.hoisted(() => ({ list: vi.fn(), upload: vi.fn() }));
-vi.mock("../../src/lib/require-user", () => ({ requireUser: async () => ({ id: "user" }) }));
+vi.mock("../../src/lib/creation/require-user", () => ({ requireCreationUser: async () => ({ id: "user", creationEnv: process.env }) }));
 vi.mock("../../src/lib/domain/identity/rate-limit", () => ({ rateLimit: vi.fn() }));
 vi.mock("../../src/lib/domain/creation/reference-files", () => ({ listCreationReferences: (...args) => mock.list(...args), uploadCreationReference: (...args) => mock.upload(...args) }));
 const context = { params: Promise.resolve({ id: "session" }) }, url = "https://example.test/api/creation/sessions/session/references";

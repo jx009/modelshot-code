@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { LoaderCircle, Mail, ShieldCheck, CreditCard, Zap } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAdminReason } from "@/hooks/useAdminReason";
+import CreationAccessSettings from "@/components/admin/CreationAccessSettings";
 
 /**
  * 系统设置 — SMTP / Google OAuth / Stripe 三区
@@ -137,6 +138,7 @@ export default function AdminSettings() {
         </p>
       </div>
 
+      <CreationAccessSettings />
       {SECTIONS.map(sec => (
         <div key={sec.id} className="rounded-[16px] border border-divider bg-bg-card surface-lit p-5 space-y-4">
           <div className="flex items-center gap-2.5">

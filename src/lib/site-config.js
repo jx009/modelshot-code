@@ -9,6 +9,7 @@ import { encryptSecret, decryptSecret, maskSecret } from "./crypto.js";
 
 // key 常量 + 元信息（env 兜底名 + 是否敏感）
 export const CONFIG_KEYS = {
+  creation_access: { env: "CREATION_ACCESS_CONFIG", sensitive: false },
   execution_limits: { env: "EXECUTION_LIMITS", sensitive: false },
   image_resolution_pricing: { env: "IMAGE_RESOLUTION_PRICING", sensitive: false },
   cos_delivery:          { env: "COS_DELIVERY_CONFIG", sensitive: true },
@@ -39,7 +40,7 @@ export const CONFIG_KEYS = {
 let cache = new Map();
 let cacheAt = 0;
 const TTL = 60_000;
-const LIVE_KEYS = new Set(["image_resolution_pricing", "announcements", "google_login_enabled", "registration_credits", "credit_packages", "payments_enabled", "epay_enabled", "epay_methods"]);
+const LIVE_KEYS = new Set(["creation_access", "image_resolution_pricing", "announcements", "google_login_enabled", "registration_credits", "credit_packages", "payments_enabled", "epay_enabled", "epay_methods"]);
 
 export function invalidateSiteConfig() {
   cache = new Map();

@@ -1,4 +1,4 @@
-import { requireUser } from "@/lib/require-user";
+import { requireCreationUser as requireUser } from "@/lib/creation/require-user";
 import { AppError, errorResponse, readJson } from "@/lib/http";
 import { rateLimit } from "@/lib/domain/identity/rate-limit";
 import { ownedArtifact } from "@/lib/domain/creation/artifacts";
@@ -7,7 +7,7 @@ import { restoreNativeOfficeArtifactSchema } from "@/lib/creation/contracts/nati
 
 export async function POST(request, context) {
   try {
-    const user = await requireUser(), { id } = await context.params;
+    const user = await requireUser({ resource: "artifact", id: (await context.params).id }), { id } = await context.params;
     await rateLimit("creation-native-restore", user.id, 10, 60);
     const body = await readJson(request, restoreNativeOfficeArtifactSchema);
     const artifact = await ownedArtifact(user.id, id);

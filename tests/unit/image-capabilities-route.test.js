@@ -1,6 +1,7 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import { GET } from "../../src/app/api/studio/capabilities/route.js";
 
+vi.mock("@/lib/creation/access", () => ({ getCreationEnv: async () => process.env }));
 const mocks = vi.hoisted(() => ({ requireUser: vi.fn(), capabilities: vi.fn() }));
 vi.mock("@/lib/require-user", () => ({ requireUser: mocks.requireUser }));
 vi.mock("@/lib/domain/studio/providers", () => ({ capabilities: mocks.capabilities }));

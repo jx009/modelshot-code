@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { beforeEach, expect, it, vi } from "vitest";
 import { GET } from "../../src/app/api/creation/sessions/[id]/references/[referenceId]/route.js";
 const ports = vi.hoisted(() => ({ find: vi.fn(), stream: vi.fn() }));
-vi.mock("../../src/lib/require-user", () => ({ requireUser: async () => ({ id: "u" }) }));
+vi.mock("../../src/lib/creation/require-user", () => ({ requireCreationUser: async () => ({ id: "u", creationEnv: process.env }) }));
 vi.mock("../../src/lib/domain/identity/rate-limit", () => ({ rateLimit: vi.fn() }));
 vi.mock("../../src/lib/prisma", () => ({ prisma: { creationReference: { findFirst: (...args) => ports.find(...args) } } }));
 vi.mock("../../src/lib/infra/storage/s3", () => ({ objectStorage: () => ({ stream: (...args) => ports.stream(...args) }) }));

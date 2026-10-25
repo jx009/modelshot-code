@@ -1,4 +1,4 @@
-import { requireUser } from "@/lib/require-user";
+import { requireCreationUser as requireUser } from "@/lib/creation/require-user";
 import { AppError, errorResponse, readJson } from "@/lib/http";
 import { rateLimit } from "@/lib/domain/identity/rate-limit";
 import { ownedArtifact } from "@/lib/domain/creation/artifacts";
@@ -6,11 +6,11 @@ import { readNativeOfficeArtifact, saveNativeOfficeArtifact } from "@/lib/domain
 import { saveNativeOfficeArtifactSchema, NATIVE_OFFICE_REQUEST_BYTES } from "@/lib/creation/contracts/native-office";
 
 const headers = { "Cache-Control": "private, no-store" };
-// Existing native revisions remain readable/recoverable with new admission
-// disabled. This endpoint cannot create or upgrade a semantic artifact.
+// The access guard applies to existing revisions too. The separate native
+// conversion flag only controls creating/upgrading a semantic artifact.
 export async function GET(request, context) {
   try {
-    const user = await requireUser(), { id } = await context.params;
+    const user = await requireUser({ resource: "artifact", id: (await context.params).id }), { id } = await context.params;
     await rateLimit("creation-native-read", user.id, 60, 60);
     const artifact = await ownedArtifact(user.id, id);
     if (!["document", "sheet"].includes(artifact.kind)) throw new AppError("ARTIFACT_KIND_MISMATCH", 422);
@@ -22,7 +22,7 @@ export async function GET(request, context) {
 }
 export async function PUT(request, context) {
   try {
-    const user = await requireUser(), { id } = await context.params;
+    const user = await requireUser({ resource: "artifact", id: (await context.params).id }), { id } = await context.params;
     await rateLimit("creation-native-save", user.id, 30, 60);
     const body = await readJson(request, saveNativeOfficeArtifactSchema, NATIVE_OFFICE_REQUEST_BYTES);
     return Response.json(await saveNativeOfficeArtifact(user.id, id, body), { headers });

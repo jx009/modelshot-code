@@ -1,4 +1,4 @@
-import { requireUser } from "@/lib/require-user";
+import { requireCreationUser as requireUser } from "@/lib/creation/require-user";
 import { errorResponse, AppError } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 import { objectStorage } from "@/lib/infra/storage/s3";
@@ -11,7 +11,7 @@ const downloads = new ConcurrencyGate(2);
 
 export async function GET(request, context) {
   try {
-    const user = await requireUser(), { id, referenceId } = await context.params;
+    const user = await requireUser({ resource: "session", id: (await context.params).id }), { id, referenceId } = await context.params;
     await rateLimit("creation-reference-download", user.id, 30, 60);
     const file = await prisma.creationReference.findFirst({ where: { id: referenceId, userId: user.id, sessionId: id, deletedAt: null, session: { project: { userId: user.id, deletedAt: null } } }, select: { name: true, fileType: true, contentType: true, bytes: true, checksum: true, objectKey: true } });
     if (!file) throw new AppError("CREATION_REFERENCE_NOT_FOUND", 404);

@@ -1,3 +1,4 @@
+import { getCreationEnv } from "@/lib/creation/access";
 import { requireUser } from "@/lib/require-user";
 import { errorResponse } from "@/lib/http";
 import { capabilities } from "@/lib/domain/studio/providers";
@@ -11,16 +12,19 @@ export async function GET(request) {
     return response;
   };
   try {
-    await requireUser();
+    const user = await requireUser();
     authorized = performance.now();
     const query = new URL(request.url).searchParams;
     const imageOnly = query.get("scope") === "images";
-    const caps = await capabilities(undefined, undefined, query.get("imageProvider") || undefined, { imageOnly });
-    const creationEnabled = process.env.CREATION_RUNS_ENABLED === "true" && process.env.CREATION_WORKSPACE_ENABLED === "true" && caps.planningAvailable;
+    const [caps, env] = await Promise.all([
+      capabilities(undefined, undefined, query.get("imageProvider") || undefined, { imageOnly }),
+      getCreationEnv(user.id),
+    ]);
+    const creationEnabled = env.CREATION_RUNS_ENABLED === "true" && env.CREATION_WORKSPACE_ENABLED === "true" && caps.planningAvailable;
     return finish(Response.json({ ...caps, creationTypes: {
-      poster: Boolean(creationEnabled && process.env.CREATION_POSTER_ENABLED === "true"),
-      slides: Boolean(creationEnabled && process.env.CREATION_SLIDES_ENABLED === "true"),
-    }, ...(!imageOnly ? { creationRunsAvailable: process.env.CREATION_RUNS_ENABLED === "true" } : {}) }));
+      poster: Boolean(creationEnabled && env.CREATION_POSTER_ENABLED === "true"),
+      slides: Boolean(creationEnabled && env.CREATION_SLIDES_ENABLED === "true"),
+    }, ...(!imageOnly ? { creationRunsAvailable: env.CREATION_RUNS_ENABLED === "true" } : {}) }));
   }
   catch (error) { return finish(errorResponse(error)); }
 }

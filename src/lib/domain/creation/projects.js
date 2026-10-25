@@ -59,11 +59,11 @@ function decodeCursor(raw) {
   } catch { throw new AppError("INVALID_CURSOR"); }
 }
 
-export async function listProjects(userId, { cursor: raw, kind } = {}, db = prisma) {
+export async function listProjects(userId, { cursor: raw, kind, allowedKinds } = {}, db = prisma) {
   const cursor = decodeCursor(raw);
   if (kind && !["poster", "slides", "document", "sheet", "web"].includes(kind)) throw new AppError("INVALID_PROJECT_KIND");
   const rows = await db.creationProject.findMany({
-    where: { userId, deletedAt: null, ...(kind ? { kind } : {}), ...(cursor ? { OR: [{ updatedAt: { lt: cursor.updatedAt } }, { updatedAt: cursor.updatedAt, id: { lt: cursor.id } }] } : {}) },
+    where: { userId, deletedAt: null, ...(kind ? { kind } : {}), ...(allowedKinds ? { AND: [{ kind: { in: allowedKinds } }] } : {}), ...(cursor ? { OR: [{ updatedAt: { lt: cursor.updatedAt } }, { updatedAt: cursor.updatedAt, id: { lt: cursor.id } }] } : {}) },
     orderBy: [{ updatedAt: "desc" }, { id: "desc" }], take: 25, select: fields,
   });
   const items = rows.slice(0, 24), last = items.at(-1);

@@ -33,3 +33,19 @@ it("applies the newest projection if it arrives before the initial frame loads",
   expect(frameRef.current.contentDocument.body.textContent).toBe("Latest");
   expect(frameRef.current.getAttribute("srcdoc")).toBe(html("Initial"));
 });
+
+it("removes transient editor styles before patching and rebinds only after the new document is applied", () => {
+  const frameRef = createRef(), onUpdate = vi.fn();
+  const onBeforeUpdate = vi.fn(() => {
+    expect(frameRef.current.contentDocument.body.textContent).toBe("Initial");
+    frameRef.current.contentDocument.querySelector("p").style.removeProperty("outline");
+  });
+  const view = render(<HtmlPreviewFrame html={html("Initial")} frameRef={frameRef} onUpdate={onUpdate} onBeforeUpdate={onBeforeUpdate} />);
+  frameRef.current.contentDocument.body.innerHTML = '<p data-node-id="title" style="outline:2px solid blue">Initial</p>';
+  fireEvent.load(frameRef.current); onUpdate.mockClear();
+  view.rerender(<HtmlPreviewFrame html={html("Updated")} frameRef={frameRef} onUpdate={onUpdate} onBeforeUpdate={onBeforeUpdate} />);
+  expect(onBeforeUpdate).toHaveBeenCalledOnce(); expect(onUpdate).toHaveBeenCalledOnce();
+  expect(onBeforeUpdate.mock.invocationCallOrder[0]).toBeLessThan(onUpdate.mock.invocationCallOrder[0]);
+  expect(frameRef.current.contentDocument.body.textContent).toBe("Updated");
+  expect(frameRef.current.contentDocument.querySelector("p").style.outline).toBe("");
+});

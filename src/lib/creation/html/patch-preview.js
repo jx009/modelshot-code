@@ -1,4 +1,4 @@
-// Only pass projectHtml's validated, CSP-protected projection here. This is a
+// Only pass validated, CSP-protected, script-free preview HTML here. This is a
 // disposable view; edits and saves always use the original asset: source.
 function compatible(current, next) {
   return current.nodeType === next.nodeType && current.nodeName === next.nodeName

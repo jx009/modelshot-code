@@ -6,6 +6,8 @@
 .cw-web-toolbar-gap { flex:1; }
 .cw-web-preview { display:flex; flex:1; min-height:0; min-width:0; overflow:hidden; background:var(--bg-card-hover); justify-content:center; }
 .cw-web-viewport { position:relative; height:100%; max-width:100%; min-width:0; }
+.cw-web-preview-status { position:absolute; bottom:10px; left:10px; z-index:1; max-width:calc(100% - 20px); padding:6px 10px; border:1px solid var(--divider); border-radius:8px; background:var(--bg-card); color:var(--secondary-text); font-size:12px; }
+.cw-web-preview-status button { margin-left:8px; color:var(--primary); }
 .cw-web-viewport iframe { display:block; width:var(--web-frame-width); height:var(--web-frame-height); max-width:none; transform:scale(var(--web-frame-scale)); transform-origin:top left; background:white; border:0; }
 .cw-web-preview[data-mode=mobile] iframe { border-radius:12px; }
 .cw-web-source { display:flex; flex:1; min-height:0; min-width:0; }

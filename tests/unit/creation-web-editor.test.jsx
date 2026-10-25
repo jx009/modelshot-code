@@ -8,16 +8,17 @@ import { prepareWebRename } from "../../src/lib/creation/client/web-rename.js";
 import { prepareWebImageInsertion } from "../../src/lib/creation/client/web-image-insert.js";
 vi.mock("../../src/lib/creation/client/web-source-worker", () => ({ runWebSourceTask: async (type, payload) => type === "rename" ? prepareWebRename(payload.content, payload.request) : prepareWebImageInsertion(payload.content, payload.target, payload.page) }));
 
-const mocks = vi.hoisted(() => ({ api: vi.fn(), read: vi.fn(), write: vi.fn(), readText: vi.fn(), writeText: vi.fn(), preview: vi.fn(), images: vi.fn() }));
+const mocks = vi.hoisted(() => ({ api: vi.fn(), read: vi.fn(), write: vi.fn(), readText: vi.fn(), writeText: vi.fn(), preview: vi.fn(), images: vi.fn(), loader: vi.fn(), visual: vi.fn() }));
 vi.mock("../../src/lib/client-api", () => ({ api: (...args) => mocks.api(...args), requestKey: () => "web-source-key-123456" }));
 vi.mock("../../src/lib/studio/project-list", () => ({ invalidateProjectLists: vi.fn() }));
 vi.mock("../../src/components/creation/DraftSessionGate", () => ({ default: ({ children }) => children("web-session-123456", () => {}) }));
 vi.mock("../../src/components/ui/Modal", () => ({ default: ({ children, label }) => <div role="dialog" aria-label={label}>{children}</div> }));
 vi.mock("../../src/components/studio/AssetLibrary", () => ({ default: ({ onSelect }) => <button onClick={() => onSelect(mocks.images())}>Choose library images</button> }));
-vi.mock("../../src/lib/creation/client/web-preview-assets", () => ({ loadWebPreviewAssets: async () => new Map() }));
+vi.mock("../../src/lib/creation/client/web-preview-assets", () => ({ createWebPreviewAssetLoader: (...args) => mocks.loader(...args), loadWebPreviewAssets: async () => new Map() }));
 vi.mock("../../src/lib/creation/client/drafts", () => ({ readArtifactDraft: (...args) => mocks.read(...args), writeArtifactDraft: (...args) => mocks.write(...args), readArtifactTextDraft: (...args) => mocks.readText(...args), writeArtifactTextDraft: (...args) => mocks.writeText(...args) }));
-vi.mock("../../src/components/creation/WebPreview", () => ({ default: ({ content }) => { mocks.preview(content); return <div>Website preview</div>; } }));
-vi.mock("../../src/components/creation/WebVisualEditor", () => ({ default: ({ content, pageId, onDraft, onApply }) => {
+vi.mock("../../src/components/creation/WebPreview", () => ({ default: ({ content, loadAssets }) => { mocks.preview(content, loadAssets); return <div>Website preview</div>; } }));
+vi.mock("../../src/components/creation/WebVisualEditor", () => ({ default: ({ content, pageId, onDraft, onApply, loadAssets }) => {
+  mocks.visual(loadAssets);
   const file = content.files.find(file => file.id === pageId) || content.files[0];
   const draft = composing => onDraft({ kind: "web-source", fileId: file.id, path: file.path, fileKind: file.kind, original: file.content, text: "<p>Visual edit</p>", composing });
   return <div><span>Visual file: {file.path}</span><button onClick={() => draft(false)}>Draft visual</button><button onClick={() => draft(true)}>Compose visual</button><button onClick={onApply}>Apply visual</button></div>;
@@ -28,6 +29,7 @@ const site = () => webSchema.parse({ schemaVersion: 1, kind: "web", title: "Coff
 const sourceDraft = () => ({ kind: "web-source", fileId: "html", path: "index.html", fileKind: "html", original: "<h1>Coffee</h1>", text: "<h1>Recovered</h1>", composing: false });
 beforeEach(() => {
   Object.values(mocks).forEach(mock => mock.mockReset());
+  mocks.loader.mockImplementation(() => vi.fn().mockResolvedValue(new Map()));
   mocks.read.mockResolvedValue(null); mocks.readText.mockResolvedValue(null); mocks.write.mockResolvedValue(undefined);
   mocks.images.mockReturnValue([{ assetId: "library-image-12345", name: "Coffee", asset: { contentType: "image/webp" } }]);
   mocks.writeText.mockImplementation(async (_u, _a, _value, prepare) => { await prepare?.(); });
@@ -42,6 +44,23 @@ async function open(props = {}) {
   fireEvent.click(screen.getByText("Code"));
   return { editorRef, onError, onReference };
 }
+it("shares image loading across preview modes and discards that cache when user or artifact changes", async () => {
+  const view = render(<WebArtifactEditor artifactId="a" userId="u" zh={false} />);
+  await screen.findByText("Website preview");
+  await waitFor(() => expect(screen.getByText("Visual").disabled).toBe(false));
+  const loader = mocks.preview.mock.lastCall[1]; expect(typeof loader).toBe("function");
+  fireEvent.click(screen.getByText("Visual")); await screen.findByText("Visual file: index.html");
+  expect(mocks.visual.mock.lastCall[0]).toBe(loader);
+  fireEvent.click(screen.getByText("Preview")); await screen.findByText("Website preview");
+  expect(mocks.preview.mock.lastCall[1]).toBe(loader); expect(mocks.loader).toHaveBeenCalledOnce();
+  view.rerender(<WebArtifactEditor artifactId="b" userId="u" zh={false} />);
+  await waitFor(() => expect(mocks.loader).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(mocks.preview.mock.lastCall[1]).not.toBe(loader));
+  const otherArtifact = mocks.preview.mock.lastCall[1];
+  view.rerender(<WebArtifactEditor artifactId="b" userId="v" zh={false} />);
+  await waitFor(() => expect(mocks.loader).toHaveBeenCalledTimes(3));
+  await waitFor(() => expect(mocks.preview.mock.lastCall[1]).not.toBe(otherArtifact));
+});
 it("retries a failed publication status read before enabling publish", async () => {
   let attempts = 0;
   mocks.api.mockImplementation(async (url, options) => {

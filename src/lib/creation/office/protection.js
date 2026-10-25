@@ -5,15 +5,31 @@ function fail(code) { const error = new Error(code); error.code = code; throw er
 export function importedParagraphs(snapshot, segment = "") {
   const body = segment ? snapshot.headers?.[segment]?.body || snapshot.footers?.[segment]?.body : snapshot.body;
   if (!body) fail("OFFICE_IMPORT_STRUCTURE_PROTECTED");
-  const result = new Map(); let previous = 0;
+  const result = new Map(), spans = []; let previous = 0;
   for (const p of body.paragraphs || []) {
     if (!p.paragraphId || result.has(p.paragraphId) || p.startIndex < previous || body.dataStream[p.startIndex] !== "\r") fail("OFFICE_IMPORT_STRUCTURE_PROTECTED");
     while (previous < p.startIndex && /[\n\x1a\x1b\x1c\x1d\x0e\x0f]/.test(body.dataStream[previous])) previous++;
     const start = previous, end = p.startIndex;
-    result.set(p.paragraphId, { text: body.dataStream.slice(start, end), style: p.paragraphStyle || {}, bullet: p.bullet || null,
-      runs: (body.textRuns || []).filter(r => r.st < end && r.ed > start).map(r => ({ st: Math.max(r.st, start) - start, ed: Math.min(r.ed, end) - start, ts: r.ts || {} })),
-      ranges: (body.customRanges || []).filter(r => r.startIndex >= start && r.endIndex < end).map(r => ({ ...r, startIndex: r.startIndex - start, endIndex: r.endIndex - start })) });
+    const value = { text: body.dataStream.slice(start, end), style: p.paragraphStyle || {}, bullet: p.bullet || null, runs: [], ranges: [] };
+    result.set(p.paragraphId, value); spans.push({ start, end, value });
     previous = end + 1;
+  }
+  // Index paragraph intervals once. Filtering every run/range for every
+  // paragraph made long imported documents quadratic on each autosave.
+  const firstEndingAfter = offset => {
+    let lo = 0, hi = spans.length;
+    while (lo < hi) { const mid = (lo + hi) >>> 1; if (spans[mid].end <= offset) lo = mid + 1; else hi = mid; }
+    return lo;
+  };
+  for (const run of body.textRuns || []) {
+    for (let index = firstEndingAfter(run.st); index < spans.length && spans[index].start < run.ed; index++) {
+      const { start, end, value } = spans[index];
+      value.runs.push({ st: Math.max(run.st, start) - start, ed: Math.min(run.ed, end) - start, ts: run.ts || {} });
+    }
+  }
+  for (const range of body.customRanges || []) {
+    const span = spans[firstEndingAfter(range.startIndex)];
+    if (span && range.startIndex >= span.start && range.endIndex < span.end) span.value.ranges.push({ ...range, startIndex: range.startIndex - span.start, endIndex: range.endIndex - span.start });
   }
   return result;
 }

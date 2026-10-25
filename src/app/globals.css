@@ -1,4 +1,6 @@
-@import "tailwindcss";
+/* Only application sources contain shipped utility classes. Avoid walking
+   investigation files, export fixtures and local tool runtimes on each compile. */
+@import "tailwindcss" source("../");
 
 /* ══════════ 全局进场动画 ══════════ */
 @keyframes nav-toast-in {

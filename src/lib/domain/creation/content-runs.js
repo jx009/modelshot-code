@@ -1,3 +1,6 @@
+import { sheetGenerationCalls } from "../../creation/contracts/sheet-batch.js";
+import { verifiedAgentParent, wakeAgentParent } from "./agent-links.js";
+import { dependencyReferencesSchema } from "../../creation/contracts/dependency-references.js";
 import { createHash, randomUUID } from "node:crypto";
 import { isHtmlDocument, validateHtmlSelection } from "../../creation/html/document.js";
 import { HTML_PIPELINE_VERSION, HTML_SCHEDULER_HEARTBEAT, HTML_LANGUAGE_HEARTBEAT } from "../../creation/contracts/html-runtime.js";
@@ -48,7 +51,7 @@ export async function ensureContentWorkers(db = prisma, { language = true, kind,
   if (html && rows.some(row => [HTML_SCHEDULER_HEARTBEAT, HTML_LANGUAGE_HEARTBEAT].includes(row.id) && row.details?.version !== HTML_PIPELINE_VERSION)) throw new AppError("CREATION_WORKER_UNAVAILABLE", 503);
 }
 
-export async function createContentRun(userId, sessionId, input, key, { db = prisma, store, env = process.env, configFor = creationLanguageConfig, ensureWorkers = ensureContentWorkers, quoteImage = posterImageQuote } = {}) {
+export async function createContentRun(userId, sessionId, input, key, { db = prisma, store, env = process.env, configFor = creationLanguageConfig, ensureWorkers = ensureContentWorkers, quoteImage = posterImageQuote, agentLink, dependencyRefs } = {}) {
   const data = contentRunSchema.parse(input);
   if (!/^[a-zA-Z0-9_-]{16,128}$/.test(key || "")) throw new AppError("IDEMPOTENCY_KEY_REQUIRED");
   const requestId = createHash("sha256").update(`creation-content:${userId}:${sessionId}:${key}`).digest("hex"), digest = creationInputDigest(data);
@@ -59,11 +62,11 @@ export async function createContentRun(userId, sessionId, input, key, { db = pri
   const nativeDocument = data.kind === "document" && data.target?.format === NATIVE_DOCUMENT_EDIT_FORMAT, nativeOffice = nativeSheet || nativeDocument;
   if (nativeOffice && env.CREATION_NATIVE_OFFICE_ENABLED !== "true") throw new AppError("CREATION_NOT_ENABLED", 503);
   const session = await db.creationSession.findFirst({ where: { id: sessionId, project: { userId, deletedAt: null } }, include: { project: { select: { kind: true } } } });
-  if (!session || session.project.kind !== data.kind) throw new AppError("CREATION_SESSION_NOT_FOUND", 404);
+  if (!session) throw new AppError("CREATION_SESSION_NOT_FOUND", 404);
   await ensureWorkers(db, { kind: data.kind, posterImage: Boolean(data.image) });
   const config = await configFor(db);
   if (!config.visionApiKey || !config.chatModel) throw new AppError("VISION_NOT_CONFIGURED", 503);
-  const cost = config.plannerCreditCost ?? 1, count = data.target || ["poster", "sheet", "web"].includes(data.kind) ? 1 : (data.kind === "document" ? data.sectionCount : data.pageCount) + 1;
+  const cost = config.plannerCreditCost ?? 1, count = data.target ? 1 : data.kind === "sheet" ? sheetGenerationCalls(data.sheetCount, data.targetRows) : ["poster", "web"].includes(data.kind) ? 1 : (data.kind === "document" ? data.sectionCount : data.pageCount) + 1;
   if (!Number.isSafeInteger(cost) || cost < 0) throw new AppError("INVALID_PRICE", 503);
   const imageQuote = data.image ? await quoteImage(db, data.image.provider) : null;
   const imageCost = imageQuote?.prices[data.image?.size] ?? (data.image ? null : 0);
@@ -86,11 +89,12 @@ export async function createContentRun(userId, sessionId, input, key, { db = pri
       if (!page || data.target.nodeIds.some(id => !page.nodes.some(node => node.id === id && !node.locked))) throw new AppError("LANGUAGE_SELECTION_CHANGED", 409);
     }
   }
-  const common = { prompt: data.prompt, locale: data.locale, assetIds: [...new Set(data.assetIds)], referenceIds: [...new Set(data.referenceIds)], ...(sourceFormat ? { sourceFormat } : {}) };
+  const fixedRefs = dependencyRefs ? dependencyReferencesSchema.parse(dependencyRefs) : undefined;
+  const common = { ...(fixedRefs ? { dependencyRefs: fixedRefs } : {}), prompt: data.prompt, locale: data.locale, assetIds: [...new Set(data.assetIds)], referenceIds: [...new Set(data.referenceIds)], ...(sourceFormat ? { sourceFormat } : {}) };
   const params = languageInputSchema.parse(data.target ? { ...common, purpose: `${data.kind}.${nativeOffice ? "native.edit" : "edit"}`, ...data.target }
     : data.kind === "poster" ? { ...common, purpose: "poster.generate", width: data.width, height: data.height }
       : data.kind === "document" ? { ...common, purpose: "document.outline", sectionCount: data.sectionCount, audience: data.audience }
-        : data.kind === "sheet" ? { ...common, purpose: "sheet.generate", sheetCount: data.sheetCount, targetRows: data.targetRows }
+        : data.kind === "sheet" ? { ...common, purpose: count > 1 ? "sheet.outline" : "sheet.generate", sheetCount: data.sheetCount, targetRows: data.targetRows }
           : data.kind === "web" ? { ...common, purpose: "web.generate", pageCount: data.pageCount }
         : { ...common, purpose: "slides.outline", pageCount: data.pageCount });
   return db.$transaction(async tx => {
@@ -107,12 +111,20 @@ export async function createContentRun(userId, sessionId, input, key, { db = pri
     if (references.length !== params.referenceIds.length) throw new AppError("CREATION_REFERENCE_NOT_FOUND", 404);
     if (references.some(file => referenceType(file.fileType)?.office)) await requireOfficeReferences(tx, { env });
     if (references.filter(file => !referenceType(file.fileType)?.office).reduce((sum, file) => sum + file.bytes, 0) > CREATION_REFERENCE_MAX_CONTEXT_BYTES) throw new AppError("CREATION_REFERENCE_CONTEXT_LIMIT", 413);
-    if (await tx.creationRun.count({ where: { userId, status: { in: [...RUN_ACTIVE, ...RUN_WAITING] } } })) throw new AppError("CREATION_USER_QUEUE_FULL", 429);
+    let parent = null, parentStep = null;
+    if (agentLink) {
+      parent = await lockRun(tx, userId, agentLink.runId);
+      parentStep = parent.steps.find(step => step.id === agentLink.stepId);
+      if (parent.kind !== "agent" || parent.projectId !== session.projectId || parent.sessionId !== sessionId || parent.cancelRequestedAt
+        || !["queued", "running"].includes(parent.status) || parentStep?.status !== "ready" || parentStep.result?.childRunId
+        || parent.eventSequence !== agentLink.sequence || parent.committedCredits + data.maxCredits > parent.maxCredits) throw new AppError("CREATION_RUN_CHANGED", 409);
+    }
+    if (await tx.creationRun.count({ where: { userId, ...(parent ? { id: { not: parent.id } } : {}), status: { in: [...RUN_ACTIVE, ...RUN_WAITING] } } })) throw new AppError("CREATION_USER_QUEUE_FULL", 429);
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended('creation-admission', 0))::text`;
     if (await tx.creationRun.count({ where: { status: { in: RUN_ACTIVE } } }) >= 1000) throw new AppError("CREATION_QUEUE_FULL", 503);
     const stepIds = Array.from({ length: data.image ? 2 : 1 }, () => randomUUID());
     const run = await tx.creationRun.create({ data: { userId, projectId: session.projectId, sessionId, requestId, digest, kind: data.kind, maxCredits: data.maxCredits,
-      input: { summary: data.prompt.slice(0, 1000), clientKey: key, locale: data.locale, languageProvider: config.plannerProvider || null,
+      input: { ...(parent ? { agentParent: { runId: parent.id, stepId: parentStep.id } } : {}), summary: data.prompt.slice(0, 1000), clientKey: key, locale: data.locale, languageProvider: config.plannerProvider || null,
         languageUnitCost: cost, assetIds: params.assetIds, referenceIds: params.referenceIds, ...(data.image ? { posterImage: { ...data.image, provider: imageQuote.provider } } : {}), ...(data.kind === "document" ? { sectionCount: data.sectionCount, audience: data.audience } : data.kind === "sheet" ? { sheetCount: data.sheetCount, targetRows: data.targetRows } : data.kind === "web" ? { pageCount: data.pageCount } : { width: data.width, height: data.height, pageCount: data.pageCount }) },
       steps: { create: [
         ...(data.image ? [{ id: stepIds[0], position: 0, dependsOn: [], tool: POSTER_IMAGE_TOOL, params: posterImageStep(data, imageQuote.provider), explanation: data.locale === "zh" ? "生成海报视觉素材" : "Generate poster artwork", expectedCost: imageCost, status: "ready" }] : []),
@@ -123,6 +135,10 @@ export async function createContentRun(userId, sessionId, input, key, { db = pri
     await appendCreationMessage(tx, sessionId, key, "user", data.prompt, [...params.assetIds.map(assetId => ({ type: "asset", assetId })), ...references.map(({ id, name, fileType, contentType, bytes }) => ({ type: "reference", referenceId: id, name, fileType, contentType, bytes })), ...(data.target ? [{ type: "selection", ...data.target }] : []), { type: "run", runId: run.id }]);
     const updated = await appendRunEvent(tx, run.id, "run.created", { stepCount: count + (data.image ? 1 : 0) + (!data.target && ["slides", "document"].includes(data.kind) ? 1 : 0), maxCredits: data.maxCredits });
     await enqueueRun(tx, run.id, "initial");
+    if (parent) {
+      await tx.creationStep.update({ where: { id: parentStep.id }, data: { status: "running", result: { childRunId: run.id, accountedCredits: 0 } } });
+      await appendRunEvent(tx, parent.id, "agent.child_started", { stepId: parentStep.id, childRunId: run.id }, { status: "running", nextCheckAt: new Date() });
+    }
     return presentRun({ ...updated, steps: run.steps });
   }, { timeout: 15000 });
 }
@@ -133,10 +149,10 @@ export async function resumeContentRun(userId, current, data, { db = prisma, env
   const jobs = await db.tryOn.findMany({ where: { id: { in: remaining.map(step => step.jobId).filter(Boolean) }, userId }, select: { id: true, status: true } });
   const jobStatus = new Map(jobs.map(job => [job.id, job.status]));
   if (remaining.some(step => step.jobId && !["succeeded", "failed", "cancelled"].includes(jobStatus.get(step.jobId)))) throw new AppError("CREATION_DEPENDENCY_PENDING", 409);
-  const isAssembly = step => ["layout.assemble", "document.assemble"].includes(step.tool);
+  const isAssembly = step => ["layout.assemble", "document.assemble", "sheet.assemble"].includes(step.tool);
   const needsInvocation = step => !isAssembly(step) && (!step.jobId || jobStatus.get(step.jobId) !== "succeeded");
-  const outlineNotExpanded = current.steps.length === 1 && ["slides.outline", "document.outline"].includes(remaining[0]?.tool);
-  const futureCalls = outlineNotExpanded ? (current.kind === "document" ? current.input.sectionCount : current.input.pageCount) : 0;
+  const outlineNotExpanded = current.steps.length === 1 && ["slides.outline", "document.outline", "sheet.outline"].includes(remaining[0]?.tool);
+  const futureCalls = outlineNotExpanded ? (current.kind === "sheet" ? sheetGenerationCalls(current.input.sheetCount, current.input.targetRows) - 1 : current.kind === "document" ? current.input.sectionCount : current.input.pageCount) : 0;
   const imageSteps = remaining.filter(step => step.tool === POSTER_IMAGE_TOOL && needsInvocation(step));
   const calls = remaining.filter(step => step.tool !== POSTER_IMAGE_TOOL && needsInvocation(step)).length + futureCalls;
   const imageQuotes = new Map();
@@ -160,7 +176,9 @@ export async function resumeContentRun(userId, current, data, { db = prisma, env
       ...remaining.filter(needsInvocation).flatMap(step => step.params?.referenceIds || []),
       ...(futureCalls ? run.input.referenceIds || [] : []),
     ], { env });
-    if (await tx.creationRun.count({ where: { userId, id: { not: run.id }, status: { in: [...RUN_ACTIVE, ...RUN_WAITING] } } })) throw new AppError("CREATION_USER_QUEUE_FULL", 429);
+    const parent = await verifiedAgentParent(tx, run);
+    if (parent && parent.committedCredits - (parent.steps.find(step => step.id === run.input.agentParent.stepId)?.result?.accountedCredits || 0) + data.maxCredits > parent.maxCredits) throw new AppError("CREATION_BUDGET_EXCEEDED", 409);
+    if (await tx.creationRun.count({ where: { userId, id: { notIn: [run.id, ...(parent ? [parent.id] : [])] }, status: { in: [...RUN_ACTIVE, ...RUN_WAITING] } } })) throw new AppError("CREATION_USER_QUEUE_FULL", 429);
     if (run.committedCredits + calls * cost + [...imageQuotes.values()].reduce((sum, price) => sum + price, 0) > data.maxCredits) throw new AppError("CREATION_BUDGET_EXCEEDED", 409);
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended('creation-admission', 0))::text`;
     if (await tx.creationRun.count({ where: { status: { in: RUN_ACTIVE } } }) >= 1000) throw new AppError("CREATION_QUEUE_FULL", 503);
@@ -188,6 +206,7 @@ export async function resumeContentRun(userId, current, data, { db = prisma, env
       ...(outlineNotExpanded ? { input: { ...run.input, languageUnitCost: cost } } : {}),
     });
     await enqueueRun(tx, run.id, `resume:${data.expectedSequence}`);
+    await wakeAgentParent(tx, run);
     return presentRun(await tx.creationRun.findUnique({ where: { id: run.id }, include: { steps: { orderBy: { position: "asc" } } } }));
   }, { timeout: 15000 });
 }

@@ -32,7 +32,7 @@ function fixture() {
     creationProject: { findFirst: vi.fn(async () => ({ id: "project" })) },
     creationBlob: { create: vi.fn(async ({ data }) => { const row = { id: `blob${blobs.size}`, state: "staging", ...data }; blobs.set(row.id, row); return row; }),
       findFirst: vi.fn(async ({ where }) => blobs.get(where.id)), updateMany: vi.fn(async ({ where, data }) => { Object.assign(blobs.get(where.id), data); return { count: 1 }; }) },
-    creationStep: { createMany: vi.fn(async ({ data }) => { run.steps.push(...data.map((step, index) => ({ ...step, id: `part${index}`, attempt: 0 }))); }),
+    creationStep: { createMany: vi.fn(async ({ data }) => { run.steps.push(...data.map((step, index) => ({ ...step, id: step.id || `part${index}`, attempt: 0 }))); }),
       update: vi.fn(async ({ where, data }) => { const step = run.steps.find(step => step.id === where.id); Object.assign(step, data); return step; }),
       findUnique: vi.fn(async ({ where }) => run.steps.find(step => step.position === where.runId_position.position)) },
     tryOn: { findFirst: vi.fn(async ({ where }) => { const step = run.steps.find(step => step.jobId === where.id); return { status: "succeeded", snapshot: { creationStepId: step.id, creationAttempt: step.attempt } }; }) },
@@ -55,13 +55,13 @@ it("admits a document request with an outline-plus-sections budget and persists 
   value.db.creationRun.findUnique.mockResolvedValue(null);
   value.db.creationSession = { findFirst: vi.fn(async () => ({ id: "session", projectId: "project", project: { kind: "document" } })) };
   value.db.user = { findUnique: vi.fn(async () => ({ id: "u", status: "active" })) };
-  value.db.creationRun.create = vi.fn(async ({ data }) => { Object.assign(value.run, data, { id: "run", steps: [{ id: "first", ...data.steps.create }] }); return value.run; });
+  value.db.creationRun.create = vi.fn(async ({ data }) => { Object.assign(value.run, data, { id: "run", steps: data.steps.create.map(step => ({ ...step })) }); return value.run; });
   const request = { kind: "document", prompt: "Write report", sectionCount: 2, audience: "Investors", maxCredits: 6 };
   await expect(createContentRun("u", "session", { ...request, maxCredits: 4 }, "submit-document-key-123", value)).rejects.toThrow("CREATION_BUDGET_EXCEEDED");
   expect(value.db.creationRun.create).not.toHaveBeenCalled();
   const created = await createContentRun("u", "session", request, "submit-document-key-123", value);
   expect(created.steps).toHaveLength(1);
-  expect(created.steps[0].params).toMatchObject({ purpose: "document.outline", sectionCount: 2, audience: "Investors" });
+  expect(value.db.creationRun.create.mock.calls[0][0].data.steps.create[0].params).toMatchObject({ purpose: "document.outline", sectionCount: 2, audience: "Investors" });
   expect(created.input.width).toBeUndefined();
   expect(mocks.event.mock.calls[0][3]).toMatchObject({ stepCount: 4 });
 });
@@ -73,7 +73,7 @@ it("resumes free document assembly without enabling new model admissions or requ
   value.db.tryOn.findMany = vi.fn(async () => []);
   const configFor = vi.fn(() => { throw new Error("No model call needed"); });
   await resumeContentRun("u", value.run, { expectedSequence: 3, maxCredits: 6, retryFailed: false }, { ...value, env: {}, configFor });
-  expect(value.ensureWorkers).toHaveBeenCalledWith(value.db, { language: false, kind: "document" });
+  expect(value.ensureWorkers).toHaveBeenCalledWith(value.db, { language: false, kind: "document", posterImage: false });
   expect(configFor).not.toHaveBeenCalled();
   expect(value.run.steps.at(-1).expectedCost).toBe(0);
   expect(value.run.status).toBe("queued");

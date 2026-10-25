@@ -120,7 +120,11 @@ it("imports editable HTML slides while retaining notes, hidden state, image asse
   expect(html).toContain("transform:rotate(15deg)");
   expect(inspectHtml(html).assets).toHaveLength(1);
   expect(result.media).toHaveLength(1);
-  expect(result.warnings).toContain("PPTX_TEXT_FORMATTING_SIMPLIFIED");
+  const dom = new DOMParser().parseFromString(html, "text/html");
+  const paragraph = [...dom.querySelectorAll("p")].find(node => node.textContent.includes("咖啡开业"));
+  expect(paragraph.style.textAlign).toBe("center");
+  expect(paragraph.querySelector("span").style.fontSize).toBe("48px");
+  expect(paragraph.querySelector("span").style.fontWeight).toBe("bold");
 });
 
 it("imports cached native chart data as editable HTML charts and safely escapes table cell text", async () => {
@@ -128,7 +132,7 @@ it("imports cached native chart data as editable HTML charts and safely escapes 
   const slidePath = "ppt/slides/slide1.xml", relsPath = "ppt/slides/_rels/slide1.xml.rels";
   const chart = `<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><c:chart><c:title><c:tx><c:rich><a:p><a:r><a:t>季度销售</a:t></a:r></a:p></c:rich></c:tx></c:title><c:plotArea><c:barChart><c:ser><c:tx><c:v>收入</c:v></c:tx><c:spPr><a:solidFill><a:srgbClr val="336699"/></a:solidFill></c:spPr><c:cat><c:strRef><c:strCache><c:pt idx="0"><c:v>一季度</c:v></c:pt><c:pt idx="1"><c:v>二季度</c:v></c:pt></c:strCache></c:strRef></c:cat><c:val><c:numRef><c:numCache><c:pt idx="0"><c:v>12</c:v></c:pt><c:pt idx="1"><c:v>18.5</c:v></c:pt></c:numCache></c:numRef></c:val></c:ser></c:barChart></c:plotArea></c:chart></c:chartSpace>`;
   const frame = `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="900" name="Sales"/><p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr><p:xfrm><a:off x="9525" y="19050"/><a:ext cx="6096000" cy="3429000"/></p:xfrm><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:id="rIdChart"/></a:graphicData></a:graphic></p:graphicFrame>`;
-  const table = `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="901" name="Table"/><p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr><p:xfrm><a:off x="0" y="0"/><a:ext cx="1905000" cy="952500"/></p:xfrm><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/table"><a:tbl><a:tblGrid><a:gridCol w="1905000"/></a:tblGrid><a:tr h="952500"><a:tc><a:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>&lt;/td&gt;&lt;script&gt;alert(1)&lt;/script&gt;</a:t></a:r></a:p></a:txBody><a:tcPr/></a:tc></a:tr></a:tbl></a:graphicData></a:graphic></p:graphicFrame>`;
+  const table = `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="901" name="Table"/><p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr><p:xfrm><a:off x="0" y="0"/><a:ext cx="1905000" cy="952500"/></p:xfrm><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/table"><a:tbl><a:tblGrid><a:gridCol w="1905000"/></a:tblGrid><a:tr h="952500"><a:tc gridSpan="2"><a:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>&lt;/td&gt;&lt;script&gt;alert(1)&lt;/script&gt;</a:t></a:r></a:p></a:txBody><a:tcPr/></a:tc><a:tc hMerge="1"><a:txBody><a:p><a:r><a:t>CONTINUATION</a:t></a:r></a:p></a:txBody></a:tc></a:tr></a:tbl></a:graphicData></a:graphic></p:graphicFrame>`;
   zip.file(slidePath, (await zip.file(slidePath).async("string")).replace("</p:spTree>", `${frame}${table}</p:spTree>`));
   zip.file(relsPath, (await zip.file(relsPath).async("string")).replace("</Relationships>", '<Relationship Id="rIdChart" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="../charts/chart1.xml"/></Relationships>'));
   zip.file("ppt/charts/chart1.xml", chart);
@@ -142,5 +146,7 @@ it("imports cached native chart data as editable HTML charts and safely escapes 
   expect(result.warnings).toContain("PPTX_CHART_STYLE_SIMPLIFIED");
   expect(html).toContain("&lt;/td&gt;&lt;script&gt;alert(1)&lt;/script&gt;");
   expect(html).not.toContain("<script>");
+  expect(html).toContain('colspan="2"');
+  expect(html).not.toContain("CONTINUATION");
   expect(() => inspectHtml(html)).not.toThrow();
 });

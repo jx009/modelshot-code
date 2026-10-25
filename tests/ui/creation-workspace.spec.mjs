@@ -10,7 +10,7 @@ import { writeFile } from "node:fs/promises";
 import { htmlDocumentSchema } from "../../src/lib/creation/html/document.js";
 import { applyArtworkOperations } from "../../src/lib/creation/artwork-codec.js";
 
-test("HTML poster edits actual DOM, saves, reloads and keeps source clean", async ({ page }) => {
+test("HTML poster edits actual DOM, saves, reloads and keeps source clean", async ({ page }, info) => {
   const state = await fixtures(page);
   let revision = 1;
   let artwork = htmlDocumentSchema.parse({ schemaVersion: 3, format: "html-poster", kind: "poster", title: "城市咖啡 · 秋日新店", theme: { name: "Coffee", primary: "#234b3b", accent: "#d9a66b", background: "#f7f0df", fontFamily: "sans" }, pages: [{ id: "poster", width: 1080, height: 1440, html: '<!DOCTYPE html><html><head><meta name="vimg-width" content="1080"><meta name="vimg-height" content="1440"><style>body{margin:0;width:1080px;height:1440px;background:#f7f0df;color:#234b3b;font-family:Arial,sans-serif;box-sizing:border-box;padding:90px;display:flex;flex-direction:column;justify-content:space-between}.top{display:flex;justify-content:space-between;font-size:22px;letter-spacing:5px}h1{font-size:126px;line-height:1.1;letter-spacing:-6px;margin:0}.sub{font-size:30px;line-height:1.8;max-width:700px}.disc{width:400px;height:400px;border-radius:50%;background:#d9a66b;margin:30px auto;display:flex;align-items:center;justify-content:center}.cup{width:210px;height:190px;background:#f7f0df;border-radius:15px 15px 90px 90px;box-shadow:20px 20px 0 #234b3b}.foot{border-top:2px solid #234b3b;padding-top:30px;display:flex;justify-content:space-between;font-size:24px}</style></head><body><div class="top" data-node-id="top"><span data-node-id="brand">CITY COFFEE</span><span data-node-id="season">AUTUMN / 2026</span></div><section data-node-id="intro"><h1 data-node-id="headline">让日常，<br>慢下来。</h1><p class="sub" data-node-id="copy">一杯好咖啡，一段属于自己的时间。<br>新店开业，邀你共赴秋日。</p></section><div class="disc" data-node-id="disc"><div class="cup" data-node-id="cup"></div></div><footer class="foot" data-node-id="foot"><span data-node-id="date">11月1日 · 正式开业</span><span data-node-id="address">城市街角 108 号</span></footer></body></html>' }] });
@@ -37,7 +37,15 @@ test("HTML poster edits actual DOM, saves, reloads and keeps source clean", asyn
   expect(artwork.pages[0].html).toContain("justify-content:space-between");
   await page.reload();
   await expect(frame.locator('[data-node-id="date"]')).toHaveText("11月8日 · 正式开业");
-  await page.screenshot({ path: "artifacts/creation-html-poster-1440.png" });
+  for (const [width, height] of [[1920,1080], [1440,900], [1440,720], [1024,768], [390,844]]) {
+    await page.setViewportSize({ width, height });
+    if (width === 390) await page.getByRole("button", { name: "作品", exact: true }).click();
+    await expect(frame.locator('[data-node-id="date"]')).toBeVisible();
+    const stage = await page.locator(".cw-html-stage").boundingBox();
+    expect(stage.height).toBeGreaterThan(height * .65);
+    expect(await page.locator(".cw-workspace").evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    await page.screenshot({ path: info.outputPath(`html-poster-${width}x${height}.png`) });
+  }
   // Playwright init scripts are deliberately denied inside the scriptless edit frame.
   expect(state.errors.filter(error => !error.includes("favicon") && !error.startsWith("Blocked script execution in "))).toEqual([]);
 });
@@ -700,4 +708,53 @@ test("browser Back and Forward preserve native edits across delayed saves, failu
   // The single HTTP console error is the deliberately rejected save above.
   expect(observed.errors).toHaveLength(1);
   expect(observed.errors[0]).toContain("503 (Service Unavailable)");
+});
+
+
+test("HTML slides keep one edit frame across 30 pages and repeated panel changes", async ({ page }, info) => {
+  const observed = await fixtures(page);
+  const artwork = htmlDocumentSchema.parse({ schemaVersion: 3, format: "html-slides", kind: "slides", title: "HTML performance sample", theme: content.theme,
+    pages: Array.from({ length: 30 }, (_, index) => ({ id: `html-${index}`, title: `Page ${index + 1}`, width: 1280, height: 720,
+      html: `<html><head><style>body{margin:0;background:#faf7ef;font-family:Arial;color:#33443b;padding:40px}h1{font-size:48px}.grid{display:grid;grid-template-columns:repeat(10,1fr);gap:5px}.cell{background:#cb985e;padding:5px}</style></head><body><h1 data-node-id="title">Page ${index + 1}</h1><div class="grid">${Array.from({length:100},(_,n)=>`<div class="cell" data-node-id="cell-${n}">${n}</div>`).join("")}</div></body></html>` })) });
+  await page.route("**/api/creation/artifacts/deck", route => route.fulfill({ json: { id: "deck", revision: 1, content: artwork } }));
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/zh/creation?project=demo");
+  const frame = page.frameLocator('iframe[title="可编辑作品"]');
+  await expect(frame.locator("h1")).toHaveText("Page 1");
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("HeapProfiler.collectGarbage");
+  const before = await cdp.send("Memory.getDOMCounters");
+  const timings = [];
+  for (let index = 1; index < 30; index++) {
+    const elapsed = await page.evaluate(async index => {
+      const start = performance.now();
+      document.querySelectorAll(".cw-html-pages button")[index].click();
+      await new Promise((resolve, reject) => {
+        const deadline = performance.now() + 10000;
+        const check = () => {
+          const frame = document.querySelector('.cw-html-stage iframe');
+          if (frame?.contentDocument?.querySelector("h1")?.textContent === `Page ${index + 1}`) requestAnimationFrame(resolve);
+          else if (performance.now() > deadline) reject(new Error("slide timeout"));
+          else requestAnimationFrame(check);
+        };
+        check();
+      });
+      return performance.now() - start;
+    }, index);
+    timings.push(elapsed);
+    expect(await page.locator('.cw-html-stage iframe').count()).toBe(1);
+  }
+  for (let index = 0; index < 10; index++) {
+    await page.getByRole("button", { name: "收起创作对话", exact: true }).click();
+    await page.getByRole("button", { name: "展开创作对话", exact: true }).click();
+  }
+  await expect(frame.locator("h1")).toHaveText("Page 30");
+  await cdp.send("HeapProfiler.collectGarbage");
+  const after = await cdp.send("Memory.getDOMCounters");
+  const sorted = [...timings].sort((a,b)=>a-b);
+  await writeFile(info.outputPath("html-slide-metrics.json"), JSON.stringify({ mode:"local Next development; mocked API; diagnostic only", pages:30, nodesPerPage:101, timings, medianMs: sorted[Math.floor(sorted.length/2)], p95Ms:sorted[Math.ceil(sorted.length*.95)-1], before, after }, null, 2));
+  expect(after.documents).toBeLessThanOrEqual(before.documents + 2);
+  expect(after.jsEventListeners).toBeLessThanOrEqual(before.jsEventListeners + 30);
+  expect(observed.errors.filter(error => !error.startsWith("Blocked script execution in "))).toEqual([]);
+  await cdp.detach();
 });

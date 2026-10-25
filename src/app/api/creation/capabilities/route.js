@@ -1,3 +1,4 @@
+import { AGENT_PIPELINE_VERSION, AGENT_SCHEDULER_HEARTBEAT, AGENT_LANGUAGE_HEARTBEAT } from "@/lib/creation/contracts/agent";
 import { HTML_PIPELINE_VERSION, HTML_SCHEDULER_HEARTBEAT, HTML_LANGUAGE_HEARTBEAT } from "@/lib/creation/contracts/html-runtime";
 import { requireUser } from "@/lib/require-user";
 import { errorResponse } from "@/lib/http";
@@ -10,6 +11,7 @@ import { posterImageQuote } from "@/lib/domain/creation/poster-images";
 import { POSTER_IMAGE_SCHEDULER_HEARTBEAT, POSTER_IMAGE_LANGUAGE_HEARTBEAT, posterImageWorkersReady } from "@/lib/creation/contracts/poster-runtime";
 
 const runtimes = {
+  agent: { enabled: "CREATION_AGENT_ENABLED", workers: ["worker", AGENT_SCHEDULER_HEARTBEAT, AGENT_LANGUAGE_HEARTBEAT], version: AGENT_PIPELINE_VERSION },
   poster: { enabled: "CREATION_POSTER_ENABLED", workers: ["worker", HTML_SCHEDULER_HEARTBEAT, HTML_LANGUAGE_HEARTBEAT], version: HTML_PIPELINE_VERSION },
   slides: { enabled: "CREATION_SLIDES_ENABLED", workers: ["worker", HTML_SCHEDULER_HEARTBEAT, HTML_LANGUAGE_HEARTBEAT], version: HTML_PIPELINE_VERSION },
   document: { enabled: "CREATION_DOCUMENT_ENABLED", workers: ["worker", DOCUMENT_SCHEDULER_HEARTBEAT, DOCUMENT_LANGUAGE_HEARTBEAT], version: DOCUMENT_PIPELINE_VERSION },

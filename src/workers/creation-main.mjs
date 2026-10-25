@@ -1,3 +1,4 @@
+import { AGENT_PIPELINE_VERSION, AGENT_SCHEDULER_HEARTBEAT } from "../lib/creation/contracts/agent.js";
 import { HTML_PIPELINE_VERSION, HTML_SCHEDULER_HEARTBEAT } from "../lib/creation/contracts/html-runtime.js";
 import "dotenv/config";
 import { Worker } from "bullmq";
@@ -30,6 +31,7 @@ async function recover() {
   try {
     await recoverRuns();
     await prisma.serviceHeartbeat.upsert({ where: { id: HTML_SCHEDULER_HEARTBEAT }, create: { id: HTML_SCHEDULER_HEARTBEAT, details: { version: HTML_PIPELINE_VERSION } }, update: { updatedAt: new Date(), details: { version: HTML_PIPELINE_VERSION } } });
+    await prisma.serviceHeartbeat.upsert({ where: { id: AGENT_SCHEDULER_HEARTBEAT }, create: { id: AGENT_SCHEDULER_HEARTBEAT, details: { version: AGENT_PIPELINE_VERSION } }, update: { updatedAt: new Date(), details: { version: AGENT_PIPELINE_VERSION } } });
       await prisma.serviceHeartbeat.upsert({ where: { id: POSTER_IMAGE_SCHEDULER_HEARTBEAT },
       create: { id: POSTER_IMAGE_SCHEDULER_HEARTBEAT, details: { version: POSTER_IMAGE_PIPELINE_VERSION } },
       update: { updatedAt: new Date(), details: { version: POSTER_IMAGE_PIPELINE_VERSION } } });

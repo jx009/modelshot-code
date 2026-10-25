@@ -1,3 +1,4 @@
+import { verifiedAgentParent, wakeAgentParent } from "./agent-links.js";
 import { createHash, randomUUID } from "node:crypto";
 import { prisma } from "../../prisma.js";
 import { objectStorage } from "../../infra/storage/s3.js";
@@ -87,7 +88,9 @@ export async function confirmOutline(userId, id, input, { db = prisma, store = o
     if (duplicate) return duplicate;
     check(run);
     if (!await tx.creationProject.findFirst({ where: { id: run.projectId, userId, deletedAt: null }, select: { id: true } })) throw new AppError("CREATION_PROJECT_NOT_FOUND", 404);
-    if (await tx.creationRun.count({ where: { userId, id: { not: id }, status: { in: [...RUN_ACTIVE, ...RUN_WAITING] } } })) throw new AppError("CREATION_USER_QUEUE_FULL", 429);
+    const parent = await verifiedAgentParent(tx, run);
+    if (parent && parent.committedCredits - (parent.steps.find(step => step.id === run.input.agentParent.stepId)?.result?.accountedCredits || 0) + data.maxCredits > parent.maxCredits) throw new AppError("CREATION_BUDGET_EXCEEDED", 409);
+    if (await tx.creationRun.count({ where: { userId, id: { notIn: [id, ...(parent ? [parent.id] : [])] }, status: { in: [...RUN_ACTIVE, ...RUN_WAITING] } } })) throw new AppError("CREATION_USER_QUEUE_FULL", 429);
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended('creation-admission', 0))::text`;
     if (await tx.creationRun.count({ where: { status: { in: RUN_ACTIVE } } }) >= 1000) throw new AppError("CREATION_QUEUE_FULL", 503);
     const first = run.steps[0], source = languageInputSchema.parse(first.params);
@@ -104,6 +107,7 @@ export async function confirmOutline(userId, id, input, { db = prisma, store = o
       input: { ...run.input, [spec.count]: children.length, languageUnitCost: cost },
     });
     await enqueueRun(tx, id, `outline:${data.expectedSequence}`);
+    await wakeAgentParent(tx, run);
     return presentRun(await tx.creationRun.findUnique({ where: { id }, include: { steps: { orderBy: { position: "asc" } } } }));
   }, { timeout: 15000 });
 }

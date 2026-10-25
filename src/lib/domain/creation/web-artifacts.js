@@ -9,7 +9,7 @@ const service = createArtifactService({
   applyOperations: applyWebOperations, OperationError: WebOperationError, projectKind: "web", invalidResultCode: "INVALID_WEB_RESULT",
   validateAgentOperations: operations => {
     if (operations.some(operation => operation.op !== "setFile")) throw new AppError("LANGUAGE_EDIT_OUTSIDE_SCOPE", 422);
-    if (operations.some(operation => !["html", "css"].includes(operation.kind))) throw new AppError("WEB_AGENT_JS_EDIT_DISABLED", 422);
+    if (operations.some(operation => !["html", "css", "js"].includes(operation.kind))) throw new AppError("LANGUAGE_EDIT_OUTSIDE_SCOPE", 422);
   },
 });
 export const { ownedArtifact, listArtifactRevisions, cleanupStagedBlobs } = service;

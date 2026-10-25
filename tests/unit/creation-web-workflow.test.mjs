@@ -21,7 +21,7 @@ const params = { purpose: "web.edit", prompt: "Update title", artifactId: "web",
 const patch = { operations: [{ op: "setFile", fileId: "html", path: "index.html", kind: "html", content: "<h1>New coffee</h1>" }] };
 function fixture() {
   const run = { id: "run", userId: "u", projectId: "project", sessionId: "session", kind: "web", status: "running", eventSequence: 1, input: { locale: "en" }, steps: [{ id: "step", position: 0, attempt: 0, status: "running", jobId: "web-edit-job-1234", tool: "web.edit", params }] };
-  const db = { run, $queryRaw: vi.fn(), creationRun: { findUnique: vi.fn(async () => null), count: vi.fn(async () => 0), create: vi.fn(async ({ data }) => Object.assign(run, { ...data, steps: [data.steps.create] })) },
+  const db = { run, $queryRaw: vi.fn(), creationRun: { findUnique: vi.fn(async () => null), count: vi.fn(async () => 0), create: vi.fn(async ({ data }) => Object.assign(run, { ...data, steps: data.steps.create })) },
     creationSession: { findFirst: vi.fn(async () => ({ id: "session", projectId: "project", project: { kind: "web" } })) },
     creationStep: { update: vi.fn(async ({ data }) => Object.assign(run.steps[0], data)), findUnique: vi.fn(async () => null) },
     tryOn: { findFirst: vi.fn(async () => ({ snapshot: { creationStepId: "step", creationAttempt: 0 } })) } };
@@ -49,8 +49,8 @@ it("validates web selections before creating paid work and never tries to read l
   expect(value.db.creationRun.create).not.toHaveBeenCalled();
   const result = await createContentRun("u", "session", request, "web-create-key-123", value);
   expect(value.db.creationRun.create).toHaveBeenCalledOnce();
-  expect(result.steps[0].params).toMatchObject({ purpose: "web.edit", fileIds: ["html"], paths: ["index.html"] });
-  expect(value.ensureWorkers).toHaveBeenCalledWith(value.db, { kind: "web" });
+  expect(value.db.creationRun.create.mock.calls[0][0].data.steps.create[0].params).toMatchObject({ purpose: "web.edit", fileIds: ["html"], paths: ["index.html"] });
+  expect(value.ensureWorkers).toHaveBeenCalledWith(value.db, { kind: "web", posterImage: false });
 });
 it("revalidates serialized edit checkpoints and completes publication in the artifact hook", async () => {
   const value = fixture(), validated = validateLanguageResult(params, patch, book());
@@ -60,6 +60,37 @@ it("revalidates serialized edit checkpoints and completes publication in the art
   expect(value.run.status).toBe("succeeded"); expect(value.run.steps[0].result).toEqual({ artifactId: "web", revision: 2, disposition: "updated" });
   expect(mocks.result).toHaveBeenCalledOnce(); expect(mocks.create).not.toHaveBeenCalled();
   expect(mocks.modify.mock.calls[0][2]).toMatchObject({ baseRevision: 1, operations: patch.operations });
+});
+it("publishes a ready branch and releases dependencies without using display position as execution order", async () => {
+  const value = fixture(), current = value.run.steps[0];
+  current.dependsOn = [];
+  const unrelated = { id: "unrelated", position: 0, status: "ready", dependsOn: [], tool: "web.edit" };
+  current.position = 1;
+  const blocked = { id: "blocked", position: 2, status: "blocked", dependsOn: ["unrelated"], tool: "web.edit" };
+  const dependent = { id: "dependent", position: 3, status: "blocked", dependsOn: [current.id], tool: "web.edit" };
+  value.run.steps = [unrelated, current, blocked, dependent];
+  value.db.creationStep.update.mockImplementation(async ({ where, data }) => Object.assign(value.run.steps.find(step => step.id === where.id), data));
+  mocks.result.mockResolvedValue(patch);
+  mocks.modify.mockImplementation(async (_user, _id, _patch, options) => { await options.hooks.beforeCommit(value.db); await options.hooks.afterCommit(value.db, { artifactId: "web", revision: 2 }); });
+  await publishCreationLanguage(value.run, current, value);
+  expect(current.status).toBe("succeeded"); expect(dependent.status).toBe("ready"); expect(blocked.status).toBe("blocked");
+  expect(value.run.status).toBe("running");
+  expect(value.db.creationStep.findUnique).not.toHaveBeenCalled();
+});
+it("never declares success while an unresolved branch remains, and rejects an unmet publication dependency", async () => {
+  const value = fixture(), current = value.run.steps[0]; current.dependsOn = [];
+  const failed = { id: "failed", position: 1, status: "failed", dependsOn: [] };
+  value.run.steps.push(failed);
+  value.db.creationStep.update.mockImplementation(async ({ where, data }) => Object.assign(value.run.steps.find(step => step.id === where.id), data));
+  mocks.result.mockResolvedValue(patch);
+  mocks.modify.mockImplementation(async (_user, _id, _patch, options) => { await options.hooks.beforeCommit(value.db); await options.hooks.afterCommit(value.db, { artifactId: "web", revision: 2 }); });
+  current.dependsOn = ["failed"];
+  await expect(publishCreationLanguage(value.run, current, value)).rejects.toThrow("CREATION_DEPENDENCY_PENDING");
+  expect(current.status).toBe("running");
+  current.dependsOn = [];
+  await publishCreationLanguage(value.run, current, value);
+  expect(value.run.status).toBe("awaiting_input"); expect(value.run.errorCode).toBe("CREATION_DEPENDENCY_BLOCKED");
+  expect(mocks.event.mock.calls.some(call => call[2] === "run.succeeded")).toBe(false);
 });
 it("applies conflicts to the original web revision and publishes a separate site without overwriting manual edits", async () => {
   const value = fixture(), source = book(); mocks.read.mockResolvedValue({ content: source }); mocks.result.mockResolvedValue(patch);
@@ -103,6 +134,6 @@ it("resumes completed web model work for artifact saving without another paid in
   const { resumeRun } = await vi.importActual("../../src/lib/domain/creation/runs.js");
   await resumeRun("u", "run", { expectedSequence: 1, maxCredits: 1 }, db, { ...value, env: {}, priceSteps, configFor });
   expect(priceSteps).not.toHaveBeenCalled(); expect(configFor).not.toHaveBeenCalled();
-  expect(value.ensureWorkers).toHaveBeenCalledWith(db, { kind: "web", language: false });
+  expect(value.ensureWorkers).toHaveBeenCalledWith(db, { kind: "web", language: false, posterImage: false });
   expect(run.steps[0].jobId).toBe("web-edit-job-1234"); expect(run.status).toBe("queued");
 });

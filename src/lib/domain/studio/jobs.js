@@ -28,14 +28,14 @@ export async function submitStudioJob(userId, input, key, db = prisma, deps = {}
 export async function submitCreationPosterImageStep(userId, runId, stepId, sequence, { db = prisma, config, capabilities: caps, now = new Date() } = {}) {
   return db.$transaction(async tx => {
     const run = await lockRun(tx, userId, runId), step = run.steps.find(item => item.id === stepId);
-    if (run.kind !== "poster" || !run.projectId || step?.tool !== POSTER_IMAGE_TOOL) throw new AppError("CREATION_STEP_CHANGED", 409);
+    if (!["poster", "agent"].includes(run.kind) || !run.projectId || step?.tool !== POSTER_IMAGE_TOOL) throw new AppError("CREATION_STEP_CHANGED", 409);
     const input = posterImageStepSchema.parse(step.params);
     if (step.jobId) {
       const old = await tx.tryOn.findFirst({ where: { id: step.jobId, userId } });
       if (old?.snapshot?.kind !== "studio" || old.snapshot.tool !== "generate" || old.snapshot.creationRunId !== run.id || old.snapshot.creationStepId !== step.id || old.snapshot.creationAttempt !== step.attempt) throw new AppError("CREATION_STEP_CHANGED", 409);
       return presentJob(old);
     }
-    if (run.eventSequence !== sequence || run.cancelRequestedAt || !["queued", "running"].includes(run.status) || step.status !== "ready" || step.position !== 0) throw new AppError("CREATION_STEP_CHANGED", 409);
+    if (run.eventSequence !== sequence || run.cancelRequestedAt || !["queued", "running"].includes(run.status) || step.status !== "ready" || run.kind === "poster" && step.position !== 0 || run.kind === "agent" && step.dependsOn.some(id => run.steps.find(row => row.id === id)?.status !== "succeeded")) throw new AppError("CREATION_STEP_CHANGED", 409);
     if (!await tx.creationProject.findFirst({ where: { id: run.projectId, userId, deletedAt: null }, select: { id: true } })) throw new AppError("CREATION_PROJECT_NOT_FOUND", 404);
     const worker = await tx.serviceHeartbeat.findUnique({ where: { id: "worker" } });
     if (!worker || worker.updatedAt <= new Date(+now - 90000)) throw new AppError("CREATION_WORKER_UNAVAILABLE", 503);

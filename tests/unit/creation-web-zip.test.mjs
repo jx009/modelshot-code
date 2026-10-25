@@ -34,6 +34,11 @@ it("rejects missing or invalid images rather than silently exporting broken reso
 });
 it("exports a pure source site without image processing or invented metadata files", async () => {
   const value = site(); value.files = value.files.filter(file => file.kind !== "asset"); value.assetIds = [];
+  value.files[0].content = value.files[0].content.replace('<img src="../images/coffee.webp">', "");
   const zip = await JSZip.loadAsync(await buildWebZip(value));
   expect(Object.keys(zip.files)).toHaveLength(3); expect(zip.file("pages/home.html")).not.toBeNull();
+});
+it("rejects a source archive whose HTML still references a removed image", async () => {
+  const value = site(); value.files = value.files.filter(file => file.kind !== "asset"); value.assetIds = [];
+  await expect(buildWebZip(value)).rejects.toThrow("EXPORT_WEB_REFERENCE_NOT_FOUND");
 });

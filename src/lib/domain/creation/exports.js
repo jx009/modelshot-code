@@ -38,7 +38,7 @@ export async function enqueueExport(tx, row, now) {
   const key = `creation-export:${row.id}:${row.attempt}:${Math.floor(+now / 30000)}`;
   await tx.outboxEvent.upsert({ where: { businessKey: key }, update: {}, create: { businessKey: key, kind: "creation-export", entityId: row.id } });
 }
-export async function requestArtifactExport(userId, artifactId, input, { db = prisma, store, env = process.env, now = new Date() } = {}) {
+export async function requestArtifactExport(userId, artifactId, input, { db = prisma, store, env = process.env, now = new Date(), hooks } = {}) {
   const data = requestExportSchema.parse(input);
   let source, sourceKind;
   if (["docx", "markdown", "xlsx", "pdf", "png", "jpeg", "svg", "pptx"].includes(data.format)) {
@@ -52,6 +52,7 @@ export async function requestArtifactExport(userId, artifactId, input, { db = pr
   if (source && !exportSupportsKind(descriptor, source.kind)) throw new AppError("EXPORT_KIND_UNSUPPORTED", 422);
   return db.$transaction(async tx => {
     await lockUser(tx, userId);
+    await hooks?.beforeCommit?.(tx);
     const artifact = await ownedArtifact(userId, artifactId, tx);
     if (!exportSupportsKind(descriptor, artifact.kind)) throw new AppError("EXPORT_KIND_UNSUPPORTED", 422);
     const revision = await tx.artifactRevision.findUnique({ where: { artifactId_revision: { artifactId, revision: data.revision } },
@@ -60,7 +61,7 @@ export async function requestArtifactExport(userId, artifactId, input, { db = pr
     if (source && (source.revisionId !== revision.id || source.checksum !== revision.blob.checksum)) throw new AppError("EXPORT_SOURCE_INTEGRITY_FAILED", 422);
     const fingerprint = createHash("sha256").update(JSON.stringify([userId, revision.id, revision.blob.checksum, data.format, descriptor.version])).digest("hex");
     const previous = await tx.artifactExport.findUnique({ where: { fingerprint }, select: { ...exportFields, revision: { select: revisionSelect } } });
-    if (previous && (active.includes(previous.status) || previous.status === "succeeded" || !data.retryKey || previous.retryKey === data.retryKey)) return presentExport(previous);
+    if (previous && (active.includes(previous.status) || previous.status === "succeeded" || !data.retryKey || previous.retryKey === data.retryKey)) { await hooks?.afterCommit?.(tx, presentExport(previous)); return presentExport(previous); }
     if (data.retryKey && (!previous || previous.attempt !== data.retryAttempt)) throw new AppError("EXPORT_RETRY_CHANGED", 409);
     await admit(tx, userId, now, env, data.format, descriptor);
     // For queued rows nextCheckAt is the earliest execution time, not just a
@@ -69,6 +70,7 @@ export async function requestArtifactExport(userId, artifactId, input, { db = pr
     const row = previous ? await tx.artifactExport.update({ where: { id: previous.id }, data: { ...common, attemptLimit: previous.attempt + 3 }, select: { ...exportFields, revision: { select: revisionSelect } } })
       : await tx.artifactExport.create({ data: { ...common, userId, revisionId: revision.id, format: data.format, exporterVersion: descriptor.version, fingerprint }, select: { ...exportFields, revision: { select: revisionSelect } } });
     await enqueueExport(tx, row, now);
+    await hooks?.afterCommit?.(tx, presentExport(row));
     return presentExport(row);
   }, { timeout: 15000 });
 }

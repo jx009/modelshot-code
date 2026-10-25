@@ -1,3 +1,6 @@
+import { randomUUID } from "node:crypto";
+import { SHEET_CHUNK_ROWS, sheetOutlineSchema } from "../../creation/contracts/sheet-batch.js";
+import { workbookSchema } from "../../creation/contracts/sheet.js";
 import { prisma } from "../../prisma.js";
 import { AppError } from "../../http.js";
 import { objectStorage } from "../../infra/storage/s3.js";
@@ -15,6 +18,7 @@ import { outlineForKind } from "../../creation/outline-plan.js";
 import { assembleDocumentContent } from "./document-assembly.js";
 import { applyNativeSheetOperations } from "../../creation/native-sheet-edit.js";
 import { applyNativeDocumentOperations } from "../../creation/native-document-edit.js";
+import { dependenciesFor, newlyUnblockedSteps, nextReadyStep, runHasUnfinishedSteps, validateRunDependencyGraph } from "../../creation/run-dependencies.js";
 
 async function guard(tx, initial, stepId, jobId) {
   const run = await lockRun(tx, initial.userId, initial.id), step = run.steps.find(step => step.id === stepId);
@@ -23,8 +27,9 @@ async function guard(tx, initial, stepId, jobId) {
   if (jobId) {
     const job = await tx.tryOn.findFirst({ where: { id: jobId, userId: run.userId, status: "succeeded", executionQueue: "creation-language" }, select: { snapshot: true } });
     if (job?.snapshot?.creationStepId !== step.id || job.snapshot.creationAttempt !== step.attempt) throw new AppError("CREATION_STEP_CHANGED", 409);
-  } else if (!["layout.assemble", "document.assemble"].includes(step.tool) || step.status !== "ready") throw new AppError("CREATION_STEP_NOT_READY", 409);
-  if (run.steps.some(previous => previous.position < step.position && previous.status !== "succeeded")) throw new AppError("CREATION_DEPENDENCY_PENDING", 409);
+  } else if (!["layout.assemble", "document.assemble", "sheet.assemble"].includes(step.tool) || step.status !== "ready") throw new AppError("CREATION_STEP_NOT_READY", 409);
+  if (!validateRunDependencyGraph(run.steps)) throw new AppError("CREATION_DEPENDENCY_GRAPH_INVALID", 409);
+  if (dependenciesFor(step, run.steps).some(id => run.steps.find(previous => previous.id === id)?.status !== "succeeded")) throw new AppError("CREATION_DEPENDENCY_PENDING", 409);
   return { run, step };
 }
 
@@ -32,13 +37,18 @@ async function complete(tx, run, step, result, message) {
   await tx.creationStep.update({ where: { id: step.id }, data: { status: "succeeded", result, errorCode: null } });
   if (message && run.sessionId) await appendCreationMessage(tx, run.sessionId, `result-${step.id}-${step.attempt}`, "assistant", message,
     [{ type: "run", runId: run.id }, ...(result.artifactId ? [{ type: "artifact", artifactId: result.artifactId, revision: result.revision, disposition: result.disposition }] : [])]);
-  const next = await tx.creationStep.findUnique({ where: { runId_position: { runId: run.id, position: step.position + 1 } } });
-  if (next) await tx.creationStep.update({ where: { id: next.id }, data: { status: "ready" } });
+  // Position is display order, not execution order. Publishing one branch
+  // must not release its neighbour before that neighbour's inputs exist.
+  const completed = run.steps.map(item => item.id === step.id ? { ...item, status: "succeeded" } : item);
+  const released = newlyUnblockedSteps(completed), readyIds = new Set(released.map(item => item.id));
+  for (const ready of released) await tx.creationStep.update({ where: { id: ready.id }, data: { status: "ready" } });
+  const next = nextReadyStep(completed.map(item => readyIds.has(item.id) ? { ...item, status: "ready" } : item));
+  const blocked = !next && runHasUnfinishedSteps(completed);
   const updated = await appendRunEvent(tx, run.id, "step.succeeded", { stepId: step.id, jobId: step.jobId, result }, {
-    status: next ? "running" : "succeeded", errorCode: null, nextCheckAt: new Date(),
+    status: next ? "running" : blocked ? "awaiting_input" : "succeeded", errorCode: blocked ? "CREATION_DEPENDENCY_BLOCKED" : null, nextCheckAt: next ? new Date() : null,
   });
   if (next) await enqueueRun(tx, run.id, `step:${updated.eventSequence}`);
-  else await appendRunEvent(tx, run.id, "run.succeeded", { result }, { status: "succeeded" });
+  else if (!blocked) await appendRunEvent(tx, run.id, "run.succeeded", { result }, { status: "succeeded" });
 }
 function publicationHooks(initial, step, jobId, disposition, extra = {}) {
   let locked;
@@ -65,6 +75,11 @@ export async function publishCreationLanguage(initial, step, { db = prisma, stor
   const reader = nativeOffice ? (user, id, revision, options) => service.readNativeOfficeArtifact(user, id, initial.kind, revision, options) : service ? (document ? service.readDocumentArtifact : sheet ? service.readSheetArtifact : service.readWebArtifact) : readLayoutArtifact;
   const source = input.artifactId ? await reader(initial.userId, input.artifactId, input.baseRevision, { db, store }) : null;
   const result = validateLanguageResult(input, raw, source?.content);
+  if (input.purpose === "sheet.outline") return expandSheetChunks(initial, step, result, { db });
+  if (input.purpose === "sheet.chunk") return db.$transaction(async tx => {
+    const locked = await guard(tx, initial, step.id, step.jobId);
+    await complete(tx, locked.run, locked.step, { sheetId: input.sheetId, startRow: input.startRow, endRow: input.endRow, cellCount: result.cells.length, jobId: step.jobId });
+  });
   if (["slides.outline", "document.outline"].includes(input.purpose)) {
     const spec = outlineForKind(initial.kind), count = result[spec.items].length;
     return db.$transaction(async tx => {
@@ -186,4 +201,45 @@ async function publishHtmlSlide(initial, step, generated, { db, store }) {
       return await modifyLayoutArtifact(initial.userId, source.id, { baseRevision: source.revision, saveKey: `append-${step.jobId}-${source.revision}`, operations: [{ op: "insertHtmlPage", page, index: source.content.pages.length }] }, { db, store, sourceRunId: initial.id, hooks });
     } catch (error) { if (error.code !== "ARTIFACT_VERSION_CONFLICT" || attempt === 2) throw error; }
   }
+}
+
+async function expandSheetChunks(initial, step, outline, { db }) {
+  const source = languageInputSchema.parse(step.params);
+  return db.$transaction(async tx => {
+    const { run, step: current } = await guard(tx, initial, step.id, step.jobId);
+    if (run.steps.length !== 1 || outline.sheets.length !== run.input.sheetCount) throw new AppError("CREATION_OUTLINE_CHANGED", 409);
+    const chunks = [];
+    for (const sheet of outline.sheets) for (let startRow = 1; startRow <= run.input.targetRows; startRow += SHEET_CHUNK_ROWS) {
+      const id = randomUUID(), endRow = Math.min(run.input.targetRows, startRow + SHEET_CHUNK_ROWS - 1);
+      chunks.push({ id, runId: run.id, position: chunks.length + 1, tool: "sheet.chunk", dependsOn: [chunks.at(-1)?.id || step.id], status: chunks.length ? "blocked" : "ready", expectedCost: run.input.languageUnitCost,
+        explanation: `${sheet.name} · ${startRow}–${endRow}`, params: languageInputSchema.parse({ purpose: "sheet.chunk", prompt: source.prompt, locale: source.locale, assetIds: source.assetIds, referenceIds: source.referenceIds,
+          ...(source.dependencyRefs ? { dependencyRefs: source.dependencyRefs } : {}), sheetId: sheet.id, sheetName: sheet.name, columns: sheet.columns, brief: sheet.brief, startRow, endRow }) });
+    }
+    if (chunks.length > 100 || run.committedCredits + chunks.length * run.input.languageUnitCost > run.maxCredits) throw new AppError("CREATION_BUDGET_EXCEEDED", 409);
+    await tx.creationStep.createMany({ data: [...chunks, { runId: run.id, id: randomUUID(), position: chunks.length + 1, tool: "sheet.assemble", params: {}, dependsOn: [chunks.at(-1).id], status: "blocked", expectedCost: 0, explanation: source.locale === "zh" ? "合并已完成的数据区域" : "Assemble completed ranges" }] });
+    await tx.creationStep.update({ where: { id: current.id }, data: { status: "succeeded", result: { sheetCount: outline.sheets.length, chunkCount: chunks.length } } });
+    const updated = await appendRunEvent(tx, run.id, "sheet.planned", { sheetCount: outline.sheets.length, chunkCount: chunks.length }, { status: "running", nextCheckAt: new Date() });
+    await enqueueRun(tx, run.id, `sheet:${updated.eventSequence}`);
+  }, { timeout: 15000 });
+}
+
+export async function assembleCreationSheet(initial, step, { db = prisma, store = objectStorage() } = {}) {
+  const first = initial.steps[0];
+  if (initial.kind !== "sheet" || first.tool !== "sheet.outline" || first.status !== "succeeded") throw new AppError("CREATION_OUTLINE_CHANGED", 409);
+  const outline = sheetOutlineSchema.parse(await readCreationLanguageResult(initial.userId, first.jobId, { db, store }));
+  const sheets = outline.sheets.map(sheet => ({ id: sheet.id, name: sheet.name, cells: [], freezeRows: 1, freezeColumns: 0 }));
+  const parts = initial.steps.filter(item => item.tool === "sheet.chunk");
+  if (!parts.length || parts.length !== first.result.chunkCount || parts.some(item => item.status !== "succeeded")) throw new AppError("CREATION_DEPENDENCY_PENDING", 409);
+  let bytes = 0;
+  for (const part of parts) {
+    const input = languageInputSchema.parse(part.params), result = validateLanguageResult(input, await readCreationLanguageResult(initial.userId, part.jobId, { db, store }));
+    const sheet = sheets.find(item => item.id === result.sheetId);
+    if (!sheet) throw new AppError("CREATION_OUTLINE_CHANGED", 409);
+    bytes += Buffer.byteLength(JSON.stringify(result.cells));
+    if (bytes > 2 * 1024 * 1024 - 16384) throw new AppError("ARTIFACT_TOO_LARGE", 413);
+    sheet.cells.push(...result.cells);
+  }
+  const content = workbookSchema.parse({ schemaVersion: 1, kind: "sheet", title: outline.title, locale: initial.input.locale, sheets });
+  const { createSheetArtifact } = await import("./sheet-artifacts.js");
+  return createSheetArtifact(initial.userId, initial.projectId, content, `assembled-${initial.id}`, { db, store, sourceRunId: initial.id, hooks: publicationHooks(initial, step, null, "created") });
 }

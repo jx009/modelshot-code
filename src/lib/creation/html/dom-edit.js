@@ -3,11 +3,17 @@ const rootSelection = (doc, ids) => ids.map(id => select(doc, id)).filter(Boolea
 export function groupHtmlNodes(doc, ids, id) {
   const nodes = rootSelection(doc, ids);
   if (nodes.length < 2 || nodes.some(node => node.parentElement !== nodes[0].parentElement)) throw new Error("HTML_GROUP_REQUIRES_SIBLINGS");
+  const siblings = [...nodes[0].parentElement.children];
+  nodes.sort((a, b) => siblings.indexOf(a) - siblings.indexOf(b));
+  const first = siblings.indexOf(nodes[0]);
+  if (nodes.some((node, index) => siblings[first + index] !== node)) throw new Error("HTML_GROUP_REQUIRES_ADJACENT_SIBLINGS");
+  const contents = []; let current = nodes[0];
+  while (current) { contents.push(current); if (current === nodes.at(-1)) break; current = current.nextSibling; }
   const group = doc.createElement("div"); group.dataset.nodeId = id; group.dataset.group = "true";
   group.style.display = "contents";
   // A semantic group preserves flex/grid layout. Geometry editing remains on
   // its children; grouping never rewrites the complete page as absolute boxes.
-  nodes[0].before(group); nodes.forEach(node => group.append(node));
+  nodes[0].before(group); contents.forEach(node => group.append(node));
   return id;
 }
 export function ungroupHtmlNode(doc, id) {

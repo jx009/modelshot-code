@@ -1,6 +1,6 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import { createContentRun, ensureContentWorkers } from "../../src/lib/domain/creation/content-runs.js";
-import { publishCreationLanguage } from "../../src/lib/domain/creation/publication.js";
+import { publishCreationLanguage, assembleCreationSheet } from "../../src/lib/domain/creation/publication.js";
 import { validateLanguageResult } from "../../src/lib/creation/contracts/language.js";
 import { workbookSchema } from "../../src/lib/creation/contracts/sheet.js";
 import { SHEET_PIPELINE_VERSION, SHEET_LANGUAGE_HEARTBEAT, SHEET_SCHEDULER_HEARTBEAT } from "../../src/lib/creation/contracts/sheet-runtime.js";
@@ -20,7 +20,7 @@ const params = { purpose: "sheet.edit", prompt: "Update amount", artifactId: "sh
 const patch = { operations: [{ op: "setCell", sheetId: "s", address: "A1", id: "a1", value: 20, expectedValue: 10 }] };
 function fixture() {
   const run = { id: "run", userId: "u", projectId: "project", sessionId: "session", kind: "sheet", status: "running", eventSequence: 1, input: { locale: "en" }, steps: [{ id: "step", position: 0, attempt: 0, status: "running", jobId: "sheet-edit-job-1234", tool: "sheet.edit", params }] };
-  const db = { run, $queryRaw: vi.fn(), creationRun: { findUnique: vi.fn(async () => null), count: vi.fn(async () => 0), create: vi.fn(async ({ data }) => ({ id: "run", ...data, steps: [data.steps.create] })) },
+  const db = { run, $queryRaw: vi.fn(), creationRun: { findUnique: vi.fn(async () => null), count: vi.fn(async () => 0), create: vi.fn(async ({ data }) => ({ id: "run", ...data, steps: data.steps.create })) },
     creationSession: { findFirst: vi.fn(async () => ({ id: "session", projectId: "project", project: { kind: "sheet" } })) },
     creationStep: { update: vi.fn(async ({ data }) => Object.assign(run.steps[0], data)), findUnique: vi.fn(async () => null) },
     tryOn: { findFirst: vi.fn(async () => ({ snapshot: { creationStepId: "step", creationAttempt: 0 } })) } };
@@ -48,8 +48,8 @@ it("validates sheet selections before creating paid work and never tries to read
   expect(value.db.creationRun.create).not.toHaveBeenCalled();
   const result = await createContentRun("u", "session", request, "sheet-create-key-123", value);
   expect(value.db.creationRun.create).toHaveBeenCalledOnce();
-  expect(result.steps[0].params).toMatchObject({ purpose: "sheet.edit", sheetId: "s", addresses: ["A1"] });
-  expect(value.ensureWorkers).toHaveBeenCalledWith(value.db, { kind: "sheet" });
+  expect(value.db.creationRun.create.mock.calls[0][0].data.steps.create[0].params).toMatchObject({ purpose: "sheet.edit", sheetId: "s", addresses: ["A1"] });
+  expect(value.ensureWorkers).toHaveBeenCalledWith(value.db, { kind: "sheet", posterImage: false });
 });
 it("revalidates serialized edit checkpoints and completes publication in the artifact hook", async () => {
   const value = fixture(), validated = validateLanguageResult(params, patch, book());
@@ -69,4 +69,35 @@ it("applies conflicts to the original sheet revision and publishes a separate wo
   expect(copy.kind).toBe("sheet"); expect(copy.sheets[0].cells.map(cell => cell.value)).toEqual([20, 99]);
   expect(source.sheets[0].cells.map(cell => cell.value)).toEqual([10, 99]); expect(copy.title).toContain("AI edit copy");
   expect(value.run.steps[0].result.disposition).toBe("conflict-copy"); expect(mocks.result).toHaveBeenCalledOnce();
+});
+
+it("prices every bounded sheet chunk before admission and keeps small sheets on the existing path", async () => {
+  const value = fixture();
+  await expect(createContentRun("u", "session", { kind: "sheet", prompt: "Budget", sheetCount: 2, targetRows: 40, maxCredits: 4 }, "sheet-batch-key-123", value)).rejects.toThrow("CREATION_BUDGET_EXCEEDED");
+  const result = await createContentRun("u", "session", { kind: "sheet", prompt: "Budget", sheetCount: 2, targetRows: 40, maxCredits: 5 }, "sheet-batch-key-123", value);
+  expect(result.steps[0].params).toMatchObject({ purpose: "sheet.outline", sheetCount: 2, targetRows: 40 });
+});
+it("expands and assembles persisted chunks with stable cell identities and no model rerun", async () => {
+  const value = fixture(), { run, db } = value;
+  Object.assign(run, { committedCredits: 1, maxCredits: 5, input: { locale: "en", sheetCount: 1, targetRows: 40, languageUnitCost: 1 } });
+  run.steps = [{ id: "step", position: 0, tool: "sheet.outline", params: { purpose: "sheet.outline", prompt: "Budget", sheetCount: 1, targetRows: 40 }, status: "running", jobId: "outline", attempt: 0, dependsOn: [] }];
+  db.creationStep.createMany = vi.fn(async ({ data }) => { run.steps.push(...data); });
+  db.creationStep.update.mockImplementation(async ({ where, data }) => Object.assign(run.steps.find(step => step.id === where.id), data));
+  const outline = { title: "Budget", sheets: [{ id: "s", name: "Costs", columns: ["Label", "Amount"], brief: "Example costs" }] };
+  mocks.result.mockResolvedValue(outline);
+  await publishCreationLanguage(run, run.steps[0], value);
+  expect(run.steps.map(step => step.tool)).toEqual(["sheet.outline", "sheet.chunk", "sheet.chunk", "sheet.assemble"]);
+  expect(run.steps[1].params).toMatchObject({ startRow: 1, endRow: 25 });
+  expect(run.steps[2].params).toMatchObject({ startRow: 26, endRow: 40 });
+  expect(run.steps[2].dependsOn).toEqual([run.steps[1].id]);
+  run.steps[1].status = "succeeded"; run.steps[1].jobId = "chunk1"; run.steps[2].status = "succeeded"; run.steps[2].jobId = "chunk2"; run.steps[3].status = "ready";
+  mocks.result.mockImplementation(async (_u, id) => id === "outline" ? outline : { sheetId: "s", cells: [{ id: "duplicate-model-id", address: id === "chunk1" ? "A1" : "A26", value: id }] });
+  mocks.create.mockImplementation(async (_user, _project, content, _key, options) => { await options.hooks.beforeCommit(db); await options.hooks.afterCommit(db, { artifactId: "sheet", revision: 1 }); return content; });
+  const content = await assembleCreationSheet(run, run.steps[3], value);
+  expect(content.sheets[0].cells.map(cell => cell.id)).toEqual(["s_A1", "s_A26"]);
+  expect(run.status).toBe("succeeded");
+});
+it("rejects chunks that write outside their row range or change columns", () => {
+  const input = { purpose: "sheet.chunk", sheetId: "s", columns: ["A"], startRow: 26, endRow: 50 };
+  for (const address of ["A25", "A51", "B26"]) expect(() => validateLanguageResult(input, { sheetId: "s", cells: [{ id: "cell", address, value: 1 }] })).toThrow("LANGUAGE_SHEET_CHUNK_MISMATCH");
 });

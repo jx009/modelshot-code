@@ -28,8 +28,11 @@ function shapeHtml(shape, rels, pkg, media, warnings) {
       if (!table || !ext) { warnings.add("PPTX_TABLE_RETAINED_IN_ORIGINAL"); return ""; }
       const x = px(attr(off, "x")), y = px(attr(off, "y")), width = Math.max(1, px(attr(ext, "cx"))), height = Math.max(1, px(attr(ext, "cy")));
       const rows = children(table, "a", "tr").map(row => `<tr>${children(row, "a", "tc").map(cell => {
-        const properties = child(cell, "a", "tcPr"), gridSpan = Math.max(1, Number(attr(properties, "gridSpan") || 1)), rowSpan = Math.max(1, Number(attr(properties, "rowSpan") || 1));
-        if (attr(properties, "hMerge") === "1" || attr(properties, "vMerge") === "1") warnings.add("PPTX_TABLE_MERGE_SIMPLIFIED");
+        const properties = child(cell, "a", "tcPr"), gridSpan = Math.max(1, Number(attr(cell, "gridSpan") || 1)), rowSpan = Math.max(1, Number(attr(cell, "rowSpan") || 1));
+        // DrawingML stores merge geometry on a:tc, not a:tcPr. Continuation
+        // cells occupy the XML grid but must not become additional HTML cells.
+        if (["1", "true"].includes(attr(cell, "hMerge")) || ["1", "true"].includes(attr(cell, "vMerge"))) return "";
+        if (!Number.isInteger(gridSpan) || !Number.isInteger(rowSpan) || gridSpan > 64 || rowSpan > 200) officeFail("PPTX_TABLE_MERGE_UNSUPPORTED");
         const paras = children(cell, "a", "txBody").flatMap(body => children(body, "a", "p"));
         const text = paras.map(paragraph => descendants(paragraph, "a", "t").map(textContent).join("")).map(esc).join("<br>");
         const fill = color(child(properties, "a", "solidFill"));
@@ -102,13 +105,24 @@ function shapeHtml(shape, rels, pkg, media, warnings) {
     if (geometry || fill) return `<div data-node-id="${id()}" aria-label="${esc(name)}" style="${transform}background:${fill || "transparent"};border:1px solid #404040;${attr(geometry, "prst") === "ellipse" ? "border-radius:50%;" : ""}"></div>`;
     return "";
   }
-  if (paragraphs.length > 1 || descendants(sp, "a", "rPr").length > 1) warnings.add("PPTX_TEXT_FORMATTING_SIMPLIFIED");
-  const run = descendants(sp, "a", "rPr")[0], font = descendants(sp, "a", "latin")[0];
-  const size = Math.min(512, Math.max(6, Number(attr(run, "sz") || 1800) / 100));
-  const fill = color(child(run, "a", "solidFill")) || "#202124";
-  const align = attr(paragraphs[0], "algn");
-  const textStyle = `font:${attr(run, "b") === "1" ? "bold " : ""}${size}px ${JSON.stringify(attr(font, "typeface") || "Arial")},sans-serif;color:${fill};text-align:${({ ctr: "center", r: "right", l: "left" })[align] || "left"};white-space:pre-wrap;overflow-wrap:anywhere;`;
-  return `<div data-node-id="${id()}" style="${transform}${textStyle}">${esc(text)}</div>`;
+  const textStyle = properties => {
+    const font = child(properties, "a", "ea") || child(properties, "a", "latin");
+    const size = attr(properties, "sz"), fill = color(child(properties, "a", "solidFill"));
+    return `${size ? `font-size:${Math.min(682, Math.max(1, Number(size) / 100 * 96 / 72))}px;` : ""}${font ? `font-family:${JSON.stringify(attr(font, "typeface") || "Arial")},sans-serif;` : ""}${fill ? `color:${fill};` : ""}${attr(properties, "b") !== undefined ? `font-weight:${attr(properties, "b") === "1" ? "bold" : "normal"};` : ""}${attr(properties, "i") !== undefined ? `font-style:${attr(properties, "i") === "1" ? "italic" : "normal"};` : ""}${attr(properties, "u") && attr(properties, "u") !== "none" ? "text-decoration:underline;" : ""}`;
+  };
+  const richText = paragraphs.map(paragraph => {
+    const properties = child(paragraph, "a", "pPr"), defaults = child(properties, "a", "defRPr");
+    const align = ({ ctr: "center", r: "right", l: "left", just: "justify" })[attr(properties, "algn")] || "left";
+    const runs = (paragraph.children || []).map(run => {
+      if (run.local === "br") return "<br>";
+      if (!["r", "fld"].includes(run.local)) return "";
+      const value = descendants(run, "a", "t").map(textContent).join("");
+      return `<span style="${esc(textStyle(child(run, "a", "rPr")))}">${esc(value)}</span>`;
+    }).join("");
+    return `<p style="${esc(`margin:0;text-align:${align};${textStyle(defaults)}`)}">${runs || "<br>"}</p>`;
+  }).join("");
+  const baseStyle = `${transform}font-size:24px;color:#202124;white-space:pre-wrap;overflow-wrap:anywhere;`;
+  return `<div data-node-id="${id()}" style="${esc(baseStyle)}">${richText}</div>`;
 }
 
 export function importPresentationHtml(bytes, { title = "Imported presentation" } = {}) {

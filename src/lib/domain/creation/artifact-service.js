@@ -6,7 +6,7 @@ import { lockUser } from "../billing/ledger.js";
 import { digestJson } from "../generation/contracts.js";
 import { cleanupExpiredCreationBlobs } from "./blob-maintenance.js";
 
-export function createArtifactService({ documentSchema, operationsSchema, assetIds, applyOperations, OperationError, projectKind, replacementSchema, validateReplacement = () => {}, validateOwnership = () => {}, invalidResultCode = "INVALID_ARTIFACT_RESULT", validateAgentOperations = () => {} }) {
+export function createArtifactService({ documentSchema, operationsSchema, assetIds, applyOperations, OperationError, replacementSchema, validateReplacement = () => {}, validateOwnership = () => {}, invalidResultCode = "INVALID_ARTIFACT_RESULT", validateAgentOperations = () => {} }) {
   const MAX_BYTES = 2 * 1024 * 1024;
   const metadata = { id: true, projectId: true, name: true, kind: true, currentRevision: true, schemaVersion: true, createdAt: true, updatedAt: true };
   function validKey(key) { if (!/^[a-zA-Z0-9_-]{16,128}$/.test(key || "")) throw new AppError("SAVE_KEY_REQUIRED"); }
@@ -17,7 +17,7 @@ export function createArtifactService({ documentSchema, operationsSchema, assetI
     return row;
   }
   async function ownedProject(userId, id, db) {
-    const row = await db.creationProject.findFirst({ where: { id, userId, deletedAt: null, ...(projectKind ? { kind: projectKind } : {}) }, select: { id: true } });
+    const row = await db.creationProject.findFirst({ where: { id, userId, deletedAt: null }, select: { id: true } });
     if (!row) throw new AppError("CREATION_PROJECT_NOT_FOUND", 404);
     return row;
   }

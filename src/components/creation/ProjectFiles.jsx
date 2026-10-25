@@ -46,7 +46,7 @@ export default function ProjectFiles({ project, fileId, onSelect, onImported, zh
     {page.q && <div className="cw-file-filter"><span title={page.q}>{page.q}</span><button aria-label={zh ? "清除文件搜索" : "Clear file search"} onClick={() => { setQuery(""); void load([null], ""); }}><X size={12} /></button></div>}
     <div className="cw-file-items">{page.items.map(item => {
       const Icon = icons[item.kind] || FileText;
-      return <button key={item.id} className={fileId === item.id ? "is-selected" : ""} aria-current={fileId === item.id ? "true" : undefined} onClick={() => onSelect(item.id)} title={item.name}>
+      return <button key={item.id} className={fileId === item.id ? "is-selected" : ""} aria-current={fileId === item.id ? "true" : undefined} onClick={() => onSelect(item.id, false, item.kind)} title={item.name}>
         <Icon size={15} /><span>{item.name}</span>{item.currentRevision != null && <small>V{item.currentRevision}</small>}
       </button>;
     })}</div>

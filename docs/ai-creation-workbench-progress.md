@@ -1,3 +1,5 @@
+> 2026-10-25 交付更新：以下为历史施工记录，状态已被 [当前交付说明](cheso-alignment-implementation-status.md) 与 [剩余验收清单](creation-remaining-work.md) 替代。HTML 海报/PPT、OOXML 导入、跨类型 Agent、网页运行/发布已接入；不要将下文旧的“未实现”用于判断本次提交。实际限制和未完成验收仍明确保留。
+
 # AI 创作工作台实施进度
 
 > 2026-10-25 最新纠正：[Cheso 对标剩余方案](cheso-alignment-remaining-plan.md) 已明确海报/PPT 路线返工与后续交付批次。下表 P2/P3 的对象 JSON 实现不能计作 HTML 海报/VPPT 已完成；固定海报模板入口需要撤掉。该方案是待实施计划，不是实现进度。

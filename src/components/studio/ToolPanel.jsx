@@ -2,7 +2,7 @@
 
 import Image from "@/components/studio/AssetImage";
 import { useState } from "react";
-import { X, RotateCcw, Paintbrush, LoaderCircle, ImageIcon } from "lucide-react";
+import { X, RotateCcw, Paintbrush, LoaderCircle, ImageIcon, ChevronDown, ChevronUp } from "lucide-react";
 import CropControls from "./CropControls";
 import { previewUrl } from "@/lib/studio/image-url";
 import "./tool-panel.css";
@@ -15,6 +15,7 @@ import { imageSizeChoice } from "@/lib/studio/image-size";
 /** Shared, stable editing surface. Tool state stays owned by the workbench. */
 export default function ToolPanel({ tool, Icon, status, selected, params, onParams, prompt, onPrompt, brush, onBrush, hasMask, selection, busy, moveUnchanged, cost, zh, onClose, onReset, onRun, referenceLayers = [], selectedReferences = [], onReferences, onAddReferences, onIdentify, identifyCost = 1, canIdentify = false }) {
   const [referencesOpen, setReferencesOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
   const t = (cn, en) => zh ? cn : en;
   const referenceLimit = status?.maxUserReferences ?? 2;
   const paint = ["inpaint", "erase", "text-edit"].includes(tool.id);
@@ -30,10 +31,11 @@ export default function ToolPanel({ tool, Icon, status, selected, params, onPara
       : crop ? t("拖动边界调整裁剪区域，原图会保留", "Drag the handles to crop. Your original stays on the canvas")
         : tool.id === "expand" ? t("拖动图片外侧边界，或选择比例扩展画面", "Drag the outer handles or choose an aspect ratio") : "";
   const action = move ? t("确认移动", "Apply move") : tool.id === "inpaint" ? t("生成修改", "Apply edit") : crop ? t("裁剪", "Apply") : tool.id === "erase" ? t("消除", "Apply") : t("生成", "Apply");
-  return <section className={`ms-editor ms-editor-${tool.id}`} aria-label={zh ? tool.zh : tool.en}>
+  return <section className={`ms-editor ms-editor-${tool.id}`} data-collapsed={collapsed} aria-label={zh ? tool.zh : tool.en}>
     {hint && <p className="ms-editor-hint">{hint}</p>}
     <div className="ms-editor-card">
       <header><Icon size={16} /><h2>{zh ? tool.zh : tool.en}</h2>
+        <button className="ms-editor-icon" type="button" aria-expanded={!collapsed} aria-label={t(collapsed ? "展开编辑参数" : "收起编辑参数", collapsed ? "Expand edit controls" : "Collapse edit controls")} onClick={() => setCollapsed(value => !value)}>{collapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}</button>
         {(move || paint || crop || tool.id === "expand") && <button className="ms-editor-icon" type="button" disabled={busy || (move && !selection) || (paint && !hasMask)} onClick={onReset} title={move ? t("重新框选", "Select again") : paint ? t("清除", "Clear") : t("重置", "Reset")}><RotateCcw size={16} /></button>}
         <button className="ms-editor-icon" type="button" disabled={busy} onClick={onClose} title={t("关闭工具", "Close tool")}><X size={18} /></button>
       </header>

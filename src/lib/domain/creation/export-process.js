@@ -34,16 +34,27 @@ function runChild(root, signal) {
     // Explicit allowlist: no DB URLs, storage keys, model keys or NODE_OPTIONS.
     const env = Object.fromEntries(["PATH", "Path", "SystemRoot", "WINDIR", "TEMP", "TMP", "TMPDIR", "LANG", "LC_ALL", "PLAYWRIGHT_BROWSERS_PATH"].filter(key => process.env[key]).map(key => [key, process.env[key]]));
     env.SKIA_CANVAS_THREADS = "1";
-    const child = spawn(process.execPath, ["--max-old-space-size=256", fileURLToPath(new URL("../../creation/exports/layout-child.mjs", import.meta.url)), root], { stdio: "ignore", windowsHide: true, env });
-    let stopped = false;
-    const stop = () => { stopped = true; child.kill("SIGKILL"); };
+    const child = spawn(process.execPath, ["--max-old-space-size=256", fileURLToPath(new URL("../../creation/exports/layout-child.mjs", import.meta.url)), root], { stdio: "ignore", windowsHide: true, detached: process.platform !== "win32", env });
+    let stopped = false, treeStopped = Promise.resolve();
+    const stop = () => {
+      if (stopped) return;
+      stopped = true;
+      // Chromium is a grandchild. Killing only Node leaks renderers after a
+      // cancellation/timeout and can leave private temporary assets locked.
+      if (process.platform === "win32" && child.pid) treeStopped = new Promise(resolve => {
+        const killer = spawn(join(process.env.SystemRoot || "C:\\Windows", "System32", "taskkill.exe"), ["/PID", String(child.pid), "/T", "/F"], { stdio: "ignore", windowsHide: true });
+        killer.once("error", () => { child.kill("SIGKILL"); resolve(); });
+        killer.once("close", () => { child.kill("SIGKILL"); resolve(); });
+      });
+      else { try { process.kill(-child.pid, "SIGKILL"); } catch { child.kill("SIGKILL"); } }
+    };
     const timer = setTimeout(stop, 120000);
     signal.addEventListener("abort", stop, { once: true });
     if (signal.aborted) stop();
     child.once("error", error => { clearTimeout(timer); signal.removeEventListener("abort", stop); reject(error); });
     child.once("close", async code => {
       clearTimeout(timer); signal.removeEventListener("abort", stop);
-      if (stopped) { reject(new AppError(signal.aborted ? "EXPORT_CANCELLED" : "EXPORT_RENDER_TIMEOUT", 422)); return; }
+      if (stopped) { await treeStopped; reject(new AppError(signal.aborted ? "EXPORT_CANCELLED" : "EXPORT_RENDER_TIMEOUT", 422)); return; }
       if (code === 0) { resolve(); return; }
       let failure = "EXPORT_RENDER_FAILED";
       try { const info = JSON.parse(await readFile(join(root, "error.json"), "utf8")); if (/^EXPORT_[A-Z_]+$/.test(info.code)) failure = info.code; } catch { /* No child error file on a crash. */ }

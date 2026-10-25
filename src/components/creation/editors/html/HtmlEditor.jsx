@@ -199,7 +199,7 @@ export default function HtmlEditor({ content, getContent, controllerRef, onOpera
         {current ? <div style={{ width: page.width * scale, height: pageHeight * scale }}><iframe ref={frame} title={text("可编辑作品", "Editable artwork")} sandbox="allow-same-origin" referrerPolicy="no-referrer" srcDoc={projection.value} onLoad={loaded} style={{ width: page.width, height: pageHeight, transform: `scale(${scale})`, transformOrigin: "top left" }} /></div> : <p role={fault ? "alert" : "status"}>{fault ? text("作品预览失败，请重试打开。", "Preview failed. Reopen to retry.") : text("正在打开作品…", "Opening artwork…")}</p>}
       </div>
       {inspector && <aside className="cw-html-inspector">
-        <strong>{text("属性", "Properties")}</strong>
+        <header><strong>{text("属性", "Properties")}</strong><button aria-label={text("关闭属性", "Close properties")} onClick={() => setInspector(false)}><X size={14} /></button></header>
         {selected ? <>
           {!selected.children.length && selected.tagName !== "IMG" && <label>{text("文字", "Text")}<textarea key={`${page.id}:${selection[0]}:${page.html.length}`} defaultValue={selected.textContent} disabled={readOnly} onChange={e => { stageDraft({ pageId: page.id, base: page.html, nodeId: selection[0], text: e.target.value }); }} onBlur={() => { try { commitPending(); } catch (error) { onError?.(error); } }} /></label>}
           <label>{text("字号", "Font size")}<input type="number" min="6" max="512" disabled={readOnly} defaultValue={parseFloat(selected.style.fontSize) || 32} key={`font:${selection[0]}`} onBlur={e => style("fontSize", `${Math.max(6, Math.min(512, Number(e.target.value) || 32))}px`)} /></label>

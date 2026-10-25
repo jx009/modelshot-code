@@ -5,7 +5,7 @@ import CreationWorkspace from "../../src/components/creation/CreationWorkspace";
 import { deferNavigation } from "../../src/lib/navigation-guard.js";
 import { toNativeSheetArtifact } from "../../src/lib/creation/native-sheet-adapter.js";
 import { toNativeDocumentArtifact } from "../../src/lib/creation/native-document-adapter.js";
-const mocks = vi.hoisted(() => ({ api: vi.fn(), flush: vi.fn(), kind: "web", target: { kind: "web", fileIds: ["html"], paths: ["index.html"], label: "index.html" } }));
+const mocks = vi.hoisted(() => ({ api: vi.fn(), flush: vi.fn(), kind: "web", artifactKind: null, target: { kind: "web", fileIds: ["html"], paths: ["index.html"], label: "index.html" } }));
 vi.mock("../../src/lib/client-api", () => ({ api: (...args) => mocks.api(...args), requestKey: () => "workspace-submit-12345" }));
 vi.mock("../../src/lib/studio/project-list", () => ({ invalidateProjectLists: vi.fn() }));
 vi.mock("../../src/components/creation/useCreationRun", () => ({ useCreationRun: () => ({ run: null, error: null }) }));
@@ -20,16 +20,22 @@ vi.mock("../../src/components/creation/CreationArtifactEditor", async () => {
 });
 const content = { kind: "web", files: [{ id: "html", path: "index.html", kind: "html", content: "<h1>Saved selection</h1>" }] };
 beforeEach(() => {
-  sessionStorage.clear(); mocks.kind = "web"; mocks.target = { kind: "web", fileIds: ["html"], paths: ["index.html"], label: "index.html" };
+  sessionStorage.clear(); mocks.kind = "web"; mocks.artifactKind = null; mocks.target = { kind: "web", fileIds: ["html"], paths: ["index.html"], label: "index.html" };
   mocks.flush.mockReset().mockResolvedValue({ revision: 3, content });
   mocks.api.mockReset().mockImplementation(async (url, options) => {
     if (options?.method === "POST") return { id: "run", kind: mocks.kind };
     if (url === "/api/creation/capabilities") return { web: true, poster: true, slides: true, document: true, sheet: true, languageUnitCost: 2 };
-    if (url === "/api/creation/projects/p") return { id: "p", kind: mocks.kind, name: "Test", sessions: [{ id: "s" }], artifacts: [{ id: "a", kind: mocks.kind }] };
+    if (url === "/api/creation/projects/p") return { id: "p", kind: mocks.kind, name: "Test", sessions: [{ id: "s" }], artifacts: [{ id: "a", kind: mocks.artifactKind || mocks.kind }] };
     return { items: [] };
   });
 });
 afterEach(cleanup);
+it("opens an artifact with its own format even when it differs from the project's default kind", async () => {
+  mocks.kind = "web";
+  mocks.artifactKind = "poster";
+  render(<CreationWorkspace userId="u" projectId="p" zh={false} />);
+  expect(await screen.findByText("Select poster file")).toBeTruthy();
+});
 it("sends native document text spans and rejects a reference from before the latest save", async () => {
   mocks.kind = "document";
   const native = toNativeDocumentArtifact({ schemaVersion: 1, kind: "document", title: "Report", sections: [{ id: "s", title: "Section", blocks: [{ id: "p", type: "paragraph", runs: [{ text: "Original", marks: {} }] }] }] }, "unit");
@@ -143,6 +149,8 @@ it("shows website page count without image dimensions and submits the web-specif
   render(<CreationWorkspace userId="u" projectId="p" zh={false} />);
   await screen.findByText("Select web file");
   expect(screen.queryByLabelText("Page dimensions")).toBeNull();
+  expect(screen.queryByLabelText("Page count")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Materials and options" }));
   expect(screen.getByLabelText("Page count").value).toBe("1");
   fireEvent.change(screen.getByLabelText("Page count"), { target: { value: "3" } });
   fireEvent.change(screen.getByLabelText("Creation request"), { target: { value: "Create a coffee website" } });
@@ -176,6 +184,8 @@ it("keeps poster dimensions and layout selection on their existing request path"
   mocks.flush.mockResolvedValue({ revision: 4, content: { pages: [{ id: "p1", nodes: [{ id: "n1", locked: false }] }] } });
   render(<CreationWorkspace userId="u" projectId="p" zh={false} />);
   await screen.findByText("Select poster file");
+  expect(screen.queryByLabelText("Page dimensions")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Materials and options" }));
   expect(screen.getByLabelText("Page dimensions")).toBeTruthy();
   fireEvent.click(screen.getByText("Select poster file"));
   fireEvent.change(screen.getByLabelText("Creation request"), { target: { value: "Change headline" } });
@@ -190,6 +200,7 @@ it("submits document section parameters and a validated block selection", async 
   render(<CreationWorkspace userId="u" projectId="p" zh={false} />);
   await screen.findByText("Select document file");
   expect(screen.queryByLabelText("Page dimensions")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Materials and options" }));
   fireEvent.change(screen.getByLabelText("Section count"), { target: { value: "8" } });
   fireEvent.click(screen.getByText("Select document file"));
   fireEvent.change(screen.getByLabelText("Creation request"), { target: { value: "Revise summary" } });
@@ -205,6 +216,7 @@ it("submits sheet generation parameters and a validated cell selection", async (
   render(<CreationWorkspace userId="u" projectId="p" zh={false} />);
   await screen.findByText("Select sheet file");
   expect(screen.queryByLabelText("Page dimensions")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Materials and options" }));
   fireEvent.change(screen.getByLabelText("Sheet count"), { target: { value: "3" } });
   fireEvent.change(screen.getByLabelText("Target rows"), { target: { value: "40" } });
   fireEvent.click(screen.getByText("Select sheet file"));

@@ -30,7 +30,17 @@ it("requires unique matching file ID/path pairs before sending any source to a m
     expect(() => validateWebSelection({ ...edit(), ...target }, site())).toThrow("LANGUAGE_SELECTION_CHANGED");
     expect(() => creationLanguageMessages({ input: { ...edit(), ...target }, source: site(), assets: [] })).toThrow("LANGUAGE_SELECTION_CHANGED");
   }
-  expect(() => validateWebSelection({ fileIds: ["js"], paths: ["app.js"] }, site())).toThrow("WEB_AGENT_JS_EDIT_DISABLED");
+  expect(validateWebSelection({ fileIds: ["js"], paths: ["app.js"] }, site()).files[0].kind).toBe("js");
+});
+it("edits a selected script with the same version and scope checks as HTML", () => {
+  const source = site(), input = { ...edit(), fileIds: ["js"], paths: ["app.js"] };
+  const operation = { op: "setFile", fileId: "js", path: "app.js", kind: "js", content: "document.querySelector('button').addEventListener('click', () => document.body.classList.toggle('open'));" };
+  expect(validateLanguageResult(input, { operations: [operation] }, source).operations).toEqual([operation]);
+  const payload = JSON.parse(creationLanguageMessages({ input, source, assets: [] })[1].content);
+  expect(payload.source.files.map(file => file.id)).toEqual(["js"]);
+  expect(() => validateLanguageResult(input, { operations: [{ ...operation, content: 'fetch("https://external.test")' }] }, source)).toThrow();
+  expect(() => validateLanguageResult(edit(), { operations: [operation] }, source)).toThrow("LANGUAGE_EDIT_OUTSIDE_SCOPE");
+  expect(source.files[2].content).toBe("document.body.dataset.ready = 'yes'");
 });
 it("sends only selected content and checks replayed patches against the same scope", () => {
   const source = site(), input = edit();

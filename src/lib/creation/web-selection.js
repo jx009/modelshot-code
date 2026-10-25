@@ -11,7 +11,7 @@ export function validateWebSelection(input, source) {
   const files = fileIds.map((id, index) => {
     const file = byId.get(id);
     if (!file || file.path !== paths[index]) fail("LANGUAGE_SELECTION_CHANGED");
-    if (!["html", "css"].includes(file.kind)) fail("WEB_AGENT_JS_EDIT_DISABLED");
+    if (!["html", "css", "js"].includes(file.kind)) fail("LANGUAGE_SELECTION_CHANGED");
     return file;
   });
   return { files, byId: new Map(files.map(file => [file.id, file])) };

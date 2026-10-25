@@ -47,3 +47,16 @@
   .ms-studio .ms-editor-card { max-height:32dvh; }
   .ms-studio .ms-editor-hint { margin-bottom:4px; padding:4px 8px; font-size:10px; }
 }
+.ms-studio .ms-editor[data-collapsed=true] .ms-editor-hint,
+.ms-studio .ms-editor[data-collapsed=true] .ms-editor-content,
+.ms-studio .ms-editor[data-collapsed=true] .ms-editor-card>footer { display:none; }
+.ms-studio .ms-editor[data-collapsed=true] .ms-editor-card { padding:5px 8px; }
+.ms-studio .ms-editor[data-collapsed=true] .ms-editor-card>header { margin:0; }
+@media(min-width:1101px) {
+  .ms-studio .ms-canvas-space>.ms-editor[data-collapsed=true] { bottom:auto; width:220px; }
+  .ms-studio .ms-canvas-space:has(>.ms-editor[data-collapsed=true])>.ms-stage { right:0; }
+  .ms-studio .ms-canvas-space:has(>.ms-editor[data-collapsed=true]) .ms-bottom-toolbar { left:50%; }
+}
+@media(max-width:1100px) {
+  .ms-studio .ms-editor[data-collapsed=true] { width:min(260px,calc(100% - 24px)); }
+}

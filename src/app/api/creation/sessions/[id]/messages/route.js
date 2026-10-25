@@ -1,3 +1,6 @@
+import { z } from "zod";
+import { createAgentRun } from "@/lib/domain/creation/agent-runs";
+import { agentRequestSchema } from "@/lib/creation/contracts/agent";
 import { requireUser } from "@/lib/require-user";
 import { errorResponse, readJson } from "@/lib/http";
 import { readMessages } from "@/lib/domain/creation/projects";
@@ -17,7 +20,7 @@ export async function POST(request, context) {
   try {
     const user = await requireUser(), { id } = await context.params;
     await rateLimit("creation-message", user.id, 30, 600);
-    const body = await readJson(request, contentRunSchema, 65536);
-    return Response.json(await createContentRun(user.id, id, body, request.headers.get("Idempotency-Key")), { status: 202, headers: { "Cache-Control": "private, no-store" } });
+    const body = await readJson(request, z.union([agentRequestSchema, contentRunSchema]), 65536);
+    return Response.json(await (body.kind === "agent" ? createAgentRun : createContentRun)(user.id, id, body, request.headers.get("Idempotency-Key")), { status: 202, headers: { "Cache-Control": "private, no-store" } });
   } catch (error) { return errorResponse(error); }
 }

@@ -1,3 +1,4 @@
+import { prepareDependencyContext } from "./dependency-context.js";
 import { createHash } from "node:crypto";
 import { prisma } from "../../prisma.js";
 import { AppError } from "../../http.js";
@@ -103,6 +104,7 @@ export async function executeCreationLanguage(id, { db = prisma, store = objectS
       if (!runSession?.sessionId) throw new AppError("CREATION_REFERENCE_NOT_FOUND", 404);
       referenceFiles = await prepareCreationReferenceFiles(output.userId, runSession.sessionId, input.referenceIds, { db, store, signal: controller.signal });
     }
+    const dependencyFiles = await prepareDependencyContext(output.userId, output.snapshot.creationRunId, input.dependencyRefs, { db, store });
     controller.signal.throwIfAborted();
     const authorized = await db.$transaction(async tx => {
       await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${output.userId} FOR UPDATE`;
@@ -119,7 +121,7 @@ export async function executeCreationLanguage(id, { db = prisma, store = objectS
     if (authorized === "cancelled") { await finishOutput(id, output.fence, { cancelled: true }, db); return; }
     // Even injected/compatible providers that ignore AbortSignal cannot keep
     // this worker lease alive forever. The promise has a rejection handler.
-    const response = await Promise.race([invoke(selected, { input, source, assets, images, referenceFiles, signal: controller.signal }), new Promise((_, reject) => {
+    const response = await Promise.race([invoke(selected, { input, source, assets, images, referenceFiles, dependencyFiles, signal: controller.signal }), new Promise((_, reject) => {
       deadline = setTimeout(() => { const error = new AppError("LANGUAGE_TIMEOUT", 504); controller.abort(error); reject(error); }, Math.min(180000, Math.max(1000, timeoutMs)));
     })]);
     clearTimeout(deadline);

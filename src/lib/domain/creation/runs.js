@@ -24,7 +24,7 @@ export function presentRun(run) {
   return {
     id: run.id, kind: run.kind, documentId: run.documentId, projectId: run.projectId, sessionId: run.sessionId, status: run.status,
     summary: run.input.summary, maxCredits: run.maxCredits, committedCredits: run.committedCredits,
-    clientKey: run.input.clientKey,
+    clientKey: run.input.clientKey, ...(run.input.agentParent ? { parentRunId: run.input.agentParent.runId } : {}),
     eventSequence: run.eventSequence, errorCode: run.errorCode,
     cancelRequested: Boolean(run.cancelRequestedAt), createdAt: run.createdAt, updatedAt: run.updatedAt,
     steps: run.steps.map(step => ({ id: step.id, position: step.position, tool: step.tool,
@@ -109,6 +109,17 @@ export async function cancelRun(userId, id, db = prisma) {
     const updated = await appendRunEvent(tx, id, "run.cancel_requested", {}, {
       status: "cancelling", cancelRequestedAt: new Date(), nextCheckAt: new Date(),
     });
+    if (run.kind === "agent") for (const step of run.steps.filter(item => item.status !== "succeeded")) {
+      if (step.result?.childRunId) {
+        const child = await lockRun(tx, userId, step.result.childRunId);
+        if (child.input?.agentParent?.runId !== run.id || child.input.agentParent.stepId !== step.id) throw new AppError("CREATION_AGENT_LINK_INVALID", 409);
+        if (!isRunTerminal(child.status) && !child.cancelRequestedAt) {
+          const stopped = await appendRunEvent(tx, child.id, "run.cancel_requested", { parentRunId: run.id }, { status: "cancelling", cancelRequestedAt: new Date(), nextCheckAt: new Date() });
+          await enqueueRun(tx, child.id, `cancel:${stopped.eventSequence}`);
+        }
+      }
+      if (step.result?.exportId) await tx.artifactExport.updateMany({ where: { id: step.result.exportId, userId, status: { in: ["queued", "running"] } }, data: { status: "cancelled", errorCode: null, leaseUntil: null } });
+    }
     await enqueueRun(tx, id, `cancel:${updated.eventSequence}`);
     return presentRun({ ...updated, steps: run.steps });
   });
@@ -119,10 +130,14 @@ export async function resumeRun(userId, id, input, db = prisma, deps = {}) {
   const current = await db.creationRun.findFirst({ where: { id, userId }, include: { steps: { orderBy: { position: "asc" } } } });
   if (!current) throw new AppError("CREATION_RUN_NOT_FOUND", 404);
   if (current.eventSequence !== data.expectedSequence) throw new AppError("CREATION_RUN_CHANGED", 409);
-  if (current.errorCode === "CREATION_OUTLINE_CONFIRMATION_REQUIRED") throw new AppError("CREATION_OUTLINE_CONFIRMATION_REQUIRED", 409);
+  if (current.kind !== "agent" && current.errorCode === "CREATION_OUTLINE_CONFIRMATION_REQUIRED") throw new AppError("CREATION_OUTLINE_CONFIRMATION_REQUIRED", 409);
   const remaining = current.steps.filter(step => step.status !== "succeeded");
   if (!remaining.length || current.cancelRequestedAt || ![...RUN_WAITING, "failed"].includes(current.status)) throw new AppError("CREATION_CANNOT_RESUME", 409);
   if (remaining.some(step => step.status === "failed") && !data.retryFailed) throw new AppError("CREATION_EXPLICIT_RETRY_REQUIRED", 409);
+  if (current.kind === "agent") {
+    const { resumeAgentRun } = await import("./agent-runs.js");
+    return resumeAgentRun(userId, current, data, { ...deps, db });
+  }
   if (["poster", "slides", "document", "sheet", "web"].includes(current.kind)) {
     const { resumeContentRun } = await import("./content-runs.js");
     return resumeContentRun(userId, current, data, { ...deps, db });

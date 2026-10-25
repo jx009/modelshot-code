@@ -1,3 +1,4 @@
+import { advanceAgentRun } from "./agent-runs.js";
 import { prisma } from "../../prisma.js";
 import { AppError } from "../../http.js";
 import { RUN_ACTIVE, isRunTerminal, nextImageSource } from "../../creation/contracts/runs.js";
@@ -11,12 +12,12 @@ import { getTool } from "../../studio/tools.js";
 import { lockRun } from "./runs.js";
 import { appendRunEvent, enqueueRun } from "./events.js";
 import { creationLanguageConfig, submitCreationLanguageStep } from "./language-jobs.js";
-import { publishCreationLanguage, assembleCreationSlides, assembleCreationDocument } from "./publication.js";
+import { publishCreationLanguage, assembleCreationSlides, assembleCreationDocument, assembleCreationSheet } from "./publication.js";
 import { nextReadyStep, newlyUnblockedSteps, runHasUnfinishedSteps, validateRunDependencyGraph } from "../../creation/run-dependencies.js";
 
 const CHECK_INTERVAL = 30_000;
 const BUDGET_ERRORS = ["PRICE_CHANGED", "CREATION_BUDGET_EXCEEDED", "INSUFFICIENT_CREDITS", "CREDITS_FROZEN"];
-const CAPACITY_ERRORS = ["QUEUE_FULL", "USER_QUEUE_FULL"];
+const CAPACITY_ERRORS = ["QUEUE_FULL", "USER_QUEUE_FULL", "CREATION_QUEUE_FULL", "EXPORT_QUEUE_FULL", "EXPORT_USER_QUEUE_FULL"];
 
 async function snapshot(db, id) {
   return db.creationRun.findUnique({ where: { id }, include: { steps: { orderBy: { position: "asc" } } } });
@@ -27,7 +28,7 @@ async function snapshot(db, id) {
 // transaction that records the first job's identity.
 export async function advanceRun(id, { db = prisma, store, configFor = studioConfig, capabilitiesFor = capabilities, submit = submitStudioJob, cancel = cancelOutput,
   submitPosterImage = submitCreationPosterImageStep, publishImage = publishPosterImage,
-  languageConfigFor = creationLanguageConfig, submitLanguage = submitCreationLanguageStep, publishLanguage = publishCreationLanguage, assembleSlides = assembleCreationSlides, assembleDocument = assembleCreationDocument, now = new Date() } = {}) {
+  languageConfigFor = creationLanguageConfig, submitLanguage = submitCreationLanguageStep, publishLanguage = publishCreationLanguage, assembleSlides = assembleCreationSlides, assembleDocument = assembleCreationDocument, assembleSheet = assembleCreationSheet, now = new Date() } = {}) {
   const initial = await snapshot(db, id);
   if (!initial || isRunTerminal(initial.status) || !RUN_ACTIVE.includes(initial.status)) return;
   if (!validateRunDependencyGraph(initial.steps)) throw new AppError("CREATION_DEPENDENCY_GRAPH_INVALID", 409);
@@ -35,9 +36,11 @@ export async function advanceRun(id, { db = prisma, store, configFor = studioCon
   if (initial.cancelRequestedAt && pending?.jobId) await cancel(initial.userId, pending.jobId, db);
   let config, caps;
   try {
+    if (initial.kind === "agent") return await advanceAgentRun(initial, { db, store });
     if (!initial.cancelRequestedAt && pending && ["poster", "slides", "document", "sheet", "web"].includes(initial.kind)) {
       if (pending.tool === "layout.assemble") return await assembleSlides(initial, pending, { db, store });
       if (pending.tool === "document.assemble") return await assembleDocument(initial, pending, { db, store });
+      if (pending.tool === "sheet.assemble") return await assembleSheet(initial, pending, { db, store });
       if (pending.jobId) {
         const job = await db.tryOn.findFirst({ where: { id: pending.jobId, userId: initial.userId }, select: { status: true } });
         if (job?.status === "succeeded") return await (pending.tool === POSTER_IMAGE_TOOL ? publishImage : publishLanguage)(initial, pending, { db, store });

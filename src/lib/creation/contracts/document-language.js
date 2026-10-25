@@ -1,8 +1,9 @@
 import { z } from "zod";
+import { dependencyReferencesSchema } from "./dependency-references.js";
 import { documentId, documentSectionSchema, documentOperationsSchema, textDocumentSchema, documentAssetIds, documentTextLeaves } from "./document.js";
 import { applyDocumentOperations, replaceDocumentText } from "../document-operations.js";
 
-const common = { prompt: z.string().trim().min(1).max(12000), locale: z.enum(["zh", "en"]).default("zh"), assetIds: z.array(documentId).max(8).default([]), referenceIds: z.array(documentId).max(8).default([]) };
+const common = { dependencyRefs: dependencyReferencesSchema.optional(), prompt: z.string().trim().min(1).max(12000), locale: z.enum(["zh", "en"]).default("zh"), assetIds: z.array(documentId).max(8).default([]), referenceIds: z.array(documentId).max(8).default([]) };
 export const documentOutlineSchema = z.object({ title: z.string().trim().min(1).max(160),
   sections: z.array(z.object({ id: documentId, title: z.string().trim().min(1).max(160), brief: z.string().trim().min(1).max(4000) }).strict()).min(1).max(50),
 }).strict().refine(value => new Set(value.sections.map(section => section.id)).size === value.sections.length, "DUPLICATE_DOCUMENT_ID");

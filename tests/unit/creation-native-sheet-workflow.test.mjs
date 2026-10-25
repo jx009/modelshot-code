@@ -23,7 +23,7 @@ const params = { ...target, purpose: "sheet.native.edit", prompt: "Update amount
 const patch = { operations: [{ op: "setNativeCell", sheetId: "sheet0", row: 0, column: 0, value: 20 }] };
 function fixture(kind = "sheet") {
   const run = { id: "run", userId: "u", projectId: "project", sessionId: "session", kind, status: "running", eventSequence: 1, committedCredits: 0, input: { locale: "en", languageUnitCost: 1 }, steps: [{ id: "step", position: 0, attempt: 0, status: "running", jobId: "sheet-edit-job-1234", tool: "sheet.native.edit", params }] };
-  const db = { run, $queryRaw: vi.fn(), creationRun: { findUnique: vi.fn(async () => null), count: vi.fn(async () => 0), create: vi.fn(async ({ data }) => ({ id: "run", ...data, steps: [data.steps.create] })) },
+  const db = { run, $queryRaw: vi.fn(), creationRun: { findUnique: vi.fn(async () => null), count: vi.fn(async () => 0), create: vi.fn(async ({ data }) => ({ id: "run", ...data, steps: data.steps.create })) },
     creationSession: { findFirst: vi.fn(async () => ({ id: "session", projectId: "project", project: { kind } })) },
     creationStep: { update: vi.fn(async ({ data }) => Object.assign(run.steps[0], data)), findUnique: vi.fn(async () => null) },
     tryOn: { findFirst: vi.fn(async () => ({ snapshot: { creationStepId: "step", creationAttempt: 0 } })), findMany: vi.fn(async () => [{ id: run.steps[0].jobId, status: "succeeded" }]) } };
@@ -137,7 +137,7 @@ it("keeps the source intact and publishes a full native AI copy when the origina
 it("allows publication recovery after admission closes but rejects another paid native retry", async () => {
   const value = fixture(); value.env.CREATION_NATIVE_OFFICE_ENABLED = "false";
   await expect(resumeContentRun("u", value.run, { expectedSequence: 1, maxCredits: 1 }, value)).resolves.toBeNull();
-  expect(value.ensureWorkers).toHaveBeenCalledWith(value.db, { language: false, kind: "sheet" });
+  expect(value.ensureWorkers).toHaveBeenCalledWith(value.db, { language: false, kind: "sheet", posterImage: false });
   value.db.tryOn.findMany.mockResolvedValueOnce([{ id: value.run.steps[0].jobId, status: "failed" }]);
   await expect(resumeContentRun("u", value.run, { expectedSequence: value.run.eventSequence, maxCredits: 1 }, value)).rejects.toThrow("CREATION_NOT_ENABLED");
 });

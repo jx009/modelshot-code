@@ -46,6 +46,20 @@ it("does not load remote scripts and bounds executable scripts", () => {
   value.files[0].content = Array.from({ length: 21 }, () => "<script>document.title='x'</script>").join("");
   expect(() => buildWebPreviewDocument(value, new Map(), { interactive: true })).toThrow("WEB_PREVIEW_SCRIPT_LIMIT");
 });
+it("preserves interactive controls and data selectors and does not duplicate scripts on re-render", () => {
+  const value = site();
+  value.files[0].content = '<label for="name">Name</label><input id="name" placeholder="Name" data-action="name"><select name="choice"><option value="a">A</option></select><script src="app.js"></script>';
+  value.files[2].content = 'document.body.dataset.text = "</script><h1>not markup</h1>";';
+  const prepared = prepareWebPreviewDocument(value, { interactive: true });
+  const first = prepared.render(), second = prepared.render();
+  expect(second).toBe(first);
+  const doc = new DOMParser().parseFromString(second, "text/html");
+  expect(doc.querySelectorAll("script")).toHaveLength(1);
+  expect(doc.querySelector("h1")).toBeNull();
+  expect(doc.querySelector("input").dataset.action).toBe("name");
+  expect(doc.querySelector("label").htmlFor).toBe("name");
+  expect(doc.querySelector("option").value).toBe("a");
+});
 
 it("reconstructs inert markup, strips navigation and resources, and includes styles once", () => {
   const value = site();

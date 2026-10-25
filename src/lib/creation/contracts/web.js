@@ -32,7 +32,7 @@ export const webOperationsSchema = z.array(z.discriminatedUnion("op", [
   z.object({ op: z.literal("replaceAsset"), ...target, expectedAssetId: layoutId, assetId: layoutId, assetIds: z.array(layoutId).max(100).optional() }).strict(),
   z.object({ op: z.literal("insertFile"), file: webFileSchema, index: z.number().int().min(0).max(100).optional() }).strict(),
   z.object({ op: z.literal("removeFile"), ...target }).strict(),
-  z.object({ op: z.literal("renameFile"), ...target, nextPath: path, updates: z.array(z.object({ ...target, kind: z.enum(["html", "css"]), content: text }).strict()).min(1).max(100).optional() }).strict(),
+  z.object({ op: z.literal("renameFile"), ...target, nextPath: path, updates: z.array(z.object({ ...target, kind: z.enum(["html", "css", "js"]), content: text }).strict()).min(1).max(100).optional() }).strict(),
   z.object({ op: z.literal("setEntry"), path }).strict(),
   z.object({ op: z.literal("setTheme"), theme }).strict(),
   z.object({ op: z.literal("setAssetIds"), assetIds: z.array(layoutId).max(100) }).strict(),

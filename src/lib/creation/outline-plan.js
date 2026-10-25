@@ -10,7 +10,7 @@ export function outlineForKind(kind) {
 export function outlineChildren(run, value, cost) {
   const spec = outlineForKind(run.kind), outline = spec.schema.parse(value), source = languageInputSchema.parse(run.steps[0].params);
   if (source.purpose !== `${run.kind}.outline`) throw new Error("CREATION_OUTLINE_CHANGED");
-  const common = { prompt: source.prompt, locale: source.locale, assetIds: source.assetIds, referenceIds: source.referenceIds, ...(source.sourceFormat ? { sourceFormat: source.sourceFormat } : {}) };
+  const common = { ...(source.dependencyRefs ? { dependencyRefs: source.dependencyRefs } : {}), prompt: source.prompt, locale: source.locale, assetIds: source.assetIds, referenceIds: source.referenceIds, ...(source.sourceFormat ? { sourceFormat: source.sourceFormat } : {}) };
   // Copy only heading metadata, never every section's full brief or result.
   const headings = run.kind === "document" ? outline.sections.map(({ id, title }) => ({ id, title })) : null;
   const ids = outline[spec.items].map(() => randomUUID());

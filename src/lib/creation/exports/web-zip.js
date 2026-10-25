@@ -2,6 +2,7 @@ import JSZip from "jszip";
 import sharp from "sharp";
 import { webSchema } from "../contracts/web.js";
 import { EXPORT_MAX_BYTES } from "../contracts/exports.js";
+import { webDeploymentSource } from "../web-deployment.js";
 
 const MAX_INPUT_BYTES = 100 * 1024 * 1024;
 const MAX_IMAGE_PIXELS = 40_000_000;
@@ -54,7 +55,10 @@ export async function buildWebZip(input, images = new Map()) {
         }
         converted.set(key, bytes);
       }
-    } else bytes = Buffer.from(file.content, "utf8");
+    } else {
+      try { bytes = Buffer.from(webDeploymentSource(file, site), "utf8"); }
+      catch (error) { fail(error.message === "WEB_REFERENCE_NOT_FOUND" ? "EXPORT_WEB_REFERENCE_NOT_FOUND" : error.message === "WEB_EXTERNAL_REFERENCE_UNSUPPORTED" ? "EXPORT_WEB_EXTERNAL_REFERENCE" : "EXPORT_WEB_SOURCE_INVALID"); }
+    }
     total += bytes.length;
     if (total > MAX_INPUT_BYTES) fail("EXPORT_ASSETS_TOO_LARGE");
     zip.file(file.path, bytes, { date: stableDate, createFolders: false, compression: file.kind === "asset" ? "STORE" : "DEFLATE", compressionOptions: { level: 1 } });

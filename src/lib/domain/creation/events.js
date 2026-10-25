@@ -1,5 +1,7 @@
 // Caller holds the run lock (always after the user lock). The event and state
 // commit together; notifications can be retried without changing sequence.
+// nextCheckAt is NOT NULL. Paused/terminal runs keep their last timestamp;
+// recovery excludes them by status. Only active transitions reschedule it.
 export async function appendRunEvent(tx, runId, type, payload, changes = {}) {
   const run = await tx.creationRun.update({ where: { id: runId }, data: {
     ...changes, eventSequence: { increment: 1 },

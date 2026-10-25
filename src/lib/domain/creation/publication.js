@@ -45,7 +45,7 @@ async function complete(tx, run, step, result, message) {
   const next = nextReadyStep(completed.map(item => readyIds.has(item.id) ? { ...item, status: "ready" } : item));
   const blocked = !next && runHasUnfinishedSteps(completed);
   const updated = await appendRunEvent(tx, run.id, "step.succeeded", { stepId: step.id, jobId: step.jobId, result }, {
-    status: next ? "running" : blocked ? "awaiting_input" : "succeeded", errorCode: blocked ? "CREATION_DEPENDENCY_BLOCKED" : null, nextCheckAt: next ? new Date() : null,
+    status: next ? "running" : blocked ? "awaiting_input" : "succeeded", errorCode: blocked ? "CREATION_DEPENDENCY_BLOCKED" : null, ...(next ? { nextCheckAt: new Date() } : {}),
   });
   if (next) await enqueueRun(tx, run.id, `step:${updated.eventSequence}`);
   else if (!blocked) await appendRunEvent(tx, run.id, "run.succeeded", { result }, { status: "succeeded" });

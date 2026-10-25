@@ -82,7 +82,7 @@ export async function advanceRun(id, { db = prisma, store, configFor = studioCon
       if (!step) {
         if (runHasUnfinishedSteps(run.steps)) {
           await appendRunEvent(tx, id, "run.blocked", { unfinishedStepIds: run.steps.filter(row => row.status !== "succeeded").map(row => row.id) }, {
-            status: "awaiting_input", errorCode: "CREATION_DEPENDENCY_BLOCKED", nextCheckAt: null,
+            status: "awaiting_input", errorCode: "CREATION_DEPENDENCY_BLOCKED",
           });
           return;
         }
@@ -103,7 +103,7 @@ export async function advanceRun(id, { db = prisma, store, configFor = studioCon
         const blocked = !next && run.steps.some(row => row.id !== step.id && row.status !== "succeeded");
         const updated = await appendRunEvent(tx, id, "step.succeeded", { stepId: step.id, jobId: job.id }, {
           status: next ? "running" : blocked ? "awaiting_input" : "succeeded",
-          errorCode: blocked ? "CREATION_DEPENDENCY_BLOCKED" : null, nextCheckAt: next ? now : null,
+          errorCode: blocked ? "CREATION_DEPENDENCY_BLOCKED" : null, ...(next ? { nextCheckAt: now } : {}),
         });
         if (next) await enqueueRun(tx, id, `step:${updated.eventSequence}`);
         else if (!blocked) await appendRunEvent(tx, id, "run.succeeded", {}, { status: "succeeded" });

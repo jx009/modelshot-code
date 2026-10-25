@@ -5,13 +5,14 @@ import { AppError } from "../../src/lib/http.js";
 import { createProject, readMessages } from "../../src/lib/domain/creation/projects.js";
 import { createContentRun } from "../../src/lib/domain/creation/content-runs.js";
 import { readRun, resumeRun, cancelRun } from "../../src/lib/domain/creation/runs.js";
-import { advanceRun } from "../../src/lib/domain/creation/scheduler.js";
+import { advanceRun, recoverRuns } from "../../src/lib/domain/creation/scheduler.js";
 import { executeCreationLanguage } from "../../src/lib/domain/creation/language-execution.js";
 import { createLayoutArtifact, readLayoutArtifact, modifyLayoutArtifact } from "../../src/lib/domain/creation/artifacts.js";
 import { usageSummary } from "../../src/lib/domain/billing/ledger.js";
 import { confirmOutline, readOutlineReview } from "../../src/lib/domain/creation/outline-review.js";
 import { readDocumentArtifact } from "../../src/lib/domain/creation/document-artifacts.js";
 import { DOCUMENT_SCHEDULER_HEARTBEAT, DOCUMENT_LANGUAGE_HEARTBEAT, DOCUMENT_PIPELINE_VERSION } from "../../src/lib/creation/contracts/document-runtime.js";
+import { HTML_SCHEDULER_HEARTBEAT, HTML_LANGUAGE_HEARTBEAT, HTML_PIPELINE_VERSION } from "../../src/lib/creation/contracts/html-runtime.js";
 
 let fixture;
 const users = [], objects = new Map();
@@ -51,18 +52,37 @@ afterAll(async () => {
   await fixture.cleanup();
 });
 
-it("publishes a generated poster and one assistant message without a browser submitting successors", async () => {
+it("recovers an unpublished successful poster without regenerating or rescheduling the completed run", async () => {
   const { user, sessionId, create, input } = await setup(), key = randomUUID();
+  for (const id of [HTML_SCHEDULER_HEARTBEAT, HTML_LANGUAGE_HEARTBEAT]) await fixture.db.serviceHeartbeat.upsert({ where: { id },
+    create: { id, details: { version: HTML_PIPELINE_VERSION } }, update: { updatedAt: new Date(), details: { version: HTML_PIPELINE_VERSION } } });
   const run = await create(input, key);
   expect((await create(input, key)).id).toBe(run.id);
   await advance(run.id);
-  const started = await readRun(user.id, run.id, fixture.db), invoke = vi.fn(async () => poster());
+  const started = await readRun(user.id, run.id, fixture.db), invoke = vi.fn(async () => ({
+    schemaVersion: 3, format: "html-poster", kind: "poster", title: "Coffee opening", theme,
+    pages: [{ id: "page", title: "Opening", width: 1080, height: 1440,
+      html: '<!DOCTYPE html><html><head></head><body><p data-node-id="date">10 月 24 日</p></body></html>' }],
+  }));
   await execute(started.steps[0].jobId, invoke);
+  // Model execution has settled, but publication has not committed: the same
+  // persisted state left behind by a failed publication transaction in production.
+  const recoveryTime = new Date(Date.now() + 60000);
+  await recoverRuns(fixture.db, recoveryTime);
+  const scheduled = await fixture.db.creationRun.findUnique({ where: { id: run.id } });
+  expect(scheduled.nextCheckAt).toBeInstanceOf(Date);
   await advance(run.id); await advance(run.id);
   const done = await readRun(user.id, run.id, fixture.db);
   expect(done.status).toBe("succeeded");
+  expect((await fixture.db.creationRun.findUnique({ where: { id: run.id } })).nextCheckAt).toEqual(scheduled.nextCheckAt);
+  const wakes = () => fixture.db.outboxEvent.count({ where: { entityId: run.id, kind: "creation-advance" } });
+  const wakeCount = await wakes();
+  await recoverRuns(fixture.db, new Date(+recoveryTime + 60000));
+  await advance(run.id);
+  expect(await wakes()).toBe(wakeCount);
+  expect(await fixture.db.tryOn.count({ where: { userId: user.id } })).toBe(1);
   expect(done.steps[0].result.disposition).toBe("created");
-  expect((await readLayoutArtifact(user.id, done.steps[0].result.artifactId, undefined, options())).content.pages[0].nodes[0].text).toBe("10 月 24 日");
+  expect((await readLayoutArtifact(user.id, done.steps[0].result.artifactId, undefined, options())).content.pages[0].html).toContain("10 月 24 日");
   const messages = await readMessages(user.id, sessionId, undefined, fixture.db);
   expect(messages.items.map(message => message.role)).toEqual(["user", "assistant"]);
   expect(invoke).toHaveBeenCalledTimes(1);

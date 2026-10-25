@@ -79,7 +79,7 @@ async function complete(tx, run, step, result) {
   const ready = newlyUnblockedSteps(steps);
   for (const item of ready) await tx.creationStep.update({ where: { id: item.id }, data: { status: "ready" } });
   const done = steps.every(item => item.status === "succeeded");
-  const updated = await appendRunEvent(tx, run.id, done ? "run.succeeded" : "step.succeeded", { stepId: step.id, result }, { status: done ? "succeeded" : "running", errorCode: null, nextCheckAt: done ? null : new Date() });
+  const updated = await appendRunEvent(tx, run.id, done ? "run.succeeded" : "step.succeeded", { stepId: step.id, result }, { status: done ? "succeeded" : "running", errorCode: null, ...(!done ? { nextCheckAt: new Date() } : {}) });
   if (!done) await enqueueRun(tx, run.id, `agent:${updated.eventSequence}`);
 }
 async function publishPlan(initial, step, { db, store }) {
@@ -98,7 +98,7 @@ async function publishPlan(initial, step, { db, store }) {
     await tx.creationStep.createMany({ data: children });
     await tx.creationStep.update({ where: { id: step.id }, data: { status: "succeeded", result: { title: plan.title } } });
     await appendCreationMessage(tx, run.sessionId, `plan-${step.id}`, "assistant", run.input.locale === "zh" ? "创作计划已生成。确认步骤与总预算后继续；演示文稿和文档生成前仍可审核大纲。" : "Review the steps and total budget, then confirm. Presentation and document outlines remain available for review.", [{ type: "run", runId: run.id }]);
-    await appendRunEvent(tx, run.id, "agent.plan_ready", { estimatedCredits: run.committedCredits + children.reduce((sum, item) => sum + item.expectedCost, 0) }, { status: "awaiting_input", errorCode: AGENT_PLAN_CONFIRMATION_REQUIRED, nextCheckAt: null });
+    await appendRunEvent(tx, run.id, "agent.plan_ready", { estimatedCredits: run.committedCredits + children.reduce((sum, item) => sum + item.expectedCost, 0) }, { status: "awaiting_input", errorCode: AGENT_PLAN_CONFIRMATION_REQUIRED });
   }, { timeout: 15000 });
 }
 
@@ -149,7 +149,7 @@ export async function advanceAgentRun(initial, { db = prisma, store = objectStor
     if (["failed", "cancelled"].includes(job.status)) return db.$transaction(async tx => {
       const run = await guard(tx, initial);
       await tx.creationStep.update({ where: { id: step.id }, data: { status: "failed", errorCode: job.errorCode || job.status } });
-      await appendRunEvent(tx, run.id, "step.failed", { stepId: step.id }, { status: "failed", errorCode: job.errorCode || job.status, committedCredits: { decrement: job.creditCost }, nextCheckAt: null });
+      await appendRunEvent(tx, run.id, "step.failed", { stepId: step.id }, { status: "failed", errorCode: job.errorCode || job.status, committedCredits: { decrement: job.creditCost } });
     });
     return postpone(db, initial);
   }
@@ -177,7 +177,7 @@ export async function advanceAgentRun(initial, { db = prisma, store = objectStor
       if (["failed", "cancelled"].includes(result.status)) return db.$transaction(async tx => {
         const run = await guard(tx, initial);
         await tx.creationStep.update({ where: { id: step.id }, data: { status: "failed", errorCode: result.errorCode || "EXPORT_FAILED" } });
-        await appendRunEvent(tx, run.id, "step.failed", { stepId: step.id }, { status: "failed", errorCode: result.errorCode || "EXPORT_FAILED", nextCheckAt: null });
+        await appendRunEvent(tx, run.id, "step.failed", { stepId: step.id }, { status: "failed", errorCode: result.errorCode || "EXPORT_FAILED" });
       });
       return postpone(db, initial);
     }
@@ -199,7 +199,7 @@ async function postpone(db, initial) {
 }
 async function finishCancellation(tx, run) {
   await tx.creationStep.updateMany({ where: { runId: run.id, status: { not: "succeeded" } }, data: { status: "cancelled" } });
-  await appendRunEvent(tx, run.id, "run.cancelled", {}, { status: "cancelled", errorCode: null, nextCheckAt: null });
+  await appendRunEvent(tx, run.id, "run.cancelled", {}, { status: "cancelled", errorCode: null });
 }
 async function settleChild(initial, step, child, { db, cancelling = false }) {
   return db.$transaction(async tx => {
@@ -216,7 +216,7 @@ async function settleChild(initial, step, child, { db, cancelling = false }) {
     }
     if ([...RUN_WAITING, "failed", "cancelled"].includes(child.status)) {
       await tx.creationStep.update({ where: { id: step.id }, data: { status: child.status === "failed" || child.status === "cancelled" ? "failed" : "running", errorCode: child.errorCode } });
-      await appendRunEvent(tx, run.id, "agent.child_waiting", { childRunId: child.id }, { status: child.status === "cancelled" ? "failed" : child.status, errorCode: child.errorCode || "CREATION_CHILD_STOPPED", nextCheckAt: null });
+      await appendRunEvent(tx, run.id, "agent.child_waiting", { childRunId: child.id }, { status: child.status === "cancelled" ? "failed" : child.status, errorCode: child.errorCode || "CREATION_CHILD_STOPPED" });
     }
   });
 }

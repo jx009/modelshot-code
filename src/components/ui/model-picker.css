@@ -44,14 +44,15 @@
 .mpk-price { font-size:10px; line-height:1.4; color:var(--secondary-text); }
 .mpk-check { width:18px; flex-shrink:0; }
 .mpk-panel button:focus-visible,.mpk-trigger:focus-visible { outline:2px solid var(--primary-text); outline-offset:-2px; }
-.ms-studio .ms-composer-tools { display:grid; grid-template-columns:28px 24px minmax(0,1fr) max-content 40px; gap:4px; }
-.ms-studio .ms-composer-tools .mpk-trigger { width:100%; max-width:none; padding:6px; gap:5px; font-size:11px; }
-.ms-studio .ms-composer-tools .mpk-trigger-name { flex:1; min-width:0; text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+/* Size controls to their content; only the model label shrinks when space runs out. */
+.ms-studio .ms-composer-tools { display:flex; flex-wrap:nowrap; min-width:0; gap:4px; }
+.ms-studio .ms-composer-tools .mpk-trigger { flex:0 1 auto; width:auto; min-width:0; max-width:none; padding:6px; gap:5px; font-size:11px; }
+.ms-studio .ms-composer-tools .mpk-trigger-name { flex:0 1 auto; min-width:0; text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .ms-studio .ms-composer-tools .mpk-mark-small { width:22px; height:22px; border-radius:7px; }
-.ms-studio .ms-composer-tools > .ms-icon { width:100%; }
-.ms-studio .ms-composer-tools > .isp-trigger { min-width:82px; padding:7px 6px; gap:5px; font-size:11px; }
+.ms-studio .ms-composer-tools > .ms-icon { flex:0 0 auto; width:auto; padding-inline:4px; }
+.ms-studio .ms-composer-tools > .isp-trigger { flex:0 0 auto; min-width:0; padding:7px 6px; gap:5px; font-size:11px; }
 .ms-studio .ms-composer-tools > .isp-trigger > * { flex-shrink:0; }
-.ms-studio .ms-composer-tools > select { min-width:0; width:100%; padding-inline:3px; }
+.ms-studio .ms-composer-tools > select { flex:0 0 auto; min-width:0; width:auto; padding-inline:3px; }
 .ms-studio .ms-composer-tools > .ms-send { margin-left:0; }
 .cr-shell .cr-home-composer:focus-within { box-shadow:0 8px 24px var(--shadow-soft); }
 @keyframes mpk-enter { from { transform:translateY(5px) scale(.97); } to { transform:translateY(0) scale(1); } }

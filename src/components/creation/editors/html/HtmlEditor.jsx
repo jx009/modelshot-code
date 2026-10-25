@@ -14,6 +14,7 @@ import "./html-editor.css";
 
 const ThemeDialog = dynamic(() => import("../layout/ThemeDialog"));
 const HtmlDataDialog = dynamic(() => import("./HtmlDataDialog"));
+const HtmlSlidePresentation = dynamic(() => import("./HtmlSlidePresentation"), { ssr: false });
 const AssetLibrary = dynamic(() => import("@/components/studio/AssetLibrary"));
 const key = () => `n_${requestKey()}`;
 function sourceDocument(html) { return new DOMParser().parseFromString(html, "text/html"); }
@@ -83,17 +84,6 @@ export default function HtmlEditor({ content, getContent, controllerRef, onOpera
     return () => controller.abort();
   }, [assetKey, loadAssets, assetRetry]);
   useEffect(() => () => clean.current?.(), []);
-  useEffect(() => {
-    if (!presenting) return;
-    const keydown = event => {
-      if (event.key === "Escape") { setPresenting(false); return; }
-      const visible = content.pages.filter(p => !p.hidden), index = visible.findIndex(p => p.id === pageId);
-      if (["ArrowRight", "PageDown", " "].includes(event.key)) { event.preventDefault(); setPageId(visible[Math.min(visible.length - 1, index + 1)]?.id || pageId); }
-      if (["ArrowLeft", "PageUp"].includes(event.key)) { event.preventDefault(); setPageId(visible[Math.max(0, index - 1)]?.id || pageId); }
-    };
-    window.addEventListener("keydown", keydown);
-    return () => window.removeEventListener("keydown", keydown);
-  }, [presenting, content.pages, pageId]);
 
   const stageDraft = useCallback(draft => {
     const current = latest.current.page;
@@ -186,7 +176,8 @@ export default function HtmlEditor({ content, getContent, controllerRef, onOpera
   function openSource() { try { commitPending(); setSource(getContent().pages.find(p => p.id === page.id).html); setSourceOpen(true); } catch (error) { onError?.(error); } }
   const pageHeight = page.height === "auto" ? autoHeight : page.height;
   const scale = Math.min(Math.max(0.05, (size.width - 24) / page.width), Math.max(0.05, (size.height - 24) / pageHeight), 1);
-  return <div className={`cw-html-editor${presenting ? " is-presenting" : ""}`}>
+  return <div className="cw-html-editor">
+    {presenting && <HtmlSlidePresentation content={presenting} startPageId={page.id} initialImages={images} zh={zh} onClose={() => setPresenting(false)} />}
     {dataEdit && <HtmlDataDialog {...dataEdit} zh={zh} onClose={() => setDataEdit(null)} onApply={html => { if (edit(doc => { const node = sourceDocument(html).body.firstElementChild; node.dataset.nodeId ||= key(); if (dataEdit.id) { const target = byId(doc, dataEdit.id); if (!target) throw new Error("LANGUAGE_SELECTION_CHANGED"); target.replaceWith(node); } else doc.body.append(node); }) !== false) setDataEdit(null); }} />}
     <div className="cw-html-tools">
       <button disabled={readOnly || !canUndo} title={text("撤销", "Undo")} onClick={() => { commitPending(); onUndo(); }}><Undo2 size={16} /></button>
@@ -203,7 +194,7 @@ export default function HtmlEditor({ content, getContent, controllerRef, onOpera
       <button disabled={readOnly} onClick={() => { commitPending(); setThemeOpen(true); }}>{text("主题", "Theme")}</button>
       {content.kind === "slides" && <button disabled={readOnly} onClick={() => { commitPending(); setMasterCss(master?.css || ""); setMasterHtml(master?.html || ""); setMasterOpen(true); }}>{text("母版", "Master")}</button>}
       <button onClick={openSource}><Code size={16} />HTML</button>
-      {content.kind === "slides" && <button onClick={() => { commitPending(); setPresenting(value => !value); }}><Play size={16} />{text(presenting ? "退出演示" : "演示", presenting ? "Exit" : "Present")}</button>}
+      {content.kind === "slides" && <button onPointerEnter={() => { void import("./HtmlSlidePresentation"); }} onFocus={() => { void import("./HtmlSlidePresentation"); }} onClick={() => { try { commitPending(); setPresenting(getContent()); } catch (error) { onError?.(error); } }}><Play size={16} />{text("演示", "Present")}</button>}
       <button aria-pressed={inspector} onClick={() => setInspector(value => !value)}><SlidersHorizontal size={16} /><span className="sr-only">{text("属性", "Properties")}</span></button>
     </div>
     {fault && <p role="alert" className="cw-error">{text("部分图片加载失败，文字和排版仍可编辑。", "Some images failed to load. Text and layout remain editable.")}<button onClick={() => setAssetRetry(value => value + 1)}>{text("重试图片", "Retry images")}</button></p>}

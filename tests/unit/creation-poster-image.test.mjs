@@ -8,6 +8,7 @@ import { submitCreationPosterImageStep, submitStudioJob } from "../../src/lib/do
 import { createContentRun, resumeContentRun, ensureContentWorkers } from "../../src/lib/domain/creation/content-runs.js";
 import { advanceRun } from "../../src/lib/domain/creation/scheduler.js";
 import { POSTER_IMAGE_SCHEDULER_HEARTBEAT, POSTER_IMAGE_LANGUAGE_HEARTBEAT } from "../../src/lib/creation/contracts/poster-runtime.js";
+import { HTML_PIPELINE_VERSION } from "../../src/lib/creation/contracts/html-runtime.js";
 
 vi.mock("../../src/lib/prisma.js", () => ({ prisma: {} }));
 vi.mock("../../src/lib/domain/creation/events.js", () => ({ appendRunEvent: vi.fn(async db => ({ ...db.run, eventSequence: 2 })), enqueueRun: vi.fn() }));
@@ -44,6 +45,23 @@ function successfulImage(f) {
   f.db.tryOn.findFirst.mockResolvedValue({ id: "image-job", status: "succeeded", resultData: { assets: [{ id: "generated-image" }] },
     snapshot: { kind: "studio", tool: "generate", creationRunId: "run", creationStepId: f.step.id, creationAttempt: 0 } });
 }
+
+it("binds a shared slide visual to every intended page without releasing pages before all visuals finish", async () => {
+  const f = fixture(); successfulImage(f); f.run.kind = "slides"; f.step.params.visualId = "hero";
+  const page = { id: "page", position: 2, tool: "slides.page", status: "blocked", dependsOn: ["image-2"],
+    params: languageInputSchema.parse({ purpose: "slides.page", prompt: "Launch", sourceFormat: "html", pageId: "one", width: 1280, height: 720, title: "One", brief: "Facts", visualId: "hero", theme: { name: "A", primary: "#000000", accent: "#ff0000", background: "#ffffff", fontFamily: "sans" } }) };
+  const secondImage = { id: "image-2", position: 1, tool: "poster.image", dependsOn: [f.step.id], status: "blocked", params: { visualId: "detail" } };
+  const last = { ...page, id: "page-2", position: 3, dependsOn: [page.id], params: { ...page.params, pageId: "two" } };
+  f.run.steps = [f.step, secondImage, page, last];
+  await publishPosterImage(f.run, f.step, f);
+  for (const id of [page.id, last.id]) {
+    const update = f.db.creationStep.update.mock.calls.find(([call]) => call.where.id === id)[0];
+    expect(update.data.params.visualAssetId).toBe("generated-image");
+    expect(update.data.status).toBeUndefined();
+  }
+  expect(f.db.creationStep.update).toHaveBeenCalledWith({ where: { id: secondImage.id }, data: { status: "ready" } });
+  expect(f.db.tryOn.create).not.toHaveBeenCalled();
+});
 
 it("limits generated visuals to new posters and reserves one reference slot", () => {
   expect(contentRunSchema.parse(request).image).toEqual(request.image);
@@ -146,7 +164,7 @@ it("requires matching new scheduler and language heartbeats only for generated-i
   const rows = ["worker", "creation-worker", "creation-language-worker"].map(id => ({ id }));
   const db = { serviceHeartbeat: { findMany: async () => rows } };
   await expect(ensureContentWorkers(db, { kind: "poster" })).rejects.toThrow("CREATION_WORKER_UNAVAILABLE");
-  rows.push(...["creation-html-worker", "creation-html-language-worker"].map(id => ({ id, details: { version: 1 } })));
+  rows.push(...["creation-html-worker", "creation-html-language-worker"].map(id => ({ id, details: { version: HTML_PIPELINE_VERSION } })));
   await ensureContentWorkers(db, { kind: "poster" });
   await expect(ensureContentWorkers(db, { kind: "poster", posterImage: true })).rejects.toThrow("CREATION_WORKER_UNAVAILABLE");
   rows.push(...[POSTER_IMAGE_SCHEDULER_HEARTBEAT, POSTER_IMAGE_LANGUAGE_HEARTBEAT].map(id => ({ id, details: { version: 1 } })));

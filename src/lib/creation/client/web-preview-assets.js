@@ -70,8 +70,10 @@ export async function loadWebPreviewAssets(ids, { signal, fetcher = fetch, onIma
 
 // Owned by one mounted editor, never shared between users/artifacts. Keep only
 // the current page's assets, with the same decoded-byte budget as a cold load.
-export function createWebPreviewAssetLoader() {
-  const cache = new Map();
+export function createWebPreviewAssetLoader(initialImages = new Map()) {
+  // A presentation may inherit already loaded images from its own editor.
+  // The existing per-window eviction and byte limits still apply.
+  const cache = new Map(initialImages);
   return async (ids, options = {}) => {
     const selected = [...new Set(ids)];
     if (selected.length > 20 || selected.some(id => !validId(id))) fail("WEB_PREVIEW_ASSET_LIMIT");
@@ -81,13 +83,30 @@ export function createWebPreviewAssetLoader() {
       return base64.length * 3 / 4 - (base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0);
     };
     let bytes = [...cache.values()].reduce((sum, url) => sum + sizeOf(url), 0);
+    const priority = new Set(options.priorityIds || []);
     for (const [id, url] of cache) options.onImage?.(id, url);
-    await loadWebPreviewAssets(selected.filter(id => !cache.has(id)), { ...options, onImage(id, url) {
+    const loadingOptions = { ...options, onImage(id, url) {
       options.signal?.throwIfAborted();
-      bytes += sizeOf(url);
-      if (bytes > MAX_TOTAL_BYTES) fail("WEB_PREVIEW_ASSET_LIMIT");
+      const size = sizeOf(url);
+      // Offscreen preloads must never occupy the active slide's byte budget.
+      if (priority.has(id)) for (const [oldId, oldUrl] of cache) {
+        if (bytes + size <= MAX_TOTAL_BYTES) break;
+        if (!priority.has(oldId)) { cache.delete(oldId); bytes -= sizeOf(oldUrl); options.onEvict?.(oldId); }
+      }
+      if (bytes + size > MAX_TOTAL_BYTES) {
+        if (priority.size && !priority.has(id)) return;
+        fail("WEB_PREVIEW_ASSET_LIMIT");
+      }
+      bytes += size;
       cache.set(id, url); options.onImage?.(id, url);
-    } });
+    } };
+    const missing = selected.filter(id => !cache.has(id));
+    if (priority.size) {
+      // Finish the audience's images first: a broken offscreen image must not
+      // abort a still-loading image on the slide they are currently viewing.
+      await loadWebPreviewAssets(missing.filter(id => priority.has(id)), loadingOptions);
+      await loadWebPreviewAssets(missing.filter(id => !priority.has(id)), loadingOptions);
+    } else await loadWebPreviewAssets(missing, loadingOptions);
     return new Map(cache);
   };
 }

@@ -13,6 +13,24 @@ const review = () => ({ outline: outline(), expectedSequence: 7, unitCost: 2, co
 beforeEach(() => { mocks.api.mockReset(); mocks.read.mockReset(); mocks.write.mockReset(); mocks.read.mockResolvedValue(null); mocks.write.mockResolvedValue(undefined); });
 afterEach(cleanup);
 
+it("quotes illustrations visibly and omits the paid image request when unchecked", async () => {
+  const remote = review(); remote.kind = "slides";
+  remote.outline.design = { audience: "Teams", narrative: "Launch", artDirection: "Editorial", typography: "Large type", spacing: "64px", visuals: [{ id: "hero", prompt: "Workspace" }] };
+  remote.outline.pages[0].visualId = "hero";
+  remote.image = { size: "1536x1024", provider: "images", expectedCost: 4 };
+  mocks.api.mockResolvedValueOnce(remote).mockResolvedValueOnce({ id: "run", status: "queued" });
+  const confirmed = vi.fn();
+  render(<OutlineReview userId="owner" runId="run" zh={false} onClose={() => {}} onConfirmed={confirmed} />);
+  const checkbox = await screen.findByLabelText("Generate original illustrations");
+  expect(checkbox.checked).toBe(true);
+  expect(screen.getByText(/Estimated total: 10 credits/)).toBeTruthy();
+  fireEvent.click(checkbox);
+  expect(screen.getByText(/Estimated total: 6 credits/)).toBeTruthy();
+  fireEvent.click(screen.getByText("Confirm and generate slides"));
+  await waitFor(() => expect(confirmed).toHaveBeenCalledOnce());
+  expect(mocks.api.mock.calls.find(([, options]) => options?.method === "POST")[1].body.image).toBeUndefined();
+});
+
 it("persists the edited outline through its navigation handle without confirming or charging", async () => {
   mocks.api.mockResolvedValue(review()); const editorRef = createRef();
   render(<OutlineReview editorRef={editorRef} userId="owner" runId="run" zh={false} onClose={() => {}} onConfirmed={vi.fn()} />);

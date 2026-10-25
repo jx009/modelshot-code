@@ -9,6 +9,7 @@ export const posterImageRequestSchema = z.object({
   size: z.enum(POSTER_IMAGE_SIZES), expectedCost: z.number().int().min(0).max(200000), provider: layoutId.optional(),
 }).strict();
 export const posterImageStepSchema = z.object({
+  visualId: layoutId.optional(),
   params: paramsSchema, provider: layoutId.optional(), referenceAssetIds: z.array(layoutId).max(2).default([]),
 }).strict();
 

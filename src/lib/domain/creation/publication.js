@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { slideDesignMarkdown } from "../../creation/contracts/slide-design.js";
 import { SHEET_CHUNK_ROWS, sheetOutlineSchema } from "../../creation/contracts/sheet-batch.js";
 import { workbookSchema } from "../../creation/contracts/sheet.js";
 import { prisma } from "../../prisma.js";
@@ -178,7 +179,7 @@ export async function assembleCreationSlides(initial, step, { db = prisma, store
     pages.push(page);
   }
   const html = outlineStep.params.sourceFormat === "html";
-  const document = html ? htmlDocumentSchema.parse({ schemaVersion: 3, format: "html-slides", kind: "slides", title: outline.title, theme: outline.theme, pages, metadata: { statistics: { total_pages: pages.length } }, templates: [] }) : layoutDocumentSchema.parse({ schemaVersion: 1, kind: "slides", title: outline.title, theme: outline.theme, pages });
+  const document = html ? htmlDocumentSchema.parse({ schemaVersion: 3, format: "html-slides", kind: "slides", title: outline.title, theme: outline.theme, pages, metadata: { statistics: { total_pages: pages.length }, ...(outline.design ? { design: outline.design, designMarkdown: slideDesignMarkdown(outline) } : {}) }, templates: [] }) : layoutDocumentSchema.parse({ schemaVersion: 1, kind: "slides", title: outline.title, theme: outline.theme, pages });
   return createLayoutArtifact(initial.userId, initial.projectId, document, `assembled-${initial.id}`, {
     db, store, sourceRunId: initial.id, hooks: publicationHooks(initial, step, null, "created"),
   });
@@ -192,7 +193,7 @@ async function publishHtmlSlide(initial, step, generated, { db, store }) {
   const prior = initial.steps.find(item => item.tool === "slides.page" && item.status === "succeeded" && item.result?.artifactId);
   const hooks = publicationHooks(initial, step, step.jobId, prior ? "updated" : "created", { pageId: page.id, jobId: step.jobId });
   if (!prior) {
-    const content = htmlDocumentSchema.parse({ schemaVersion: 3, kind: "slides", format: "html-slides", title: outline.title, theme: outline.theme, metadata: { plannedPages: outline.pages.length }, pages: [page] });
+    const content = htmlDocumentSchema.parse({ schemaVersion: 3, kind: "slides", format: "html-slides", title: outline.title, theme: outline.theme, metadata: { plannedPages: outline.pages.length, ...(outline.design ? { design: outline.design, designMarkdown: slideDesignMarkdown(outline) } : {}) }, pages: [page] });
     return createLayoutArtifact(initial.userId, initial.projectId, content, `generated-${step.jobId}`, { db, store, sourceRunId: initial.id, hooks });
   }
   for (let attempt = 0; attempt < 3; attempt++) {

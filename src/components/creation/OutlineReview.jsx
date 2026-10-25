@@ -7,6 +7,8 @@ import { readArtifactDraft, writeArtifactDraft } from "@/lib/creation/client/dra
 import { creationError } from "./creation-errors";
 import DraftSessionGate from "./DraftSessionGate";
 
+const visualsFor = outline => (outline?.design?.visuals || []).filter(visual => outline.pages?.some(page => page.visualId === visual.id));
+
 export default function OutlineReview(props) {
   return <DraftSessionGate key={`${props.userId}:${props.runId}`} userId={props.userId} artifactId={`outline:${props.runId}`} editorRef={props.editorRef} zh={props.zh}>{(draftSessionId, onDrafts) => <OutlineReviewSession {...props} draftSessionId={draftSessionId} onDrafts={onDrafts} />}</DraftSessionGate>;
 }
@@ -14,6 +16,7 @@ function OutlineReviewSession({ userId, runId, zh, onConfirmed, onClose, draftSe
   const [value, setValue] = useState(null), [quote, setQuote] = useState(null), [selected, setSelected] = useState(0);
   const [budget, setBudget] = useState(""), [pending, setPending] = useState(null), [loading, setLoading] = useState(true), [busy, setBusy] = useState(false), [error, setError] = useState(null), [attempt, setAttempt] = useState(0);
   const [showApproved, setShowApproved] = useState(false);
+  const [generateVisuals, setGenerateVisuals] = useState(false);
   const life = useRef(null), gate = useRef(false), draft = useRef(null), timer = useRef(null), submission = useRef(null);
   const draftId = `outline:${runId}`, text = (cn, en) => zh ? cn : en;
   const isDocument = quote?.kind === "document", itemsKey = isDocument ? "sections" : "pages";
@@ -36,10 +39,13 @@ function OutlineReviewSession({ userId, runId, zh, onConfirmed, onClose, draftSe
         const field = remote.kind === "document" ? "sections" : "pages";
         if (saved?.format === "outline-v1" && saved.value?.[field]?.length) {
           setValue(saved.value); setBudget(String(saved.budget ?? remote.maxCredits));
+          setGenerateVisuals(Boolean(saved.inflight?.image || saved.generateVisuals));
           submission.current = saved.inflight || null; setPending(saved.inflight || null);
           draft.current = saved;
         } else {
-          setValue(remote.outline); setBudget(String(Math.max(remote.maxCredits, remote.committedCredits + remote.outline[field].length * (remote.unitCost || 0))));
+          const useImages = Boolean(remote.image && visualsFor(remote.outline).length);
+          setGenerateVisuals(useImages);
+          setValue(remote.outline); setBudget(String(Math.max(remote.maxCredits, remote.committedCredits + remote.outline[field].length * (remote.unitCost || 0) + (useImages ? visualsFor(remote.outline).length * remote.image.expectedCost : 0))));
         }
       } catch (failure) { if (!controller.signal.aborted) setError(failure); }
       finally { if (!controller.signal.aborted) setLoading(false); }
@@ -48,11 +54,11 @@ function OutlineReviewSession({ userId, runId, zh, onConfirmed, onClose, draftSe
   }, [runId, userId, draftId, draftSessionId, attempt]);
   useEffect(() => {
     if (!value || loading) return;
-    const snapshot = { format: "outline-v1", value, budget, dirty: !quote?.confirmed || Boolean(draft.current?.dirty), inflight: submission.current };
+    const snapshot = { format: "outline-v1", value, budget, generateVisuals, dirty: !quote?.confirmed || Boolean(draft.current?.dirty), inflight: submission.current };
     draft.current = snapshot;
     timer.current = setTimeout(() => { void writeArtifactDraft(userId, draftId, snapshot, draftSessionId).catch(failure => { if (!life.current?.signal.aborted) setError(failure); }); }, 500);
     return () => clearTimeout(timer.current);
-  }, [value, budget, pending, loading, quote, userId, draftId, draftSessionId]);
+  }, [value, budget, generateVisuals, pending, loading, quote, userId, draftId, draftSessionId]);
   useEffect(() => {
     const save = () => {
       clearTimeout(timer.current);
@@ -64,7 +70,8 @@ function OutlineReviewSession({ userId, runId, zh, onConfirmed, onClose, draftSe
   }, [userId, draftId, draftSessionId]);
   const displayed = showApproved && quote?.confirmed ? quote.outline : value;
   const page = displayed?.[itemsKey][Math.min(selected, displayed[itemsKey].length - 1)], readOnly = busy || Boolean(pending) || !quote?.canConfirm || showApproved;
-  const required = quote?.unitCost == null || !value ? null : quote.committedCredits + value[itemsKey].length * quote.unitCost;
+  const visuals = visualsFor(value), usesImages = !isDocument && generateVisuals && visuals.length > 0;
+  const required = quote?.unitCost == null || !value || usesImages && !quote.image ? null : quote.committedCredits + value[itemsKey].length * quote.unitCost + (usesImages ? visuals.length * quote.image.expectedCost : 0);
   function changePage(changes) { setValue(current => ({ ...current, [itemsKey]: current[itemsKey].map(item => item.id === page.id ? { ...item, ...changes } : item) })); }
   function move(offset) {
     const target = selected + offset;
@@ -86,15 +93,15 @@ function OutlineReviewSession({ userId, runId, zh, onConfirmed, onClose, draftSe
     gate.current = true; setBusy(true); setError(null); clearTimeout(timer.current);
     const signal = life.current.signal;
     try {
-      const body = submission.current || { saveKey: requestKey(), expectedSequence: quote.expectedSequence, expectedUnitCost: quote.unitCost, maxCredits: Number(budget), outline: value };
+      const body = submission.current || { saveKey: requestKey(), expectedSequence: quote.expectedSequence, expectedUnitCost: quote.unitCost, maxCredits: Number(budget), outline: value, ...(usesImages && quote.image ? { image: quote.image } : {}) };
       submission.current = body; setPending(body);
-      draft.current = { format: "outline-v1", value: body.outline, budget: body.maxCredits, dirty: true, inflight: body };
+      draft.current = { format: "outline-v1", value: body.outline, budget: body.maxCredits, generateVisuals: Boolean(body.image), dirty: true, inflight: body };
       await writeArtifactDraft(userId, draftId, draft.current, draftSessionId);
       signal.throwIfAborted();
       const run = await api(`/api/creation/runs/${runId}/outline`, { method: "POST", body, signal, timeoutMs: 30000 });
       if (signal.aborted) return;
       clearTimeout(timer.current);
-      draft.current = { format: "outline-v1", value: body.outline, budget: body.maxCredits, dirty: false, inflight: null };
+      draft.current = { format: "outline-v1", value: body.outline, budget: body.maxCredits, generateVisuals: Boolean(body.image), dirty: false, inflight: null };
       await writeArtifactDraft(userId, draftId, draft.current, draftSessionId);
       submission.current = null;
       if (!signal.aborted) { setPending(null); onConfirmed(run); }
@@ -115,14 +122,24 @@ function OutlineReviewSession({ userId, runId, zh, onConfirmed, onClose, draftSe
       {!quote.canConfirm && <p role="status">{text("此任务已离开大纲确认阶段。保留的本地内容可查看，不能覆盖已确认的任务。", "This task is no longer awaiting an outline. Preserved local content is viewable but cannot overwrite an accepted task.")}</p>}
       {quote.confirmed && <button onClick={() => { setShowApproved(current => !current); setSelected(0); }}>{text(showApproved ? "查看保留的本地大纲" : "查看服务器已确认大纲", showApproved ? "View preserved local outline" : "View confirmed server outline")}</button>}
       <label className="cw-outline-title">{isDocument ? text("文档标题", "Document title") : text("演示标题", "Presentation title")}<input value={displayed.title} maxLength={160} disabled={readOnly} onChange={event => setValue(current => ({ ...current, title: event.target.value }))} /></label>
+      {!isDocument && displayed.design && <details className="cw-outline-design">
+        <summary>{text("整套设计方案", "Deck design plan")}</summary>
+        <div>{[["audience", "目标观众", "Audience", 600], ["narrative", "叙事主线", "Narrative", 2000], ["artDirection", "视觉方向", "Art direction", 2000], ["typography", "字体层级", "Typography", 1000], ["spacing", "间距与构图", "Spacing", 1000]].map(([field, cn, en, limit]) => <label key={field}>{text(cn, en)}<textarea value={displayed.design[field]} maxLength={limit} disabled={readOnly} onChange={event => setValue(current => ({ ...current, design: { ...current.design, [field]: event.target.value } }))} /></label>)}</div>
+      </details>}
       <div className="cw-outline-body"><nav aria-label={isDocument ? text("大纲章节", "Outline sections") : text("大纲页面", "Outline pages")}>{displayed[itemsKey].map((item, index) => <button key={item.id} aria-current={page?.id === item.id ? "page" : undefined} onClick={() => setSelected(index)}><span>{index + 1}</span>{item.title || (isDocument ? text("未命名章节", "Untitled section") : text("未命名页面", "Untitled slide"))}</button>)}<button disabled={readOnly || value[itemsKey].length >= (isDocument ? 50 : 100)} onClick={() => {
         setValue(current => ({ ...current, [itemsKey]: [...current[itemsKey], { id: requestKey(), title: isDocument ? text("新章节", "New section") : text("新页面", "New slide"), brief: "", ...(isDocument ? {} : { notes: "" }) }] })); setSelected(value[itemsKey].length);
       }}><Plus size={14} />{isDocument ? text("添加章节", "Add section") : text("添加页面", "Add slide")}</button></nav>
       {page && <div className="cw-outline-page"><div className="cw-outline-page-actions"><strong>{text(`第 ${selected + 1} ${isDocument ? "节" : "页"}`, `${isDocument ? "Section" : "Slide"} ${selected + 1}`)}</strong><button disabled={readOnly || selected === 0} onClick={() => move(-1)} aria-label={isDocument ? text("章节前移", "Move section up") : text("页面前移", "Move slide up")}><ArrowUp size={15} /></button><button disabled={readOnly || selected === value[itemsKey].length - 1} onClick={() => move(1)} aria-label={isDocument ? text("章节后移", "Move section down") : text("页面后移", "Move slide down")}><ArrowDown size={15} /></button><button disabled={readOnly || value[itemsKey].length === 1} onClick={() => { setValue(current => ({ ...current, [itemsKey]: current[itemsKey].filter(item => item.id !== page.id) })); setSelected(Math.max(0, selected - 1)); }} aria-label={isDocument ? text("删除此节", "Remove section") : text("删除此页", "Remove slide")}><Trash2 size={15} /></button></div>
         <label>{isDocument ? text("章节标题", "Section title") : text("页面标题", "Slide title")}<input value={page.title} maxLength={160} disabled={readOnly} onChange={event => changePage({ title: event.target.value })} /></label>
         <label>{isDocument ? text("内容要点与写作要求", "Content and writing brief") : text("内容要点与排版要求", "Content and layout brief")}<textarea value={page.brief} maxLength={4000} disabled={readOnly} onChange={event => changePage({ brief: event.target.value })} /></label>
+        {!isDocument && <><label>{text("此页作用", "Slide role")}<input value={page.role || ""} maxLength={240} disabled={readOnly} onChange={event => changePage({ role: event.target.value })} /></label><label>{text("构图与视觉层级", "Composition and hierarchy")}<textarea value={page.layout || ""} maxLength={1200} disabled={readOnly} onChange={event => changePage({ layout: event.target.value })} /></label>
+          {page.visualId && <p className="cw-outline-help">{text("计划配图：", "Planned illustration: ")}{displayed.design?.visuals.find(visual => visual.id === page.visualId)?.prompt}</p>}</>}
         {!isDocument && <label>{text("演讲备注", "Speaker notes")}<textarea value={page.notes} maxLength={16000} disabled={readOnly} onChange={event => changePage({ notes: event.target.value })} /></label>}
       </div>}</div>
+      {!isDocument && visuals.length > 0 && <div className="cw-outline-images">
+        <label><input type="checkbox" checked={generateVisuals} disabled={readOnly || !quote.image && !generateVisuals} onChange={event => setGenerateVisuals(event.target.checked)} />{text("生成专属配图", "Generate original illustrations")}</label>
+        <span>{quote.image ? text(`${visuals.length} 张 × ${quote.image.expectedCost} 积分，计入总预算；取消后只生成文字与排版。`, `${visuals.length} images × ${quote.image.expectedCost} credits, included in the total. Uncheck for text and layout only.`) : text("配图服务暂不可用，可取消勾选继续生成文字与排版。", "Illustration service unavailable. Uncheck to continue with text and layout.")}</span>
+      </div>}
       <footer><div><span>{text(`共 ${value[itemsKey].length} ${isDocument ? "节" : "页"} · 已用 ${quote.committedCredits} 积分`, `${value[itemsKey].length} ${isDocument ? "sections" : "slides"} · ${quote.committedCredits} credits used`)}</span><span>{required == null ? text("当前价格不可用", "Current price unavailable") : text(`预计总计 ${required} 积分（含已完成大纲）`, `Estimated total: ${required} credits, including the outline`)}</span></div>
         <label>{text("总预算上限", "Total budget limit")}<input type="number" min={quote.committedCredits} max={200000} step={1} value={budget} disabled={readOnly} onChange={event => setBudget(event.target.value)} /></label>
         <button disabled={busy || Boolean(pending)} onClick={refreshQuote}><RefreshCw size={14} />{text("刷新报价", "Refresh quote")}</button>

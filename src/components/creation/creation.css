@@ -100,6 +100,14 @@
 .cw-outline input,.cw-outline textarea { width:100%; padding:9px; font:inherit; border:1px solid var(--divider); border-radius:6px; background:var(--bg-page); color:var(--primary-text); }
 .cw-outline input:focus-visible,.cw-outline textarea:focus-visible { outline:2px solid var(--primary); outline-offset:2px; }
 .cw-outline-title { padding:14px 18px; }
+.cw-outline-design { margin:0 18px 14px; padding:12px; border:1px solid var(--divider); border-radius:10px; color:var(--primary-text); }
+.cw-outline-design summary { cursor:pointer; font-size:12px; font-weight:600; }
+.cw-outline-design>div { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr)); gap:12px; padding-top:12px; }
+.cw-outline-design textarea { min-height:100px; resize:vertical; }
+.cw-outline-images { display:flex; flex-wrap:wrap; align-items:center; gap:8px 16px; padding:12px 18px; border-bottom:1px solid var(--divider); }
+.cw-outline-images label { flex-direction:row; align-items:center; color:var(--primary-text); }
+.cw-outline-images input { width:16px; height:16px; accent-color:var(--primary); }
+.cw-outline-images span { font-size:11px; color:var(--secondary-text); }
 .cw-outline-body { display:flex; flex:1; min-height:240px; overflow:hidden; border-block:1px solid var(--divider); }
 .cw-outline-body>nav { width:180px; flex-shrink:0; overflow:auto; padding:10px; border-right:1px solid var(--divider); }
 .cw-outline-body>nav button { display:flex; width:100%; justify-content:flex-start; text-align:left; margin-bottom:5px; font-size:11px; overflow-wrap:anywhere; }

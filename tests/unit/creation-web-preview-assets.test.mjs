@@ -5,6 +5,29 @@ function bytes(size = 32) {
   const data = new Uint8Array(size); data.set(new TextEncoder().encode("RIFF"), 0); data.set(new TextEncoder().encode("WEBP"), 8); return data;
 }
 const response = (size = 32) => new Response(bytes(size), { headers: { "Content-Type": "image/webp", "Content-Length": String(size) } });
+it("inherits editor images without another request, prioritizes active slides and evicts offscreen bytes", async () => {
+  const original = await loadWebPreviewAssets(Array.from({ length: 6 }, (_, i) => id(i)), { fetcher: async () => response(1024 * 1024) });
+  const load = createWebPreviewAssetLoader(original), fetcher = vi.fn(async () => response(1024 * 1024)), onEvict = vi.fn();
+  const current = await load([id(6), ...original.keys()], { fetcher, priorityIds: [id(6)], onEvict });
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  expect(current.has(id(6))).toBe(true);
+  expect(current.size).toBe(6);
+  expect(onEvict).toHaveBeenCalledWith(id(0));
+  expect(original.size).toBe(6);
+});
+it("finishes current-slide images before an offscreen failure and retains them for retry", async () => {
+  const load = createWebPreviewAssetLoader(), onImage = vi.fn();
+  const fetcher = vi.fn(async url => {
+    if (url.includes(id(2))) {
+      expect(onImage).toHaveBeenCalledWith(id(1), expect.any(String));
+      return new Response("Missing", { status: 404 });
+    }
+    return response();
+  });
+  await expect(load([id(1), id(2)], { fetcher, priorityIds: [id(1)], onImage })).rejects.toThrow("WEB_PREVIEW_ASSET_UNAVAILABLE");
+  expect((await load([id(1)], { fetcher })).has(id(1))).toBe(true);
+  expect(fetcher).toHaveBeenCalledTimes(2);
+});
 it("reuses images during editing but isolates mounted editor sessions", async () => {
   const load = createWebPreviewAssetLoader(), fetcher = vi.fn(async () => response());
   const original = await load([id(1)], { fetcher });

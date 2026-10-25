@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { slideDesignSchema, slideComposition, slideDeckContextSchema } from "./slide-design.js";
 import { sheetOutlineSchema, validateSheetChunk } from "./sheet-batch.js";
 import { agentLanguageInputSchema, agentPlanSchema, agentReadResultSchema } from "./agent.js";
 import { dependencyReferencesSchema } from "./dependency-references.js";
@@ -31,7 +32,7 @@ const layoutLanguageInputSchema = z.discriminatedUnion("purpose", [
   z.object({ ...common, ...size, purpose: z.literal("poster.generate"), visualAssetId: layoutId.optional() }).strict(),
   z.object({ ...edit, purpose: z.literal("poster.edit") }).strict(),
   z.object({ ...common, purpose: z.literal("slides.outline"), pageCount: z.number().int().min(1).max(100) }).strict(),
-  z.object({ ...common, ...size, purpose: z.literal("slides.page"), pageId: layoutId, title: z.string().max(160), brief: z.string().max(4000), theme: layoutDocumentSchema.shape.theme }).strict(),
+  z.object({ ...common, ...size, ...slideComposition, purpose: z.literal("slides.page"), pageId: layoutId, title: z.string().max(160), brief: z.string().max(4000), theme: layoutDocumentSchema.shape.theme, deck: slideDeckContextSchema.optional(), visualAssetId: layoutId.optional() }).strict(),
   z.object({ ...edit, purpose: z.literal("slides.edit") }).strict(),
 ]).superRefine((input, ctx) => {
   if (input.width && input.width * input.height > 40_000_000) ctx.addIssue({ code: "custom", message: "CANVAS_TOO_LARGE" });
@@ -49,9 +50,12 @@ const webLanguageInputSchema = z.discriminatedUnion("purpose", [
   z.object({ ...common, purpose: z.literal("web.edit"), artifactId: webId, baseRevision: z.number().int().positive(), fileIds: z.array(webId).min(1).max(20), paths: z.array(z.string().min(1).max(240)).min(1).max(20) }).strict(),
 ]);
 export const languageInputSchema = z.union([agentLanguageInputSchema, layoutLanguageInputSchema, documentLanguageInputSchema, nativeDocumentTargetSchema.extend({ ...common, purpose: z.literal("document.native.edit") }), sheetLanguageInputSchema, webLanguageInputSchema]);
-export const outlineSchema = z.object({ title: z.string().trim().min(1).max(160), theme: layoutDocumentSchema.shape.theme,
-  pages: z.array(z.object({ id: layoutId, title: z.string().min(1).max(160), brief: z.string().min(1).max(4000), notes: z.string().max(16000).default("") }).strict()).min(1).max(100),
-}).strict();
+export const outlineSchema = z.object({ title: z.string().trim().min(1).max(160), theme: layoutDocumentSchema.shape.theme, design: slideDesignSchema.optional(),
+  pages: z.array(z.object({ ...slideComposition, id: layoutId, title: z.string().min(1).max(160), brief: z.string().min(1).max(4000), notes: z.string().max(16000).default("") }).strict()).min(1).max(100),
+}).strict().superRefine((value, ctx) => {
+  const ids = (value.design?.visuals || []).map(visual => visual.id);
+  if (new Set(ids).size !== ids.length || value.pages.some(page => page.visualId && !ids.includes(page.visualId))) ctx.addIssue({ code: "custom", message: "SLIDE_VISUAL_PLAN_INVALID" });
+});
 
 export class LanguageResultError extends Error {
   constructor(code) { super(code); this.name = "LanguageResultError"; this.code = code; }

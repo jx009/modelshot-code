@@ -10,7 +10,8 @@ export function dependenciesFor(step, steps) {
 }
 
 export function validateRunDependencyGraph(steps) {
-  if (!Array.isArray(steps) || steps.length > 102) return false;
+  // Outline + up to 100 pages + two shared illustrations + assembly.
+  if (!Array.isArray(steps) || steps.length > 104) return false;
   const ids = new Set(steps.map(step => step.id));
   if (ids.size !== steps.length) return false;
   const byId = new Map(steps.map(step => [step.id, step]));

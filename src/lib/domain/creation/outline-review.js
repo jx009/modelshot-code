@@ -15,6 +15,9 @@ import { requireContentCreation, ensureContentWorkers } from "./content-runs.js"
 import { creationLanguageConfig } from "./language-jobs.js";
 import { appendRunEvent, enqueueRun } from "./events.js";
 import { appendCreationMessage } from "./messages.js";
+import { posterImageQuote } from "./poster-images.js";
+import { plannedSlideVisuals } from "../../creation/contracts/slide-design.js";
+import { posterImageSize } from "../../creation/poster-image-choice.js";
 
 export const OUTLINE_CONFIRMATION_REQUIRED = "CREATION_OUTLINE_CONFIRMATION_REQUIRED";
 
@@ -46,7 +49,7 @@ export async function readApprovedOutline(userId, run, { db = prisma, store = ob
   return outlineSchema.parse(JSON.parse(bytes.toString("utf8")));
 }
 
-export async function readOutlineReview(userId, id, { db = prisma, store = objectStorage(), configFor = creationLanguageConfig } = {}) {
+export async function readOutlineReview(userId, id, { db = prisma, store = objectStorage(), configFor = creationLanguageConfig, quoteImage = posterImageQuote } = {}) {
   const run = await ownedRun(userId, id, db), step = reviewStep(run);
   const outline = await readApprovedOutline(userId, run, { db, store });
   let unitCost = null;
@@ -54,11 +57,19 @@ export async function readOutlineReview(userId, id, { db = prisma, store = objec
     const config = await configFor(db, run.input.languageProvider);
     if (config.visionApiKey && config.chatModel && Number.isSafeInteger(config.plannerCreditCost ?? 1) && (config.plannerCreditCost ?? 1) >= 0) unitCost = config.plannerCreditCost ?? 1;
   } catch { /* A temporarily unavailable model must not prevent reading the outline. */ }
-  return { kind: run.kind, outline, expectedSequence: run.eventSequence, unitCost, committedCredits: run.committedCredits, maxCredits: run.maxCredits,
+  let image = null;
+  if (run.kind === "slides" && plannedSlideVisuals(outline).length && (step.params.assetIds || []).length < 8) {
+    try {
+      const quote = await quoteImage(db), preferred = posterImageSize(run.input.width, run.input.height);
+      const size = Number.isSafeInteger(quote.prices[preferred]) ? preferred : ["1024x1024", "1536x1024", "1024x1536"].find(candidate => Number.isSafeInteger(quote.prices[candidate]));
+      if (Number.isSafeInteger(quote.prices[size])) image = { size, expectedCost: quote.prices[size], ...(quote.provider ? { provider: quote.provider } : {}) };
+    } catch { /* Illustrations are optional; text/layout generation remains available. */ }
+  }
+  return { kind: run.kind, outline, image, expectedSequence: run.eventSequence, unitCost, committedCredits: run.committedCredits, maxCredits: run.maxCredits,
     confirmed: Boolean(step.result?.confirmation), canConfirm: run.status === "awaiting_input" && run.errorCode === OUTLINE_CONFIRMATION_REQUIRED && !run.cancelRequestedAt };
 }
 
-export async function confirmOutline(userId, id, input, { db = prisma, store = objectStorage(), env, configFor = creationLanguageConfig, ensureWorkers = ensureContentWorkers } = {}) {
+export async function confirmOutline(userId, id, input, { db = prisma, store = objectStorage(), env, configFor = creationLanguageConfig, ensureWorkers = ensureContentWorkers, quoteImage = posterImageQuote } = {}) {
   env ??= await getCreationEnv(userId, { db });
   const data = confirmOutlineSchema.parse(input), digest = digestJson(data);
   const current = await ownedRun(userId, id, db), old = replay(current, data.saveKey, digest);
@@ -70,13 +81,20 @@ export async function confirmOutline(userId, id, input, { db = prisma, store = o
     reviewStep(run);
     if (run.eventSequence !== data.expectedSequence || run.status !== "awaiting_input" || run.errorCode !== OUTLINE_CONFIRMATION_REQUIRED || run.cancelRequestedAt || run.steps.length !== 1) throw new AppError("CREATION_RUN_CHANGED", 409);
   }
-  check(current); requireContentCreation(current.kind, env); await ensureWorkers(db, { kind: current.kind });
+  check(current); requireContentCreation(current.kind, env); await ensureWorkers(db, { kind: current.kind, posterImage: Boolean(data.image) });
   const config = await configFor(db, current.input.languageProvider), cost = config.plannerCreditCost ?? 1;
   if (!config.visionApiKey || !config.chatModel) throw new AppError("VISION_NOT_CONFIGURED", 503);
   if ((config.plannerProvider || null) !== (current.input.languageProvider || null)) throw new AppError("PROVIDER_CONFIGURATION_CHANGED", 409);
   if (!Number.isSafeInteger(cost) || cost < 0 || cost !== data.expectedUnitCost) throw new AppError("PRICE_CHANGED", 409);
-  if (current.committedCredits + data.outline[spec.items].length * cost > data.maxCredits) throw new AppError("CREATION_BUDGET_EXCEEDED", 409);
-  const planned = outlineChildren(current, data.outline, cost);
+  const count = data.outline[spec.items].length, visuals = current.kind === "slides" ? plannedSlideVisuals(data.outline) : [];
+  if (data.image) {
+    if (current.kind !== "slides" || !visuals.length || (current.steps[0].params.assetIds || []).length >= 8) throw new AppError("CREATION_REFERENCE_INVALID", 422);
+    const quote = await quoteImage(db, data.image.provider);
+    if ((quote.provider || null) !== (data.image.provider || null)) throw new AppError("PROVIDER_CONFIGURATION_CHANGED", 409);
+    if (quote.prices[data.image.size] !== data.image.expectedCost) throw new AppError("PRICE_CHANGED", 409);
+  }
+  if (current.committedCredits + count * cost + (data.image ? visuals.length * data.image.expectedCost : 0) > data.maxCredits) throw new AppError("CREATION_BUDGET_EXCEEDED", 409);
+  const planned = outlineChildren(current, data.outline, cost, data.image);
   if (Buffer.byteLength(JSON.stringify(planned)) > 2 * 1024 * 1024) throw new AppError("CREATION_PLAN_TOO_LARGE", 413);
   const bytes = Buffer.from(JSON.stringify(data.outline));
   if (bytes.length > LANGUAGE_MAX_RESULT_BYTES) throw new AppError("ARTIFACT_TOO_LARGE", 413);
@@ -101,12 +119,12 @@ export async function confirmOutline(userId, id, input, { db = prisma, store = o
       explanation: source.locale === "zh" ? (document ? "整理章节并保存文档" : "整理页面并保存演示文稿") : (document ? "Assemble and save the document" : "Assemble and save the presentation") }] });
     const ready = await tx.creationBlob.updateMany({ where: { id: blob.id, state: "staging" }, data: { state: "ready" } });
     if (ready.count !== 1) throw new AppError("ARTIFACT_UPLOAD_EXPIRED", 409);
-    await tx.creationStep.update({ where: { id: first.id }, data: { result: { [spec.count]: children.length, confirmation: { key: data.saveKey, digest, blobId: blob.id } } } });
+    await tx.creationStep.update({ where: { id: first.id }, data: { result: { [spec.count]: count, confirmation: { key: data.saveKey, digest, blobId: blob.id } } } });
     const unit = document ? (source.locale === "zh" ? "节文档" : "sections") : (source.locale === "zh" ? "页演示文稿" : "slides");
-    await appendCreationMessage(tx, run.sessionId, `outline-confirmed-${first.id}`, "user", source.locale === "zh" ? `确认大纲，开始生成 ${children.length} ${unit}。` : `Outline confirmed. Generate ${children.length} ${unit}.`, [{ type: "run", runId: id }]);
-    await appendRunEvent(tx, id, "outline.confirmed", { [spec.count]: children.length, maxCredits: data.maxCredits }, {
+    await appendCreationMessage(tx, run.sessionId, `outline-confirmed-${first.id}`, "user", source.locale === "zh" ? `确认大纲，开始生成 ${count} ${unit}。` : `Outline confirmed. Generate ${count} ${unit}.`, [{ type: "run", runId: id }]);
+    await appendRunEvent(tx, id, "outline.confirmed", { [spec.count]: count, maxCredits: data.maxCredits }, {
       status: "queued", errorCode: null, maxCredits: data.maxCredits, nextCheckAt: new Date(),
-      input: { ...run.input, [spec.count]: children.length, languageUnitCost: cost },
+      input: { ...run.input, [spec.count]: count, languageUnitCost: cost },
     });
     await enqueueRun(tx, id, `outline:${data.expectedSequence}`);
     await wakeAgentParent(tx, run);

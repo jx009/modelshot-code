@@ -22,6 +22,7 @@ afterEach(cleanup);
 async function submit(kind, prompt, configure) {
   render(<CreationLauncher kind={kind} userId="user_1" zh={false} />);
   fireEvent.change(await screen.findByLabelText("Creation request"), { target: { value: prompt } });
+  fireEvent.click(screen.getByText("Settings"));
   configure?.();
   fireEvent.submit(screen.getByRole("button", { name: "Start creating" }).closest("form"));
   await waitFor(() => expect(mocks.api).toHaveBeenCalledWith(expect.stringContaining("/messages"), expect.objectContaining({ method: "POST" })));
@@ -36,6 +37,7 @@ it("keeps poster dimensions and a single page in the launch request", async () =
 it("includes explicitly quoted AI artwork in the poster budget and request", async () => {
   render(<CreationLauncher kind="poster" userId="user_1" zh={false} initialCaps={{ poster: true, languageUnitCost: 2, posterImage: { provider: "image-channel", prices: { "1024x1536": 4 } } }} />);
   fireEvent.change(screen.getByLabelText("Creation request"), { target: { value: "Coffee opening" } });
+  fireEvent.click(screen.getByText("Settings"));
   expect(screen.getByRole("checkbox", { name: "AI artwork · 4 credits" }).checked).toBe(true);
   fireEvent.submit(screen.getByRole("button", { name: "Start creating" }).closest("form"));
   await waitFor(() => expect(mocks.push).toHaveBeenCalled());
@@ -45,6 +47,7 @@ it("includes explicitly quoted AI artwork in the poster budget and request", asy
 it("can use typography and existing artwork without generating a paid image", async () => {
   render(<CreationLauncher kind="poster" userId="user_1" zh={false} initialCaps={{ poster: true, languageUnitCost: 2, posterImage: { prices: { "1024x1536": 4 } } }} />);
   fireEvent.change(screen.getByLabelText("Creation request"), { target: { value: "Typography only" } });
+  fireEvent.click(screen.getByText("Settings"));
   fireEvent.click(screen.getByRole("checkbox", { name: "AI artwork · 4 credits" }));
   fireEvent.submit(screen.getByRole("button", { name: "Start creating" }).closest("form"));
   await waitFor(() => expect(mocks.push).toHaveBeenCalled());
@@ -57,6 +60,7 @@ it("replays the exact unconfirmed artwork request even when current quotes chang
   sessionStorage.setItem("creation-launch:user_1:poster", JSON.stringify({ userId: "user_1", createKey: "saved-create-key", runKey: "saved-run-key", project: { id: "project_1", sessionId: "session_1" }, body }));
   render(<CreationLauncher kind="poster" userId="user_1" zh={false} initialCaps={{ poster: true, languageUnitCost: 3, posterImage: { provider: "new-channel", prices: { "1024x1536": 9 } } }} />);
   await waitFor(() => expect(screen.getByLabelText("Creation request").disabled).toBe(true));
+  fireEvent.click(screen.getByText("Settings"));
   expect(screen.getByRole("checkbox", { name: "AI artwork · 4 credits" }).disabled).toBe(true);
   expect(document.querySelector(".cr-creation-options>span").textContent).toBe("6 credits");
   fireEvent.submit(screen.getByRole("button", { name: "Recover submission" }).closest("form"));

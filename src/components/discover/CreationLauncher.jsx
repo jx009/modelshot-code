@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowUp, LoaderCircle, RefreshCw } from "lucide-react";
+import { ArrowUp, LoaderCircle, RefreshCw, SlidersHorizontal, ChevronDown } from "lucide-react";
 import { api, requestKey } from "@/lib/client-api";
 import { useNavigationRouter } from "@/hooks/useNavigationRouter";
 import { invalidateProjectLists } from "@/lib/studio/project-list";
@@ -115,7 +115,6 @@ export default function CreationLauncher({ kind, userId, zh, initialDraft, onDra
       router.push(`/creation?project=${request.project.id}&session=${request.project.sessionId}`);
     } catch (failure) { setError(failure); }
   }
-  const labels = { poster: ["海报设计", "Poster design"], slides: ["演示文稿", "Presentation"], document: ["文档", "Document"], sheet: ["表格", "Spreadsheet"], web: ["网页", "Website"] }[kind];
   const placeholders = {
     poster: ["描述海报用途、风格和需要保留的准确文案…", "Describe the purpose, style and exact poster copy…"],
     slides: ["描述演示主题、受众、内容和语言要求…", "Describe the presentation topic, audience, content and language…"],
@@ -124,12 +123,18 @@ export default function CreationLauncher({ kind, userId, zh, initialDraft, onDra
     web: ["描述网站目标、受众、页面和视觉方向…", "Describe the website goal, audience, pages and visual direction…"],
   }[kind];
   return <form className="cr-creation-launcher" onSubmit={start}>
-    <span className="cr-creation-chip">{text(...labels)}</span>
-    <textarea aria-label={text("创作需求", "Creation request")} value={prompt} disabled={busy || uncertain} maxLength={12000} onChange={event => setPrompt(event.target.value)} placeholder={text(...placeholders)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); if (!event.repeat) event.currentTarget.form.requestSubmit(); } }} />
+    <textarea aria-label={text("创作需求", "Creation request")} value={prompt} disabled={busy || uncertain} maxLength={12000} onChange={event => setPrompt(event.target.value)} placeholder={text(...placeholders)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing && event.nativeEvent.keyCode !== 229) { event.preventDefault(); if (!event.repeat) event.currentTarget.form.requestSubmit(); } }} />
     <ReferenceAssets value={assetIds} onChange={setAssetIds} disabled={busy || uncertain} zh={zh} />
-    {imageChoice && <label className="cr-poster-image-choice" title={text("先生成视觉素材，再排版可编辑文字；最多使用前两张参考图。选择八张素材时使用已有素材排版。", "Generate artwork, then lay out editable text. Uses the first two reference images. Eight selected assets use existing artwork only.")}><input type="checkbox" checked={withImage} disabled={busy || uncertain || assetIds.length >= 8} onChange={event => setGenerateImage(event.target.checked)} />{text("AI 配图", "AI artwork")} · {imageChoice.expectedCost} {text("积分", "credits")}</label>}
-    <div className="cr-creation-options">{["poster", "slides"].includes(kind) && <label>{text("尺寸", "Size")}<select value={size} disabled={busy || uncertain} onChange={event => setSize(event.target.value)}>{["1080x1440", "1080x1080", "1920x1080", "1080x1920"].map((value, index) => <option value={value} key={value}>{["3:4", "1:1", "16:9", "9:16"][index]}</option>)}</select></label>}{["slides", "web"].includes(kind) && <label>{text(kind === "web" ? "页面数" : "页数", kind === "web" ? "Pages" : "Slides")}<input type="number" min={1} max={kind === "web" ? 20 : 100} value={pages} disabled={busy || uncertain} onChange={event => setPages(Math.min(kind === "web" ? 20 : 100, Math.max(1, Number(event.target.value) || 1)))} /></label>}{kind === "document" && <label>{text("章节数", "Sections")}<input type="number" min={1} max={50} value={sectionCount} disabled={busy || uncertain} onChange={event => setSectionCount(Math.min(50, Math.max(1, Number(event.target.value) || 1)))} /></label>}{kind === "sheet" && <><label>{text("工作表", "Sheets")}<input type="number" min={1} max={5} value={sheetCount} disabled={busy || uncertain} onChange={event => setSheetCount(Math.min(5, Math.max(1, Number(event.target.value) || 1)))} /></label><label>{text("目标行数", "Target rows")}<input type="number" min={1} max={100} value={targetRows} disabled={busy || uncertain} onChange={event => setTargetRows(Math.min(100, Math.max(1, Number(event.target.value) || 1)))} /></label></>}<span>{cost ?? "—"} {text("积分", "credits")}</span><button className="cr-send" disabled={busy || !uncertain && (!caps?.[kind] || !prompt.trim() || cost == null)} aria-label={text(uncertain ? "恢复提交" : "开始创作", uncertain ? "Recover submission" : "Start creating")}>{busy ? <LoaderCircle size={18} className="ca-spin" /> : uncertain ? <RefreshCw size={18} /> : <ArrowUp size={18} />}</button></div>
-    <p className="cr-creation-note">{uncertain ? text("提交尚未确认，重试会核对同一项目和任务。", "Submission is unconfirmed. Retry checks the same project and task.") : text("生成后可继续对话和编辑文字、图片与排版。", "Continue chatting and editing text, images and layout after generation.")}</p>
+    <div className="cr-creation-options">
+      <details className="cr-creation-settings">
+        <summary><SlidersHorizontal size={15} /><span>{text("参数", "Settings")}</span><ChevronDown size={12} /></summary>
+        <div className="cr-creation-settings-panel">
+          {["poster", "slides"].includes(kind) && <label>{text("尺寸", "Size")}<select value={size} disabled={busy || uncertain} onChange={event => setSize(event.target.value)}>{["1080x1440", "1080x1080", "1920x1080", "1080x1920"].map((value, index) => <option value={value} key={value}>{["3:4", "1:1", "16:9", "9:16"][index]}</option>)}</select></label>}{["slides", "web"].includes(kind) && <label>{text(kind === "web" ? "页面数" : "页数", kind === "web" ? "Pages" : "Slides")}<input type="number" min={1} max={kind === "web" ? 20 : 100} value={pages} disabled={busy || uncertain} onChange={event => setPages(Math.min(kind === "web" ? 20 : 100, Math.max(1, Number(event.target.value) || 1)))} /></label>}{kind === "document" && <label>{text("章节数", "Sections")}<input type="number" min={1} max={50} value={sectionCount} disabled={busy || uncertain} onChange={event => setSectionCount(Math.min(50, Math.max(1, Number(event.target.value) || 1)))} /></label>}{kind === "sheet" && <><label>{text("工作表", "Sheets")}<input type="number" min={1} max={5} value={sheetCount} disabled={busy || uncertain} onChange={event => setSheetCount(Math.min(5, Math.max(1, Number(event.target.value) || 1)))} /></label><label>{text("目标行数", "Target rows")}<input type="number" min={1} max={100} value={targetRows} disabled={busy || uncertain} onChange={event => setTargetRows(Math.min(100, Math.max(1, Number(event.target.value) || 1)))} /></label></>}
+          {imageChoice && <label className="cr-poster-image-choice" title={text("先生成视觉素材，再排版可编辑文字；最多使用前两张参考图。选择八张素材时使用已有素材排版。", "Generate artwork, then lay out editable text. Uses the first two reference images. Eight selected assets use existing artwork only.")}><input type="checkbox" checked={withImage} disabled={busy || uncertain || assetIds.length >= 8} onChange={event => setGenerateImage(event.target.checked)} />{text("AI 配图", "AI artwork")} · {imageChoice.expectedCost} {text("积分", "credits")}</label>}
+        </div>
+      </details>
+      <span className="cr-creation-cost" aria-live="polite">{cost ?? "—"} {text("积分", "credits")}</span><button className="cr-send" disabled={busy || !uncertain && (!caps?.[kind] || !prompt.trim() || cost == null)} aria-label={text(uncertain ? "恢复提交" : "开始创作", uncertain ? "Recover submission" : "Start creating")}>{busy ? <LoaderCircle size={18} className="ca-spin" /> : uncertain ? <RefreshCw size={18} /> : <ArrowUp size={18} />}</button></div>
+    {uncertain && <p className="cr-creation-note">{text("提交尚未确认，重试会核对同一项目和任务。", "Submission is unconfirmed. Retry checks the same project and task.")}</p>}
     {error && <div role="alert" className="cr-creation-error">{creationError(error, zh)}{projectReady ? <button type="button" onClick={openDraft}>{text("打开项目处理", "Open project")}</button> : <button type="button" onClick={() => setAttempt(value => value + 1)}>{text("刷新可用能力", "Refresh availability")}</button>}</div>}
   </form>;
 }

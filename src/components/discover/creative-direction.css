@@ -38,7 +38,7 @@
 /* Lightweight home creation type controls; editors stay in lazy modules. */
 .cr-creation-types { display:flex; justify-content:center; gap:8px; margin:18px 0 0; overflow-x:auto; overscroll-behavior-x:contain; scrollbar-width:none; }
 .cr-creation-types::-webkit-scrollbar { display:none; }
-.cr-creation-types>button { display:inline-flex; flex:0 0 auto; align-items:center; justify-content:center; gap:8px; min-height:48px; padding:0 15px; border:1px solid var(--divider); border-radius:8px; background:var(--bg-card); color:var(--secondary-text); font-size:12px; white-space:nowrap; cursor:pointer; }
+.cr-creation-types>button { display:inline-flex; flex:0 0 auto; align-items:center; justify-content:center; gap:8px; min-height:36px; padding:0 12px; border:1px solid var(--divider); border-radius:8px; background:var(--bg-card); color:var(--secondary-text); font-size:12px; white-space:nowrap; cursor:pointer; }
 .cr-creation-types>button[aria-pressed=true] { color:var(--primary-text); border-color:var(--primary); background:var(--bg-card-hover); }
 .cr-creation-types>button:disabled { opacity:.5; cursor:default; }
 .cr-creation-types>button:focus-visible { outline:2px solid var(--primary); outline-offset:2px; }

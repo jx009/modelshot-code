@@ -27,7 +27,6 @@ import ImageSizePicker from "@/components/ui/ImageSizePicker";
 import dynamic from "next/dynamic";
 const CommerceLauncher = dynamic(() => import("./CommerceLauncher"));
 const CreationLauncher = dynamic(() => import("./CreationLauncher"), { loading: () => <div className="cr-creation-loader" role="status">正在打开 AI 创作… / Opening AI creation…</div> });
-const HomeProjects = dynamic(() => import("./HomeProjects"));
 const InspirationGallery = dynamic(() => import("./InspirationGallery"), {
   loading: () => <section className="cr-inspiration ig-section" aria-hidden="true"><p className="route-loading-text">正在加载灵感作品…</p></section>,
 });
@@ -177,6 +176,5 @@ export default function DiscoverHome({ explore = false }) {
     return <button key={kind} disabled={busy || !available} aria-pressed={creationType === kind} title={!available ? (zh ? "创作服务尚未就绪" : "Creation service is not ready") : undefined} onClick={() => setCreationType(kind)}><Icon size={17} aria-hidden="true" /><span>{zh ? cn : en}</span></button>;
   })}</div>}<div className="cr-quick-links">{[["commerce", "产品广告", "Product campaigns"], ["manga", "漫画叙事", "Comics"], ["poster", "创意海报", "Creative posters"]].map(([id, cn, en]) => <Link href={`/explore?category=${id}`} key={id}><WandSparkles size={13} />{zh ? cn : en}<ArrowUpRight size={12} /></Link>)}</div></div></section> : <section className="cr-explore-heading"><span className="cr-overline">THE INSPIRATION LIBRARY</span><h1>{zh ? "好作品，从灵感开始。" : "Good work starts with inspiration."}</h1><p>{zh ? "拆解一份创意，带走一种风格。把喜欢的案例，变成自己的作品。" : "Explore a composition. Borrow an approach. Make something of your own."}</p></section>}
     {modelsError && <p role="alert">{zh ? "模型列表刷新失败，页面仍可使用。" : "Could not refresh models. You can still use this page."}<button type="button" onClick={() => { clearImageCapabilities(); setModelsRevision(value => value + 1); }}>{zh ? "重试加载模型" : "Retry models"}</button></p>}
-    {!explore && session?.user?.id && <HomeProjects key={session.user.id} userId={session.user.id} zh={zh} visible={visible} />}
     <InspirationGallery zh={zh} explore={explore} /></>;
 }

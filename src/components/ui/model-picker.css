@@ -44,8 +44,9 @@
 .mpk-price { font-size:10px; line-height:1.4; color:var(--secondary-text); }
 .mpk-check { width:18px; flex-shrink:0; }
 .mpk-panel button:focus-visible,.mpk-trigger:focus-visible { outline:2px solid var(--primary-text); outline-offset:-2px; }
-.ms-studio .ms-composer-tools { display:grid; grid-template-columns:28px 24px minmax(0,1fr) max-content 40px 34px; gap:5px; }
-.ms-studio .ms-composer-tools .mpk-trigger { width:100%; max-width:156px; padding:6px; gap:5px; font-size:12px; }
+.ms-studio .ms-composer-tools { display:grid; grid-template-columns:32px 28px minmax(180px,1fr) max-content 44px; gap:6px; }
+.ms-studio .ms-composer-tools .mpk-trigger { width:100%; max-width:none; padding:7px; gap:6px; font-size:12px; }
+.ms-studio .ms-composer-tools .mpk-trigger-name { flex:1; text-align:left; white-space:normal; overflow-wrap:anywhere; overflow:visible; text-overflow:clip; }
 .ms-studio .ms-composer-tools > .isp-trigger { min-width:88px; padding:8px; gap:6px; font-size:11px; }
 .ms-studio .ms-composer-tools > .isp-trigger > * { flex-shrink:0; }
 .ms-studio .ms-composer-tools > select { min-width:0; width:100%; padding-inline:3px; }
@@ -53,5 +54,11 @@
 .cr-shell .cr-home-composer:focus-within { box-shadow:0 8px 24px var(--shadow-soft); }
 @keyframes mpk-enter { from { transform:translateY(5px) scale(.97); } to { transform:translateY(0) scale(1); } }
 @media(max-width:600px) { .mpk-trigger { max-width:190px; font-size:12px; }.mpk-panel { border-radius:16px; }.mpk-option { padding:9px 7px; } }
-@media(max-width:360px) { .ms-studio .ms-composer-tools { grid-template-columns:24px 20px minmax(0,1fr) max-content 36px 30px; gap:4px; }.ms-studio .ms-composer-tools .mpk-mark-small { display:none; }.ms-studio .ms-composer-tools > .ms-icon,.ms-studio .ms-composer-tools > .ms-send { width:100%; } }
+/* Keep model names readable on narrow chat panels, including phones. */
+@container (max-width:460px) {
+  .ms-studio .ms-composer-tools { grid-template-columns:32px 28px minmax(0,1fr) 44px; }
+  .ms-studio .ms-composer-tools .mpk-trigger { grid-column:3 / 5; }
+  .ms-studio .ms-composer-tools > .isp-trigger { grid-row:2; grid-column:1 / 4; justify-self:start; }
+  .ms-studio .ms-composer-tools > select { grid-row:2; grid-column:4; }
+}
 @media(prefers-reduced-motion:reduce) { .mpk-panel { animation:none; }.mpk-trigger,.mpk-option,.mpk-chevron { transition:none; } }

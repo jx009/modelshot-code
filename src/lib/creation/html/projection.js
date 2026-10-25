@@ -7,7 +7,9 @@ export const HTML_EDIT_CSP = "default-src 'none'; script-src 'none'; style-src '
 const raster = value => typeof value === "string" && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(value);
 // Projection is disposable. Always save the source, never this resolved document.
 export function projectHtml(page, images = new Map(), { theme, master } = {}) {
-  const { tree } = inspectHtml(page.html, { assignIds: true });
+  // The slide schema permits intentionally blank pages. Keep all HTML/CSS
+  // safety validation while allowing those pages to render as blank canvases.
+  const { tree } = inspectHtml(page.html, { assignIds: true, allowEmpty: true });
   if (master) htmlMasterSchema.parse(master);
   const replace = value => value.replace(/asset:([a-zA-Z0-9_-]{1,128})/g, (_match, id) => {
     const image = images.get(id); return raster(image) ? image : "data:,";

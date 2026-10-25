@@ -32,7 +32,9 @@ export default function LayoutEditor({ content, getContent, controllerRef, onPen
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   const readOnly = externallyReadOnly || preparing || Boolean(presentation);
   const commitPending = useCallback(() => canvas.current?.commitPending(), []);
-  useImperativeHandle(controllerRef, () => ({ commitPending, getPendingText: () => canvas.current?.getPendingText(), discardPending: () => canvas.current?.discardPending() }), [commitPending]);
+  useImperativeHandle(controllerRef, () => ({ commitPending, getPendingText: () => canvas.current?.getPendingText(),
+    canRefreshRemote: () => Boolean(canvas.current) && !canvas.current.getPendingText() && !picker && !presentation && !preparing && !themeOpen,
+    discardPending: () => canvas.current?.discardPending() }), [commitPending, picker, presentation, preparing, themeOpen]);
   const afterText = useCallback(action => {
     try { commitPending(); return action(); } catch (error) { onError?.(error); return false; }
   }, [commitPending, onError]);
@@ -124,7 +126,7 @@ export default function LayoutEditor({ content, getContent, controllerRef, onPen
       <button aria-label={text("放大", "Zoom in")} onClick={() => setZoom(value => Math.min(3, value + .25))}><Plus size={15} /></button>
     </div>
     <div className="cw-editor-body">
-      {content.kind === "slides" && <SlideNavigator pages={content.pages} selectedId={page.id} onSelect={selectPage} zh={zh}>
+      {content.kind === "slides" && <SlideNavigator pages={content.pages} selectedId={page.id} onSelect={selectPage} onMove={(pageId, index) => apply([{ op: "reorderPage", pageId, index }])} readOnly={readOnly} zh={zh}>
         <button disabled={readOnly || content.pages.length >= 100} onClick={() => {
           const id = requestKey();
           if (apply([{ op: "insertPage", page: { ...page, id, title: text("新页面", "New slide"), notes: "", background: content.theme.background, backgroundRole: "background", hidden: false, nodes: [] } }]) !== false) selectPage(id);

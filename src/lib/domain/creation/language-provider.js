@@ -3,6 +3,7 @@ import { imageClient } from "../studio/providers.js";
 import { htmlLanguageGuide } from "../../creation/html/language.js";
 import { posterDesignContext, posterDesignSchema } from "../../creation/poster-design.js";
 import { parseLanguageJson } from "../../creation/language-json.js";
+import { collectLanguageStream } from "../../creation/language-stream.js";
 import { webDesignGuide } from "../../creation/web-generation.js";
 import { sheetOutlineGuide, sheetChunkGuide, sheetSmallGuide } from "../../creation/sheet-generation-guide.js";
 import { isHtmlDocument } from "../../creation/html/document.js";
@@ -74,12 +75,27 @@ export async function invokeCreationLanguage(config, { input, source, assets, im
   if (!config.visionApiKey || !config.chatModel) throw new AppError("VISION_NOT_CONFIGURED", 503);
   const editing = input.purpose.endsWith(".edit"), messages = creationLanguageMessages({ input, source, assets, images, referenceFiles, dependencyFiles });
   const client = imageClient({ apiKey: config.visionApiKey, baseURL: config.visionBaseURL });
-  const response = await client.chat.completions.create({ model: config.chatModel,
-    max_tokens: input.purpose === "slides.outline" ? Math.min(24000, 3000 + input.pageCount * 600) : input.purpose === "document.outline" ? Math.min(24000, 2500 + input.sectionCount * 400) : input.purpose === "sheet.outline" ? Math.min(16000, 2000 + input.sheetCount * 2000) : ["sheet.generate", "sheet.chunk"].includes(input.purpose) ? 24000 : input.purpose === "web.generate" ? Math.min(24000, 8000 + input.pageCount * 2000) : editing ? 6000 : 10000,
-    response_format: { type: "json_object" }, messages,
-  }, { signal, timeout: 180000 });
-  const choice = response.choices?.[0], value = choice?.message?.content;
-  if (choice?.finish_reason !== "stop" || choice?.message?.refusal) throw new AppError("LANGUAGE_RESULT_INCOMPLETE", 502);
-  if (typeof value !== "string" || !value || Buffer.byteLength(value) > LANGUAGE_MAX_RESULT_BYTES) throw new AppError("LANGUAGE_RESULT_INVALID", 502);
-  try { return parseLanguageJson(value); } catch { throw new AppError("LANGUAGE_RESULT_INVALID", 502); }
+  // Slide pages produce substantial HTML. Streaming avoids waiting for the
+  // entire page before receiving any bytes from compatible model gateways.
+  // Never fall back by issuing a second paid request if streaming fails.
+  const streaming = input.purpose === "slides.page", startedAt = Date.now();
+  const diagnostics = { requestMode: streaming ? "stream" : "json", chunksReceived: 0, contentBytes: 0 };
+  try {
+    const response = await client.chat.completions.create({ model: config.chatModel,
+      max_tokens: input.purpose === "slides.outline" ? Math.min(24000, 3000 + input.pageCount * 600) : input.purpose === "document.outline" ? Math.min(24000, 2500 + input.sectionCount * 400) : input.purpose === "sheet.outline" ? Math.min(16000, 2000 + input.sheetCount * 2000) : ["sheet.generate", "sheet.chunk"].includes(input.purpose) ? 24000 : input.purpose === "web.generate" ? Math.min(24000, 8000 + input.pageCount * 2000) : editing ? 6000 : 10000,
+      response_format: { type: "json_object" }, messages, ...(streaming ? { stream: true } : {}),
+    }, { signal, timeout: 180000 });
+    let value;
+    if (streaming) value = await collectLanguageStream(response, { signal, maxBytes: LANGUAGE_MAX_RESULT_BYTES, diagnostics, startedAt });
+    else {
+      const choice = response.choices?.[0];
+      value = choice?.message?.content;
+      if (choice?.finish_reason !== "stop" || choice?.message?.refusal) throw new AppError("LANGUAGE_RESULT_INCOMPLETE", 502);
+    }
+    if (typeof value !== "string" || !value || Buffer.byteLength(value) > LANGUAGE_MAX_RESULT_BYTES) throw new AppError("LANGUAGE_RESULT_INVALID", 502);
+    try { return parseLanguageJson(value); } catch { throw new AppError("LANGUAGE_RESULT_INVALID", 502); }
+  } catch (error) {
+    if (error && typeof error === "object") error.languageTransport = { ...diagnostics, elapsedMs: Date.now() - startedAt };
+    throw error;
+  }
 }

@@ -1,7 +1,8 @@
 "use client";
 
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { EyeOff, RefreshCw } from "lucide-react";
+import { EyeOff, RefreshCw, GripVertical } from "lucide-react";
+import { useSlideReorder } from "../../useSlideReorder";
 import { createThumbnailQueue } from "@/lib/creation/client/thumbnail-queue";
 
 const Thumbnail = memo(function Thumbnail({ page, read, zh }) {
@@ -30,7 +31,7 @@ const Thumbnail = memo(function Thumbnail({ page, read, zh }) {
 });
 
 const Slide = memo(function Slide({ page, index, selected, visible, read, onSelect, zh, revision }) {
-  return <button type="button" data-slide-id={page.id} className={`cw-slide-item${selected ? " is-selected" : ""}`}
+  return <button type="button" className={`cw-slide-item${selected ? " is-selected" : ""}`}
     aria-current={selected ? "page" : undefined} aria-label={`${index + 1}. ${page.title}${page.hidden ? zh ? "（演示时隐藏）" : " (hidden in presentation)" : ""}`}
     title={page.title} onClick={() => onSelect(page.id)}>
     <span>{index + 1}{page.hidden && <EyeOff size={11} />}</span>
@@ -40,8 +41,9 @@ const Slide = memo(function Slide({ page, index, selected, visible, read, onSele
   </button>;
 });
 
-export default function SlideNavigator({ pages, selectedId, onSelect, zh, children }) {
-  const root = useRef(null), queue = useRef(null);
+export default function SlideNavigator({ pages, selectedId, onSelect, onMove, readOnly, zh, children }) {
+  const { root, rowProps, handleProps, announcement } = useSlideReorder({ pages, readOnly: readOnly || !onMove, onMove });
+  const queue = useRef(null);
   const [visible, setVisible] = useState(() => new Set()), [foreground, setForeground] = useState(true);
   const [revision, setRevision] = useState(0);
   const read = useCallback((page, signal) => queue.current
@@ -70,13 +72,14 @@ export default function SlideNavigator({ pages, selectedId, onSelect, zh, childr
     }, { root: root.current, rootMargin: "100px" });
     for (const element of root.current.querySelectorAll("[data-slide-id]")) observer.observe(element);
     return () => { observer.disconnect(); cancelAnimationFrame(frame); };
-  }, [ids, foreground]);
+  }, [ids, foreground, root]);
   useEffect(() => {
     root.current?.querySelector(`[data-slide-id="${CSS.escape(selectedId)}"]`)?.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }, [selectedId, ids]);
+  }, [selectedId, ids, root]);
   return <aside className="cw-slide-list" ref={root} aria-label={zh ? "幻灯片页面" : "Slides"}>
-    {pages.map((page, index) => <Slide key={page.id} page={page} index={index} selected={page.id === selectedId}
-      visible={foreground && visible.has(page.id)} read={read} onSelect={onSelect} zh={zh} revision={revision} />)}
+    <span className="sr-only" role="status">{announcement && (zh ? "已移动到第 " : "Moved to slide ") + announcement}</span>
+    {pages.map((page, index) => <div className="cw-layout-slide-row" key={page.id} {...rowProps(page.id)}><button className="cw-page-handle" {...handleProps(page.id)} aria-label={(zh ? "拖动排序第 " : "Reorder slide ") + (index + 1)}><GripVertical size={13} /></button><Slide page={page} index={index} selected={page.id === selectedId}
+      visible={foreground && visible.has(page.id)} read={read} onSelect={onSelect} zh={zh} revision={revision} /></div>)}
     <button onClick={() => setRevision(value => value + 1)}><RefreshCw size={13} />{zh ? "刷新预览" : "Refresh previews"}</button>
     {children}
   </aside>;

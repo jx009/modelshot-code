@@ -5,15 +5,17 @@ import { ChevronLeft, ChevronRight, FileImage, FileText, FolderOpen, Globe, Pres
 import { api } from "@/lib/client-api";
 import { creationError } from "./creation-errors";
 import OfficeImport from "./OfficeImport";
+import ProjectResources from "./ProjectResources";
 
 // Keep one metadata page in React. Older pages retain only cursor strings,
-// never artwork bodies or mounted editors. The parent remounts on refresh.
+// never artwork bodies or mounted editors. Refresh updates the first page in place.
 const icons = { poster: FileImage, slides: Presentation, document: FileText, sheet: Sheet, web: Globe };
-export default function ProjectFiles({ project, fileId, onSelect, onImported, zh }) {
-  const [page, setPage] = useState({ items: project.artifacts, nextCursor: project.artifactsNextCursor, q: "" });
+export default function ProjectFiles({ project, fileId, onSelect, onImported, onWarm, resources, zh }) {
+  const [page, setPage] = useState({ items: project.artifacts, nextCursor: project.artifactsNextCursor, q: "", source: project.artifacts });
   const [query, setQuery] = useState("");
   const [cursors, setCursors] = useState([null]), [loading, setLoading] = useState(false), [error, setError] = useState(null);
   const pending = useRef(null);
+  const shown = cursors.length === 1 && !page.q && page.source !== project.artifacts ? { ...page, items: project.artifacts, nextCursor: project.artifactsNextCursor } : page;
   useEffect(() => {
     let connected = true;
     // Activity retains state while disconnecting effects. An interrupted page
@@ -32,7 +34,7 @@ export default function ProjectFiles({ project, fileId, onSelect, onImported, zh
       if (q) params.set("q", q);
       const suffix = params.toString();
       const result = await api(`/api/creation/projects/${encodeURIComponent(project.id)}/files${suffix ? `?${suffix}` : ""}`, { signal: controller.signal });
-      if (!controller.signal.aborted) { setPage({ ...result, q }); setCursors(next); }
+      if (!controller.signal.aborted) { setPage({ ...result, q, source: project.artifacts }); setCursors(next); }
     } catch (failure) { if (!controller.signal.aborted) setError({ failure, next, q }); }
     finally { if (!controller.signal.aborted) { setLoading(false); pending.current = null; } }
   }
@@ -44,19 +46,19 @@ export default function ProjectFiles({ project, fileId, onSelect, onImported, zh
     <header><FolderOpen size={15} /><span title={project.name}>{project.name}</span></header>
     {["document", "sheet", "slides"].includes(project.kind) && <OfficeImport projectId={project.id} kind={project.kind} zh={zh} onSelect={onSelect} onImported={onImported} />}
     {page.q && <div className="cw-file-filter"><span title={page.q}>{page.q}</span><button aria-label={zh ? "清除文件搜索" : "Clear file search"} onClick={() => { setQuery(""); void load([null], ""); }}><X size={12} /></button></div>}
-    <div className="cw-file-items">{page.items.map(item => {
+    <div className="cw-file-items">{shown.items.map(item => {
       const Icon = icons[item.kind] || FileText;
-      return <button key={item.id} className={fileId === item.id ? "is-selected" : ""} aria-current={fileId === item.id ? "true" : undefined} onClick={() => onSelect(item.id, false, item.kind)} title={item.name}>
-        <Icon size={15} /><span>{item.name}</span>{item.currentRevision != null && <small>V{item.currentRevision}</small>}
-      </button>;
+      return <div className="cw-file-entry" key={item.id}><button className={fileId === item.id ? "is-selected" : ""} aria-current={fileId === item.id ? "true" : undefined} onPointerEnter={() => onWarm?.(item.kind)} onFocus={() => onWarm?.(item.kind)} onClick={() => onSelect(item.id, false, item.kind)} title={item.name}>
+        <Icon size={15} data-kind={item.kind} /><span>{item.name}</span>{item.currentRevision != null && <small>V{item.currentRevision}</small>}
+      </button>{fileId === item.id && resources?.artifactId === item.id && <ProjectResources key={item.id} resources={resources} zh={zh} />}</div>;
     })}</div>
-    {!page.items.length && !loading && <p>{page.q ? zh ? "没有匹配的文件" : "No matching files" : zh ? "暂无作品，生成的作品会保存在这里" : "Generated artwork will appear here"}</p>}
+    {!shown.items.length && !loading && <p>{page.q ? zh ? "没有匹配的文件" : "No matching files" : zh ? "暂无作品，生成的作品会保存在这里" : "Generated artwork will appear here"}</p>}
     {loading && <p role="status">{zh ? "正在读取文件…" : "Loading files…"}</p>}
     {error && <div className="cw-file-error" role="alert"><p>{creationError(error.failure, zh)}</p><button onClick={() => void load(error.next, error.q)}>{zh ? "重试" : "Retry"}</button></div>}
-    {(cursors.length > 1 || page.nextCursor) && <nav className="cw-file-pagination" aria-label={zh ? "文件分页" : "File pages"}>
+    {(cursors.length > 1 || shown.nextCursor) && <nav className="cw-file-pagination" aria-label={zh ? "文件分页" : "File pages"}>
       <button disabled={loading || cursors.length === 1} onClick={() => load(cursors.slice(0, -1))} aria-label={zh ? "上一页文件" : "Previous file page"}><ChevronLeft size={14} /></button>
       <span role="status">{loading ? zh ? "读取中…" : "Loading…" : zh ? `第 ${cursors.length} 页` : `Page ${cursors.length}`}</span>
-      <button disabled={loading || !page.nextCursor} onClick={() => load([...cursors, page.nextCursor])} aria-label={zh ? "下一页文件" : "Next file page"}><ChevronRight size={14} /></button>
+      <button disabled={loading || !shown.nextCursor} onClick={() => load([...cursors, shown.nextCursor])} aria-label={zh ? "下一页文件" : "Next file page"}><ChevronRight size={14} /></button>
     </nav>}
     {cursors.length > 1 && <button disabled={loading} onClick={() => load([null])}>{zh ? "回到最新文件" : "Return to latest files"}</button>}
   </aside>;

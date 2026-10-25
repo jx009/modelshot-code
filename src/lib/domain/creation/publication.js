@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { slidePublishedMessage, slideCompletionMessage } from "../../creation/slide-publication-message.js";
 import { slideDesignMarkdown } from "../../creation/contracts/slide-design.js";
 import { isSlideGeneration, slideRunProgress, slideInsertionIndex } from "../../creation/slide-scheduling.js";
 import { SHEET_CHUNK_ROWS, sheetOutlineSchema } from "../../creation/contracts/sheet-batch.js";
@@ -60,7 +61,7 @@ async function complete(tx, run, step, result, message) {
   if (next) await enqueueRun(tx, run.id, `step:${updated.eventSequence}`);
   else if (!blocked) await appendRunEvent(tx, run.id, "run.succeeded", { result }, { status: "succeeded" });
 }
-function publicationHooks(initial, step, jobId, disposition, extra = {}) {
+function publicationHooks(initial, step, jobId, disposition, extra = {}, customMessage) {
   let locked;
   return {
     beforeCommit: async tx => { locked = await guard(tx, initial, step.id, jobId); },
@@ -70,7 +71,7 @@ function publicationHooks(initial, step, jobId, disposition, extra = {}) {
       const message = disposition === "conflict-copy" ? (zh ? "原作品已有新修改。我已将本次 AI 修改保存为单独的作品，保留了原作品的最新版本。" : "The original changed while I was working. I saved these AI edits as a separate artwork and kept the latest original.")
         : disposition === "updated" ? (zh ? "已按要求修改选定内容，其他页面和未涉及的对象保持不变。" : "Updated the requested content while preserving unrelated objects and pages.")
           : (zh ? "作品已生成，可以继续编辑，或在对话中提出修改要求。" : "Your artwork is ready to edit. You can also request changes in this conversation.");
-      await complete(tx, locked.run, locked.step, result, message);
+      await complete(tx, locked.run, locked.step, result, customMessage || message);
     },
   };
 }
@@ -172,7 +173,7 @@ export async function assembleCreationSlides(initial, step, { db = prisma, store
     const source = await readLayoutArtifact(initial.userId, artifactId, undefined, { db, store });
     return db.$transaction(async tx => {
       const locked = await guard(tx, initial, step.id, null);
-      await complete(tx, locked.run, locked.step, { artifactId, revision: source.revision, disposition: "created" }, initial.input.locale === "en" ? "All slides are ready. Your edits to completed slides have been preserved." : "全部页面已生成，你对已完成页面的修改也已保留。");
+      await complete(tx, locked.run, locked.step, { artifactId, revision: source.revision, disposition: "created" }, slideCompletionMessage(outline, initial.input.locale));
     });
   }
   const pages = [];
@@ -200,7 +201,7 @@ async function publishHtmlSlide(initial, step, generated, { db, store }) {
   if (!approved) throw new AppError("CREATION_OUTLINE_CHANGED", 409);
   const page = { ...generated, notes: approved.notes };
   const prior = initial.steps.find(item => item.tool === "slides.page" && item.status === "succeeded" && item.result?.artifactId);
-  const hooks = publicationHooks(initial, step, step.jobId, prior ? "updated" : "created", { pageId: page.id, jobId: step.jobId });
+  const hooks = publicationHooks(initial, step, step.jobId, prior ? "updated" : "created", { pageId: page.id, jobId: step.jobId }, slidePublishedMessage(outline, page.id, initial.input.locale));
   if (!prior) {
     const content = htmlDocumentSchema.parse({ schemaVersion: 3, kind: "slides", format: "html-slides", title: outline.title, theme: outline.theme, metadata: { plannedPages: outline.pages.length, ...(outline.design ? { design: outline.design, designMarkdown: slideDesignMarkdown(outline) } : {}) }, pages: [page] });
     return createLayoutArtifact(initial.userId, initial.projectId, content, `generated-${step.jobId}`, { db, store, sourceRunId: initial.id, hooks });

@@ -3,13 +3,22 @@ import { createRef } from "react";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import DraftSessionGate from "../../src/components/creation/DraftSessionGate";
-const mocks = vi.hoisted(() => ({ list: vi.fn(), copy: vi.fn(), remove: vi.fn(), remember: vi.fn() }));
+const mocks = vi.hoisted(() => ({ list: vi.fn(), copy: vi.fn(), remove: vi.fn(), remember: vi.fn(), remembered: vi.fn() }));
 vi.mock("../../src/lib/creation/client/drafts", () => ({ listArtifactDraftSessions: (...args) => mocks.list(...args), copyArtifactDraftSession: (...args) => mocks.copy(...args), removeArtifactDraftSession: (...args) => mocks.remove(...args) }));
-vi.mock("../../src/lib/creation/client/draft-session", () => ({ creationDraftSession: () => "current-session-12345", rememberedDraftSession: () => null, rememberDraftSession: (...args) => mocks.remember(...args), newDraftBranch: () => "recovery-session-1234" }));
+vi.mock("../../src/lib/creation/client/draft-session", () => ({ creationDraftSession: () => "current-session-12345", rememberedDraftSession: (...args) => mocks.remembered(...args), rememberDraftSession: (...args) => mocks.remember(...args), newDraftBranch: () => "recovery-session-1234" }));
 const item = { sessionId: "source-session-12345", updatedAt: 1000, token: "version-one", dirty: true, hasText: true };
 const child = sessionId => <div>Editor {sessionId}</div>;
 beforeEach(() => { Object.values(mocks).forEach(mock => mock.mockReset()); mocks.list.mockResolvedValue({ own: false, items: [item] }); mocks.copy.mockResolvedValue(undefined); mocks.remove.mockResolvedValue(undefined); });
 afterEach(cleanup);
+it("reopens a chosen branch immediately and lists other branches only on explicit request", async () => {
+  mocks.remembered.mockReturnValue("chosen-session");
+  render(<DraftSessionGate userId="u" artifactId="a" zh={false}>{(id, pick) => <><span>Editor {id}</span><button onClick={pick}>Other drafts</button></>}</DraftSessionGate>);
+  await screen.findByText("Editor chosen-session");
+  expect(mocks.list).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByText("Other drafts"));
+  await screen.findByText("Recover draft");
+  expect(mocks.list).toHaveBeenCalledWith("u", "a", "chosen-session");
+});
 it("waits for a recovery choice before mounting the editor or allowing dependent saves", async () => {
   const ref = createRef(); render(<DraftSessionGate userId="u" artifactId="a" zh={false} editorRef={ref}>{child}</DraftSessionGate>);
   await screen.findByText("Recover draft");

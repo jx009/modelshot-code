@@ -18,6 +18,18 @@ function search(value) {
 }
 beforeEach(() => { mocks.api.mockReset(); });
 afterEach(cleanup);
+it("refreshes the latest files in place without resetting an active search", async () => {
+  const view = setup();
+  const newer = { ...project, artifacts: [file("new", "Just generated"), ...project.artifacts] };
+  view.rerender(<ProjectFiles project={newer} fileId="a" onSelect={view.select} zh={false} />);
+  expect(screen.getByText("Just generated")).toBeTruthy();
+  mocks.api.mockResolvedValueOnce({ items: [file("match", "Search match")], nextCursor: null });
+  search("match"); await screen.findByText("Search match");
+  view.rerender(<ProjectFiles project={{ ...newer, artifacts: [...newer.artifacts] }} fileId="a" onSelect={view.select} zh={false} />);
+  expect(screen.getByText("Search match")).toBeTruthy();
+  expect(screen.getByLabelText("File name").value).toBe("match");
+  expect(screen.queryByText("Just generated")).toBeNull();
+});
 
 it("uses initial metadata without fetching and searches the project only on explicit submit", async () => {
   mocks.api.mockResolvedValue({ items: [file("b", "Budget", "sheet")], nextCursor: "budget-cursor" });
@@ -28,7 +40,7 @@ it("uses initial metadata without fetching and searches the project only on expl
   const result = await screen.findByRole("button", { name: "Budget V3" });
   expect(mocks.api.mock.calls[0][0]).toBe("/api/creation/projects/p/files?q=Budget");
   expect(screen.queryByText("Original report")).toBeNull();
-  fireEvent.click(result); expect(select).toHaveBeenCalledWith("b");
+  fireEvent.click(result); expect(select).toHaveBeenCalledWith("b", false, "sheet");
   mocks.api.mockResolvedValue({ items: [file("c", "Budget 2", "sheet")], nextCursor: null });
   fireEvent.click(screen.getByLabelText("Next file page"));
   await screen.findByText("Budget 2");

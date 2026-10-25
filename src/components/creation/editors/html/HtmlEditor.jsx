@@ -2,7 +2,8 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useLayoutEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { Undo2, Redo2, Type, Square, ImagePlus, Trash2, Copy, SlidersHorizontal, MessageSquarePlus, Code, X, Plus, Play } from "lucide-react";
+import { Undo2, Redo2, Type, Square, ImagePlus, Trash2, Copy, SlidersHorizontal, MessageSquarePlus, Code, X, Plus, Play, GripVertical } from "lucide-react";
+import { useSlideReorder } from "../../useSlideReorder";
 import { groupHtmlNodes, ungroupHtmlNode, alignHtmlNodes, inspectRenderedHtml } from "@/lib/creation/html/dom-edit";
 import { inspectHtml } from "@/lib/creation/html/document";
 import { projectHtml } from "@/lib/creation/html/projection";
@@ -21,8 +22,8 @@ function sourceDocument(html) { return new DOMParser().parseFromString(html, "te
 function sourceHtml(doc) { return `<!DOCTYPE html>\n${doc.documentElement.outerHTML}`; }
 const byId = (doc, id) => doc.querySelector(`[data-node-id="${CSS.escape(id)}"]`);
 
-export default function HtmlEditor({ content, getContent, controllerRef, onOperations, onUndo, onRedo, canUndo, canRedo, onReference, onError, onDraftChange, onPendingChange, readOnly, zh = true }) {
-  const [pageId, setPageId] = useState(content.pages[0].id), [selection, setSelection] = useState([]), [inspector, setInspector] = useState(false);
+export default function HtmlEditor({ content, getContent, controllerRef, onOperations, onUndo, onRedo, canUndo, canRedo, onReference, onError, onDraftChange, onPendingChange, initialPageId, onPageChange, readOnly, zh = true }) {
+  const [pageId, setPageId] = useState(initialPageId || content.pages[0].id), [selection, setSelection] = useState([]), [inspector, setInspector] = useState(false);
   const [sourceOpen, setSourceOpen] = useState(false), [source, setSource] = useState("");
   const [picker, setPicker] = useState(false), [presenting, setPresenting] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false), [masterOpen, setMasterOpen] = useState(false), [masterCss, setMasterCss] = useState(""), [masterHtml, setMasterHtml] = useState("");
@@ -32,10 +33,11 @@ export default function HtmlEditor({ content, getContent, controllerRef, onOpera
   const [autoHeight, setAutoHeight] = useState(720);
   const [issues, setIssues] = useState([]);
   const [dataEdit, setDataEdit] = useState(null);
-  const host = useRef(null), frame = useRef(null), pending = useRef(null), clean = useRef(null), latest = useRef(null);
+  const host = useRef(null), frame = useRef(null), pending = useRef(null), clean = useRef(null), latest = useRef(null), dragging = useRef(false);
   const page = content.pages.find(item => item.id === pageId) || content.pages[0];
+  useEffect(() => { onPageChange?.(page.id); }, [page.id, onPageChange]);
   const text = (cn, en) => zh ? cn : en;
-  useLayoutEffect(() => { latest.current = { page, readOnly: readOnly || presenting, selection, sourceOpen, source, onOperations, onError, onDraftChange, onPendingChange }; });
+  useLayoutEffect(() => { latest.current = { page, readOnly: readOnly || presenting, selection, sourceOpen, source, onOperations, onError, onDraftChange, onPendingChange, remoteBlocked: Boolean(sourceOpen || presenting || picker || themeOpen || masterOpen || dataEdit) }; });
   const master = content.masters?.find(item => item.id === page.masterId);
   const theme = content.theme;
   const previewPage = useMemo(() => ({ id: page.id, html: page.html, width: page.width, height: page.height }), [page.id, page.html, page.width, page.height]);
@@ -60,7 +62,13 @@ export default function HtmlEditor({ content, getContent, controllerRef, onOpera
     if (apply([{ op: "setHtmlPage", pageId: draft.pageId, html }]) === false) throw new Error("HTML_EDIT_NOT_COMMITTED");
     pending.current = null; latest.current.onDraftChange?.(null); latest.current.onPendingChange?.(false);
   }, [getContent, apply]);
-  useImperativeHandle(controllerRef, () => ({ commitPending, getPendingText: () => pending.current?.recovery || null, discardPending: () => { pending.current = null; latest.current.onDraftChange?.(null); latest.current.onPendingChange?.(false); } }), [commitPending]);
+  const { root: pageList, rowProps, handleProps, announcement, isDragging } = useSlideReorder({ pages: content.pages, readOnly, onMove: (id, index) => {
+    try { commitPending(); return apply([{ op: "reorderHtmlPage", pageId: id, index }]); }
+    catch (error) { onError?.(error); return false; }
+  } });
+  useImperativeHandle(controllerRef, () => ({ commitPending, getPendingText: () => pending.current?.recovery || null,
+    canRefreshRemote: () => !pending.current && !dragging.current && !isDragging() && !latest.current.remoteBlocked && !frame.current?.contentDocument?.activeElement?.isContentEditable,
+    discardPending: () => { pending.current = null; latest.current.onDraftChange?.(null); latest.current.onPendingChange?.(false); } }));
   useEffect(() => {
     const warn = event => { if (pending.current) { event.preventDefault(); event.returnValue = ""; } };
     window.addEventListener("beforeunload", warn); return () => window.removeEventListener("beforeunload", warn);
@@ -127,6 +135,7 @@ export default function HtmlEditor({ content, getContent, controllerRef, onOpera
       setSelection(current => event.shiftKey ? current.includes(id) ? current.filter(value => value !== id) : [...current, id] : [id]);
       const style = doc.defaultView.getComputedStyle(element);
       if (!event.shiftKey) drag = { id, x: event.clientX, y: event.clientY, left: parseFloat(style.left) || 0, top: parseFloat(style.top) || 0, position: style.position, element, moved: false, transform: element.style.transform };
+      dragging.current = Boolean(drag);
     };
     const move = event => {
       if (!drag || !event.buttons || latest.current.readOnly) return;
@@ -136,7 +145,7 @@ export default function HtmlEditor({ content, getContent, controllerRef, onOpera
       drag.element.style.transform = `${drag.transform} translate(${dx}px,${dy}px)`;
     };
     const up = () => {
-      const ended = drag; drag = null; if (!ended) return;
+      const ended = drag; drag = null; dragging.current = false; if (!ended) return;
       ended.element.style.transform = ended.transform;
       if (!ended.moved) return;
       edit(doc => {
@@ -160,9 +169,12 @@ export default function HtmlEditor({ content, getContent, controllerRef, onOpera
       node.removeAttribute("contenteditable");
       try { commitPending(); } catch (error) { latest.current.onError?.(error); }
     };
+    const cancelDrag = () => { if (drag) drag.element.style.transform = drag.transform; drag = null; dragging.current = false; };
+    window.addEventListener("pointerup", up); window.addEventListener("blur", cancelDrag);
+    doc.addEventListener("pointercancel", cancelDrag);
     doc.addEventListener("load", measure, true);
     doc.addEventListener("pointerdown", select); doc.addEventListener("pointermove", move); doc.addEventListener("pointerup", up); doc.addEventListener("dblclick", double); doc.addEventListener("input", input); doc.addEventListener("focusout", blur);
-    clean.current = () => { doc.removeEventListener("load", measure, true); doc.removeEventListener("pointerdown", select); doc.removeEventListener("pointermove", move); doc.removeEventListener("pointerup", up); doc.removeEventListener("dblclick", double); doc.removeEventListener("input", input); doc.removeEventListener("focusout", blur); };
+    clean.current = () => { cancelDrag(); window.removeEventListener("pointerup", up); window.removeEventListener("blur", cancelDrag); doc.removeEventListener("pointercancel", cancelDrag); doc.removeEventListener("load", measure, true); doc.removeEventListener("pointerdown", select); doc.removeEventListener("pointermove", move); doc.removeEventListener("pointerup", up); doc.removeEventListener("dblclick", double); doc.removeEventListener("input", input); doc.removeEventListener("focusout", blur); };
   }, [edit, commitPending, presenting, stageDraft]);
   useEffect(() => {
     const doc = frame.current?.contentDocument; if (!doc) return;
@@ -199,8 +211,9 @@ export default function HtmlEditor({ content, getContent, controllerRef, onOpera
     </div>
     {fault && <p role="alert" className="cw-error">{text("部分图片加载失败，文字和排版仍可编辑。", "Some images failed to load. Text and layout remain editable.")}<button onClick={() => setAssetRetry(value => value + 1)}>{text("重试图片", "Retry images")}</button></p>}
     <div className="cw-html-body">
-      {content.kind === "slides" && <nav className="cw-html-pages" aria-label={text("幻灯片", "Slides")}>
-        {content.pages.map((item, index) => <button key={item.id} aria-current={item.id === page.id} onClick={() => selectPage(item.id)}><b>{index + 1}</b><span>{item.title || text("幻灯片", "Slide")}</span></button>)}
+      {content.kind === "slides" && <nav ref={pageList} className="cw-html-pages" aria-label={text("幻灯片", "Slides")}>
+        <small>{text("拖动排序", "Drag to reorder")}</small><span className="sr-only" role="status">{announcement && text("已移动到第 " + announcement + " 页", "Moved to slide " + announcement)}</span>
+        {content.pages.map((item, index) => <div className="cw-html-page-row" key={item.id} {...rowProps(item.id)}><button {...handleProps(item.id)} className="cw-page-handle" aria-label={text("拖动排序第 " + (index + 1) + " 页", "Reorder slide " + (index + 1))}><GripVertical size={12} /></button><button aria-current={item.id === page.id} onClick={() => selectPage(item.id)}><b>{index + 1}</b><span>{item.title || text("幻灯片", "Slide")}</span></button></div>)}
         <button disabled={readOnly} onClick={() => { commitPending(); const id = key(); apply([{ op: "insertHtmlPage", index: content.pages.length, page: { ...page, id, title: text("新页面", "New slide"), html: '<!DOCTYPE html><html><head><style>body{margin:0;background:#fff;font-family:sans-serif}h1{padding:64px}</style></head><body><h1 data-node-id="title">新页面</h1></body></html>' } }]); setPageId(id); }}><Plus size={15} /></button>
       </nav>}
       <div className="cw-html-stage" ref={host}>

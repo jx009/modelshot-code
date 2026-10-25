@@ -1,4 +1,6 @@
 const messages = {
+  CREATION_DEPENDENCY_BLOCKED: ["前序步骤未成功，后续步骤已暂停。已完成内容保留，请先处理失败步骤。", "A prerequisite did not succeed. Later steps are paused; completed work is retained. Resolve the failed step first."],
+  CREATION_STEP_FAILED: ["部分生成步骤失败，任务已停止。已完成内容保留，可重试失败步骤。", "A generation step failed and the task stopped. Completed work is retained; retry failed steps."],
   HTML_GROUP_REQUIRES_ADJACENT_SIBLINGS: ["请选择同一层级连续的元素再分组，以保持原有排版顺序。", "Select adjacent siblings to group without changing layout order."],
   WEB_MODULE_SYNTAX_INVALID: ["JavaScript 模块语法错误，请检查源码。", "Invalid JavaScript module syntax. Check the source."],
   WEB_MODULE_REFERENCE_NOT_FOUND: ["模块引用未找到，请使用项目内 JS 文件的相对路径，不支持外部包或 CDN。", "Module not found. Use relative paths to project JS files; external packages and CDNs are unsupported."],
@@ -207,6 +209,9 @@ const messages = {
   LANGUAGE_PROVIDER_RATE_LIMITED: ["模型服务商限制了请求频率，请稍后重试失败步骤。", "The model provider rate-limited this request. Retry the failed steps later."],
   LANGUAGE_PROVIDER_AUTH_FAILED: ["模型服务商拒绝了认证，请管理员检查密钥及模型权限。", "Provider authentication failed. Ask an administrator to check the key and model access."],
   LANGUAGE_PROVIDER_UNAVAILABLE: ["模型服务商暂时不可用，请稍后重试失败步骤。", "The model provider is temporarily unavailable. Retry failed steps later."],
+  LANGUAGE_PROVIDER_GATEWAY_TIMEOUT: ["模型接口网关等待响应超时（504/524）。已完成页面会保留，可稍后重试失败步骤；若反复出现，请管理员检查模型通道。", "The model gateway timed out (504/524). Completed pages are preserved. Retry failed steps later; ask an administrator to check the provider if this repeats."],
+  LANGUAGE_STREAM_INTERRUPTED: ["模型流式响应中断，未发布不完整页面。已完成页面会保留，可重试失败步骤。", "The model stream ended before completion. No partial page was published; completed pages are preserved. Retry failed steps."],
+  LANGUAGE_STREAM_UNSUPPORTED: ["模型通道未返回预期的流式响应，请管理员检查该通道的流式接口兼容性。", "The provider did not return the expected stream. Ask an administrator to check streaming compatibility."],
   LANGUAGE_PROVIDER_CONNECTION_FAILED: ["连接模型服务商失败。已完成页面会保留，请稍后重试失败步骤。", "The connection to the model provider failed. Completed pages are preserved; retry failed steps later."],
   LANGUAGE_PROVIDER_REQUEST_REJECTED: ["模型服务商拒绝了请求，请管理员检查模型配置和请求限制。", "The provider rejected the request. Ask an administrator to check model settings and request limits."],
   HTML_UNSAFE_STYLE: ["模型生成了不支持的页面样式，未发布该页。可重试失败步骤。", "The model generated unsupported styles. This page was not published; retry the failed step."],

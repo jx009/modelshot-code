@@ -9,6 +9,10 @@ const html = '<!DOCTYPE html><html><head><style>body{margin:0;display:grid;grid-
 const theme = { name: "Modern", primary: "#123456", accent: "#ff0000", background: "#ffffff", fontFamily: "sans" };
 const document = () => htmlDocumentSchema.parse({ schemaVersion: 3, format: "html-poster", kind: "poster", title: "新品", theme, pages: [{ id: "page", width: 1080, height: 1440, html }], metadata: { preserved: true }, extra: "keep" });
 describe("HTML artwork authority", () => {
+  it("previews blank slide canvases without relaxing active-markup safety", () => {
+    expect(projectHtml({ html: "<html><body></body></html>" })).toContain("Content-Security-Policy");
+    expect(() => projectHtml({ html: "<script>alert(1)</script>" })).toThrow("HTML_UNSAFE_ELEMENT");
+  });
   it("keeps CSS layout and unknown metadata without object conversion", () => {
     const doc = artworkDocumentSchema.parse(document());
     expect(doc.pages[0].html).toContain("grid-template-columns"); expect(doc.extra).toBe("keep"); expect(doc.pages[0].nodes).toBeUndefined();

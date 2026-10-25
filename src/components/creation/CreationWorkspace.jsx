@@ -2,9 +2,9 @@
 
 import { sheetGenerationCalls } from "@/lib/creation/sheet-generation-policy";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { ArrowUp, Check, ChevronDown, ChevronRight, FileImage, LoaderCircle, MessageSquare, PanelLeftClose, PanelLeftOpen, RefreshCw, Square, X } from "lucide-react";
+import { ArrowUp, FileImage, LoaderCircle, MessageSquare, PanelLeftClose, PanelLeftOpen, Paperclip, SlidersHorizontal, RefreshCw, X } from "lucide-react";
 import { api, requestKey } from "@/lib/client-api";
-import ReferenceAssets, { referenceAssetIds, MessageReferenceAssets } from "./ReferenceAssets";
+import ReferenceAssets, { referenceAssetIds } from "./ReferenceAssets";
 import ReferenceFiles from "./ReferenceFiles";
 import WorkspaceSplit from "./WorkspaceSplit";
 import ConversationViewport from "./ConversationViewport";
@@ -16,7 +16,13 @@ import { creationError } from "./creation-errors";
 import { invalidateProjectLists } from "@/lib/studio/project-list";
 import { useCreationNavigationGuard } from "./useCreationNavigationGuard";
 import { posterImageChoice } from "@/lib/creation/poster-image-choice";
-import ArtifactEditor from "./CreationArtifactEditor";
+import ArtifactEditor, { warmCreationEditor } from "./CreationArtifactEditor";
+import CreationMessage from "./CreationMessage";
+import CreationTaskStatus, { RunStatusStrip } from "./CreationTaskStatus";
+import { publishedArtifactRevisions } from "@/lib/creation/published-artifact-revisions";
+import { publishWorkspaceTitle } from "@/lib/creation/client/workspace-title";
+import "./creation.css";
+import "./workbench.css";
 
 const OutlineReview = lazy(() => import("./OutlineReview"));
 const compactQuery = "(max-width:760px)";
@@ -28,7 +34,6 @@ function subscribeCompact(onChange) {
   return () => media?.removeEventListener("change", onChange);
 }
 const active = status => ["queued", "running", "cancelling"].includes(status);
-const statusLabels = { queued: ["等待开始", "Queued"], running: ["正在创作", "Creating"], succeeded: ["已完成", "Completed"], failed: ["执行未完成", "Failed"], cancelling: ["正在停止后续步骤", "Stopping subsequent steps"], cancelled: ["已取消", "Cancelled"], awaiting_budget: ["等待调整预算", "Budget required"], awaiting_input: ["需要处理后继续", "Needs attention"] };
 
 export default function CreationWorkspace({ userId, projectId, initialSessionId, initialFileId, zh }) {
   const text = (cn, en) => zh ? cn : en;
@@ -38,16 +43,19 @@ export default function CreationWorkspace({ userId, projectId, initialSessionId,
   const [sectionCount, setSectionCount] = useState(6), [sheetCount, setSheetCount] = useState(1), [targetRows, setTargetRows] = useState(20);
   const [budget, setBudget] = useState(""), [pending, setPending] = useState(null), [busy, setBusy] = useState(false), [error, setError] = useState(null), [loading, setLoading] = useState(true);
   const compact = useSyncExternalStore(subscribeCompact, compactSnapshot, wideServerSnapshot);
-  const [treePreference, setTreeOpen] = useState(null), [mobileTab, setMobileTab] = useState("chat"), [stepsOpen, setStepsOpen] = useState(true), [updatedFile, setUpdatedFile] = useState(null);
-  const treeOpen = treePreference ?? (!compact && (project?.artifacts?.length > 1 || Boolean(project?.artifactsNextCursor)));
+  const [treePreference, setTreeOpen] = useState(null), [mobileTab, setMobileTab] = useState("chat"), [stepsOpen, setStepsOpen] = useState(false), [updatedFile, setUpdatedFile] = useState(null);
+  const treeOpen = treePreference ?? !compact;
   const [chatCollapsed, setChatCollapsed] = useState(false);
   const [agentMode, setAgentMode] = useState(false);
   const [composerOptionsOpen, setComposerOptionsOpen] = useState(false);
+  const [attachmentsOpen, setAttachmentsOpen] = useState(false);
   const [assetIds, setAssetIds] = useState([]);
   const [referenceIds, setReferenceIds] = useState([]);
   const [generateImage, setGenerateImage] = useState(true);
   const [outlineRunId, setOutlineRunId] = useState(null);
-  const [filesEpoch, setFilesEpoch] = useState(0);
+  const [resources, setResources] = useState(null);
+  const [publishedRevisions, setPublishedRevisions] = useState({});
+  const publications = useRef({});
   const [revision, setRevision] = useState(0), [moreBusy, setMoreBusy] = useState(false);
   const editor = useRef(null), life = useRef(null), gate = useRef(false), pendingRequest = useRef(null), session = useRef(null), finalSeen = useRef(null), refreshSequence = useRef(0);
   const composerDraft = useRef(null), composerTimer = useRef(null);
@@ -80,7 +88,8 @@ export default function CreationWorkspace({ userId, projectId, initialSessionId,
         if (controller.signal.aborted) return;
         const chosen = initialSessionId || value.sessions[0]?.id;
         if (!chosen || !value.sessions.some(item => item.id === chosen)) throw new Error("CREATION_SESSION_NOT_FOUND");
-        session.current = chosen; setSessionId(chosen); setProject(value); setFilesEpoch(epoch => epoch + 1);
+        warmCreationEditor(value.kind);
+        session.current = chosen; setSessionId(chosen); setProject(value);
         const firstFileId = initialFileId || value.artifacts[0]?.id || null;
         setFileId(current => current || firstFileId);
         const [history, runs] = await Promise.all([api(`/api/creation/sessions/${chosen}/messages`, { signal: controller.signal }), api(`/api/creation/runs?sessionId=${chosen}`, { signal: controller.signal })]);
@@ -156,24 +165,37 @@ export default function CreationWorkspace({ userId, projectId, initialSessionId,
     if (!signal || signal.aborted || !currentSession) return;
     const [value, history] = await Promise.all([api(`/api/creation/projects/${projectId}`, { signal }), api(`/api/creation/sessions/${currentSession}/messages`, { signal })]);
     if (signal.aborted || sequence !== refreshSequence.current) return;
+    const newer = Object.fromEntries(value.artifacts.filter(item => Number.isInteger(item.currentRevision) && item.currentRevision > (publications.current[item.id] || 0)).map(item => [item.id, item.currentRevision]));
+    if (Object.keys(newer).length) { publications.current = { ...publications.current, ...newer }; setPublishedRevisions(publications.current); }
     const latest = latestRequested.current; latestRequested.current = false;
     if (latest) conversation.current?.followLatest();
-    setProject(value); setMessages(current => mergeConversationWindow(current, history, latest ? "latest" : "refresh")); setFilesEpoch(value => value + 1);
+    setProject(value); setMessages(current => mergeConversationWindow(current, history, latest ? "latest" : "refresh"));
   }, [projectId]);
   function latestMessages() {
     latestRequested.current = true; messageEpoch.current++;
     void refreshContent().catch(notify);
   }
   const onRunChange = useCallback(run => {
-    if (active(run.status)) return;
+    const revisions = publishedArtifactRevisions(run.steps);
+    const changed = Object.entries(revisions).filter(([id, version]) => version > (publications.current[id] || 0));
+    if (changed.length) {
+      publications.current = { ...publications.current, ...Object.fromEntries(changed) };
+      setPublishedRevisions(publications.current);
+      const id = changed.at(-1)[0];
+      setFileId(current => current || id);
+      setUpdatedFile(id);
+      invalidateProjectLists(userId);
+    }
+    if (active(run.status)) {
+      if (changed.length) void refreshContent().catch(notify);
+      return;
+    }
     const key = `${run.id}:${run.eventSequence}`;
     if (finalSeen.current === key) return;
     finalSeen.current = key;
     if (run.errorCode === "CREATION_AGENT_PLAN_CONFIRMATION_REQUIRED") setBudget(String(run.committedCredits + run.steps.filter(step => step.status !== "succeeded").reduce((sum, step) => sum + step.expectedCost, 0)));
     invalidateProjectLists(userId);
     if (run.errorCode === "CREATION_OUTLINE_CONFIRMATION_REQUIRED") setOutlineRunId(run.kind === "agent" ? run.steps.find(step => step.status !== "succeeded" && step.result?.childRunId)?.result.childRunId : run.id);
-    const result = run.steps.toReversed().find(step => step.result?.artifactId)?.result;
-    if (result) { setFileId(current => current || result.artifactId); setUpdatedFile(result.artifactId); }
     void refreshContent().catch(notify);
   }, [refreshContent, notify, userId]);
   const observed = useCreationRun(runId, onRunChange, revision), run = observed.run?.id === runId ? observed.run : null;
@@ -184,6 +206,7 @@ export default function CreationWorkspace({ userId, projectId, initialSessionId,
   const withImage = Boolean(imageChoice && generateImage && assetIds.length < 8);
   const estimated = pending ? pending.body.maxCredits : (caps?.languageUnitCost ?? 0) * (useAgent ? 1 : estimatedCalls) + (withImage ? imageChoice.expectedCost : 0);
   const title = project?.name || text("AI 创作", "AI Creation");
+  useEffect(() => publishWorkspaceTitle(projectId, title), [projectId, title]);
 
   async function selectFile(id, reload = false, selectedKind = null) {
     if (gate.current) return;
@@ -193,7 +216,8 @@ export default function CreationWorkspace({ userId, projectId, initialSessionId,
       if (fileId && editor.current) await editor.current.flush();
       if (life.current?.signal.aborted) return;
       setFileId(id); setLoadedFormat({ id, kind: selectedKind || project?.artifacts?.find(item => item.id === id)?.kind || null }); setOutlineRunId(null); setReference(null); setMobileTab("artwork");
-      if (reload) { setEditorEpoch(value => value + 1); setUpdatedFile(null); }
+      if (reload && !["slides", "poster"].includes(selectedKind || fileKind)) { setEditorEpoch(value => value + 1); setUpdatedFile(null); }
+      if (reload && ["slides", "poster"].includes(selectedKind || fileKind)) void refreshContent().catch(notify);
     } catch (failure) { notify(failure); }
     finally { gate.current = false; }
   }
@@ -310,40 +334,45 @@ export default function CreationWorkspace({ userId, projectId, initialSessionId,
 
     <nav className="cw-mobile-tabs" aria-label={text("工作区视图", "Workspace view")}><button aria-pressed={mobileTab === "chat"} onClick={() => setMobileTab("chat")}><MessageSquare size={15} />{text("对话", "Chat")}</button><button aria-pressed={mobileTab === "artwork"} onClick={() => setMobileTab("artwork")}><FileImage size={15} />{text("作品", "Artwork")}</button></nav>
     <WorkspaceSplit userId={userId} zh={zh}>
-      <aside className="cw-chat"><header><MessageSquare size={16} /><div className="cw-chat-heading"><strong>{text("创作对话", "Creation chat")}</strong><span title={title}>{title}</span></div><button className="cw-chat-toggle" aria-expanded={!chatCollapsed} aria-label={text(chatCollapsed ? "展开创作对话" : "收起创作对话", chatCollapsed ? "Expand creation chat" : "Collapse creation chat")} title={text(chatCollapsed ? "展开创作对话" : "收起创作对话", chatCollapsed ? "Expand creation chat" : "Collapse creation chat")} onClick={() => setChatCollapsed(value => !value)}>{chatCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}</button><button aria-label={text("刷新项目", "Refresh project")} onClick={() => void refreshContent().catch(notify)}><RefreshCw size={15} /></button></header>
+      <aside className="cw-chat"><header><div className="cw-chat-heading"><strong title={title}>{title}</strong></div><button aria-label={text("刷新项目", "Refresh project")} onClick={() => void refreshContent().catch(notify)}><RefreshCw size={15} /></button><button className="cw-chat-toggle" aria-expanded={!chatCollapsed} aria-label={text("收起创作对话", "Collapse creation chat")} onClick={() => setChatCollapsed(true)}><PanelLeftClose size={16} /></button></header>
         <ConversationViewport key={sessionId || projectId} scrollRef={conversation} changeKey={`${messages.items[0]?.id}:${messages.items.at(-1)?.id}:${messages.items.length}:${run?.id}:${run?.eventSequence}:${stepsOpen}`} visibilityKey={`${mobileTab}:${chatCollapsed}`} hasNewer={messages.hasNewer} onLatest={latestMessages} zh={zh}>
           {loading && <p role="status">{text("正在读取项目…", "Loading project…")}</p>}
           {messages.nextCursor && <button disabled={moreBusy} onClick={more}>{text("更早的对话", "Earlier messages")}</button>}
           {messages.items.length >= 100 && <button onClick={latestMessages}>{text("回到最新对话", "Return to latest messages")}</button>}
           {!loading && !messages.items.length && <div className="cw-chat-welcome"><span>AI</span><h2>{text("从一个想法开始", "Start with an idea")}</h2><p>{text("告诉我创作主题、用途和需要保留的准确文案。", "Describe the topic, purpose and exact copy to include.")}</p></div>}
-          {messages.items.map(message => <article key={message.id} data-message-id={message.id} className={`cw-message is-${message.role}`}><small>{message.role === "user" ? text("你", "You") : text("创作助手", "Creation assistant")}</small><p>{message.text}</p><MessageReferenceAssets references={message.references} zh={zh} />{(Array.isArray(message.references) ? message.references : []).filter(item => item.type === "export").map(item => <a key={item.exportId} href={`/api/creation/exports/${encodeURIComponent(item.exportId)}/download`}>{text("下载", "Download")} {item.format.toUpperCase()}</a>)}{(Array.isArray(message.references) ? message.references : []).filter(item => item.type === "outline").map(item => <button key={item.runId} onClick={() => openOutline(item.runId)}>{text("查看大纲", "Review outline")}</button>)}{(Array.isArray(message.references) ? message.references : []).filter(item => item.type === "artifact").map(item => <button key={item.artifactId} onClick={() => selectFile(item.artifactId, item.artifactId === fileId)}><FileImage size={15} />{text("打开作品", "Open artwork")} · V{item.revision}</button>)}</article>)}
+          {messages.items.map(message => <CreationMessage key={message.id} message={message} artifacts={project?.artifacts} projectKind={project?.kind} zh={zh} onWarm={warmCreationEditor} onOpen={(id, kind) => selectFile(id, id === fileId, kind)} onOutline={openOutline} />)}
           {run?.parentRunId && <button onClick={() => { setRunId(run.parentRunId); setRevision(value => value + 1); }}>{text("返回完整创作计划", "Back to workflow")}</button>}
-          {run && <section className="cw-task"><button className="cw-task-heading" aria-expanded={stepsOpen} onClick={() => setStepsOpen(value => !value)}>{active(run.status) ? <LoaderCircle size={15} className="animate-spin" /> : run.status === "succeeded" ? <Check size={15} /> : <Square size={14} />}<strong>{statusLabels[run.status]?.[zh ? 0 : 1]}</strong>{stepsOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</button>{stepsOpen && <ol>{run.steps.map(step => <li key={step.id} data-state={step.status}><span>{step.status === "succeeded" ? <Check size={13} /> : step.position + 1}</span><div>{step.explanation}{step.result?.childRunId && <button onClick={() => { setRunId(step.result.childRunId); setRevision(value => value + 1); }}>{text("查看子任务", "View task")}</button>}<small>{step.status === "blocked" ? text("等待前序步骤", "Waiting for prior steps") : statusLabels[step.status]?.[zh ? 0 : 1] || text("等待处理", "Pending")}</small></div></li>)}</ol>}{run.errorCode && <p>{creationError({ code: run.errorCode }, zh)}</p>}{active(run.status) ? <button disabled={busy || run.status === "cancelling"} onClick={() => act("cancel")}><Square size={13} />{text("停止后续步骤", "Stop subsequent steps")}</button> : ["failed", "awaiting_budget", "awaiting_input"].includes(run.status) && <div className="cw-run-actions"><label>{text("任务总预算", "Total task budget")}<input type="number" min={run.committedCredits} max={200000} value={budget || run.maxCredits} onChange={event => setBudget(event.target.value)} /></label><button disabled={busy} onClick={() => run.errorCode === "CREATION_OUTLINE_CONFIRMATION_REQUIRED" ? openOutline(run.kind === "agent" ? run.steps.find(step => step.status !== "succeeded" && step.result?.childRunId)?.result.childRunId : run.id) : act("resume")}>{text(run.errorCode === "CREATION_OUTLINE_CONFIRMATION_REQUIRED" ? "检查并确认大纲" : run.errorCode === "CREATION_AGENT_PLAN_CONFIRMATION_REQUIRED" ? "确认计划并执行" : run.status === "failed" ? "重试失败步骤" : "继续任务", run.errorCode === "CREATION_OUTLINE_CONFIRMATION_REQUIRED" ? "Review outline" : run.errorCode === "CREATION_AGENT_PLAN_CONFIRMATION_REQUIRED" ? "Confirm plan and execute" : run.status === "failed" ? "Retry failed step" : "Continue task")}</button><button disabled={busy} onClick={() => act("cancel")}>{text("取消任务", "Cancel task")}</button></div>}</section>}
+          {run && <div id="creation-task-details"><CreationTaskStatus run={run} expanded={stepsOpen} onToggle={() => setStepsOpen(value => !value)} zh={zh} busy={busy} budget={budget} onBudget={setBudget} onCancel={() => act("cancel")} onResume={() => act("resume")} onChild={id => { setRunId(id); setRevision(value => value + 1); }} onReview={() => openOutline(run.kind === "agent" ? run.steps.find(step => step.status !== "succeeded" && step.result?.childRunId)?.result.childRunId : run.id)} /></div>}
         </ConversationViewport>
         {(error || observed.error) && <div className="cw-error" role="alert">{creationError(error || observed.error, zh)}{!project && <button onClick={() => setRevision(value => value + 1)}>{text("重试", "Retry")}</button>}</div>}
+        <RunStatusStrip run={run} error={observed.error} zh={zh} onRefresh={() => setRevision(value => value + 1)} onDetails={() => { setStepsOpen(true); workspaceRoot.current?.querySelector("#creation-task-details")?.scrollIntoView({ block: "nearest" }); }} />
         <form className="cw-composer" onSubmit={send}>
+          {assetIds.length > 0 && <ReferenceAssets value={assetIds} onChange={setAssetIds} disabled={busy || Boolean(pending) || loading} hidePicker zh={zh} />}
           {reference && <div className="cw-reference-chip"><FileImage size={13} /><span>{reference.label}</span><button type="button" disabled={busy || Boolean(pending)} aria-label={text("取消引用", "Remove reference")} onClick={() => setReference(null)}><X size={13} /></button></div>}
           <AutoGrowTextarea aria-label={text("创作需求", "Creation request")} value={prompt} maxLength={12000} disabled={busy || Boolean(pending)} onChange={event => setPrompt(event.target.value)} placeholder={text(reference ? "描述要修改的内容…" : "描述你想创作的内容…", reference ? "Describe the changes…" : "Describe what you want to create…")} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing && event.nativeEvent.keyCode !== 229) { event.preventDefault(); if (!event.repeat) event.currentTarget.form.requestSubmit(); } }} />
           <div className="cw-composer-actions">
+            <button type="button" aria-label={text("添加参考文档", "Add reference documents")} title={text("添加参考文档", "Add reference documents")} aria-expanded={attachmentsOpen} onClick={() => setAttachmentsOpen(value => !value)}><Paperclip size={16} />{referenceIds.length > 0 && <small>{referenceIds.length}</small>}</button>
+            <ReferenceAssets value={assetIds} onChange={setAssetIds} disabled={busy || Boolean(pending) || loading} compact zh={zh} />
             {caps?.agent && <button type="button" aria-pressed={agentMode} disabled={busy || Boolean(pending) || Boolean(occupied)} onClick={() => setAgentMode(value => !value)}>{text("多步创作", "Multi-step")}</button>}
-            <button type="button" className="cw-composer-disclosure" aria-expanded={composerOptionsOpen} onClick={() => setComposerOptionsOpen(value => !value)}><ChevronDown size={14} />{text("素材与参数", "Materials and options")}{(assetIds.length || referenceIds.length) > 0 && <span>{assetIds.length + referenceIds.length}</span>}</button>
+            <button type="button" className="cw-composer-disclosure" aria-label={text("创作设置", "Creation settings")} title={text("创作设置", "Creation settings")} aria-expanded={composerOptionsOpen} onClick={() => setComposerOptionsOpen(value => !value)}><SlidersHorizontal size={15} /></button>
             <span className="cw-composer-cost">{caps?.languageUnitCost == null ? "—" : `${estimated} ${text("积分", "credits")}`}</span>
             <button className="cw-send" aria-label={text(pending ? "恢复上次提交" : "开始创作", pending ? "Recover submission" : "Start creation")} disabled={busy || loading || !pending && (!enabled || !prompt.trim() || Boolean(occupied))}>{busy ? <LoaderCircle size={18} className="animate-spin" /> : pending ? <RefreshCw size={18} /> : <ArrowUp size={18} />}</button>
           </div>
-          {composerOptionsOpen && <div className="cw-composer-advanced">
-            <ReferenceAssets value={assetIds} onChange={setAssetIds} disabled={busy || Boolean(pending) || loading} zh={zh} />
+          {attachmentsOpen && <div className="cw-composer-advanced">
             <ReferenceFiles sessionId={sessionId} value={referenceIds} onChange={setReferenceIds} disabled={busy || Boolean(pending) || loading} zh={zh} onError={notify} />
+          </div>}
+          {composerOptionsOpen && <div className="cw-composer-advanced">
             {imageChoice && <label className="cw-poster-image-choice" title={text("先生成视觉素材，再排版可编辑文字；最多使用前两张参考图。选择八张素材时使用已有素材排版。", "Generate artwork, then lay out editable text. Uses the first two reference images. Eight selected assets use existing artwork only.")}><input type="checkbox" checked={withImage} disabled={busy || Boolean(pending) || assetIds.length >= 8} onChange={event => setGenerateImage(event.target.checked)} />{text("AI 配图", "AI artwork")} · {imageChoice.expectedCost} {text("积分", "credits")}</label>}
             <div className="cw-composer-options">{!reference && !useAgent && <>{["poster", "slides"].includes(kind) && <select aria-label={text("画板尺寸", "Page dimensions")} disabled={busy || Boolean(pending)} value={ratio} onChange={event => setRatio(event.target.value)}><option value="1080x1440">3:4</option><option value="1080x1080">1:1</option><option value="1920x1080">16:9</option><option value="1080x1920">9:16</option></select>}{["slides", "web"].includes(kind) && <label><input aria-label={text("页数", "Page count")} type="number" min={1} max={kind === "web" ? 20 : 100} value={pages} disabled={busy || Boolean(pending)} onChange={event => setPages(Math.min(kind === "web" ? 20 : 100, Math.max(1, Number(event.target.value) || 1)))} />{text("页", "pages")}</label>}{kind === "document" && <label>{text("章节数", "Sections")}<input aria-label={text("章节数", "Section count")} type="number" min={1} max={50} value={sectionCount} disabled={busy || Boolean(pending)} onChange={event => setSectionCount(Math.min(50, Math.max(1, Number(event.target.value) || 1)))} /></label>}{kind === "sheet" && <><label>{text("工作表", "Sheets")}<input aria-label={text("工作表数量", "Sheet count")} type="number" min={1} max={5} value={sheetCount} disabled={busy || Boolean(pending)} onChange={event => setSheetCount(Math.min(5, Math.max(1, Number(event.target.value) || 1)))} /></label><label>{text("目标行数", "Target rows")}<input aria-label={text("目标行数", "Target rows")} type="number" min={1} max={500} value={targetRows} disabled={busy || Boolean(pending)} onChange={event => setTargetRows(Math.min(500, Math.max(1, Number(event.target.value) || 1)))} /></label></>}</>}</div>
           </div>}
           <small>{pending ? text("上次提交尚未确认，点击恢复即可核对同一任务。", "The last submission is unconfirmed. Recover it to check the same task.") : reference ? text("提交前会先保存当前修改。", "Current edits are saved before sending.") : !enabled && !loading ? text("此类型暂未开放新创作，已有作品仍可打开。", "New creation is unavailable. Existing artwork remains accessible.") : text("Enter 发送 · Shift+Enter 换行", "Enter to send · Shift+Enter for a new line")}</small>
         </form>
       </aside>
-      <div className="cw-work-area"><div className="cw-file-tools">{chatCollapsed && <button className="cw-chat-toggle" aria-expanded={false} aria-label={text("展开创作对话", "Expand creation chat")} title={text("展开创作对话", "Expand creation chat")} onClick={() => setChatCollapsed(false)}><MessageSquare size={16} /><span>{text("展开对话", "Show chat")}</span></button>}<button aria-expanded={treeOpen} aria-label={text(treeOpen ? "收起文件列表" : "展开文件列表", treeOpen ? "Collapse files" : "Expand files")} onClick={() => setTreeOpen(!treeOpen)}>{treeOpen ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}</button><span>{text("项目文件", "Project files")}</span></div><div className="cw-file-body">
-        {treeOpen && project && <ProjectFiles key={`${projectId}:${filesEpoch}`} project={project} fileId={fileId} onSelect={selectFile} onImported={refreshContent} zh={zh} />}
-        <main className="cw-artwork-area">{updatedFile && <div className="cw-error" role="status"><span>{text("生成结果已保存", "The result has been saved")}</span><button onClick={() => selectFile(updatedFile, updatedFile === fileId)}>{text("打开最新作品", "Open latest artwork")}</button><button aria-label={text("关闭提示", "Dismiss")} onClick={() => setUpdatedFile(null)}><X size={13} /></button></div>}
+      <div className="cw-work-area"><div className="cw-file-tools">{chatCollapsed && <button aria-label={text("展开创作对话", "Expand creation chat")} onClick={() => setChatCollapsed(false)}><MessageSquare size={15} /></button>}<button aria-expanded={treeOpen} aria-label={text(treeOpen ? "收起文件列表" : "展开文件列表", treeOpen ? "Collapse files" : "Expand files")} onClick={() => setTreeOpen(!treeOpen)}>{treeOpen ? <PanelLeftClose size={15} /> : <PanelLeftOpen size={15} />}</button></div><div className="cw-file-body">
+        {treeOpen && project && <ProjectFiles key={projectId} resources={resources} project={project} onWarm={warmCreationEditor} fileId={fileId} onSelect={selectFile} onImported={refreshContent} zh={zh} />}
+        <main className="cw-artwork-area">{updatedFile && (updatedFile !== fileId || !["slides", "poster"].includes(fileKind)) && <div className="cw-error" role="status"><span>{text("生成结果已保存", "The result has been saved")}</span><button onClick={() => selectFile(updatedFile, updatedFile === fileId)}>{text("打开最新作品", "Open latest artwork")}</button><button aria-label={text("关闭提示", "Dismiss")} onClick={() => setUpdatedFile(null)}><X size={13} /></button></div>}
           {outlineRunId && <Suspense fallback={<div className="cw-loading" role="status">{text("正在打开大纲…", "Opening outline…")}</div>}><OutlineReview editorRef={outlineEditor} key={outlineRunId} userId={userId} runId={outlineRunId} zh={zh} onConfirmed={outlineConfirmed} onClose={closeOutline} /></Suspense>}
-          <div className="cw-artwork-content" style={{ display: outlineRunId ? "none" : "flex" }}>{fileId ? fileKind ? <Suspense fallback={<div className="cw-loading" role="status">{text("正在打开作品…", "Opening artwork…")}</div>}><ArtifactEditor kind={fileKind} key={`${fileId}:${editorEpoch}`} artifactId={fileId} userId={userId} zh={zh} editorRef={editor} onError={notify} onReference={value => { if (!busy && !pending) { setReference({ ...value, artifactId: fileId }); setChatCollapsed(false); setMobileTab("chat"); } }} onArtifactCreated={() => void refreshContent().catch(notify)} onOpenArtifact={selectFile} /></Suspense> : <div className="cw-loading" role="status">{text("正在读取作品格式…", "Reading artwork format…")}</div> : <div className="cw-empty-artwork"><FileImage size={40} strokeWidth={1} /><h2>{text("你的作品会在这里呈现", "Your artwork will appear here")}</h2><p>{text("在左侧描述需求，生成后即可预览和编辑。", "Describe your idea in the conversation, then preview and edit the result here.")}</p></div>}</div>
+          <div className="cw-artwork-content" style={{ display: outlineRunId ? "none" : "flex" }}>{fileId ? fileKind ? <Suspense fallback={<div className="cw-loading" role="status">{text("正在打开作品…", "Opening artwork…")}</div>}><ArtifactEditor kind={fileKind} key={`${fileId}:${editorEpoch}`} artifactId={fileId} userId={userId} zh={zh} editorRef={editor} remoteRevision={publishedRevisions[fileId]} onResources={setResources} onError={notify} onReference={value => { if (!busy && !pending) { setReference({ ...value, artifactId: fileId }); setChatCollapsed(false); setMobileTab("chat"); } }} onArtifactCreated={() => void refreshContent().catch(notify)} onOpenArtifact={selectFile} /></Suspense> : <div className="cw-loading" role="status">{text("正在读取作品格式…", "Reading artwork format…")}</div> : <div className="cw-empty-artwork"><FileImage size={40} strokeWidth={1} /><h2>{text("你的作品会在这里呈现", "Your artwork will appear here")}</h2><p>{text("在左侧描述需求，生成后即可预览和编辑。", "Describe your idea in the conversation, then preview and edit the result here.")}</p></div>}</div>
         </main>
       </div></div>
     </WorkspaceSplit>

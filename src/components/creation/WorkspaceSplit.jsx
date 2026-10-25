@@ -2,20 +2,21 @@
 
 import { useEffect, useRef } from "react";
 
-const MIN = 300, MAX = 480, DEFAULT = 360;
+const MIN = 300, MAX = 640, DEFAULT = 380;
 export default function WorkspaceSplit({ userId, zh, children }) {
   const root = useRef(null), separator = useRef(null);
   useEffect(() => {
     const element = root.current, handle = separator.current, key = `creation-chat-width:${userId}`;
-    let width = DEFAULT, preferredWidth = DEFAULT, drag = null, frame = null, pendingWidth = null;
-    const max = () => Math.max(MIN, Math.min(MAX, element.getBoundingClientRect().width - 360));
+    let width = DEFAULT, preferredWidth = DEFAULT, customized = false, drag = null, frame = null, pendingWidth = null;
+    const max = () => Math.max(MIN, Math.min(MAX, element.getBoundingClientRect().width * 0.48));
+    const responsiveWidth = () => Math.max(MIN, Math.min(MAX, element.getBoundingClientRect().width * 0.29));
     function apply(value) {
       width = Math.round(Math.min(max(), Math.max(MIN, value)));
       element.style.setProperty("--cw-chat-width", `${width}px`);
       handle.setAttribute("aria-valuenow", String(width));
       handle.setAttribute("aria-valuemax", String(max()));
     }
-    function persist() { preferredWidth = width; try { sessionStorage.setItem(key, String(width)); } catch { /* This preference is optional. */ } }
+    function persist() { customized = true; preferredWidth = width; try { sessionStorage.setItem(key, String(width)); } catch { /* This preference is optional. */ } }
     function cancelFrame() { if (frame !== null) cancelAnimationFrame(frame); frame = null; pendingWidth = null; }
     function finish(commit) {
       if (!drag) return;
@@ -46,10 +47,11 @@ export default function WorkspaceSplit({ userId, zh, children }) {
       if (next === undefined) return;
       event.preventDefault(); cancel(); apply(next); persist();
     };
-    const reset = () => { cancel(); apply(DEFAULT); persist(); };
-    try { const saved = Number(sessionStorage.getItem(key)); if (Number.isFinite(saved) && saved >= MIN && saved <= MAX) width = saved; } catch { /* Use the default. */ }
+    const reset = () => { cancel(); customized = false; apply(responsiveWidth()); try { sessionStorage.removeItem(key); } catch { /* Optional preference. */ } };
+    width = responsiveWidth();
+    try { const saved = Number(sessionStorage.getItem(key)); if (Number.isFinite(saved) && saved >= MIN && saved <= MAX) { width = saved; customized = true; } } catch { /* Use the default. */ }
     preferredWidth = width; apply(width);
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => { if (!drag) apply(preferredWidth); });
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => { if (!drag) apply(customized ? preferredWidth : responsiveWidth()); });
     observer?.observe(element);
     const listeners = { pointerdown: down, pointermove: move, pointerup: up, pointercancel: cancel, lostpointercapture: cancel, keydown: keyboard, dblclick: reset };
     for (const [type, callback] of Object.entries(listeners)) handle.addEventListener(type, callback);

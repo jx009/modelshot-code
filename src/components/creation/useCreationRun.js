@@ -17,6 +17,12 @@ export function useCreationRun(runId, onChange, refreshKey = 0) {
       clearTimeout(timer);
       if (!disposed && document.visibilityState !== "hidden" && running) timer = setTimeout(refresh, delay);
     }
+    function notified(delay) {
+      // Keep a notification received during a GET; its completion must not
+      // replace the immediate follow-up with the 20-second reconciliation timer.
+      if (reading) again = true;
+      else schedule(delay);
+    }
     function connect() {
       if (disposed || stream || !running || document.visibilityState === "hidden") return;
       stream = new EventSource(`/api/creation/runs/${encodeURIComponent(runId)}/events?after=${cursor}`);
@@ -25,12 +31,12 @@ export function useCreationRun(runId, onChange, refreshKey = 0) {
           const row = JSON.parse(event.data);
           if (Number.isInteger(row.sequence) && row.sequence > cursor) {
             cursor = row.sequence;
-            schedule(80);
+            notified(80);
           }
         } catch { closeStream(); schedule(2000); }
       });
-      stream.addEventListener("reset", () => { closeStream(); cursor = 0; schedule(0); });
-      stream.addEventListener("settled", () => { closeStream(); schedule(0); });
+      stream.addEventListener("reset", () => { closeStream(); cursor = 0; notified(0); });
+      stream.addEventListener("settled", () => { closeStream(); notified(0); });
       stream.onerror = () => {
         closeStream();
         schedule(retry + Math.floor(Math.random() * 500));
@@ -50,7 +56,9 @@ export function useCreationRun(runId, onChange, refreshKey = 0) {
         setState({ run, error: null });
         callback.current?.(run);
         retry = 2000;
-        if (running) connect(); else closeStream();
+        // A connected-but-silent SSE can miss a notification behind a proxy.
+        // Reconcile active jobs periodically; visibility/terminal states stop it.
+        if (running) { connect(); schedule(20000); } else { clearTimeout(timer); closeStream(); }
       } catch (error) {
         if (disposed || request.signal.aborted) return;
         setState(current => ({ ...current, error }));

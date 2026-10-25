@@ -13,7 +13,7 @@ vi.mock("../../src/components/creation/ReferenceAssets", () => ({ default: () =>
 vi.mock("../../src/components/creation/ProjectFiles", () => ({ default: () => null }));
 vi.mock("../../src/components/creation/CreationArtifactEditor", async () => {
   const { useImperativeHandle } = await import("react");
-  return { default: function Editor({ kind, editorRef, onReference }) {
+  return { warmCreationEditor: vi.fn(), default: function Editor({ kind, editorRef, onReference }) {
     useImperativeHandle(editorRef, () => ({ flush: mocks.flush }), []);
     return <button onClick={() => onReference(mocks.target)}>Select {kind} file</button>;
   } };

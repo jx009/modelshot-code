@@ -18,6 +18,7 @@ it("preserves application errors despite Error.name and distinguishes provider f
   for (const [error, code] of [
     [{ status: 429 }, "LANGUAGE_PROVIDER_RATE_LIMITED"], [{ status: 401 }, "LANGUAGE_PROVIDER_AUTH_FAILED"],
     [{ status: 503 }, "LANGUAGE_PROVIDER_UNAVAILABLE"], [{ status: 400 }, "LANGUAGE_PROVIDER_REQUEST_REJECTED"],
+    [{ status: 524 }, "LANGUAGE_PROVIDER_GATEWAY_TIMEOUT"], [{ status: 504 }, "LANGUAGE_PROVIDER_GATEWAY_TIMEOUT"],
     [{ name: "APIConnectionTimeoutError" }, "LANGUAGE_TIMEOUT"], [{ code: "ECONNRESET" }, "LANGUAGE_PROVIDER_CONNECTION_FAILED"],
   ]) expect(languageFailure(error)).toBe(code);
 });
@@ -28,6 +29,8 @@ it("logs bounded validation locations without model content, credentials or arbi
   expect(diagnostic.errorCode).toBe("HTML_UNSAFE_STYLE");
   expect(diagnostic.issues).toHaveLength(5);
   expect(JSON.stringify(diagnostic)).not.toContain("SECRET");
+  const gateway = languageFailureDiagnostic({ status: 524, languageTransport: { requestMode: "stream", elapsedMs: 125000, chunksReceived: 0, contentBytes: 0, prompt: "SECRET", firstChunkMs: -1 } });
+  expect(gateway).toEqual({ errorCode: "LANGUAGE_PROVIDER_GATEWAY_TIMEOUT", httpStatus: 524, requestMode: "stream", elapsedMs: 125000, chunksReceived: 0, contentBytes: 0 });
 });
 
 it("accepts an exact JSON fence but refuses truncated JSON, prose and non-object responses", () => {

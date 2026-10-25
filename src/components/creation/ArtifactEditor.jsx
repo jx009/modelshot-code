@@ -1,18 +1,23 @@
 "use client";
 
-import { lazy, Suspense, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useImperativeHandle, useRef, useState } from "react";
 import { useLayoutArtifact } from "./useLayoutArtifact";
+import { useLiveArtifactRevision } from "./useLiveArtifactRevision";
 import { usePendingTextDraft } from "./usePendingTextDraft";
 import { pendingTextOperations } from "@/lib/creation/client/pending-text";
 import TextDraftRecovery from "./TextDraftRecovery";
 import DraftSessionGate from "./DraftSessionGate";
-import HtmlEditor from "./editors/html/HtmlEditor";
+import HtmlSlideViewer from "./editors/html/HtmlSlideViewer";
+import { artifactResources } from "@/lib/creation/client/artifact-resources";
 import { api, requestKey } from "@/lib/client-api";
 import { invalidateProjectLists } from "@/lib/studio/project-list";
-import { History, Save, X, RotateCcw, Copy, Download } from "lucide-react";
+import { History, Save, X, RotateCcw, Copy, Download, Play, Pencil, BookOpen, Presentation } from "lucide-react";
 import "./creation.css";
+import "./workbench.css";
 
 const LayoutEditor = lazy(() => import("./editors/layout/LayoutEditor"));
+const HtmlEditor = lazy(() => import("./editors/html/HtmlEditor"));
+const HtmlSlidePresentation = lazy(() => import("./editors/html/HtmlSlidePresentation"));
 const ExportDialog = lazy(() => import("./ExportDialog"));
 const labels = {
   loading: ["正在打开作品…", "Opening artwork…"], saved: ["已保存", "Saved"],
@@ -21,15 +26,17 @@ const labels = {
   copying: ["正在保存本地副本…", "Saving a copy of your edits…"],
   error: ["保存或读取失败", "Save or load failed"],
 };
-export default function ArtifactEditor({ artifactId, userId, zh = true, onReference, onError, onArtifactCreated, editorRef }) {
+export default function ArtifactEditor({ artifactId, userId, zh = true, onReference, onError, onArtifactCreated, editorRef, remoteRevision, onResources }) {
   const [generation, setGeneration] = useState(0);
-  return <DraftSessionGate key={`${userId}:${artifactId}`} userId={userId} artifactId={artifactId} editorRef={editorRef} zh={zh}>{(draftSessionId, onDrafts) => <EditorSession key={`${userId}:${artifactId}:${generation}`} draftSessionId={draftSessionId} onDrafts={onDrafts} artifactId={artifactId} userId={userId} zh={zh} onReference={onReference} onError={onError} onArtifactCreated={onArtifactCreated} editorRef={editorRef} onReload={() => setGeneration(value => value + 1)} />}</DraftSessionGate>;
+  return <DraftSessionGate key={`${userId}:${artifactId}`} userId={userId} artifactId={artifactId} editorRef={editorRef} zh={zh}>{(draftSessionId, onDrafts) => <EditorSession key={`${userId}:${artifactId}:${generation}`} draftSessionId={draftSessionId} onDrafts={onDrafts} artifactId={artifactId} userId={userId} zh={zh} onReference={onReference} onError={onError} onArtifactCreated={onArtifactCreated} editorRef={editorRef} remoteRevision={remoteRevision} onResources={onResources} onReload={() => setGeneration(value => value + 1)} />}</DraftSessionGate>;
 }
-function EditorSession({ artifactId, userId, draftSessionId, onDrafts, zh, onReference, onError, onArtifactCreated, editorRef, onReload }) {
+function EditorSession({ artifactId, userId, draftSessionId, onDrafts, zh, onReference, onError, onArtifactCreated, editorRef, onReload, remoteRevision, onResources }) {
   const editor = useLayoutArtifact(userId, artifactId, draftSessionId);
   const textDraft = usePendingTextDraft(userId, artifactId, editor.persistLocal, draftSessionId);
   const layout = useRef(null), save = editor.flush;
   const [pendingText, setPendingText] = useState(false);
+  const [editing, setEditing] = useState(false), [selectedPage, setSelectedPage] = useState(null), [presenting, setPresenting] = useState(null), [switching, setSwitching] = useState(false);
+  const modeGate = useRef(false);
   const persistText = textDraft.flush, textReady = textDraft.ready, recovery = textDraft.recovery;
   const flush = useCallback(async () => {
     if (!textReady || recovery) throw new Error("TEXT_DRAFT_REVIEW_REQUIRED");
@@ -46,7 +53,29 @@ function EditorSession({ artifactId, userId, draftSessionId, onDrafts, zh, onRef
   const [history, setHistory] = useState(null), [historyError, setHistoryError] = useState(null), [restoring, setRestoring] = useState(false);
   const [copyNotice, setCopyNotice] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const root = useRef(null), interacting = useRef(false), nativeDrag = useRef(false), syncState = useRef(null);
+  useLayoutEffect(() => { syncState.current = { textReady, recovery, restoring, exportOpen, history, presenting, switching }; });
+  useEffect(() => {
+    const release = () => { interacting.current = false; };
+    const releaseDrag = () => { release(); nativeDrag.current = false; };
+    window.addEventListener("pointerup", release); window.addEventListener("pointercancel", release); window.addEventListener("blur", release);
+    window.addEventListener("dragend", releaseDrag); window.addEventListener("drop", releaseDrag); window.addEventListener("blur", releaseDrag);
+    return () => { window.removeEventListener("pointerup", release); window.removeEventListener("pointercancel", release); window.removeEventListener("blur", release); window.removeEventListener("dragend", releaseDrag); window.removeEventListener("drop", releaseDrag); window.removeEventListener("blur", releaseDrag); };
+  }, []);
+  const snapshotText = textDraft.snapshot;
+  const canApplyRemote = useCallback(() => {
+    const state = syncState.current, focused = document.activeElement;
+    return Boolean(document.visibilityState !== "hidden" && state?.textReady && !state.recovery && !state.restoring && !state.exportOpen && !state.history && !state.presenting && !state.switching
+      && !interacting.current && !nativeDrag.current && !snapshotText() && layout.current?.canRefreshRemote?.()
+      && !(root.current?.contains(focused) && focused?.matches("input, textarea, select, [contenteditable]")));
+  }, [snapshotText]);
+  useLiveArtifactRevision({ target: remoteRevision, revision: editor.revision, ready: editor.ready && textReady && !recovery, status: editor.status, refreshRemote: editor.refreshRemote, canApply: canApplyRemote });
   const text = (cn, en) => zh ? cn : en;
+  useEffect(() => {
+    if (!editor.ready || !editor.content || !onResources) return;
+    const timer = setTimeout(() => onResources(artifactResources(artifactId, editor.content)), 120);
+    return () => clearTimeout(timer);
+  }, [artifactId, editor.content, editor.ready, onResources]);
   const change = editor.change;
   const apply = useCallback(operations => { try { return change(operations); } catch (error) { onError?.(error); return false; } }, [change, onError]);
   async function saveCopy() {
@@ -95,16 +124,35 @@ function EditorSession({ artifactId, userId, draftSessionId, onDrafts, zh, onRef
     } catch (error) { onError?.(error); }
     finally { setRestoring(false); }
   }
+  const htmlSlides = editor.content?.kind === "slides" && editor.content?.schemaVersion === 3;
+  async function switchMode(next, pageId) {
+    if (modeGate.current) return;
+    modeGate.current = true; setSwitching(true);
+    try {
+      if (editing) await flush();
+      if (pageId) setSelectedPage(pageId);
+      setEditing(next);
+    } catch (error) { onError?.(error); }
+    finally { modeGate.current = false; setSwitching(false); }
+  }
+  async function present() {
+    if (modeGate.current) return;
+    modeGate.current = true; setSwitching(true);
+    try { const saved = await flush(); setPresenting(saved.content); }
+    catch (error) { onError?.(error); }
+    finally { modeGate.current = false; setSwitching(false); }
+  }
   const baseReadOnly = ["loading", "conflict", "copying"].includes(editor.status) || !editor.ready || restoring;
-  const readOnly = baseReadOnly || !textReady || Boolean(recovery);
+  const readOnly = baseReadOnly || !textReady || Boolean(recovery) || switching;
   const ActiveEditor = editor.content?.schemaVersion === 3 ? HtmlEditor : LayoutEditor;
-  return <section className="cw-artifact" aria-label={text("作品编辑区", "Artwork editor")}>
+  return <section ref={root} onPointerDownCapture={() => { interacting.current = true; }} onDragStartCapture={() => { nativeDrag.current = true; }} onDragEndCapture={() => { interacting.current = false; nativeDrag.current = false; }} onDropCapture={() => { interacting.current = false; nativeDrag.current = false; }} className="cw-artifact" aria-label={text("作品编辑区", "Artwork editor")}>
     <header className="cw-artifact-bar">
-      <div><strong>{editor.content?.title || text("作品", "Artwork")}</strong>{editor.revision && <span>V{editor.revision}</span>}</div>
-      <span role="status" className="cw-save-state">{recovery ? text("有待恢复文字", "Text recovery needed") : pendingText ? text("文字尚未保存", "Text not yet saved") : labels[editor.status]?.[zh ? 0 : 1]}</span>
-      <button disabled={readOnly} title={text("保存作品", "Save artwork")} onClick={() => void flush().catch(error => onError?.(error))}><Save size={15} /><span>{text("保存", "Save")}</span></button>
+      <div>{htmlSlides && <Presentation size={17} className="cw-ppt-icon" />}<strong title={editor.content?.title}>{htmlSlides && <span className="cw-view-label">{text(editing ? "正在编辑 " : "正在浏览 ", editing ? "Editing " : "Viewing ")}</span>}{editor.content?.title || text("作品", "Artwork")}</strong>{editor.revision && <span>V{editor.revision}</span>}</div>
+      <span role="status" className="cw-save-state">{recovery ? text("有待恢复文字", "Text recovery needed") : pendingText ? text("文字尚未保存", "Text not yet saved") : editor.status === "saved" && remoteRevision > editor.revision ? text("有新版本，空闲时自动同步", "New version; syncing when idle") : labels[editor.status]?.[zh ? 0 : 1]}</span>
+      {htmlSlides && <><button disabled={readOnly} aria-label={text("演示", "Present")} onPointerEnter={() => { void import("./editors/html/HtmlSlidePresentation").catch(() => {}); }} onClick={present}><Play size={15} /><span>{text("演示", "Present")}</span></button><button disabled={switching || !editor.content} aria-label={text(editing ? "浏览" : "编辑", editing ? "Browse" : "Edit")} aria-pressed={editing} onPointerEnter={() => { void import("./editors/html/HtmlEditor").catch(() => {}); }} onClick={() => void switchMode(!editing)}>{editing ? <BookOpen size={15} /> : <Pencil size={15} />}<span>{text(editing ? "浏览" : "编辑", editing ? "Browse" : "Edit")}</span></button></>}
+      {(!htmlSlides || editing) && <button disabled={readOnly} title={text("保存作品", "Save artwork")} onClick={() => void flush().catch(error => onError?.(error))}><Save size={15} /><span>{text("保存", "Save")}</span></button>}
       <button title={text("版本历史", "Version history")} onClick={showHistory}><History size={15} /><span>{text("版本", "Versions")}</span></button>
-      <button disabled={readOnly} onClick={() => void flush().then(onDrafts).catch(error => onError?.(error))}>{text("本地草稿", "Local drafts")}</button>
+      {(!htmlSlides || editing) && <button disabled={readOnly} onClick={() => void flush().then(onDrafts).catch(error => onError?.(error))}>{text("本地草稿", "Local drafts")}</button>}
       {editor.content && <button title={text("导出作品", "Export artwork")} onClick={() => setExportOpen(true)}><Download size={15} /><span>{text("导出", "Export")}</span></button>}
     </header>
     {editor.error && <div role="alert" className="cw-error">{text("操作未能完成，当前修改会保留。", "The operation could not finish. Your edits are retained.")}{editor.status !== "conflict" && <button onClick={editor.retry}>{text("重试", "Retry")}</button>}</div>}
@@ -113,9 +161,10 @@ function EditorSession({ artifactId, userId, draftSessionId, onDrafts, zh, onRef
     {["conflict", "copying"].includes(editor.status) && <div role="alert" className="cw-error"><span>{text("这份作品已在其他位置更新。保存本地副本后，将打开原作品的最新版本。", "This artwork changed elsewhere. Save your edits as a separate copy, then open the latest original.")}</span><button disabled={editor.status === "copying"} onClick={saveCopy}><Copy size={15} />{text("保留修改为副本", "Keep edits as a copy")}</button></div>}
     {copyNotice && <div role="status" className="cw-error">{text("本地修改已另存为项目中的新作品，当前显示原作品的最新版本。", "Your edits are saved as a new artwork in this project. You are viewing the latest original.")}<button aria-label={text("关闭提示", "Dismiss")} onClick={() => setCopyNotice(false)}><X size={14} /></button></div>}
     {editor.content ? <Suspense fallback={<div className="cw-loading" role="status">{text("正在加载编辑器…", "Loading editor…")}</div>}>
-      <ActiveEditor controllerRef={layout} getContent={editor.getContent} onPendingChange={setPendingText} onDraftChange={textDraft.change} onFlush={flush} onError={onError} content={editor.content} onOperations={apply} onUndo={() => { try { editor.undo(); } catch (error) { onError?.(error); } }} onRedo={() => { try { editor.redo(); } catch (error) { onError?.(error); } }} canUndo={editor.undoCount > 0} canRedo={editor.redoCount > 0} readOnly={readOnly} zh={zh} onReference={onReference} />
+      {htmlSlides && !editing ? <HtmlSlideViewer controllerRef={layout} content={editor.content} onOperations={apply} onError={onError} onEdit={id => void switchMode(true, id)} onPage={setSelectedPage} initialPageId={selectedPage} readOnly={readOnly} zh={zh} /> : <ActiveEditor initialPageId={selectedPage} onPageChange={setSelectedPage} controllerRef={layout} getContent={editor.getContent} onPendingChange={setPendingText} onDraftChange={textDraft.change} onFlush={flush} onError={onError} content={editor.content} onOperations={apply} onUndo={() => { try { editor.undo(); } catch (error) { onError?.(error); } }} onRedo={() => { try { editor.redo(); } catch (error) { onError?.(error); } }} canUndo={editor.undoCount > 0} canRedo={editor.redoCount > 0} readOnly={readOnly} zh={zh} onReference={onReference} />}
     </Suspense> : <div className="cw-loading" role="status">{labels[editor.status]?.[zh ? 0 : 1]}</div>}
     {exportOpen && <Suspense fallback={<div role="status" className="cw-error">{text("正在打开导出面板…", "Opening export panel…")}</div>}><ExportDialog artifactId={artifactId} userId={userId} kind={editor.content?.kind} sourceSchemaVersion={editor.content?.schemaVersion} onFlush={flush} onClose={() => setExportOpen(false)} zh={zh} /></Suspense>}
+    {presenting && <Suspense fallback={<div role="status" className="cw-error">{text("正在打开演示…", "Opening presentation…")}</div>}><HtmlSlidePresentation content={presenting} startPageId={selectedPage} zh={zh} onClose={() => setPresenting(null)} /></Suspense>}
     {history && <aside className="cw-version-panel" aria-label={text("版本历史", "Version history")}>
       <header><strong>{text("版本历史", "Version history")}</strong><button aria-label={text("关闭版本历史", "Close history")} onClick={() => setHistory(null)}><X size={16} /></button></header>
       <p>{text("恢复会创建一个新版本，已有历史仍然保留。", "Restore creates a new version and keeps the existing history.")}</p>

@@ -17,7 +17,11 @@ export default function DraftSessionGate({ userId, artifactId, editorRef, zh, ch
     let alive = true;
     async function load() {
       try {
-        const remembered = rememberedDraftSession(userId, artifactId), sessionId = remembered || creationDraftSession(), result = await listArtifactDraftSessions(userId, artifactId, sessionId);
+        const remembered = rememberedDraftSession(userId, artifactId), sessionId = remembered || creationDraftSession();
+        // An already chosen session still reads its own operation/text journals
+        // in the editor. Listing every other branch need not delay reopening it.
+        if (remembered && !forcePicker) { if (alive) setState({ loading: false, sessionId, items: [], ready: true, error: null }); return; }
+        const result = await listArtifactDraftSessions(userId, artifactId, sessionId);
         if (!alive) return;
         const ready = !forcePicker && (result.own || remembered || result.items.length === 0);
         if (ready) rememberDraftSession(userId, artifactId, sessionId);
@@ -50,6 +54,7 @@ export default function DraftSessionGate({ userId, artifactId, editorRef, zh, ch
   }
   const openPicker = () => { setForcePicker(true); setState(value => ({ ...value, ready: false, loading: true })); setAttempt(value => value + 1); };
   if (state.ready) return children(state.sessionId, openPicker);
+  if (state.loading) return <div className="cw-loading" role="status"><PendingEditorHandle editorRef={editorRef} />{text("正在读取作品与本地修改…", "Opening artwork and local edits…")}</div>;
   return <section className="cw-local-drafts" aria-label={text("本地草稿恢复", "Local draft recovery")}>
     <PendingEditorHandle editorRef={editorRef} />
     <h3>{text("这台设备上的未同步草稿", "Unsynced drafts on this device")}</h3>

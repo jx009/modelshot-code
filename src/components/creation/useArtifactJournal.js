@@ -6,6 +6,7 @@ import { assertLayoutJournalCapacity, nextLayoutOperationBatch } from "@/lib/cre
 import { readArtifactDraft, writeArtifactDraft } from "@/lib/creation/client/drafts";
 import { invalidateProjectLists } from "@/lib/studio/project-list";
 import { useEditorReadiness } from "./useEditorReadiness";
+import { reconcileArtwork } from "@/lib/creation/client/reconcile-artwork";
 
 function draftOf(current) {
   return { baseRevision: current.baseRevision, content: current.content, operations: [...current.operations], inflight: current.inflight, copyRequest: current.copyRequest || null, restoreRequest: current.restoreRequest || null };
@@ -61,12 +62,38 @@ export function useArtifactJournal(userId, artifactId, draftSessionId, codec) {
     }).finally(() => { current.saving = null; });
     return current.saving;
   }, [paint, persist, codec]);
+  const refreshRemote = useCallback(async (minimumRevision, { canApply = () => true, signal } = {}) => {
+    const current = model.current, epoch = generation.current;
+    const clean = () => model.current === current && epoch === generation.current && !signal?.aborted
+      && current?.status === "saved" && !current.saving && !current.operations.length
+      && !current.inflight && !current.copyRequest && !current.restoreRequest && canApply();
+    if (!current || !Number.isInteger(minimumRevision)) return false;
+    if (current.baseRevision >= minimumRevision) return true;
+    if (!clean()) return false;
+    const baseRevision = current.baseRevision, content = current.content;
+    const remote = await api(codec.readPath(current.artifactId), { signal, timeoutMs: 30000 });
+    // Edits, saves, another refresh, or a new editor session may have arrived
+    // while this GET was pending. Never replace their state with this response.
+    if (!clean() || current.baseRevision !== baseRevision || current.content !== content) return false;
+    if (!Number.isInteger(remote.revision) || remote.revision < minimumRevision || !remote.content) return false;
+    current.content = reconcileArtwork(current.content, remote.content); current.baseRevision = remote.revision;
+    current.past = []; current.future = []; current.error = null;
+    paint();
+    // No await between the final guard and replacing the clean snapshot. Draft
+    // persistence is serialized separately and must not block cloud updates.
+    void persist().catch(() => {});
+    return true;
+  }, [codec, paint, persist]);
   useEffect(() => {
     const epoch = ++generation.current, abort = new AbortController();
     model.current = null;
     setReady(false);
     if (!userId || !artifactId) return () => abort.abort();
     async function load() {
+      // Overlap cloud I/O with local recovery reads. If recovery performs a
+      // write, discard this speculative snapshot and read the committed result.
+      const openingRead = api(codec.readPath(artifactId), { signal: abort.signal }).then(value => ({ value }), error => ({ error }));
+      let recoveredWrite = false;
       let draft;
       try { draft = await readArtifactDraft(userId, artifactId, draftSessionId); }
       catch (error) {
@@ -78,6 +105,7 @@ export function useArtifactJournal(userId, artifactId, draftSessionId, codec) {
       }
       if (abort.signal.aborted) return;
       if (draft?.restoreRequest) {
+        recoveredWrite = true;
         if (!codec.restorePath) throw new Error("ARTIFACT_FORMAT_UNSUPPORTED");
         // A lost response is retried with the persisted exact key, including
         // after remount. Do not create a second restore revision.
@@ -91,13 +119,16 @@ export function useArtifactJournal(userId, artifactId, draftSessionId, codec) {
       }
       if (draft?.content) setView({ identity: `${userId}:${artifactId}`, content: draft.content, revision: draft.baseRevision, status: "loading", error: null, undo: 0, redo: 0 });
       if (draft?.inflight && !draft.copyRequest) {
+        recoveredWrite = true;
         try {
           const saved = await api(codec.savePath(artifactId), { method: codec.saveMethod, body: draft.inflight, signal: abort.signal });
           draft = { ...draft, baseRevision: saved.revision, operations: draft.operations.slice(draft.inflight.operations.length), inflight: null };
           await writeArtifactDraft(userId, artifactId, draft, draftSessionId);
         } catch (error) { if (abort.signal.aborted) return; if (error.code !== "ARTIFACT_VERSION_CONFLICT") throw error; }
       }
-      const remote = await api(codec.readPath(artifactId), { signal: abort.signal });
+      const opening = recoveredWrite ? { value: await api(codec.readPath(artifactId), { signal: abort.signal }) } : await openingRead;
+      if (opening.error) throw opening.error;
+      const remote = opening.value;
       if (abort.signal.aborted || epoch !== generation.current) return;
       const dirty = Boolean(draft?.operations?.length || draft?.inflight || draft?.copyRequest);
       const conflict = dirty && (Boolean(draft.copyRequest) || draft.baseRevision !== remote.revision);
@@ -236,5 +267,5 @@ export function useArtifactJournal(userId, artifactId, draftSessionId, codec) {
     return () => window.removeEventListener("beforeunload", beforeUnload);
   }, [visible.unsaved, persist]);
   const getContent = useCallback(() => model.current?.content, []);
-  return { ...visible, ready: Boolean(visible.ready && sessionReady), undoCount: visible.undo, redoCount: visible.redo, change, undo, redo, flush, persistLocal: persist, retry, saveConflictCopy, restoreRevision, getContent };
+  return { ...visible, ready: Boolean(visible.ready && sessionReady), undoCount: visible.undo, redoCount: visible.redo, change, undo, redo, flush, refreshRemote, persistLocal: persist, retry, saveConflictCopy, restoreRevision, getContent };
 }

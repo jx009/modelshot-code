@@ -9,6 +9,7 @@ import Link from "@/components/ui/NavigationLink";
 import CreationWorkspace from "./CreationWorkspace";
 import "./creation.css";
 import "./workspace-density.css";
+import "./workbench.css";
 
 function Page() {
   const query = useSearchParams(), zh = useLocale() === "zh", auth = useAuth(), { data: session, status } = useSession();

@@ -24,10 +24,10 @@ import Link from "@/components/ui/NavigationLink";
 import { ArrowUp, ArrowUpRight, MessageCircle, ShoppingBag, ImagePlus, Image as ImageIcon, PanelsTopLeft, Presentation, FileText, Table2, Globe2, WandSparkles, X, Type, LoaderCircle } from "lucide-react";
 import ModelPicker from "@/components/ui/ModelPicker";
 import ImageSizePicker from "@/components/ui/ImageSizePicker";
+import CreationLauncher from "./CreationLauncher";
 import dynamic from "next/dynamic";
 import "./home-composer.css";
 const CommerceLauncher = dynamic(() => import("./CommerceLauncher"));
-const CreationLauncher = dynamic(() => import("./CreationLauncher"), { loading: () => <div className="cr-creation-loader" role="status">正在打开 AI 创作… / Opening AI creation…</div> });
 const InspirationGallery = dynamic(() => import("./InspirationGallery"), {
   loading: () => <section className="cr-inspiration ig-section" aria-hidden="true"><p className="route-loading-text">正在加载灵感作品…</p></section>,
 });

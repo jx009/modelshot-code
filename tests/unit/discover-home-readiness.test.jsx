@@ -5,7 +5,7 @@ import DiscoverHome from "../../src/components/discover/DiscoverHome.jsx";
 import CreativePages, { CreativePageContent } from "../../src/components/discover/CreativePages.jsx";
 import { PageVisibilityContext, useLocalNavigation } from "../../src/components/ui/LocalNavigation.jsx";
 
-const mocks = vi.hoisted(() => ({ read: vi.fn(), clear: vi.fn(), open: vi.fn() }));
+const mocks = vi.hoisted(() => ({ read: vi.fn(), clear: vi.fn(), open: vi.fn(), api: vi.fn() }));
 vi.mock("@/lib/studio/image-capabilities-client", () => ({ readImageCapabilities: mocks.read, clearImageCapabilities: mocks.clear }));
 vi.mock("@/components/auth/AuthProvider", () => ({ useAuth: () => ({ open: mocks.open }) }));
 vi.mock("next-auth/react", () => ({ useSession: () => ({ status: "authenticated", data: { user: { id: "user-a" } } }) }));
@@ -14,13 +14,17 @@ vi.mock("next/navigation", () => ({ usePathname: () => window.location.pathname 
 vi.mock("../../src/components/discover/CreativeShell", () => ({ default: ({ children }) => <main>{children}</main> }));
 vi.mock("../../src/components/discover/ExplorePage", () => ({ default: () => <h1>灵感页面</h1> }));
 vi.mock("@/hooks/useNavigationRouter", () => ({ useNavigationRouter: () => ({ push: vi.fn() }) }));
-vi.mock("@/lib/client-api", () => ({ api: vi.fn(), requestKey: () => "test-key" }));
+vi.mock("@/lib/client-api", () => ({ api: mocks.api, requestKey: () => "test-key" }));
 vi.mock("@/components/studio/AssetImage", () => ({ default: ({ alt }) => <span>{alt}</span> }));
 vi.mock("@/components/ui/NavigationLink", () => ({ default: ({ children, href }) => <a href={href}>{children}</a> }));
 vi.mock("@/components/ui/ModelPicker", () => ({ default: ({ models, emptyLabel }) => <span>{models[0]?.label || emptyLabel}</span> }));
 vi.mock("@/components/ui/ImageSizePicker", () => ({ default: () => null }));
 vi.mock("next/dynamic", () => ({ default: () => () => <div data-testid="gallery-shell" /> }));
-beforeEach(() => { mocks.read.mockReset(); mocks.clear.mockReset(); window.history.replaceState(null, "", "/zh"); });
+beforeEach(() => {
+  mocks.read.mockReset(); mocks.clear.mockReset(); sessionStorage.clear();
+  mocks.api.mockReset().mockResolvedValue({ poster: true, slides: true, document: true, sheet: true, web: true, languageUnitCost: 2 });
+  window.history.replaceState(null, "", "/zh");
+});
 afterEach(cleanup);
 
 function PageLinks() {
@@ -73,4 +77,21 @@ test("reports model load failures separately and retries without replacing the c
 test("does not start a model read for a retained hidden homepage", () => {
   render(<PageVisibilityContext.Provider value={false}><DiscoverHome /></PageVisibilityContext.Provider>);
   expect(mocks.read).not.toHaveBeenCalled();
+});
+
+test.each(["海报设计", "演示文稿", "文档", "表格", "网页"])("opens the %s form synchronously and preserves its draft while optional chunks are unavailable", async type => {
+  mocks.read.mockImplementation(() => new Promise(() => {}));
+  render(<DiscoverHome />);
+  await act(async () => {});
+  fireEvent.click(screen.getByRole("button", { name: type }));
+  // next/dynamic is stubbed above: no optional chunk can resolve in this test.
+  const composer = screen.getByRole("textbox", { name: "创作需求" });
+  expect(composer.disabled).toBe(false);
+  expect(screen.getByRole("button", { name: "添加素材" })).toBeTruthy();
+  fireEvent.change(composer, { target: { value: "切换后继续编辑" } });
+  fireEvent.click(screen.getByRole("button", { name: "图片创作" }));
+  expect(screen.getByRole("textbox", { name: "描述你的创意" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: type }));
+  expect(screen.getByRole("textbox", { name: "创作需求" }).value).toBe("切换后继续编辑");
+  expect(mocks.api.mock.calls.map(([url]) => url)).toEqual(["/api/creation/capabilities"]);
 });

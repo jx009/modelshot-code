@@ -10,8 +10,8 @@ import ReferenceAssets, { referenceAssetIds } from "@/components/creation/Refere
 import { posterImageChoice } from "@/lib/creation/poster-image-choice";
 import "./creation-launcher.css";
 
-// This component is loaded only after selecting an enabled type. It imports no
-// editor, canvas, language schema or rendering engine into the home bundle.
+// Ship this small form with the homepage so switching types needs no download.
+// AssetLibrary stays lazy; editors, canvases and schemas are not imported here.
 export default function CreationLauncher({ kind, userId, zh, initialDraft, onDraft, attachmentIds = [], visible = true, initialCaps = null }) {
   const router = useNavigationRouter(), life = useRef(null), gate = useRef(false), pending = useRef(null), draftCallback = useRef(onDraft), isVisible = useRef(visible);
   const [prompt, setPrompt] = useState(initialDraft?.prompt || ""), [size, setSize] = useState(initialDraft?.size || (kind === "slides" ? "1920x1080" : "1080x1440"));

@@ -1,0 +1,64 @@
+/* Shared home card: both launch modes keep the same frame and spacing. */
+.cr-shell .cr-creation-hero .cr-home-composer.cr-launch-card {
+  padding:8px;
+  border:1px solid var(--divider-strong);
+  border-radius:24px;
+  background:var(--bg-card);
+  box-shadow:0 8px 28px var(--shadow-soft);
+}
+.cr-shell .cr-creation-hero .cr-home-composer.cr-launch-card .cr-mode-tabs {
+  display:flex;
+  width:100%;
+  gap:6px;
+  margin:0;
+  padding:0 0 8px;
+  border:0;
+  background:transparent;
+}
+.cr-shell .cr-creation-hero .cr-home-composer.cr-launch-card .cr-mode-tabs>button {
+  display:inline-flex;
+  flex:1 1 0;
+  min-width:0;
+  min-height:38px;
+  align-items:center;
+  justify-content:center;
+  gap:7px;
+  padding:8px 10px;
+  border:1px solid transparent;
+  border-radius:13px;
+  color:var(--secondary-text);
+  background:transparent;
+  box-shadow:none;
+  font-size:12px;
+  white-space:nowrap;
+}
+.cr-shell .cr-creation-hero .cr-home-composer.cr-launch-card .cr-mode-tabs>button[aria-selected=true] {
+  border-color:var(--divider);
+  background:var(--bg-card-hover);
+  color:var(--primary-text);
+}
+.cr-shell .cr-creation-hero .cr-home-composer.cr-launch-card .cr-mode-tabs>button>span { display:none; }
+.cr-shell .cr-creation-hero .cr-composer-surface {
+  min-width:0;
+  padding:14px;
+  border:1px solid var(--divider);
+  border-radius:17px;
+  background:var(--bg-page);
+}
+.cr-shell .cr-creation-hero .cr-composer-surface>textarea:not(.cr-fixed-prompt) {
+  display:block;
+  min-height:96px;
+  height:96px;
+  max-height:224px;
+  margin:0 0 10px;
+  padding:4px;
+  resize:none;
+  font-size:14px;
+  line-height:1.8;
+}
+.cr-shell .cr-creation-hero .cr-composer-surface .cr-composer-bottom { margin:0; }
+@media(max-width:600px) {
+  .cr-shell .cr-creation-hero .cr-home-composer.cr-launch-card { padding:6px; border-radius:20px; }
+  .cr-shell .cr-creation-hero .cr-composer-surface { padding:10px; border-radius:14px; }
+  .cr-shell .cr-creation-hero .cr-home-composer.cr-launch-card .cr-mode-tabs>button { gap:5px; padding-inline:6px; font-size:11px; }
+}

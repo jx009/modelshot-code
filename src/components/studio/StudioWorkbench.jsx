@@ -10,7 +10,7 @@ import { useSession } from "next-auth/react";
 import { useRecharge } from "@/components/billing/RechargeProvider";
 import { useLocale } from "next-intl";
 import Link from "@/components/ui/NavigationLink";
-import { ArrowUp, ArrowDown, ArrowUpRight, Plus, X, FolderOpen, Download, Save, Undo2, Redo2, MousePointer2, Hand, ImagePlus, Type, Layers3, Sparkles, WandSparkles, Expand, Crop, Eraser, Move, ScanText, Scissors, Video, MessageCircle, Zap, ShoppingBag, ChevronDown, Check, LoaderCircle, ZoomIn, Minus, Maximize, Trash2, Eye, EyeOff, Copy, Coins, Play, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { ArrowUp, ArrowDown, ArrowUpRight, Plus, X, FolderOpen, Download, Save, Undo2, Redo2, MousePointer2, Hand, ImagePlus, Type, Layers3, Sparkles, WandSparkles, Expand, Crop, Eraser, Move, ScanText, Scissors, Video, Zap, ChevronDown, Check, LoaderCircle, ZoomIn, Minus, Maximize, Trash2, Eye, EyeOff, Copy, Coins, Play, PanelLeftOpen } from "lucide-react";
 import { api, requestKey } from "@/lib/client-api";
 import ProjectManager from "./ProjectManager";
 import { uploadImage } from "@/lib/upload-image";
@@ -149,7 +149,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
   const { draft, draftRef, update, save, saveState, ready, switching, open: loadProject, create: createProject, flushLocal, reloadCloud, retryLoad } = useStudioProject({ userId: session?.user?.id, sessionLoading: status === "loading", initialDocument, initialPrompt, initialSize, initialCount, initialFixed, paused: busy, onError: error => notify(error) });
   const [selectionIds, setSelectionIds] = useState([]);
   const uploadFeedback = useUploadFeedback(`${session?.user?.id || "guest"}:${draft.createKey}`);
-  const [selectedId, setSelected] = useState(null), [tab, setTab] = useState(initialMode === "quick" ? "quick" : "chat"), [mode, setMode] = useState("select");
+  const [selectedId, setSelected] = useState(null), [tab] = useState(initialMode === "quick" ? "quick" : "chat"), [mode, setMode] = useState("select");
   const [toolId, setTool] = useState(null), [toolParams, setParams] = useState({ size: initialSize, scale: 2, padding: 256, dx: 100, dy: 0, duration: 5, editPadding: 0.25, numLayers: 4 });
   const params = useMemo(() => ({ ...toolParams, size: draft.composer?.size || toolParams.size }), [toolParams, draft.composer?.size]);
   const [hasMask, setHasMask] = useState(false);
@@ -712,10 +712,6 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
     </header>
     <div className={`ms-body ${chatCollapsed ? "chat-collapsed" : ""} ${mobileChat ? "show-chat" : "show-canvas"}`}>
       <aside className="ms-chat">
-        <div className="ms-chat-heading"><span><Sparkles size={16} />{t("创意，从一句话开始", "An idea starts a conversation")}</span><button className="ms-icon" title={t("查看画布", "Show canvas")} onClick={() => { setMobileChat(false); setChatCollapsed(true); }}><PanelLeftClose size={17} /></button></div>
-        <div className="ms-tabs" role="tablist">
-          {[["chat", MessageCircle, t("对话", "Chat")]].map(([id, Icon, label]) => <button role="tab" aria-selected={tab === id} key={id} onClick={() => setTab(id)}><Icon size={15} />{label}</button>)}<Link href="/commerce" className="ms-commerce-tab"><ShoppingBag size={15} />{t("电商套图", "Commerce")}</Link>
-        </div>
         <UploadFeedback items={uploadFeedback.items} onDismiss={uploadFeedback.dismiss} zh={zh} />
         <div className="ms-conversation">
           <StudioMessageHistory key={draft.id || draft.createKey} documentId={draft.id} messages={draft.messages} zh={zh} onError={notify} onImage={showMessageImage} />

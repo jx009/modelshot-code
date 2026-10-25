@@ -6,7 +6,8 @@ import { Undo2, Redo2, Type, Square, ImagePlus, Trash2, Copy, SlidersHorizontal,
 import { groupHtmlNodes, ungroupHtmlNode, alignHtmlNodes, inspectRenderedHtml } from "@/lib/creation/html/dom-edit";
 import { inspectHtml } from "@/lib/creation/html/document";
 import { projectHtml } from "@/lib/creation/html/projection";
-import { loadWebPreviewAssets } from "@/lib/creation/client/web-preview-assets";
+import { createWebPreviewAssetLoader } from "@/lib/creation/client/web-preview-assets";
+import HtmlPreviewFrame from "./HtmlPreviewFrame";
 import { requestKey } from "@/lib/client-api";
 import Modal from "@/components/ui/Modal";
 import "./html-editor.css";
@@ -24,7 +25,9 @@ export default function HtmlEditor({ content, getContent, controllerRef, onOpera
   const [sourceOpen, setSourceOpen] = useState(false), [source, setSource] = useState("");
   const [picker, setPicker] = useState(false), [presenting, setPresenting] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false), [masterOpen, setMasterOpen] = useState(false), [masterCss, setMasterCss] = useState(""), [masterHtml, setMasterHtml] = useState("");
-  const [projection, setProjection] = useState(null), [fault, setFault] = useState(null), [size, setSize] = useState({ width: 800, height: 600 });
+  const [images, setImages] = useState(() => new Map()), [fault, setFault] = useState(null), [size, setSize] = useState({ width: 800, height: 600 });
+  const [loadAssets] = useState(createWebPreviewAssetLoader);
+  const [assetRetry, setAssetRetry] = useState(0);
   const [autoHeight, setAutoHeight] = useState(720);
   const [issues, setIssues] = useState([]);
   const [dataEdit, setDataEdit] = useState(null);
@@ -35,6 +38,9 @@ export default function HtmlEditor({ content, getContent, controllerRef, onOpera
   const master = content.masters?.find(item => item.id === page.masterId);
   const theme = content.theme;
   const previewPage = useMemo(() => ({ id: page.id, html: page.html, width: page.width, height: page.height }), [page.id, page.html, page.width, page.height]);
+  const assetKey = useMemo(() => JSON.stringify([...new Set([...inspectHtml(previewPage.html).assets,
+    ...(master ? inspectHtml(`<style>${master.css}</style>${master.html}<span>master</span>`).assets : [])])].sort()), [previewPage.html, master]);
+  const projection = useMemo(() => projectHtml(previewPage, images, { theme, master }), [previewPage, images, theme, master]);
   const apply = useCallback(operations => {
     try { return latest.current.onOperations(operations); } catch (error) { latest.current.onError?.(error); return false; }
   }, []);
@@ -66,13 +72,16 @@ export default function HtmlEditor({ content, getContent, controllerRef, onOpera
     const controller = new AbortController();
     void (async () => {
       try {
-        const parsed = inspectHtml(previewPage.html), masterAssets = master ? inspectHtml(`<style>${master.css}</style>${master.html}<span>master</span>`).assets : [];
-        const images = await loadWebPreviewAssets([...new Set([...parsed.assets, ...masterAssets])], { signal: controller.signal });
-        if (!controller.signal.aborted) { setFault(null); setProjection({ id: previewPage.id, html: previewPage.html, value: projectHtml(previewPage, images, { theme, master }) }); }
-      } catch (error) { if (!controller.signal.aborted) { setFault(error); onError?.(error); } }
+        const ids = JSON.parse(assetKey);
+        setFault(null);
+        setImages(current => [...current.keys()].every(id => ids.includes(id)) ? current : new Map([...current].filter(([id]) => ids.includes(id))));
+        await loadAssets(ids, { signal: controller.signal, onImage(id, url) {
+          if (!controller.signal.aborted) setImages(current => current.get(id) === url ? current : new Map(current).set(id, url));
+        } });
+      } catch (error) { if (!controller.signal.aborted) { setFault(error); latest.current.onError?.(error); } }
     })();
     return () => controller.abort();
-  }, [previewPage, onError, theme, master]);
+  }, [assetKey, loadAssets, assetRetry]);
   useEffect(() => () => clean.current?.(), []);
   useEffect(() => {
     if (!presenting) return;
@@ -106,9 +115,16 @@ export default function HtmlEditor({ content, getContent, controllerRef, onOpera
   const loaded = useCallback(() => {
     clean.current?.();
     const doc = frame.current?.contentDocument; if (!doc) return;
-    setAutoHeight(Math.min(8192, Math.max(720, doc.body.scrollHeight)));
-    const currentPage = latest.current.page;
-    setIssues(inspectRenderedHtml(doc, currentPage.width, currentPage.height === "auto" ? doc.body.scrollHeight : currentPage.height));
+    const measure = () => {
+      setAutoHeight(Math.min(8192, Math.max(720, doc.body.scrollHeight)));
+      const currentPage = latest.current.page;
+      setIssues(inspectRenderedHtml(doc, currentPage.width, currentPage.height === "auto" ? doc.body.scrollHeight : currentPage.height));
+    };
+    measure();
+    for (const id of latest.current.selection) {
+      const node = byId(doc, id);
+      if (node && !node.hasAttribute("data-cw-selected")) { node.dataset.cwOutline = node.style.outline; node.dataset.cwSelected = "true"; node.style.outline = "2px solid #6759ed"; }
+    }
     // The iframe is same-origin ONLY for DOM editing; sandbox never allows scripts.
     let drag = null;
     const select = event => {
@@ -154,8 +170,9 @@ export default function HtmlEditor({ content, getContent, controllerRef, onOpera
       node.removeAttribute("contenteditable");
       try { commitPending(); } catch (error) { latest.current.onError?.(error); }
     };
+    doc.addEventListener("load", measure, true);
     doc.addEventListener("pointerdown", select); doc.addEventListener("pointermove", move); doc.addEventListener("pointerup", up); doc.addEventListener("dblclick", double); doc.addEventListener("input", input); doc.addEventListener("focusout", blur);
-    clean.current = () => { doc.removeEventListener("pointerdown", select); doc.removeEventListener("pointermove", move); doc.removeEventListener("pointerup", up); doc.removeEventListener("dblclick", double); doc.removeEventListener("input", input); doc.removeEventListener("focusout", blur); };
+    clean.current = () => { doc.removeEventListener("load", measure, true); doc.removeEventListener("pointerdown", select); doc.removeEventListener("pointermove", move); doc.removeEventListener("pointerup", up); doc.removeEventListener("dblclick", double); doc.removeEventListener("input", input); doc.removeEventListener("focusout", blur); };
   }, [edit, commitPending, presenting, stageDraft]);
   useEffect(() => {
     const doc = frame.current?.contentDocument; if (!doc) return;
@@ -169,7 +186,6 @@ export default function HtmlEditor({ content, getContent, controllerRef, onOpera
   function openSource() { try { commitPending(); setSource(getContent().pages.find(p => p.id === page.id).html); setSourceOpen(true); } catch (error) { onError?.(error); } }
   const pageHeight = page.height === "auto" ? autoHeight : page.height;
   const scale = Math.min(Math.max(0.05, (size.width - 24) / page.width), Math.max(0.05, (size.height - 24) / pageHeight), 1);
-  const current = projection?.id === page.id && projection.html === page.html;
   return <div className={`cw-html-editor${presenting ? " is-presenting" : ""}`}>
     {dataEdit && <HtmlDataDialog {...dataEdit} zh={zh} onClose={() => setDataEdit(null)} onApply={html => { if (edit(doc => { const node = sourceDocument(html).body.firstElementChild; node.dataset.nodeId ||= key(); if (dataEdit.id) { const target = byId(doc, dataEdit.id); if (!target) throw new Error("LANGUAGE_SELECTION_CHANGED"); target.replaceWith(node); } else doc.body.append(node); }) !== false) setDataEdit(null); }} />}
     <div className="cw-html-tools">
@@ -190,13 +206,14 @@ export default function HtmlEditor({ content, getContent, controllerRef, onOpera
       {content.kind === "slides" && <button onClick={() => { commitPending(); setPresenting(value => !value); }}><Play size={16} />{text(presenting ? "退出演示" : "演示", presenting ? "Exit" : "Present")}</button>}
       <button aria-pressed={inspector} onClick={() => setInspector(value => !value)}><SlidersHorizontal size={16} /><span className="sr-only">{text("属性", "Properties")}</span></button>
     </div>
+    {fault && <p role="alert" className="cw-error">{text("部分图片加载失败，文字和排版仍可编辑。", "Some images failed to load. Text and layout remain editable.")}<button onClick={() => setAssetRetry(value => value + 1)}>{text("重试图片", "Retry images")}</button></p>}
     <div className="cw-html-body">
       {content.kind === "slides" && <nav className="cw-html-pages" aria-label={text("幻灯片", "Slides")}>
         {content.pages.map((item, index) => <button key={item.id} aria-current={item.id === page.id} onClick={() => selectPage(item.id)}><b>{index + 1}</b><span>{item.title || text("幻灯片", "Slide")}</span></button>)}
         <button disabled={readOnly} onClick={() => { commitPending(); const id = key(); apply([{ op: "insertHtmlPage", index: content.pages.length, page: { ...page, id, title: text("新页面", "New slide"), html: '<!DOCTYPE html><html><head><style>body{margin:0;background:#fff;font-family:sans-serif}h1{padding:64px}</style></head><body><h1 data-node-id="title">新页面</h1></body></html>' } }]); setPageId(id); }}><Plus size={15} /></button>
       </nav>}
       <div className="cw-html-stage" ref={host}>
-        {current ? <div style={{ width: page.width * scale, height: pageHeight * scale }}><iframe ref={frame} title={text("可编辑作品", "Editable artwork")} sandbox="allow-same-origin" referrerPolicy="no-referrer" srcDoc={projection.value} onLoad={loaded} style={{ width: page.width, height: pageHeight, transform: `scale(${scale})`, transformOrigin: "top left" }} /></div> : <p role={fault ? "alert" : "status"}>{fault ? text("作品预览失败，请重试打开。", "Preview failed. Reopen to retry.") : text("正在打开作品…", "Opening artwork…")}</p>}
+        <div style={{ width: page.width * scale, height: pageHeight * scale }}><HtmlPreviewFrame key={page.id} frameRef={frame} title={text("可编辑作品", "Editable artwork")} html={projection} onUpdate={loaded} style={{ width: page.width, height: pageHeight, transform: `scale(${scale})`, transformOrigin: "top left" }} /></div>
       </div>
       {inspector && <aside className="cw-html-inspector">
         <header><strong>{text("属性", "Properties")}</strong><button aria-label={text("关闭属性", "Close properties")} onClick={() => setInspector(false)}><X size={14} /></button></header>

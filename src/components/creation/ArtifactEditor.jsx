@@ -6,13 +6,13 @@ import { usePendingTextDraft } from "./usePendingTextDraft";
 import { pendingTextOperations } from "@/lib/creation/client/pending-text";
 import TextDraftRecovery from "./TextDraftRecovery";
 import DraftSessionGate from "./DraftSessionGate";
+import HtmlEditor from "./editors/html/HtmlEditor";
 import { api, requestKey } from "@/lib/client-api";
 import { invalidateProjectLists } from "@/lib/studio/project-list";
 import { History, Save, X, RotateCcw, Copy, Download } from "lucide-react";
 import "./creation.css";
 
 const LayoutEditor = lazy(() => import("./editors/layout/LayoutEditor"));
-const HtmlEditor = lazy(() => import("./editors/html/HtmlEditor"));
 const ExportDialog = lazy(() => import("./ExportDialog"));
 const labels = {
   loading: ["正在打开作品…", "Opening artwork…"], saved: ["已保存", "Saved"],

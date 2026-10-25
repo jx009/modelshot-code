@@ -16,9 +16,9 @@ import { creationError } from "./creation-errors";
 import { invalidateProjectLists } from "@/lib/studio/project-list";
 import { useCreationNavigationGuard } from "./useCreationNavigationGuard";
 import { posterImageChoice } from "@/lib/creation/poster-image-choice";
+import ArtifactEditor from "./CreationArtifactEditor";
 
 const OutlineReview = lazy(() => import("./OutlineReview"));
-const ArtifactEditor = lazy(() => import("./CreationArtifactEditor"));
 const compactQuery = "(max-width:760px)";
 const compactSnapshot = () => Boolean(window.matchMedia?.(compactQuery).matches);
 const wideServerSnapshot = () => false;
@@ -71,17 +71,21 @@ export default function CreationWorkspace({ userId, projectId, initialSessionId,
     async function load() {
       setLoading(true); setError(null);
       try {
-        const [value, capability] = await Promise.all([api(`/api/creation/projects/${encodeURIComponent(projectId)}`, { signal: controller.signal }), api("/api/creation/capabilities", { signal: controller.signal }).catch(failure => {
+        void api("/api/creation/capabilities", { signal: controller.signal }).then(capability => {
+          if (!controller.signal.aborted) setCaps(capability);
+        }).catch(failure => {
           if (!controller.signal.aborted) setError(failure);
-          return null;
-        })]);
+        });
+        const value = await api(`/api/creation/projects/${encodeURIComponent(projectId)}`, { signal: controller.signal });
+        if (controller.signal.aborted) return;
         const chosen = initialSessionId || value.sessions[0]?.id;
         if (!chosen || !value.sessions.some(item => item.id === chosen)) throw new Error("CREATION_SESSION_NOT_FOUND");
-        const [history, runs] = await Promise.all([api(`/api/creation/sessions/${chosen}/messages`, { signal: controller.signal }), api(`/api/creation/runs?sessionId=${chosen}`, { signal: controller.signal })]);
-        if (controller.signal.aborted) return;
-        session.current = chosen; setSessionId(chosen); setProject(value); setFilesEpoch(epoch => epoch + 1); setCaps(capability); setMessages(history);
+        session.current = chosen; setSessionId(chosen); setProject(value); setFilesEpoch(epoch => epoch + 1);
         const firstFileId = initialFileId || value.artifacts[0]?.id || null;
         setFileId(current => current || firstFileId);
+        const [history, runs] = await Promise.all([api(`/api/creation/sessions/${chosen}/messages`, { signal: controller.signal }), api(`/api/creation/runs?sessionId=${chosen}`, { signal: controller.signal })]);
+        if (controller.signal.aborted) return;
+        setMessages(history);
         const rootRuns = runs.items.filter(item => !item.parentRunId);
         const latestRun = rootRuns.find(item => active(item.status) || item.status.startsWith("awaiting_")) || rootRuns[0] || runs.items[0];
         finalSeen.current = latestRun && !active(latestRun.status) ? `${latestRun.id}:${latestRun.eventSequence}` : null;

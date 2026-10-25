@@ -1,10 +1,31 @@
 import { expect, it, vi } from "vitest";
-import { loadWebPreviewAssets } from "../../src/lib/creation/client/web-preview-assets.js";
+import { loadWebPreviewAssets, createWebPreviewAssetLoader } from "../../src/lib/creation/client/web-preview-assets.js";
 const id = index => `preview-asset-${String(index).padStart(5,"0")}`;
 function bytes(size = 32) {
   const data = new Uint8Array(size); data.set(new TextEncoder().encode("RIFF"), 0); data.set(new TextEncoder().encode("WEBP"), 8); return data;
 }
 const response = (size = 32) => new Response(bytes(size), { headers: { "Content-Type": "image/webp", "Content-Length": String(size) } });
+it("reuses images during editing but isolates mounted editor sessions", async () => {
+  const load = createWebPreviewAssetLoader(), fetcher = vi.fn(async () => response());
+  const original = await load([id(1)], { fetcher });
+  expect(await load([id(1)], { fetcher })).toEqual(original);
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  await load([id(1), id(2)], { fetcher });
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  await createWebPreviewAssetLoader()([id(1)], { fetcher });
+  expect(fetcher).toHaveBeenCalledTimes(3);
+});
+it("publishes each image without waiting for a slower image and bounds cached plus new bytes", async () => {
+  const load = createWebPreviewAssetLoader(), onImage = vi.fn();
+  let release;
+  const fetcher = vi.fn(url => url.includes(id(2)) ? new Promise(resolve => { release = resolve; }) : Promise.resolve(response()));
+  const task = load([id(1), id(2)], { fetcher, onImage });
+  await vi.waitFor(() => expect(onImage).toHaveBeenCalledWith(id(1), expect.any(String)));
+  release(response()); await task;
+  const bounded = createWebPreviewAssetLoader(), large = async () => response(1024 * 1024);
+  await bounded(Array.from({ length: 6 }, (_, i) => id(i)), { fetcher: large });
+  await expect(bounded(Array.from({ length: 7 }, (_, i) => id(i)), { fetcher: large })).rejects.toThrow("WEB_PREVIEW_ASSET_LIMIT");
+});
 it("deduplicates IDs, limits concurrency to two and sends only fixed authenticated proxy requests", async () => {
   let active = 0, maximum = 0;
   const fetcher = vi.fn(async () => { active++; maximum = Math.max(maximum, active); await new Promise(resolve => setTimeout(resolve, 5)); active--; return response(); });

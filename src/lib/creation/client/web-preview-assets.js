@@ -35,7 +35,7 @@ function dataUrl(bytes) {
 
 // Per-preview lifetime, no global user-data cache. At most two derivative
 // requests, with a shared aggregate bound and cancellation on supersession.
-export async function loadWebPreviewAssets(ids, { signal, fetcher = fetch } = {}) {
+export async function loadWebPreviewAssets(ids, { signal, fetcher = fetch, onImage } = {}) {
   const selected = [...new Set(ids)];
   if (selected.length > 20 || selected.some(id => !validId(id))) fail("WEB_PREVIEW_ASSET_LIMIT");
   const controller = new AbortController(), cancel = () => controller.abort(signal.reason);
@@ -54,7 +54,9 @@ export async function loadWebPreviewAssets(ids, { signal, fetcher = fetch } = {}
         });
         const image = await readImage(response, controller.signal);
         bytes += image.byteLength; if (bytes > MAX_TOTAL_BYTES) fail("WEB_PREVIEW_ASSET_LIMIT");
-        controller.signal.throwIfAborted(); images.set(id, dataUrl(image));
+        controller.signal.throwIfAborted();
+        const url = dataUrl(image);
+        images.set(id, url); onImage?.(id, url);
       }
     } catch (error) { failure ||= error; controller.abort(error); }
   }
@@ -64,4 +66,28 @@ export async function loadWebPreviewAssets(ids, { signal, fetcher = fetch } = {}
     controller.signal.throwIfAborted();
     return images;
   } finally { clearTimeout(timer); signal?.removeEventListener("abort", cancel); }
+}
+
+// Owned by one mounted editor, never shared between users/artifacts. Keep only
+// the current page's assets, with the same decoded-byte budget as a cold load.
+export function createWebPreviewAssetLoader() {
+  const cache = new Map();
+  return async (ids, options = {}) => {
+    const selected = [...new Set(ids)];
+    if (selected.length > 20 || selected.some(id => !validId(id))) fail("WEB_PREVIEW_ASSET_LIMIT");
+    for (const id of cache.keys()) if (!selected.includes(id)) cache.delete(id);
+    const sizeOf = url => {
+      const base64 = url.slice(url.indexOf(",") + 1);
+      return base64.length * 3 / 4 - (base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0);
+    };
+    let bytes = [...cache.values()].reduce((sum, url) => sum + sizeOf(url), 0);
+    for (const [id, url] of cache) options.onImage?.(id, url);
+    await loadWebPreviewAssets(selected.filter(id => !cache.has(id)), { ...options, onImage(id, url) {
+      options.signal?.throwIfAborted();
+      bytes += sizeOf(url);
+      if (bytes > MAX_TOTAL_BYTES) fail("WEB_PREVIEW_ASSET_LIMIT");
+      cache.set(id, url); options.onImage?.(id, url);
+    } });
+    return new Map(cache);
+  };
 }

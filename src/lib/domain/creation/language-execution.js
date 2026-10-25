@@ -1,4 +1,5 @@
 import { prepareDependencyContext } from "./dependency-context.js";
+import { languageFailure, languageFailureDiagnostic } from "../../creation/language-failure.js";
 import { createHash } from "node:crypto";
 import { prisma } from "../../prisma.js";
 import { AppError } from "../../http.js";
@@ -47,7 +48,7 @@ async function attachResult(output, blob, db) {
 
 // A provider call is never repeated merely because its lease expired. A
 // recoverable object checkpoint can finish settlement without another call.
-export async function executeCreationLanguage(id, { db = prisma, store = objectStorage(), invoke = invokeCreationLanguage, configFor = creationLanguageConfig, prepareReferences = prepareCreationReferenceImages, timeoutMs = 150000 } = {}) {
+export async function executeCreationLanguage(id, { db = prisma, store = objectStorage(), invoke = invokeCreationLanguage, configFor = creationLanguageConfig, prepareReferences = prepareCreationReferenceImages, timeoutMs = 180000 } = {}) {
   const row = await db.tryOn.findUnique({ where: { id }, select: { executionQueue: true } });
   if (row?.executionQueue !== "creation-language") throw new AppError("INVALID_LANGUAGE_JOB", 422);
   const claim = await claimOutput(id, db);
@@ -135,7 +136,8 @@ export async function executeCreationLanguage(id, { db = prisma, store = objectS
     await store.put(blob.objectKey, bytes, "application/json");
     if (await attachResult(output, blob, db)) await finishOutput(id, output.fence, { resultData: { creationLanguage: { schemaVersion: 1, purpose: input.purpose, blobId: blob.id } }, durationMs: Date.now() - started }, db);
   } catch (error) {
-    const invalidResult = ["ZodError", "LanguageResultError", "NativeSheetEditError", "NativeDocumentEditError"].includes(error.name);
+    const invalidResult = ["ZodError", "HtmlDocumentError", "LanguageResultError", "NativeSheetEditError", "NativeDocumentEditError"].includes(error.name);
+    console.error(JSON.stringify({ code: "CREATION_LANGUAGE_FAILED", jobId: id, purpose: output.snapshot?.purpose, ...languageFailureDiagnostic(error) }));
     // Preserve uncertainty on storage/settlement failure; the same result can
     // be recovered. No retry path resubmits a previously submitted request.
     if (blob && !invalidResult && !["NoSuchKey", "NotFound"].includes(error.name) && error.$metadata?.httpStatusCode !== 404 && !["LANGUAGE_RESULT_INVALID", "LANGUAGE_RESULT_INTEGRITY_FAILED"].includes(error.code)) {
@@ -143,7 +145,7 @@ export async function executeCreationLanguage(id, { db = prisma, store = objectS
       if (!persisted?.creationResultBlobId && output.reconcileUntil && output.reconcileUntil <= new Date()) await finishOutput(id, output.fence, { errorCode: "LANGUAGE_RESULT_RECOVERY_EXPIRED" }, db);
       else await deferOutput(claim, "LANGUAGE_RESULT_RECOVERY_PENDING", false, db);
     } else {
-      const code = error instanceof AppError ? error.code : invalidResult ? "LANGUAGE_RESULT_INVALID" : "LANGUAGE_RESULT_UNAVAILABLE";
+      const code = languageFailure(error);
       await finishOutput(id, output.fence, { errorCode: code }, db);
     }
   } finally { clearInterval(heartbeat); clearTimeout(deadline); }

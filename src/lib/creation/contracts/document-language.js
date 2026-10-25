@@ -1,16 +1,22 @@
 import { z } from "zod";
 import { dependencyReferencesSchema } from "./dependency-references.js";
-import { documentId, documentSectionSchema, documentOperationsSchema, textDocumentSchema, documentAssetIds, documentTextLeaves } from "./document.js";
+import { documentId, documentSectionSchema, documentOperationsSchema, textDocumentSchema, documentAssetIds, documentTextLeaves, documentPageSchema, documentThemeSchema } from "./document.js";
 import { applyDocumentOperations, replaceDocumentText } from "../document-operations.js";
 
 const common = { dependencyRefs: dependencyReferencesSchema.optional(), prompt: z.string().trim().min(1).max(12000), locale: z.enum(["zh", "en"]).default("zh"), assetIds: z.array(documentId).max(8).default([]), referenceIds: z.array(documentId).max(8).default([]) };
+export const documentDesignSchema = z.object({
+  purpose: z.string().max(800), tone: z.string().max(600), narrative: z.string().max(1600), terminology: z.string().max(1200),
+  page: documentPageSchema, theme: documentThemeSchema,
+}).strict();
 export const documentOutlineSchema = z.object({ title: z.string().trim().min(1).max(160),
+  design: documentDesignSchema.optional(),
   sections: z.array(z.object({ id: documentId, title: z.string().trim().min(1).max(160), brief: z.string().trim().min(1).max(4000) }).strict()).min(1).max(50),
 }).strict().refine(value => new Set(value.sections.map(section => section.id)).size === value.sections.length, "DUPLICATE_DOCUMENT_ID");
 export const documentLanguageInputSchema = z.discriminatedUnion("purpose", [
   z.object({ ...common, purpose: z.literal("document.outline"), sectionCount: z.number().int().min(1).max(50), audience: z.string().max(500).default("") }).strict(),
   z.object({ ...common, purpose: z.literal("document.section"), sectionId: documentId, title: z.string().min(1).max(160), brief: z.string().min(1).max(4000),
     documentTitle: z.string().min(1).max(160), audience: z.string().max(500).default(""), headings: z.array(z.object({ id: documentId, title: z.string().min(1).max(160) }).strict()).min(1).max(50),
+    design: documentDesignSchema.optional(),
   }).strict(),
   z.object({ ...common, purpose: z.literal("document.edit"), artifactId: documentId, baseRevision: z.number().int().positive(), sectionId: documentId,
     blockIds: z.array(documentId).min(1).max(100),

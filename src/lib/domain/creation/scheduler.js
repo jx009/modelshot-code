@@ -14,6 +14,7 @@ import { appendRunEvent, enqueueRun } from "./events.js";
 import { creationLanguageConfig, submitCreationLanguageStep } from "./language-jobs.js";
 import { publishCreationLanguage, assembleCreationSlides, assembleCreationDocument, assembleCreationSheet } from "./publication.js";
 import { nextReadyStep, newlyUnblockedSteps, runHasUnfinishedSteps, validateRunDependencyGraph } from "../../creation/run-dependencies.js";
+import { isSlideGeneration, inFlightStep, nextSlideStep, slideRunProgress } from "../../creation/slide-scheduling.js";
 
 const CHECK_INTERVAL = 30_000;
 const BUDGET_ERRORS = ["PRICE_CHANGED", "CREATION_BUDGET_EXCEEDED", "INSUFFICIENT_CREDITS", "CREDITS_FROZEN"];
@@ -32,8 +33,13 @@ export async function advanceRun(id, { db = prisma, store, configFor = studioCon
   const initial = await snapshot(db, id);
   if (!initial || isRunTerminal(initial.status) || !RUN_ACTIVE.includes(initial.status)) return;
   if (!validateRunDependencyGraph(initial.steps)) throw new AppError("CREATION_DEPENDENCY_GRAPH_INVALID", 409);
-  const pending = initial.steps.find(step => step.jobId && step.status !== "succeeded") || nextReadyStep(initial.steps);
-  if (initial.cancelRequestedAt && pending?.jobId) await cancel(initial.userId, pending.jobId, db);
+  const parallelSlides = isSlideGeneration(initial);
+  const slideJobs = parallelSlides ? await db.tryOn.findMany({ where: { id: { in: initial.steps.filter(inFlightStep).map(step => step.jobId) }, userId: initial.userId }, select: { id: true, status: true } }) : [];
+  const pending = parallelSlides ? nextSlideStep(initial, slideJobs) : initial.steps.find(step => step.jobId && step.status !== "succeeded") || nextReadyStep(initial.steps);
+  if (initial.cancelRequestedAt) {
+    const cancelSteps = parallelSlides ? initial.steps.filter(inFlightStep) : pending?.jobId ? [pending] : [];
+    for (const step of cancelSteps) await cancel(initial.userId, step.jobId, db);
+  }
   let config, caps;
   try {
     if (initial.kind === "agent") return await advanceAgentRun(initial, { db, store });
@@ -59,7 +65,7 @@ export async function advanceRun(id, { db = prisma, store, configFor = studioCon
     return await db.$transaction(async tx => {
       const run = await lockRun(tx, initial.userId, id);
       if (run.eventSequence !== initial.eventSequence || isRunTerminal(run.status) || !RUN_ACTIVE.includes(run.status)) return;
-      const step = run.steps.find(step => step.jobId && step.status !== "succeeded") || nextReadyStep(run.steps);
+      const step = parallelSlides ? run.steps.find(step => step.id === pending?.id) : run.steps.find(step => step.jobId && step.status !== "succeeded") || nextReadyStep(run.steps);
       const job = step?.jobId ? await tx.tryOn.findFirst({ where: { id: step.jobId, userId: run.userId } }) : null;
       if (step?.jobId && !job) throw new AppError("CREATION_JOB_MISSING", 409);
       if (job && !TERMINAL.includes(job.status)) {
@@ -76,10 +82,22 @@ export async function advanceRun(id, { db = prisma, store, configFor = studioCon
           if (job.status !== "succeeded") await tx.creationRun.update({ where: { id }, data: { committedCredits: { decrement: job.creditCost } } });
         }
         await tx.creationStep.updateMany({ where: { runId: id, jobId: null, status: { in: ["blocked", "ready"] } }, data: { status: "cancelled" } });
+        if (parallelSlides && run.steps.some(item => item.id !== step?.id && inFlightStep(item))) {
+          const updated = await appendRunEvent(tx, id, "step.cancelled", { stepId: step?.id, jobId: job?.id }, { status: "cancelling", nextCheckAt: now });
+          await enqueueRun(tx, id, `cancel-settle:${updated.eventSequence}`);
+          return;
+        }
         await appendRunEvent(tx, id, "run.cancelled", { completedStepIds: run.steps.filter(row => row.status === "succeeded").map(row => row.id), settledJobId: job?.id || null }, { status: "cancelled", errorCode: null });
         return;
       }
       if (!step) {
+        if (parallelSlides) {
+          const progress = slideRunProgress(run.steps);
+          for (const ready of progress.released) await tx.creationStep.update({ where: { id: ready.id }, data: { status: "ready" } });
+          const updated = await appendRunEvent(tx, id, progress.status === "running" ? "run.ready" : `run.${progress.status}`, {}, { status: progress.status, errorCode: progress.errorCode, nextCheckAt: now });
+          if (progress.status === "running") await enqueueRun(tx, id, `ready:${updated.eventSequence}`);
+          return;
+        }
         if (runHasUnfinishedSteps(run.steps)) {
           await appendRunEvent(tx, id, "run.blocked", { unfinishedStepIds: run.steps.filter(row => row.status !== "succeeded").map(row => row.id) }, {
             status: "awaiting_input", errorCode: "CREATION_DEPENDENCY_BLOCKED",
@@ -92,6 +110,15 @@ export async function advanceRun(id, { db = prisma, store, configFor = studioCon
       if (job) {
         await tx.creationStep.update({ where: { id: step.id }, data: { status: job.status, errorCode: job.errorCode } });
         if (job.status !== "succeeded") {
+          if (parallelSlides) {
+            const progress = slideRunProgress(run.steps.map(item => item.id === step.id ? { ...item, status: job.status, errorCode: job.errorCode } : item));
+            for (const ready of progress.released) await tx.creationStep.update({ where: { id: ready.id }, data: { status: "ready" } });
+            const updated = await appendRunEvent(tx, id, "step.failed", { stepId: step.id, jobId: job.id, code: job.errorCode || job.status }, {
+              status: progress.status, errorCode: progress.errorCode, committedCredits: { decrement: job.creditCost }, nextCheckAt: now,
+            });
+            if (progress.status === "running") await enqueueRun(tx, id, `settled:${updated.eventSequence}`);
+            return;
+          }
           await appendRunEvent(tx, id, "step.failed", { stepId: step.id, jobId: job.id, code: job.errorCode || job.status }, {
             status: "failed", errorCode: job.errorCode || job.status, committedCredits: { decrement: job.creditCost },
           });
@@ -133,8 +160,22 @@ export async function advanceRun(id, { db = prisma, store, configFor = studioCon
     // reservation). Record a pause separately; DB failures still retry the wake.
     await db.$transaction(async tx => {
       const run = await lockRun(tx, initial.userId, id);
+      // Ignore a stale wake only after checking the locked state. A persistent
+      // step mismatch at the same sequence must not retry forever.
       if (run.eventSequence !== initial.eventSequence || run.cancelRequestedAt || !RUN_ACTIVE.includes(run.status)) return;
-      if (CAPACITY_ERRORS.includes(error.code)) {
+      // A terminal job with an unpublishable result must not monopolize every
+      // wake. Preserve its paid checkpoint for explicit resume and drain the
+      // other pages; never refund or regenerate an already successful call.
+      if (parallelSlides && pending?.jobId) {
+        const failed = run.steps.find(item => item.id === pending.id);
+        await tx.creationStep.update({ where: { id: failed.id }, data: { status: "failed", errorCode: error.code } });
+        const progress = slideRunProgress(run.steps.map(item => item.id === failed.id ? { ...item, status: "failed", errorCode: error.code } : item));
+        for (const ready of progress.released) await tx.creationStep.update({ where: { id: ready.id }, data: { status: "ready" } });
+        const updated = await appendRunEvent(tx, id, "step.failed", { stepId: failed.id, jobId: failed.jobId, code: error.code }, { status: progress.status, errorCode: progress.errorCode, nextCheckAt: now });
+        if (progress.status === "running") await enqueueRun(tx, id, `publication-failed:${updated.eventSequence}`);
+        return;
+      }
+      if (CAPACITY_ERRORS.includes(error.code) || parallelSlides && run.steps.some(inFlightStep)) {
         const nextCheckAt = new Date(+now + CHECK_INTERVAL);
         if (run.errorCode !== error.code) await appendRunEvent(tx, id, "run.waiting_capacity", { code: error.code }, { errorCode: error.code, nextCheckAt });
         else await tx.creationRun.update({ where: { id }, data: { nextCheckAt } });

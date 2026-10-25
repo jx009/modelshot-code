@@ -10,10 +10,12 @@ import { studioConfig } from "../studio/providers.js";
 import { languageInputSchema } from "../../creation/contracts/language.js";
 import { DOCUMENT_PIPELINE_VERSION, DOCUMENT_LANGUAGE_HEARTBEAT } from "../../creation/contracts/document-runtime.js";
 import { SHEET_PIPELINE_VERSION, SHEET_LANGUAGE_HEARTBEAT } from "../../creation/contracts/sheet-runtime.js";
+import { WEB_PIPELINE_VERSION, WEB_LANGUAGE_HEARTBEAT } from "../../creation/contracts/web-runtime.js";
 import { POSTER_IMAGE_PIPELINE_VERSION, POSTER_IMAGE_LANGUAGE_HEARTBEAT } from "../../creation/contracts/poster-runtime.js";
 import { ownedArtifact } from "./artifacts.js";
 import { lockRun } from "./runs.js";
-import { appendRunEvent } from "./events.js";
+import { appendRunEvent, enqueueRun } from "./events.js";
+import { SLIDE_PAGE_CONCURRENCY } from "../../creation/slide-scheduling.js";
 import { requireReferenceAdmission } from "./reference-admission.js";
 import { dependenciesFor } from "../../creation/run-dependencies.js";
 
@@ -48,8 +50,8 @@ export async function submitCreationLanguageStep(userId, runId, stepId, sequence
     if (!Number.isSafeInteger(cost) || cost < 0) throw new AppError("INVALID_PRICE", 503);
     if (step.expectedCost !== cost) throw new AppError("PRICE_CHANGED", 409);
     if (run.committedCredits + cost > run.maxCredits) throw new AppError("CREATION_BUDGET_EXCEEDED", 409);
-    const heartbeat = await tx.serviceHeartbeat.findUnique({ where: { id: run.kind === "agent" ? AGENT_LANGUAGE_HEARTBEAT : input.sourceFormat === "html" ? HTML_LANGUAGE_HEARTBEAT : input.visualAssetId ? POSTER_IMAGE_LANGUAGE_HEARTBEAT : run.kind === "document" ? DOCUMENT_LANGUAGE_HEARTBEAT : run.kind === "sheet" ? SHEET_LANGUAGE_HEARTBEAT : "creation-language-worker" } });
-    const pipelineVersion = run.kind === "agent" ? AGENT_PIPELINE_VERSION : input.sourceFormat === "html" ? HTML_PIPELINE_VERSION : input.visualAssetId ? POSTER_IMAGE_PIPELINE_VERSION : run.kind === "document" ? DOCUMENT_PIPELINE_VERSION : run.kind === "sheet" ? SHEET_PIPELINE_VERSION : null;
+    const heartbeat = await tx.serviceHeartbeat.findUnique({ where: { id: run.kind === "agent" ? AGENT_LANGUAGE_HEARTBEAT : input.sourceFormat === "html" ? HTML_LANGUAGE_HEARTBEAT : input.visualAssetId ? POSTER_IMAGE_LANGUAGE_HEARTBEAT : run.kind === "document" ? DOCUMENT_LANGUAGE_HEARTBEAT : run.kind === "sheet" ? SHEET_LANGUAGE_HEARTBEAT : run.kind === "web" ? WEB_LANGUAGE_HEARTBEAT : "creation-language-worker" } });
+    const pipelineVersion = run.kind === "agent" ? AGENT_PIPELINE_VERSION : input.sourceFormat === "html" ? HTML_PIPELINE_VERSION : input.visualAssetId ? POSTER_IMAGE_PIPELINE_VERSION : run.kind === "document" ? DOCUMENT_PIPELINE_VERSION : run.kind === "sheet" ? SHEET_PIPELINE_VERSION : run.kind === "web" ? WEB_PIPELINE_VERSION : null;
     if (!heartbeat || heartbeat.updatedAt <= new Date(+now - 90000) || pipelineVersion !== null && heartbeat.details?.version !== pipelineVersion) throw new AppError("CREATION_LANGUAGE_WORKER_UNAVAILABLE", 503);
     if (input.artifactId) {
       const artifact = await ownedArtifact(userId, input.artifactId, tx);
@@ -62,7 +64,8 @@ export async function submitCreationLanguageStep(userId, runId, stepId, sequence
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended('queue-admission', 0))::text`;
     if (await tx.tryOn.count({ where: { status: { in: ACTIVE } } }) >= LIMITS.queue) throw new AppError("QUEUE_FULL", 503);
     if (await tx.tryOn.count({ where: { executionQueue: "creation-language", status: { in: ACTIVE } } }) >= 1000) throw new AppError("QUEUE_FULL", 503);
-    if (await tx.tryOn.count({ where: { userId, executionQueue: "creation-language", status: { in: ACTIVE } } }) >= 1) throw new AppError("USER_QUEUE_FULL", 429);
+    const userLimit = input.purpose === "slides.page" ? SLIDE_PAGE_CONCURRENCY : 1;
+    if (await tx.tryOn.count({ where: { userId, executionQueue: "creation-language", status: { in: ACTIVE } } }) >= userLimit) throw new AppError("USER_QUEUE_FULL", 429);
     const output = await tx.tryOn.create({ data: {
       id: randomUUID(), userId, requestId, personImage: "", clothesImage: "", prompt: input.prompt,
       executionQueue: "creation-language", provider: selected.plannerProvider || "language-env", creditCost: cost, billingType: "credits", qaStatus: "skipped", exportStatus: "skipped",
@@ -78,9 +81,10 @@ export async function submitCreationLanguageStep(userId, runId, stepId, sequence
     await tx.outboxEvent.create({ data: { businessKey: `creation-language:${output.id}:0`, kind: "creation-language", entityId: output.id } });
     await tx.creationStepAttempt.create({ data: { stepId: step.id, number: step.attempt, jobId: output.id, cost } });
     await tx.creationStep.update({ where: { id: step.id }, data: { jobId: output.id, status: "queued", errorCode: null } });
-    await appendRunEvent(tx, run.id, "step.queued", { stepId: step.id, jobId: output.id, cost }, {
+    const updated = await appendRunEvent(tx, run.id, "step.queued", { stepId: step.id, jobId: output.id, cost }, {
       status: "running", errorCode: null, committedCredits: { increment: cost }, nextCheckAt: new Date(+now + 30000),
     });
+    if (input.purpose === "slides.page") await enqueueRun(tx, run.id, `dispatch:${updated.eventSequence}`);
     return { id: output.id, status: output.status, cost };
   }, { timeout: 15000 });
 }

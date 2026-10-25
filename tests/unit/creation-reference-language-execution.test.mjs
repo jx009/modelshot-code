@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { executeCreationLanguage } from "../../src/lib/domain/creation/language-execution.js";
 import { officeFile } from "../fixtures/creation-office-reference.mjs";
+import { AppError } from "../../src/lib/http.js";
+import { HtmlDocumentError } from "../../src/lib/creation/html/document.js";
 const ports = vi.hoisted(() => ({ claim: vi.fn(), finish: vi.fn(), defer: vi.fn() }));
 vi.mock("../../src/lib/prisma.js", () => ({ prisma: {} }));
 vi.mock("../../src/lib/infra/storage/s3.js", () => ({ objectStorage: () => { throw new Error("Real storage forbidden"); } }));
@@ -44,4 +46,24 @@ it("does not re-read references or repeat a submitted model call during recovery
   await executeCreationLanguage("job", value);
   expect(value.store.stream).not.toHaveBeenCalled(); expect(value.invoke).not.toHaveBeenCalled();
   expect(ports.finish).toHaveBeenCalledWith("job", 3, { errorCode: "LANGUAGE_RESULT_UNAVAILABLE", cancelled: false }, value.db);
+});
+it.each([
+  [new HtmlDocumentError("HTML_UNSAFE_STYLE"), "HTML_UNSAFE_STYLE"],
+  [new AppError("LANGUAGE_TIMEOUT", 504), "LANGUAGE_TIMEOUT"],
+  [Object.assign(new Error("private provider payload"), { status: 429 }), "LANGUAGE_PROVIDER_RATE_LIMITED"],
+])("settles a failed model call once with a useful code and private diagnostics", async (error, code) => {
+  const value = setup(Buffer.alloc(0)), output = await value.db.tryOn.findUnique();
+  output.snapshot.input.referenceIds = [];
+  value.invoke.mockRejectedValue(error);
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    await executeCreationLanguage("job", value);
+    expect(value.invoke).toHaveBeenCalledOnce();
+    expect(value.db.processingStep.create).toHaveBeenCalledOnce();
+    expect(ports.finish).toHaveBeenCalledExactlyOnceWith("job", 3, { errorCode: code }, value.db);
+    expect(ports.defer).not.toHaveBeenCalled();
+    const diagnostic = log.mock.calls.map(([line]) => JSON.parse(line)).find(item => item.code === "CREATION_LANGUAGE_FAILED");
+    expect(diagnostic).toMatchObject({ jobId: "job", errorCode: code });
+    expect(JSON.stringify(diagnostic)).not.toContain("private provider payload");
+  } finally { log.mockRestore(); }
 });

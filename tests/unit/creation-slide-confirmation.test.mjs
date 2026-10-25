@@ -41,7 +41,7 @@ it("persists image and page steps with correct page counts and replays the accep
   const steps = f.db.creationStep.createMany.mock.calls[0][0].data;
   expect(steps.map(step => step.tool)).toEqual(["poster.image", "slides.page", "layout.assemble"]);
   expect(steps.map(step => step.position)).toEqual([1, 2, 3]);
-  expect(steps[1].dependsOn).toEqual([steps[0].id]);
+  expect(steps[1].dependsOn).toEqual(["outline", steps[0].id]);
   expect(appendRunEvent).toHaveBeenCalledWith(f.db, "run", "outline.confirmed", { pageCount: 1, maxCredits: 8 }, expect.objectContaining({ input: expect.objectContaining({ pageCount: 1 }) }));
   const digest = digestJson(confirmOutlineSchema.parse(f.data));
   f.run.steps[0].result.confirmation = { key: f.data.saveKey, digest, blobId: "blob" };

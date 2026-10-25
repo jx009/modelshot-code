@@ -1,4 +1,5 @@
 import { getCreationEnv } from "../../creation/access.js";
+import { isSlideGeneration } from "../../creation/slide-scheduling.js";
 import { sheetGenerationCalls } from "../../creation/contracts/sheet-batch.js";
 import { verifiedAgentParent, wakeAgentParent } from "./agent-links.js";
 import { dependencyReferencesSchema } from "../../creation/contracts/dependency-references.js";
@@ -185,10 +186,24 @@ export async function resumeContentRun(userId, current, data, { db = prisma, env
     if (run.committedCredits + calls * cost + [...imageQuotes.values()].reduce((sum, price) => sum + price, 0) > data.maxCredits) throw new AppError("CREATION_BUDGET_EXCEEDED", 409);
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended('creation-admission', 0))::text`;
     if (await tx.creationRun.count({ where: { status: { in: RUN_ACTIVE } } }) >= 1000) throw new AppError("CREATION_QUEUE_FULL", 503);
+    // Upgrade old serial slide plans only on an explicit resume, after all
+    // previous jobs have settled. Completed pages and images remain untouched.
+    const parallelSlides = isSlideGeneration(run);
+    const dependencyUpdates = new Map();
+    if (parallelSlides) for (const step of remaining.filter(item => item.tool === POSTER_IMAGE_TOOL)) {
+      const outline = run.steps.find(item => item.tool === "slides.outline");
+      if (outline) dependencyUpdates.set(step.id, [outline.id]);
+    }
+    if (parallelSlides) for (const step of remaining.filter(item => item.tool === "slides.page")) {
+      const outline = run.steps.find(item => item.tool === "slides.outline");
+      const visuals = run.steps.filter(item => item.tool === POSTER_IMAGE_TOOL && item.params.visualId && item.params.visualId === step.params.visualId);
+      if (outline) dependencyUpdates.set(step.id, [outline.id, ...visuals.map(item => item.id)]);
+    }
     for (const step of remaining) {
       const keepResult = step.jobId && jobStatus.get(step.jobId) === "succeeded";
       await tx.creationStep.update({ where: { id: step.id }, data: {
         status: keepResult ? "running" : "blocked", errorCode: null,
+        ...(dependencyUpdates.has(step.id) ? { dependsOn: dependencyUpdates.get(step.id) } : {}),
         expectedCost: keepResult ? step.expectedCost : isAssembly(step) ? 0 : step.tool === POSTER_IMAGE_TOOL ? imageQuotes.get(step.id) : cost,
         // A succeeded model call is never discarded when publication failed.
         // Only an explicitly retried failed attempt gets a new billable job.
@@ -199,10 +214,11 @@ export async function resumeContentRun(userId, current, data, { db = prisma, env
       const remainingStep = remaining.find(candidate => candidate.id === step.id);
       if (!remainingStep) return step;
       const keepResult = remainingStep.jobId && jobStatus.get(remainingStep.jobId) === "succeeded";
-      return { ...step, status: keepResult ? "running" : "blocked", ...(remainingStep.jobId && !keepResult ? { jobId: null } : {}) };
+      return { ...step, status: keepResult ? "running" : "blocked", ...(dependencyUpdates.has(step.id) ? { dependsOn: dependencyUpdates.get(step.id) } : {}), ...(remainingStep.jobId && !keepResult ? { jobId: null } : {}) };
     });
-    const ready = newlyUnblockedSteps(resumableSteps)[0];
-    if (ready) await tx.creationStep.update({ where: { id: ready.id }, data: { status: "ready" } });
+    const readySteps = newlyUnblockedSteps(resumableSteps);
+    const ready = readySteps[0];
+    if (ready) for (const step of parallelSlides ? readySteps : [ready]) await tx.creationStep.update({ where: { id: step.id }, data: { status: "ready" } });
     else if (!resumableSteps.some(step => step.status === "running" && step.jobId)) throw new AppError("CREATION_DEPENDENCY_BLOCKED", 409);
     await appendRunEvent(tx, run.id, "run.resumed", { maxCredits: data.maxCredits, retryFailed: data.retryFailed }, {
       status: "queued", maxCredits: data.maxCredits, errorCode: null, nextCheckAt: new Date(),

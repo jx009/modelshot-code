@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { slideDesignMarkdown } from "../../creation/contracts/slide-design.js";
+import { isSlideGeneration, slideRunProgress, slideInsertionIndex } from "../../creation/slide-scheduling.js";
 import { SHEET_CHUNK_ROWS, sheetOutlineSchema } from "../../creation/contracts/sheet-batch.js";
 import { workbookSchema } from "../../creation/contracts/sheet.js";
 import { prisma } from "../../prisma.js";
@@ -41,6 +42,14 @@ async function complete(tx, run, step, result, message) {
   // Position is display order, not execution order. Publishing one branch
   // must not release its neighbour before that neighbour's inputs exist.
   const completed = run.steps.map(item => item.id === step.id ? { ...item, status: "succeeded" } : item);
+  if (isSlideGeneration(run)) {
+    const progress = slideRunProgress(completed);
+    for (const ready of progress.released) await tx.creationStep.update({ where: { id: ready.id }, data: { status: "ready" } });
+    const updated = await appendRunEvent(tx, run.id, "step.succeeded", { stepId: step.id, jobId: step.jobId, result }, { status: progress.status, errorCode: progress.errorCode, nextCheckAt: new Date() });
+    if (progress.status === "running") await enqueueRun(tx, run.id, `step:${updated.eventSequence}`);
+    else if (progress.status === "succeeded") await appendRunEvent(tx, run.id, "run.succeeded", { result }, { status: "succeeded" });
+    return;
+  }
   const released = newlyUnblockedSteps(completed), readyIds = new Set(released.map(item => item.id));
   for (const ready of released) await tx.creationStep.update({ where: { id: ready.id }, data: { status: "ready" } });
   const next = nextReadyStep(completed.map(item => readyIds.has(item.id) ? { ...item, status: "ready" } : item));
@@ -138,7 +147,7 @@ export async function assembleCreationDocument(initial, step, { db = prisma, sto
   const sections = []; let bytes = 0;
   for (const [index, item] of parts.entries()) {
     const input = languageInputSchema.parse(item.params), approved = outline.sections[index];
-    if (input.sectionId !== approved.id || input.title !== approved.title || input.brief !== approved.brief || input.documentTitle !== outline.title) throw new AppError("CREATION_OUTLINE_CHANGED", 409);
+    if (input.sectionId !== approved.id || input.title !== approved.title || input.brief !== approved.brief || input.documentTitle !== outline.title || JSON.stringify(input.design) !== JSON.stringify(outline.design)) throw new AppError("CREATION_OUTLINE_CHANGED", 409);
     const section = validateLanguageResult(input, await readCreationLanguageResult(initial.userId, item.jobId, { db, store }));
     bytes += Buffer.byteLength(JSON.stringify(section));
     if (bytes > 2 * 1024 * 1024) throw new AppError("ARTIFACT_TOO_LARGE", 413);
@@ -199,7 +208,7 @@ async function publishHtmlSlide(initial, step, generated, { db, store }) {
   for (let attempt = 0; attempt < 3; attempt++) {
     const source = await readLayoutArtifact(initial.userId, prior.result.artifactId, undefined, { db, store });
     try {
-      return await modifyLayoutArtifact(initial.userId, source.id, { baseRevision: source.revision, saveKey: `append-${step.jobId}-${source.revision}`, operations: [{ op: "insertHtmlPage", page, index: source.content.pages.length }] }, { db, store, sourceRunId: initial.id, hooks });
+      return await modifyLayoutArtifact(initial.userId, source.id, { baseRevision: source.revision, saveKey: `append-${step.jobId}-${source.revision}`, operations: [{ op: "insertHtmlPage", page, index: slideInsertionIndex(source.content.pages, outline, page.id) }] }, { db, store, sourceRunId: initial.id, hooks });
     } catch (error) { if (error.code !== "ARTIFACT_VERSION_CONFLICT" || attempt === 2) throw error; }
   }
 }
@@ -210,11 +219,11 @@ async function expandSheetChunks(initial, step, outline, { db }) {
     const { run, step: current } = await guard(tx, initial, step.id, step.jobId);
     if (run.steps.length !== 1 || outline.sheets.length !== run.input.sheetCount) throw new AppError("CREATION_OUTLINE_CHANGED", 409);
     const chunks = [];
-    for (const sheet of outline.sheets) for (let startRow = 1; startRow <= run.input.targetRows; startRow += SHEET_CHUNK_ROWS) {
-      const id = randomUUID(), endRow = Math.min(run.input.targetRows, startRow + SHEET_CHUNK_ROWS - 1);
+    for (const sheet of outline.sheets) for (let startRow = 1; startRow <= (sheet.plan?.rowCount || run.input.targetRows); startRow += SHEET_CHUNK_ROWS) {
+      const id = randomUUID(), endRow = Math.min(sheet.plan?.rowCount || run.input.targetRows, startRow + SHEET_CHUNK_ROWS - 1);
       chunks.push({ id, runId: run.id, position: chunks.length + 1, tool: "sheet.chunk", dependsOn: [chunks.at(-1)?.id || step.id], status: chunks.length ? "blocked" : "ready", expectedCost: run.input.languageUnitCost,
         explanation: `${sheet.name} · ${startRow}–${endRow}`, params: languageInputSchema.parse({ purpose: "sheet.chunk", prompt: source.prompt, locale: source.locale, assetIds: source.assetIds, referenceIds: source.referenceIds,
-          ...(source.dependencyRefs ? { dependencyRefs: source.dependencyRefs } : {}), sheetId: sheet.id, sheetName: sheet.name, columns: sheet.columns, brief: sheet.brief, startRow, endRow }) });
+          ...(source.dependencyRefs ? { dependencyRefs: source.dependencyRefs } : {}), sheetId: sheet.id, sheetName: sheet.name, columns: sheet.columns, brief: sheet.brief, ...(sheet.plan ? { plan: sheet.plan } : {}), startRow, endRow }) });
     }
     if (chunks.length > 100 || run.committedCredits + chunks.length * run.input.languageUnitCost > run.maxCredits) throw new AppError("CREATION_BUDGET_EXCEEDED", 409);
     await tx.creationStep.createMany({ data: [...chunks, { runId: run.id, id: randomUUID(), position: chunks.length + 1, tool: "sheet.assemble", params: {}, dependsOn: [chunks.at(-1).id], status: "blocked", expectedCost: 0, explanation: source.locale === "zh" ? "合并已完成的数据区域" : "Assemble completed ranges" }] });
@@ -236,9 +245,20 @@ export async function assembleCreationSheet(initial, step, { db = prisma, store 
     const input = languageInputSchema.parse(part.params), result = validateLanguageResult(input, await readCreationLanguageResult(initial.userId, part.jobId, { db, store }));
     const sheet = sheets.find(item => item.id === result.sheetId);
     if (!sheet) throw new AppError("CREATION_OUTLINE_CHANGED", 409);
+    const approved = outline.sheets.find(item => item.id === input.sheetId);
+    if (approved?.plan && (input.sheetName !== approved.name || input.brief !== approved.brief || JSON.stringify(input.columns) !== JSON.stringify(approved.columns) || JSON.stringify(input.plan) !== JSON.stringify(approved.plan))) throw new AppError("CREATION_OUTLINE_CHANGED", 409);
     bytes += Buffer.byteLength(JSON.stringify(result.cells));
     if (bytes > 2 * 1024 * 1024 - 16384) throw new AppError("ARTIFACT_TOO_LARGE", 413);
     sheet.cells.push(...result.cells);
+  }
+  for (const sheet of outline.sheets.filter(item => item.plan)) {
+    const ranges = parts.filter(part => part.params.sheetId === sheet.id).map(part => part.params).sort((a, b) => a.startRow - b.startRow);
+    let next = 1;
+    for (const range of ranges) {
+      if (range.startRow !== next) throw new AppError("CREATION_OUTLINE_CHANGED", 409);
+      next = range.endRow + 1;
+    }
+    if (next !== sheet.plan.rowCount + 1) throw new AppError("CREATION_OUTLINE_CHANGED", 409);
   }
   const content = workbookSchema.parse({ schemaVersion: 1, kind: "sheet", title: outline.title, locale: initial.input.locale, sheets });
   const { createSheetArtifact } = await import("./sheet-artifacts.js");

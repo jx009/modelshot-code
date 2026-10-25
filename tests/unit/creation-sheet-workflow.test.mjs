@@ -101,3 +101,27 @@ it("rejects chunks that write outside their row range or change columns", () => 
   const input = { purpose: "sheet.chunk", sheetId: "s", columns: ["A"], startRow: 26, endRow: 50 };
   for (const address of ["A25", "A51", "B26"]) expect(() => validateLanguageResult(input, { sheetId: "s", cells: [{ id: "cell", address, value: 1 }] })).toThrow("LANGUAGE_SHEET_CHUNK_MISMATCH");
 });
+
+it("limits chunk work to the planned useful rows and persists one shared structure", async () => {
+  const value = fixture(), { run, db } = value;
+  Object.assign(run, { committedCredits: 1, maxCredits: 5, input: { locale: "en", sheetCount: 1, targetRows: 60, languageUnitCost: 1 } });
+  run.steps = [{ id: "step", position: 0, tool: "sheet.outline", params: { purpose: "sheet.outline", prompt: "Budget", sheetCount: 1, targetRows: 60 }, status: "running", jobId: "outline", attempt: 0, dependsOn: [] }];
+  db.creationStep.createMany = vi.fn(async ({ data }) => { run.steps.push(...data); });
+  db.creationStep.update.mockImplementation(async ({ where, data }) => Object.assign(run.steps.find(step => step.id === where.id), data));
+  const plan = { rowCount: 28, columnFormats: ["general", "currency"], rows: [{ startRow: 2, endRow: 27, brief: "26 actual source records in source order" }], totals: [{ column: 2, operation: "SUM" }] };
+  const outline = { title: "Budget", sheets: [{ id: "s", name: "Costs", columns: ["Code", "Amount"], brief: "Source costs", plan }] };
+  mocks.result.mockResolvedValue(outline);
+  await publishCreationLanguage(run, run.steps[0], value);
+  const chunks = run.steps.filter(step => step.tool === "sheet.chunk");
+  expect(chunks.map(step => [step.params.startRow, step.params.endRow])).toEqual([[1, 25], [26, 28]]);
+  expect(chunks.every(step => JSON.stringify(step.params.plan) === JSON.stringify(plan))).toBe(true);
+  for (const [index, step] of chunks.entries()) { step.status = "succeeded"; step.jobId = `chunk${index}`; }
+  run.steps.at(-1).status = "ready";
+  mocks.result.mockImplementation(async (_user, id) => id === "outline" ? outline : { sheetId: "s", cells: [{ id: "cell", address: id === "chunk0" ? "B2" : "B26", value: 20 }] });
+  mocks.create.mockImplementation(async (_user, _project, content) => content);
+  const content = await assembleCreationSheet(run, run.steps.at(-1), value);
+  expect(content.sheets[0].cells.find(cell => cell.address === "B28").formula).toBe('=IF(COUNT(B2:B27)=0,"",SUM(B2:B27))');
+  chunks[1].params.startRow = 27;
+  mocks.result.mockImplementation(async (_user, id) => id === "outline" ? outline : { sheetId: "s", cells: [{ id: "cell", address: id === "chunk0" ? "B2" : "B27", value: 20 }] });
+  await expect(assembleCreationSheet(run, run.steps.at(-1), value)).rejects.toThrow("CREATION_OUTLINE_CHANGED");
+});

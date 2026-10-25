@@ -118,3 +118,18 @@ it("recovers the exact pending document confirmation after the server has alread
   await waitFor(() => expect(confirmed).toHaveBeenCalledOnce());
   expect(mocks.api.mock.calls[1][1].body).toEqual(body);
 });
+
+it("reviews and persists document-wide writing direction without changing its page settings", async () => {
+  const design = { purpose: "Decision", tone: "Concise", narrative: "Evidence first", terminology: "USD", page: { size: "A4", orientation: "portrait", marginLeft: 54 }, theme: { fontSize: 11 } };
+  const value = { title: "Report", design, sections: [{ id: "a", title: "Summary", brief: "Facts" }] };
+  mocks.api.mockResolvedValueOnce({ ...review(), kind: "document", outline: value }).mockResolvedValueOnce({ id: "run" });
+  const confirmed = vi.fn();
+  render(<OutlineReview userId="owner" runId="run" zh={false} onClose={() => {}} onConfirmed={confirmed} />);
+  fireEvent.click(await screen.findByText("Document writing and layout plan"));
+  fireEvent.change(screen.getByLabelText("Tone"), { target: { value: "Clear and direct" } });
+  fireEvent.click(screen.getByText("Confirm and generate document"));
+  await waitFor(() => expect(confirmed).toHaveBeenCalledOnce());
+  const body = mocks.api.mock.calls.find(([, options]) => options?.method === "POST")[1].body;
+  expect(body.outline.design).toEqual({ ...design, tone: "Clear and direct" });
+  expect(body.image).toBeUndefined();
+});

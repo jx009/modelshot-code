@@ -2,9 +2,10 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { createContentRun, ensureContentWorkers, requireContentCreation } from "../../src/lib/domain/creation/content-runs.js";
 import { advanceRun } from "../../src/lib/domain/creation/scheduler.js";
 import { publishCreationLanguage } from "../../src/lib/domain/creation/publication.js";
+import { submitCreationLanguageStep } from "../../src/lib/domain/creation/language-jobs.js";
 import { validateLanguageResult } from "../../src/lib/creation/contracts/language.js";
 import { webSchema } from "../../src/lib/creation/contracts/web.js";
-import { WEB_LANGUAGE_HEARTBEAT, WEB_SCHEDULER_HEARTBEAT } from "../../src/lib/creation/contracts/web-runtime.js";
+import { WEB_PIPELINE_VERSION, WEB_LANGUAGE_HEARTBEAT, WEB_SCHEDULER_HEARTBEAT } from "../../src/lib/creation/contracts/web-runtime.js";
 
 const mocks = vi.hoisted(() => ({ result: vi.fn(), read: vi.fn(), modify: vi.fn(), create: vi.fn(), event: vi.fn(), message: vi.fn() }));
 vi.mock("../../src/lib/prisma.js", () => ({ prisma: {} }));
@@ -36,11 +37,23 @@ beforeEach(() => {
 it("requires web-specific worker version heartbeats rather than accepting older generic workers", async () => {
   const db = { serviceHeartbeat: { findMany: vi.fn(async () => [{ id: "worker" }, { id: "creation-worker" }, { id: "creation-language-worker" }]) } };
   await expect(ensureContentWorkers(db, { kind: "web" })).rejects.toThrow("CREATION_WORKER_UNAVAILABLE");
-  const rows = [{ id: "worker" }, { id: WEB_SCHEDULER_HEARTBEAT, details: { version: 1 } }, { id: WEB_LANGUAGE_HEARTBEAT, details: { version: 1 } }];
+  const rows = [{ id: "worker" }, { id: WEB_SCHEDULER_HEARTBEAT, details: { version: WEB_PIPELINE_VERSION } }, { id: WEB_LANGUAGE_HEARTBEAT, details: { version: WEB_PIPELINE_VERSION } }];
   db.serviceHeartbeat.findMany.mockResolvedValue(rows);
   await expect(ensureContentWorkers(db, { kind: "web" })).resolves.toBeUndefined();
   rows[2].details.version = 0;
   await expect(ensureContentWorkers(db, { kind: "web" })).rejects.toThrow("CREATION_WORKER_UNAVAILABLE");
+});
+
+it("rechecks the web protocol before submitting another paid language step", async () => {
+  const { run, db } = fixture();
+  Object.assign(run, { committedCredits: 0, maxCredits: 2 });
+  Object.assign(run.steps[0], { status: "ready", jobId: null, expectedCost: 1 });
+  db.creationProject = { findFirst: vi.fn(async () => ({ id: "project" })) };
+  db.tryOn.findUnique = vi.fn(async () => null); db.tryOn.create = vi.fn();
+  db.serviceHeartbeat = { findUnique: vi.fn(async () => ({ updatedAt: new Date(), details: { version: WEB_PIPELINE_VERSION - 1 } })) };
+  await expect(submitCreationLanguageStep("u", run.id, "step", run.eventSequence, { db, config: { visionApiKey: "fake", chatModel: "fake", plannerCreditCost: 1 } })).rejects.toThrow("CREATION_LANGUAGE_WORKER_UNAVAILABLE");
+  expect(db.serviceHeartbeat.findUnique).toHaveBeenCalledWith({ where: { id: WEB_LANGUAGE_HEARTBEAT } });
+  expect(db.tryOn.create).not.toHaveBeenCalled();
 });
 it("validates web selections before creating paid work and never tries to read layout pages", async () => {
   const value = fixture(), { purpose: _purpose, prompt, locale, assetIds, ...target } = params;

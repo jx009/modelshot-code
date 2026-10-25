@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { slideDesignSchema, slideComposition, slideDeckContextSchema } from "./slide-design.js";
-import { sheetOutlineSchema, validateSheetChunk } from "./sheet-batch.js";
+import { sheetOutlineSchema, sheetPlanSchema, validateSheetChunk } from "./sheet-batch.js";
 import { agentLanguageInputSchema, agentPlanSchema, agentReadResultSchema } from "./agent.js";
 import { dependencyReferencesSchema } from "./dependency-references.js";
 import { validateHtmlLanguageResult } from "../html/language.js";
@@ -16,6 +16,7 @@ import { cellPosition } from "../sheet-formula.js";
 import { webId, webSchema, webOperationsSchema } from "./web.js";
 import { applyWebOperations } from "../web-operations.js";
 import { validateWebSelection } from "../web-selection.js";
+import { validateGeneratedWebReferences } from "../web-generation.js";
 import { nativeSheetTargetSchema, nativeSheetOperationsSchema } from "./native-sheet-edit.js";
 import { applyNativeSheetOperations } from "../native-sheet-edit.js";
 import { nativeDocumentTargetSchema, nativeDocumentOperationsSchema } from "./native-document-edit.js";
@@ -40,7 +41,7 @@ const layoutLanguageInputSchema = z.discriminatedUnion("purpose", [
 });
 const sheetLanguageInputSchema = z.discriminatedUnion("purpose", [
   z.object({ ...common, purpose: z.literal("sheet.outline"), sheetCount: z.number().int().min(1).max(5), targetRows: z.number().int().min(1).max(500) }).strict(),
-  z.object({ ...common, purpose: z.literal("sheet.chunk"), sheetId, sheetName: z.string().min(1).max(31), columns: z.array(z.string().min(1).max(120)).min(1).max(20), brief: z.string().max(2000), startRow: z.number().int().min(1).max(500), endRow: z.number().int().min(1).max(500) }).strict().refine(value => value.endRow >= value.startRow && value.endRow - value.startRow < 25, "SHEET_CHUNK_SIZE_INVALID"),
+  z.object({ ...common, purpose: z.literal("sheet.chunk"), sheetId, sheetName: z.string().min(1).max(31), columns: z.array(z.string().min(1).max(120)).min(1).max(20), brief: z.string().max(2000), plan: sheetPlanSchema.optional(), startRow: z.number().int().min(1).max(500), endRow: z.number().int().min(1).max(500) }).strict().refine(value => value.endRow >= value.startRow && value.endRow - value.startRow < 25 && (!value.plan || value.endRow <= value.plan.rowCount && value.plan.columnFormats.length === value.columns.length), "SHEET_CHUNK_SIZE_INVALID"),
   z.object({ ...common, purpose: z.literal("sheet.generate"), sheetCount: z.number().int().min(1).max(5).default(1), targetRows: z.number().int().min(1).max(100).default(20) }).strict(),
   z.object({ ...common, purpose: z.literal("sheet.edit"), artifactId: sheetId, baseRevision: z.number().int().positive(), sheetId, addresses: sheetAddressesSchema }).strict(),
   nativeSheetTargetSchema.extend({ ...common, purpose: z.literal("sheet.native.edit") }),
@@ -85,7 +86,7 @@ export function validateLanguageResult(input, raw, source) {
   if (input.purpose.startsWith("document.")) return validateDocumentLanguageResult(input, raw, source);
   if (input.purpose === "sheet.outline") {
     const outline = sheetOutlineSchema.parse(raw);
-    if (outline.sheets.length !== input.sheetCount) fail("LANGUAGE_SHEET_MISMATCH");
+    if (outline.sheets.length !== input.sheetCount || outline.sheets.some(sheet => sheet.plan && sheet.plan.rowCount > input.targetRows)) fail("LANGUAGE_SHEET_MISMATCH");
     return outline;
   }
   if (input.purpose === "sheet.chunk") {
@@ -107,7 +108,9 @@ export function validateLanguageResult(input, raw, source) {
     const result = webSchema.parse(raw);
     if (result.files.filter(file => file.kind === "html").length !== input.pageCount) fail("LANGUAGE_WEB_MISMATCH");
     if (result.assetIds.some(id => !input.assetIds.includes(id))) fail("LANGUAGE_UNKNOWN_ASSET");
-    return result;
+    // Previously persisted results did not have a design contract. Preserve
+    // replay of those checkpoints; new designed sites get the reference audit.
+    try { return result.design ? validateGeneratedWebReferences(result) : result; } catch { fail("LANGUAGE_WEB_MISMATCH"); }
   }
   if (input.purpose === "web.edit") {
     const { byId } = validateWebSelection(input, source);

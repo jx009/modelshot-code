@@ -15,7 +15,7 @@ import { GUIDED_EDIT_TOOLS, editOutputSize, editTargetSize } from "../../studio/
 import { nextImageSource } from "../../creation/contracts/runs.js";
 import { POSTER_IMAGE_TOOL, posterImageStepSchema } from "../../creation/contracts/poster-image.js";
 import { lockRun } from "../creation/runs.js";
-import { appendRunEvent } from "../creation/events.js";
+import { appendRunEvent, enqueueRun } from "../creation/events.js";
 
 export async function submitStudioJob(userId, input, key, db = prisma, deps = {}) {
   const data = jobSchema.parse(input);
@@ -47,9 +47,10 @@ export async function submitCreationPosterImageStep(userId, runId, stepId, seque
     { config: selected, capabilities: caps, transaction: tx }, { run, step });
     await tx.creationStepAttempt.create({ data: { stepId: step.id, number: step.attempt, jobId: output.id, cost: output.cost } });
     await tx.creationStep.update({ where: { id: step.id }, data: { jobId: output.id, status: "queued", errorCode: null } });
-    await appendRunEvent(tx, run.id, "step.queued", { stepId: step.id, jobId: output.id, cost: output.cost }, {
+    const updated = await appendRunEvent(tx, run.id, "step.queued", { stepId: step.id, jobId: output.id, cost: output.cost }, {
       status: "running", errorCode: null, committedCredits: { increment: output.cost }, nextCheckAt: new Date(+now + 30000),
     });
+    if (run.kind === "slides") await enqueueRun(tx, run.id, `dispatch:${updated.eventSequence}`);
     return output;
   }, { timeout: 15000 });
 }

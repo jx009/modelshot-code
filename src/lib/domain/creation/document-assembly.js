@@ -17,7 +17,9 @@ export function assembleDocumentContent(input, sections, locale = "zh") {
       ...(block.type === "table" ? { rows: block.rows.map(row => ({ ...row, id: idFor(row.id), cells: row.cells.map(cell => ({ ...cell, id: idFor(cell.id) })) })) } : {}),
     })) };
   });
-  const parsed = textDocumentSchema.safeParse({ schemaVersion: 1, kind: "document", title: outline.title, locale, sections: content });
+  const parsed = textDocumentSchema.safeParse({ schemaVersion: 1, kind: "document", title: outline.title, locale, sections: content,
+    ...(outline.design ? { page: outline.design.page, theme: outline.design.theme } : {}),
+  });
   if (!parsed.success) throw new AppError(parsed.error.issues.some(issue => issue.message === "DOCUMENT_CONTENT_LIMIT") ? "DOCUMENT_CONTENT_LIMIT" : "INVALID_DOCUMENT_RESULT", 422);
   return parsed.data;
 }

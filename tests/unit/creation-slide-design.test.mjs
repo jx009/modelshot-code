@@ -21,7 +21,7 @@ it("reads old outlines while rejecting dangling visual references and duplicate 
 it("preserves design and notes without scheduling paid images unless the user includes an image quote", () => {
   const plan = outlineChildren(run(3), outline(), 2);
   expect(plan.map(step => step.tool)).toEqual(["slides.page", "slides.page", "slides.page"]);
-  expect(plan[0].status).toBe("ready");
+  expect(plan.every(step => step.status === "ready" && step.dependsOn[0] === "outline")).toBe(true);
   expect(plan[0].params.visualId).toBeUndefined();
   expect(plan[1].params.deck).toMatchObject({ pageNumber: 2, pageCount: 3, design: { artDirection: design.artDirection }, previousLayout: "Large hero", nextLayout: "Large hero" });
   expect(slideDesignMarkdown(outline())).toContain("## Typography");
@@ -33,13 +33,14 @@ it("builds a bounded 100-page graph with two shared images, keeping only the loc
   const assembly = { id: "assembly", position: plan.length + 1, dependsOn: plan.map(step => step.id), status: "blocked" };
   expect(validateRunDependencyGraph([...initial.steps, ...plan, assembly])).toBe(true);
   expect(plan).toHaveLength(102);
-  expect(plan.filter(step => step.status === "ready")).toHaveLength(1);
-  expect(plan[1].dependsOn).toEqual([plan[0].id]);
-  expect(plan[2].dependsOn).toEqual([plan[1].id]);
+  expect(plan.filter(step => step.status === "ready")).toHaveLength(2);
+  expect(plan[1].dependsOn).toEqual(["outline"]);
+  expect(plan[2].dependsOn).toEqual(["outline", plan[0].id]);
+  expect(plan[3].dependsOn).toEqual(["outline", plan[1].id]);
   expect(plan[2].params.visualId).toBe("hero");
   expect(plan[52].params.deck.headings.length).toBeLessThanOrEqual(7);
   expect(plan.reduce((sum, step) => sum + step.expectedCost, 0)).toBe(208);
-  expect(newlyUnblockedSteps([...initial.steps, ...plan], new Set([plan[0].id])).map(step => step.id)).toEqual([plan[1].id]);
+  expect(newlyUnblockedSteps([...initial.steps, ...plan], new Set([plan[0].id])).map(step => step.id)).toEqual(plan.filter(step => step.params.visualId === "hero" && step.tool === "slides.page").map(step => step.id));
 });
 
 it("rejects image options on document outlines and missing generated image usage", () => {

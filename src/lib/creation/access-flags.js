@@ -7,6 +7,8 @@ export const CREATION_ACCESS_FLAGS = [
   { key: "document", env: "CREATION_DOCUMENT_ENABLED", label: "文档" },
   { key: "sheet", env: "CREATION_SHEET_ENABLED", label: "表格" },
   { key: "web", env: "CREATION_WEB_ENABLED", label: "网页" },
+  { key: "video", env: "CREATION_VIDEO_ENABLED", label: "视频生成" },
+  { key: "motion", env: "CREATION_MOTION_ENABLED", label: "视频制作" },
 ];
 
 export const CREATION_CONTENT_KINDS = CREATION_ACCESS_FLAGS.slice(2).map(flag => flag.key);

@@ -27,6 +27,6 @@ export default function RecentProjects({ zh, onChoose, disabled, userId }) {
     const date = new Date(row.updatedAt), day = date.toLocaleDateString(), today = day === new Date().toLocaleDateString();
     const label = today ? zh ? "今日" : "Today" : date.toLocaleDateString(zh ? "zh-CN" : "en-US", { month: "short", day: "numeric" });
     const child = <><FolderOpen size={16} /><span>{row.name}</span><time>{date.toLocaleTimeString(zh ? "zh-CN" : "en-US", { hour: "2-digit", minute: "2-digit" })}</time></>;
-    return <div key={projectIdentity(row)}>{(!i || new Date(rows[i - 1].updatedAt).toLocaleDateString() !== day) && <h3>{label}</h3>}{onChoose && row.kind !== "commerce" ? <button onClick={() => { setOpen(false); onChoose(row.id); }}>{child}</button> : <Link href={projectHref(row)}>{child}</Link>}</div>;
+    return <div key={projectIdentity(row)}>{(!i || new Date(rows[i - 1].updatedAt).toLocaleDateString() !== day) && <h3>{label}</h3>}{onChoose && row.kind === "canvas" ? <button onClick={() => { setOpen(false); onChoose(row.id); }}>{child}</button> : <Link href={projectHref(row)}>{child}</Link>}</div>;
   })}</div>}<Link className="mr-all" href="/projects">{zh ? "查看全部项目" : "View all projects"}</Link></section>}</div>;
 }

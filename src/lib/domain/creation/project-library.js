@@ -1,7 +1,7 @@
 import { prisma } from "../../prisma.js";
 import { AppError } from "../../http.js";
 
-const kinds = ["all", "trash", "canvas", "commerce", "poster", "slides", "document", "sheet", "web"];
+const kinds = ["all", "trash", "canvas", "commerce", "video", "motion", "poster", "slides", "document", "sheet", "web"];
 const idPattern = /^[a-zA-Z0-9_-]{1,128}$/;
 function decode(raw, kind, q) {
   if (!raw) return null;
@@ -20,6 +20,7 @@ export async function listProjectLibrary(userId, { kind = "all", q = "", cursor:
   const cursor = decode(raw, kind, q), limit = 24;
   const where = source => ({ userId, deletedAt: kind === "trash" ? { not: null } : null,
     ...(source === "creation" && allowedKinds ? { AND: [{ kind: { in: allowedKinds } }] } : {}),
+    ...(source === "studio" && allowedKinds ? { AND: [{ kind: { notIn: ["video", "motion"].filter(value => !allowedKinds.includes(value)) } }] } : {}),
     ...(q ? { name: { contains: q, mode: "insensitive" } } : {}),
     ...(!["all", "trash"].includes(kind) ? { kind } : {}),
     ...(cursor ? { OR: [{ updatedAt: { lt: cursor.date } }, { updatedAt: cursor.date, id: { lt: cursor.id } },
@@ -27,9 +28,9 @@ export async function listProjectLibrary(userId, { kind = "all", q = "", cursor:
   });
   const orderBy = [{ updatedAt: "desc" }, { id: "desc" }];
   const [studio, creation] = await Promise.all([
-    ["all", "trash", "canvas", "commerce"].includes(kind) ? db.studioDocument.findMany({ where: where("studio"), orderBy, take: limit + 1,
+    ["all", "trash", "canvas", "commerce", "video", "motion"].includes(kind) ? db.studioDocument.findMany({ where: where("studio"), orderBy, take: limit + 1,
       select: { id: true, name: true, version: true, updatedAt: true, kind: true, coverAssetId: true, itemCount: true } }) : [],
-    !["canvas", "commerce"].includes(kind) ? db.creationProject.findMany({ where: where("creation"), orderBy, take: limit + 1,
+    !["canvas", "commerce", "video", "motion"].includes(kind) ? db.creationProject.findMany({ where: where("creation"), orderBy, take: limit + 1,
       select: { id: true, name: true, updatedAt: true, kind: true, coverAssetId: true } }) : [],
   ]);
   const rows = [...studio.map(({ itemCount, ...row }) => ({ ...row, source: "studio", count: itemCount })), ...creation.map(row => ({ ...row, source: "creation" }))]

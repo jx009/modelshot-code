@@ -10,7 +10,7 @@ export async function getCreationAccessConfig(db = prisma, env = process.env) {
   const raw = await getSiteConfig("creation_access", db);
   if (raw) {
     // Invalid stored configuration fails closed, rather than silently reopening a feature.
-    try { return creationAccessSchema.parse(JSON.parse(raw)); }
+    try { return creationAccessSchema.parse({ video: false, motion: false, ...JSON.parse(raw) }); }
     catch { throw new AppError("CREATION_CONFIG_INVALID", 503); }
   }
   return Object.fromEntries(CREATION_ACCESS_FLAGS.map(({ key, env: name }) => [key, env[name] === "true"]));

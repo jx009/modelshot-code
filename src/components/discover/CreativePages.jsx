@@ -27,6 +27,7 @@ const loaders = {
   "/commerce": () => import("./CommercePage"),
   "/studio-v2": () => import("@/components/studio/StudioPage"),
   "/creation": () => import("@/components/creation/CreationPage"),
+  "/video": () => import("@/components/video/VideoWorkspace"),
   "/pricing": () => import("@/components/billing/PricingPage"),
 };
 const pages = { "/": DiscoverHome, ...Object.fromEntries(Object.entries(loaders).map(([path, load]) => [path, lazy(load)])) };

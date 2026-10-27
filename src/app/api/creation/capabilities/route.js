@@ -45,7 +45,7 @@ export async function GET() {
     // hide typography-only posters or prevent existing artwork from opening.
     const posterImage = available.poster && posterImageWorkersReady(rows) ? await posterImageQuote().catch(() => null) : null;
     // No editor code, credentials or document contents are returned here.
-    return Response.json({ ...available,
+    return Response.json({ ...available, video: env.CREATION_WORKSPACE_ENABLED === "true" && env.CREATION_VIDEO_ENABLED === "true", motion: env.CREATION_WORKSPACE_ENABLED === "true" && env.CREATION_MOTION_ENABLED === "true",
       languageUnitCost: configured ? config.plannerCreditCost ?? 1 : null,
       maxPages: 100, maxReferenceAssets: 8,
       posterImage,

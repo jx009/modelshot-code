@@ -9,7 +9,7 @@ export async function POST(request) {
   try {
     const user = await requireUser();
     await rateLimit("studio-jobs", user.id, 1200, 600);
-    return Response.json(await submitStudioJob(user.id, await readJson(request, jobSchema), request.headers.get("Idempotency-Key")), { status: 202 });
+    return Response.json(await submitStudioJob(user.id, await readJson(request, jobSchema, 262144), request.headers.get("Idempotency-Key")), { status: 202 });
   } catch (error) { return errorResponse(error); }
 }
 export async function GET(request) {

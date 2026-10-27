@@ -129,7 +129,7 @@ function ProjectLibrary({ userId, status }) {
   }
   return <><section className="mp-library">
     <header className="mp-heading"><h1>{zh ? "我的项目" : "My projects"}</h1><label className="mp-search"><Search size={18} /><input type="search" aria-label={zh ? "搜索项目" : "Search projects"} placeholder={zh ? "搜索项目" : "Search projects"} value={search} onChange={event => setSearch(event.target.value)} />{search && <button aria-label={zh ? "清空搜索" : "Clear search"} onClick={() => setSearch("")}><X size={15} /></button>}</label></header>
-    <div className="mp-filters">{[["all", "全部", "All"], ["canvas", "自由画布", "Canvas"], ["commerce", "电商套图", "Commerce"], ["poster", "海报", "Posters"], ["slides", "演示文稿", "Presentations"], ["trash", "已删除", "Deleted"]].map(([id, cn, en]) => <button key={id} aria-pressed={filter === id} onClick={() => setFilter(id)}>{zh ? cn : en}</button>)}</div>
+    <div className="mp-filters">{[["all", "全部", "All"], ["canvas", "自由画布", "Canvas"], ["commerce", "电商套图", "Commerce"], ["poster", "海报", "Posters"], ["slides", "演示文稿", "Presentations"], ["motion", "视频制作", "Video production"], ["video", "视频生成", "Video generation"], ["trash", "已删除", "Deleted"]].map(([id, cn, en]) => <button key={id} aria-pressed={filter === id} onClick={() => setFilter(id)}>{zh ? cn : en}</button>)}</div>
     {error && <p role="alert" className="mp-error">{error}</p>}
     {saving && <p role="status">{zh ? "正在同步项目修改…" : "Syncing project changes…"}</p>}
     {status === "unauthenticated" ? <div className="mp-empty"><FolderOpen size={36} /><p>{zh ? "登录后查看和继续你的项目" : "Sign in to continue your projects"}</p><Link href="/login?callbackUrl=/projects">{zh ? "登录" : "Sign in"}</Link></div> : <>

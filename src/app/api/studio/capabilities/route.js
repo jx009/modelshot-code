@@ -21,7 +21,7 @@ export async function GET(request) {
       getCreationEnv(user.id),
     ]);
     const creationEnabled = env.CREATION_RUNS_ENABLED === "true" && env.CREATION_WORKSPACE_ENABLED === "true" && caps.planningAvailable;
-    return finish(Response.json({ ...caps, creationTypes: {
+    return finish(Response.json({ ...caps, tools: caps.tools.filter(tool => !tool.workspaceOnly).map(tool => tool.id === "video" && (env.CREATION_VIDEO_ENABLED !== "true" || env.CREATION_RUNS_ENABLED !== "true" || env.CREATION_WORKSPACE_ENABLED !== "true") ? { ...tool, available: false, reason: "CREATION_NOT_ENABLED" } : tool), creationTypes: {
       poster: Boolean(creationEnabled && env.CREATION_POSTER_ENABLED === "true"),
       slides: Boolean(creationEnabled && env.CREATION_SLIDES_ENABLED === "true"),
     }, ...(!imageOnly ? { creationRunsAvailable: env.CREATION_RUNS_ENABLED === "true" } : {}) }));

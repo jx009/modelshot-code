@@ -1,4 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
+import { motionAssetIds } from "../../video/schema.js";
+import { assertMotionMedia } from "./motion.js";
+import { assertCreationAccess, getCreationEnv } from "../../creation/access.js";
 import { prisma } from "../../prisma.js";
 import { AppError } from "../../http.js";
 import { ownedAsset } from "../assets/service.js";
@@ -19,6 +22,7 @@ import { appendRunEvent, enqueueRun } from "../creation/events.js";
 
 export async function submitStudioJob(userId, input, key, db = prisma, deps = {}) {
   const data = jobSchema.parse(input);
+  if (["motion-plan", "motion-render", "video"].includes(data.tool)) assertCreationAccess(await getCreationEnv(userId, { db }), { kind: data.tool === "video" ? "video" : "motion", runs: true });
   return submitAdmittedJob(userId, data, key, db, deps);
 }
 
@@ -71,6 +75,10 @@ async function submitAdmittedJob(userId, data, key, db, deps, posterContext = nu
       if (old.snapshot?.digest !== digest) throw new AppError("IDEMPOTENCY_CONFLICT", 409);
       return presentJob(old);
     }
+    if (["video", "motion-plan", "motion-render"].includes(data.tool)) {
+      const heartbeat = await tx.serviceHeartbeat.findUnique({ where: { id: "worker" }, select: { updatedAt: true } });
+      if (!heartbeat || +heartbeat.updatedAt <= Date.now() - 90000) throw new AppError("WORKER_UNAVAILABLE", 503);
+    }
     const tool = caps.tools.find(t => t.id === data.tool);
     const cost = imageCreditCost(tool, data.params.size, 0);
     // Preview availability only gates choosing an object. Once a valid owned
@@ -79,6 +87,8 @@ async function submitAdmittedJob(userId, data, key, db, deps, posterContext = nu
     if (data.expectedCost !== undefined && data.expectedCost !== cost) throw new AppError("PRICE_CHANGED", 409);
     const document = posterContext ? null : await tx.studioDocument.findFirst({ where: { id: data.documentId, userId, deletedAt: null } });
     if (!posterContext && !document) throw new AppError("DOCUMENT_NOT_FOUND", 404);
+    if (["motion", "video"].includes(document?.kind) && !["motion-plan", "motion-render", "video"].includes(data.tool)) throw new AppError("INVALID_VIDEO_TOOL", 422);
+    if (["motion-plan", "motion-render", "video"].includes(data.tool) && await tx.tryOn.count({ where: { userId, status: { in: ACTIVE }, snapshot: { path: ["documentId"], equals: data.documentId } } })) throw new AppError("DOCUMENT_BUSY", 409);
     // Only the server scheduler can supply this context. Verify it against the
     // persisted run; request JSON cannot opt out of canvas admission checks.
     let creation;
@@ -106,6 +116,18 @@ async function submitAdmittedJob(userId, data, key, db, deps, posterContext = nu
     for (const ref of data.referenceAssetIds || []) {
       const asset = await ownedAsset(userId, ref, tx);
       if (!["image/png", "image/jpeg", "image/webp"].includes(asset.contentType)) throw new AppError("INVALID_SOURCE");
+    }
+    if (getTool(data.tool).workspaceOnly) {
+      if (document?.content.video?.mode !== "motion") throw new AppError("INVALID_MOTION_DOCUMENT", 422);
+      if (data.tool === "motion-render" && !document.content.video.confirmed) throw new AppError("MOTION_CONFIRM_REQUIRED", 409);
+      const media = document.content.video.media;
+      if (digestJson(data.params.media || []) !== digestJson(media)) throw new AppError("MOTION_MEDIA_CHANGED", 409);
+      if (data.params.motion) assertMotionMedia(data.params.motion, media);
+      for (const item of media) {
+        const asset = await ownedAsset(userId, item.id, tx);
+        if (!asset.contentType.startsWith(`${item.type}/`)) throw new AppError("MOTION_MEDIA_INVALID", 422);
+      }
+      if (data.tool === "motion-render" && digestJson(data.params.motion) !== digestJson(document.content.video.composition)) throw new AppError("DOCUMENT_VERSION_CONFLICT", 409);
     }
     const target = document?.content.layers.find(l => l.id === data.targetId);
     if (!creation && getTool(data.tool).source && (!target || target.assetId !== data.assetId || target.type !== "image")) throw new AppError("TARGET_CHANGED", 409);
@@ -144,7 +166,7 @@ async function submitAdmittedJob(userId, data, key, db, deps, posterContext = nu
       const allocations = await reserveCreditLots(tx, user, cost);
       await tx.creditReservation.create({ data: { userId, tryOnId: output.id, channel: "credits", amount: cost, allocations } });
     }
-    for (const assetId of new Set([data.assetId, data.maskId, data.moveBundle?.objectAssetId, data.moveBundle?.holeAssetId, ...(data.referenceAssetIds || [])].filter(Boolean))) await tx.assetReference.create({ data: { assetId, entityId: output.id, kind: "generation_input" } });
+    for (const assetId of new Set([data.assetId, data.maskId, data.moveBundle?.objectAssetId, data.moveBundle?.holeAssetId, ...(data.referenceAssetIds || []), ...(data.params.media || []).map(item => item.id), ...motionAssetIds(data.params.motion)].filter(Boolean))) await tx.assetReference.create({ data: { assetId, entityId: output.id, kind: "generation_input" } });
     await tx.outboxEvent.create({ data: { businessKey: `generate:${output.id}:0`, kind: "generate", entityId: output.id } });
     return presentJob(output);
   };

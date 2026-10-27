@@ -9,7 +9,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     OPENBLAS_NUM_THREADS=1
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates libgomp1 \
+    && apt-get install -y --no-install-recommends ca-certificates libgomp1 ffmpeg fonts-noto-cjk \
     && rm -rf /var/lib/apt/lists/*
 
 COPY services/image-tools/requirements.txt services/image-tools/requirements-rembg.txt ./
@@ -19,7 +19,7 @@ ARG REMBG_MODEL=u2net
 RUN mkdir -p "$U2NET_HOME" \
     && REMBG_MODEL="$REMBG_MODEL" python -c "import os; from rembg import new_session; new_session(os.environ['REMBG_MODEL'])"
 
-COPY services/image-tools/app.py ./
+COPY services/image-tools/app.py services/image-tools/motion.py ./
 RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin modelshot \
     && chown -R modelshot:modelshot /app "$U2NET_HOME"
 

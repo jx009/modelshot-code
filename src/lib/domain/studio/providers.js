@@ -109,7 +109,7 @@ export async function capabilities(db = prisma, config, channelName, { imageOnly
         // Explicit configurations are also used by isolated provider diagnostics.
         if (!("requestedProvider" in c) && !setting?.routing) chosen = { ...chosen, ...c }; }
       catch (e) { error = e.code; chosen = {}; }
-      const ready = { local: true, image: Boolean(chosen.apiKey) && supportsImageTask(chosen, tool.id === "generate" ? "generate" : "edit"), vision: Boolean(chosen.visionApiKey && chosen.chatModel), video: Boolean(chosen.videoKey && chosen.videoModel), segment: segmentChannelReady(chosen.segmentChannel), split: splitChannelReady(chosen.splitChannel), "remove-bg": external.includes("remove-bg"), upscale: upscaleChannelReady(chosen.upscaleChannel), ocr: ocrChannelReady(chosen.ocrChannel) };
+      const ready = { local: true, motion: external.includes("motion-render"), image: Boolean(chosen.apiKey) && supportsImageTask(chosen, tool.id === "generate" ? "generate" : "edit"), vision: Boolean(chosen.visionApiKey && chosen.chatModel), video: Boolean(chosen.videoKey && chosen.videoModel), segment: segmentChannelReady(chosen.segmentChannel), split: splitChannelReady(chosen.splitChannel), "remove-bg": external.includes("remove-bg"), upscale: upscaleChannelReady(chosen.upscaleChannel), ocr: ocrChannelReady(chosen.ocrChannel) };
       const prices = tool.dependency === "image" ? surcharges : null;
       const cost = tool.dependency === "image" ? chosen.imageCreditCost ?? 18 : tool.dependency === "vision" ? c.plannerCreditCost : setting?.creditCost ?? tool.cost;
       const dependencyReady = !error && ready[tool.dependency], previewReady = !tool.preview || tool.previewOptional || ready[tool.preview];
@@ -171,12 +171,12 @@ export async function vision(config, { image, references = [], messages = [], in
   return text;
 }
 
-export async function videoRequest(config, { image, prompt, duration, requestId, signal }) {
+export async function videoRequest(config, { image, prompt, duration, ratio, requestId, signal }) {
   const base = config.videoURL.replace(/\/$/, "");
   const response = await fetch(`${base}/contents/generations/tasks${requestId ? `/${encodeURIComponent(requestId)}` : ""}`, {
     method: requestId ? "GET" : "POST", signal,
     headers: { Authorization: `Bearer ${config.videoKey}`, "Content-Type": "application/json" },
-    ...(requestId ? {} : { body: JSON.stringify({ model: config.videoModel, content: [{ type: "text", text: `${prompt} --duration ${duration} --watermark false` }, { type: "image_url", image_url: { url: `data:image/png;base64,${image.toString("base64")}` }, role: "first_frame" }] }) }),
+    ...(requestId ? {} : { body: JSON.stringify({ model: config.videoModel, content: [{ type: "text", text: `${prompt} --duration ${duration} --watermark false${ratio ? ` --ratio ${ratio}` : ""}` }, ...(image ? [{ type: "image_url", image_url: { url: `data:image/png;base64,${image.toString("base64")}` }, role: "first_frame" }] : [])] }) }),
   });
   if (!response.ok) throw new AppError("VIDEO_PROVIDER_REJECTED", response.status);
   const data = await response.json();

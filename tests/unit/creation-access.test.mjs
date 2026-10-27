@@ -33,7 +33,7 @@ it.each(["user", "agent", "admin"])("closed switches deny %s while open switches
   }
 });
 
-it("root bypasses all seven access switches but does not enable other infrastructure flags", () => {
+it("root bypasses module access switches but does not enable other infrastructure flags", () => {
   const resolved = effectiveCreationEnv(flags(false), { role: "root", status: "active" }, { CREATION_NATIVE_OFFICE_ENABLED: "false", CREATION_AGENT_ENABLED: "false" });
   for (const { env: name } of CREATION_ACCESS_FLAGS) expect(resolved[name]).toBe("true");
   expect(resolved.CREATION_NATIVE_OFFICE_ENABLED).toBe("false");
@@ -53,12 +53,18 @@ it("uses environment defaults until saved, then applies live DB settings over th
   await expect(getCreationAccessConfig()).rejects.toThrow("CREATION_CONFIG_INVALID");
 });
 
+it("loads older seven-switch configurations with video modules closed", async () => {
+  const old = flags(true); delete old.video; delete old.motion;
+  ports.config.mockResolvedValue({ value: JSON.stringify(old) });
+  expect(await getCreationAccessConfig()).toEqual({ ...old, video: false, motion: false });
+});
+
 it("keeps workspace, individual modules and task admission independent", () => {
   const user = { role: "user", status: "active" };
   let resolved = effectiveCreationEnv({ ...flags(true), runs: false, web: false }, user, {});
   expect(() => assertCreationAccess(resolved, { kind: "poster" })).not.toThrow();
   expect(() => assertCreationAccess(resolved, { kind: "poster", runs: true })).toThrow();
-  expect(allowedCreationKinds(resolved)).toEqual(["poster", "slides", "document", "sheet"]);
+  expect(allowedCreationKinds(resolved)).toEqual(["poster", "slides", "document", "sheet", "video", "motion"]);
   resolved = effectiveCreationEnv({ ...flags(true), workspace: false }, user, {});
   expect(allowedCreationKinds(resolved)).toEqual([]);
   expect(() => assertCreationAccess(resolved, { kind: "image", runs: true })).not.toThrow();

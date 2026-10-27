@@ -166,4 +166,9 @@ describe("studio real HTTP protocol against isolated fixture", () => {
     expect(await videoRequest(config, { requestId: "remote-id" })).toEqual({ state: "succeeded", url: "https://example.com/result.mp4" });
     expect(calls.at(-1).method).toBe("GET");
   });
+  it("creates a text-only Ark task with the requested aspect ratio", async () => {
+    await videoRequest({ videoURL: base, videoKey: "fixture", videoModel: "endpoint-123" }, { prompt: "Orbit", duration: 10, ratio: "9:16" });
+    const body = JSON.parse(calls.at(-1).body);
+    expect(body.content).toEqual([{ type: "text", text: "Orbit --duration 10 --watermark false --ratio 9:16" }]);
+  });
 });

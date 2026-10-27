@@ -4,6 +4,7 @@ import { imageCreditCost } from "./image-pricing.js";
 import { commerceSchema } from "../commerce/schema.js";
 import { TOOLS, getTool } from "./tool-catalog.js";
 import { ADJUSTMENT_KEYS } from "./adjustments.js";
+import { motionSchema, videoDocumentSchema, videoMediaSchema, videoRatios } from "../video/schema.js";
 
 export { TOOLS, getTool } from "./tool-catalog.js";
 const id = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
@@ -30,6 +31,9 @@ export const paramsSchema = z.object({
   selectionMode: z.enum(["mask", "object", "region"]).default("mask"),
   editPadding: z.number().min(0.05).max(0.5).default(0.25),
   duration: z.union([z.literal(5), z.literal(10)]).default(5),
+  ratio: z.enum(videoRatios).optional(),
+  motion: motionSchema.optional(),
+  media: z.array(videoMediaSchema).max(40).optional(),
   numLayers: z.number().int().min(2).max(8).default(4),
   newText: z.string().trim().max(1000).optional(),
   language: z.enum(["zh", "en", "ja", "ko", "fr", "de", "es", "pt", "ru", "th"]).optional(),
@@ -49,7 +53,9 @@ export const jobSchema = z.object({ origin: z.enum(["chat", "canvas"]).optional(
   if (data.params.selectionMode === "region" && data.params.moveSource && data.params.moveTarget && JSON.stringify(data.params.moveSource) === JSON.stringify(data.params.moveTarget)) ctx.addIssue({ code: "custom", message: "MOVE_DESTINATION_REQUIRED" });
   if (tool.mask && !data.maskId && !(data.tool === "move" && data.params.selectionMode === "region")) ctx.addIssue({ code: "custom", message: "MASK_REQUIRED", path: ["maskId"] });
   if (data.tool === "crop" && !data.params.rect) ctx.addIssue({ code: "custom", message: "CROP_REQUIRED", path: ["params"] });
-  if (["generate", "edit", "inpaint", "video", "focus", "merge"].includes(data.tool) && !data.params.prompt) ctx.addIssue({ code: "custom", message: "PROMPT_REQUIRED", path: ["params", "prompt"] });
+  if (["generate", "edit", "inpaint", "video", "motion-plan", "focus", "merge"].includes(data.tool) && !data.params.prompt) ctx.addIssue({ code: "custom", message: "PROMPT_REQUIRED", path: ["params", "prompt"] });
+  if (data.tool === "motion-render" && !data.params.motion) ctx.addIssue({ code: "custom", message: "MOTION_REQUIRED" });
+  if (!["motion-plan", "motion-render"].includes(data.tool) && (data.params.motion || data.params.media)) ctx.addIssue({ code: "custom", message: "INVALID_MOTION_TOOL" });
 });
 
 const layer = z.object({
@@ -64,12 +70,14 @@ const layer = z.object({
 export const contentSchema = z.object({
   schemaVersion: z.literal(1), layers: z.array(layer).max(1000),
   commerce: commerceSchema.optional(),
+  video: videoDocumentSchema.optional(),
   composer: z.object({ size: z.enum(IMAGE_SIZES).optional(), text: z.string().max(4000).default(""), fixedPrompt: z.string().max(2000).default(""), referenceIds: z.array(id).max(3).default([]), outputCount: z.number().int().min(1).max(4).default(1) }).strict().optional(),
   messages: z.array(z.object({ id, role: z.enum(["user", "assistant"]), text: z.string().max(8000), assetId: id.optional() }).strict()).max(20000),
   jobs: z.array(id).max(100),
   appliedJobs: z.array(id).max(20000).default([]),
   plan: z.object({ id, serverRunId: id.optional(), summary: z.string().max(1000), steps: z.array(z.object({ tool: z.enum(TOOLS.map(t => t.id)), params: paramsSchema, explanation: z.string().max(500) }).strict()).min(1).max(4), credits: z.number().int().nonnegative(), attempt: z.number().int().min(0).max(100).default(0), index: z.number().int().min(0).max(4), targetId: id.nullable(), activeJob: id.nullable(), status: z.enum(["ready", "running", "paused", "complete"]) }).strict().nullable().optional(),
 }).strict().superRefine((content, ctx) => {
+  if (content.video && content.commerce) ctx.addIssue({ code: "custom", message: "DOCUMENT_KIND_CONFLICT" });
   if (new Set(content.layers.map(l => l.id)).size !== content.layers.length) ctx.addIssue({ code: "custom", message: "DUPLICATE_LAYER" });
   for (const l of content.layers) if (l.type !== "text" && !l.assetId) ctx.addIssue({ code: "custom", message: "ASSET_REQUIRED" });
 });

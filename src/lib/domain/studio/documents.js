@@ -4,14 +4,20 @@ import { lockUser } from "../billing/ledger.js";
 import { documentSchema } from "../../studio/tools.js";
 import { projectTitle } from "../../studio/project-title.js";
 import { createHash } from "node:crypto";
+import { videoAssetIds } from "../../video/schema.js";
+import { assertCreationAccess, getCreationEnv } from "../../creation/access.js";
+import { assertMotionMedia } from "./motion.js";
 
 export async function saveDocument(userId, input, db = prisma) {
   const data = documentSchema.parse(input);
+  if (data.content.video) assertCreationAccess(await getCreationEnv(userId, { db }), { kind: data.content.video.mode });
+  if (data.content.video?.composition) assertMotionMedia(data.content.video.composition, data.content.video.media);
   const saveHash = data.saveKey ? createHash("sha256").update(JSON.stringify(data)).digest("hex") : null;
   return db.$transaction(async tx => {
     await lockUser(tx, userId);
     if (data.id && data.saveKey) {
       const previous = await tx.studioDocument.findFirst({ where: { id: data.id, userId, deletedAt: null } });
+      if (["video", "motion"].includes(previous?.kind) && previous.kind !== data.content.video?.mode) throw new AppError("DOCUMENT_KIND_CHANGED", 409);
       if (previous?.lastSaveKey === data.saveKey) {
         if (previous.lastSaveHash !== saveHash) throw new AppError("SAVE_KEY_REUSED", 409);
         if (previous.version !== data.version + 1) throw new AppError("DOCUMENT_VERSION_CONFLICT", 409);
@@ -26,7 +32,11 @@ export async function saveDocument(userId, input, db = prisma) {
         return { ...existing, replayed: true, acknowledged: Boolean(data.saveKey && existing.lastSaveKey === data.saveKey && existing.version === 1) };
       }
     }
-    const refs = new Set([...data.content.layers.map(l => l.assetId), ...data.content.messages.map(m => m.assetId), ...(data.content.commerce?.sections || []).map(s => s.revisionAssetId), data.content.commerce?.productAssetId, data.content.commerce?.referenceAssetId].filter(Boolean));
+    if (data.id && !data.saveKey) {
+      const original = await tx.studioDocument.findFirst({ where: { id: data.id, userId, deletedAt: null }, select: { kind: true } });
+      if (["video", "motion"].includes(original?.kind) && original.kind !== data.content.video?.mode) throw new AppError("DOCUMENT_KIND_CHANGED", 409);
+    }
+    const refs = new Set([...data.content.layers.map(l => l.assetId), ...data.content.messages.map(m => m.assetId), ...(data.content.commerce?.sections || []).map(s => s.revisionAssetId), data.content.commerce?.productAssetId, data.content.commerce?.referenceAssetId, ...videoAssetIds(data.content.video)].filter(Boolean));
     if (refs.size && await tx.asset.count({ where: { id: { in: [...refs] }, userId, status: "active" } }) !== refs.size) throw new AppError("ASSET_NOT_FOUND", 404);
     const jobIds = [...new Set(data.content.jobs)];
     if (jobIds.length && await tx.tryOn.count({ where: { id: { in: jobIds }, userId } }) !== jobIds.length) throw new AppError("JOB_NOT_FOUND", 404);
@@ -36,9 +46,9 @@ export async function saveDocument(userId, input, db = prisma) {
       lastSaveKey: data.saveKey || null, lastSaveHash: saveHash,
       name: projectTitle(data.name, data.content),
       ...(data.nameSource ? { nameSource: data.nameSource } : {}),
-      kind: data.content.commerce ? "commerce" : "canvas",
+      kind: data.content.video?.mode || (data.content.commerce ? "commerce" : "canvas"),
       coverAssetId: data.content.commerce?.productAssetId || data.content.layers.find(layer => layer.type === "image")?.assetId || null,
-      itemCount: data.content.commerce?.sections.length ?? data.content.layers.length,
+      itemCount: data.content.video?.composition?.scenes.length ?? data.content.commerce?.sections.length ?? data.content.layers.length,
     };
     if (data.id) {
       const count = await tx.studioDocument.updateMany({ where: { id: data.id, userId, deletedAt: null, version: data.version || -1 }, data: { ...metadata, content: storedContent, version: { increment: 1 } } });

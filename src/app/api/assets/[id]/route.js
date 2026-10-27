@@ -14,7 +14,8 @@ export async function GET(request, context) {
     const user = await requireUser();
     const { id } = await context.params;
     const asset = await ownedAsset(user.id, id);
-    const video = asset.contentType === "video/mp4";
+    const video = /^(video|audio)\//.test(asset.contentType);
+    const extension = ({ "video/mp4": "mp4", "video/quicktime": "mov", "audio/mpeg": "mp3", "audio/wav": "wav", "audio/mp4": "m4a", "audio/aac": "aac", "audio/flac": "flac", "audio/ogg": "ogg" })[asset.contentType];
     const authorized = performance.now();
     const params = new URL(request.url).searchParams;
     const size = previewSize(params.get("preview"));
@@ -47,7 +48,7 @@ export async function GET(request, context) {
       "ETag": `"${asset.checksum}"`,
       ...(asset.createdAt ? { "Last-Modified": new Date(asset.createdAt).toUTCString() } : {}),
       "X-Content-Type-Options": "nosniff",
-      "Content-Disposition": `${download ? "attachment" : "inline"}; filename="${asset.id}.${video ? "mp4" : asset.contentType === "image/jpeg" ? "jpg" : asset.contentType === "image/webp" ? "webp" : "png"}"`,
+      "Content-Disposition": `${download ? "attachment" : "inline"}; filename="${asset.id}.${video ? extension || "bin" : asset.contentType === "image/jpeg" ? "jpg" : asset.contentType === "image/webp" ? "webp" : "png"}"`,
       ...(video ? { "Accept-Ranges": "bytes" } : {}),
     };
     if (request.headers.get("if-none-match") === headers.ETag) return new Response(null, { status: 304, headers });

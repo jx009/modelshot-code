@@ -7,6 +7,9 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
+import shutil
+import re
+from motion import inspect_media, render as render_motion
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Depends, File, Form, Header, HTTPException, UploadFile
@@ -31,6 +34,8 @@ async def lifespan(_app):
     if os.environ.get("OCR_ENABLED") == "1":
         from paddleocr import PaddleOCR
         ENGINES["ocr"] = PaddleOCR(use_angle_cls=True, lang=os.environ.get("OCR_LANGUAGE", "ch"), show_log=False)
+    if shutil.which("ffmpeg") and shutil.which("ffprobe"):
+        ENGINES["motion-render"] = True
     binary = os.environ.get("REALESRGAN_BIN")
     models = os.environ.get("REALESRGAN_MODELS")
     model_name = os.environ.get("REALESRGAN_MODEL", "realesr-animevideov3")
@@ -115,7 +120,7 @@ def process(tool, data, params):
 
 @app.post("/tools/{tool}", dependencies=[Depends(authorize)])
 async def execute(tool: str, image: UploadFile = File(...), params: str = Form("{}")):
-    if tool not in ENGINES:
+    if tool not in ENGINES or tool == "motion-render":
         raise HTTPException(503, "Tool is not configured")
     data = await image.read(MAX_BYTES + 1)
     await image.close()
@@ -136,3 +141,50 @@ async def execute(tool: str, image: UploadFile = File(...), params: str = Form("
     finally:
         LOCK.release()
     return result if isinstance(result, dict) else Response(result, media_type="image/png")
+
+
+MOTION_LOCK = asyncio.Semaphore(1)
+
+@app.post("/motion/inspect", dependencies=[Depends(authorize)])
+async def inspect_upload(file: UploadFile = File(...)):
+    if "motion-render" not in ENGINES: raise HTTPException(503, "Video tools unavailable")
+    data = await file.read(64 * 1024 * 1024 + 1); await file.close()
+    if len(data) > 64 * 1024 * 1024: raise HTTPException(413, "File too large")
+    suffix = Path(file.filename or "").suffix.lower()
+    if suffix not in {".mp4", ".mov", ".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg"}: raise HTTPException(415, "Unsupported format")
+    try: await asyncio.wait_for(MOTION_LOCK.acquire(), timeout=10)
+    except asyncio.TimeoutError as exc: raise HTTPException(429, "Video renderer busy") from exc
+    try:
+        with tempfile.TemporaryDirectory(prefix="modelshot-media-") as folder:
+            path = Path(folder) / f"input{suffix}"; path.write_bytes(data)
+            return await asyncio.to_thread(inspect_media, path)
+    finally: MOTION_LOCK.release()
+
+@app.post("/motion/render", dependencies=[Depends(authorize)])
+async def export_motion(composition: str = Form(...), files: list[UploadFile] = File(default=[])):
+    if "motion-render" not in ENGINES: raise HTTPException(503, "Video tools unavailable")
+    if len(composition) > 100000 or len(files) > 40: raise HTTPException(413, "Composition too large")
+    try:
+        value = json.loads(composition)
+        if not isinstance(value, dict): raise ValueError()
+    except (ValueError, TypeError) as exc: raise HTTPException(422, "Invalid composition") from exc
+    try: await asyncio.wait_for(MOTION_LOCK.acquire(), timeout=10)
+    except asyncio.TimeoutError as exc: raise HTTPException(429, "Video renderer busy") from exc
+    try:
+        with tempfile.TemporaryDirectory(prefix="modelshot-motion-") as folder:
+            directory = Path(folder); media = {}; total = 0
+            for index, upload in enumerate(files):
+                key = upload.filename or ""
+                if not re.fullmatch(r"[a-zA-Z0-9_-]{1,128}", key) or key in media: raise HTTPException(422, "Invalid asset")
+                data = await upload.read(64 * 1024 * 1024 + 1); await upload.close(); total += len(data)
+                if len(data) > 64 * 1024 * 1024 or total > 256 * 1024 * 1024: raise HTTPException(413, "Media too large")
+                path = directory / f"asset-{index}"; path.write_bytes(data)
+                if (upload.content_type or "").startswith("image/"):
+                    source = decode(data); source.save(path, "PNG"); info = {"type": "image"}
+                else: info = await asyncio.to_thread(inspect_media, path)
+                media[key] = (path, info)
+            result = await asyncio.to_thread(render_motion, value, media, directory)
+            return Response(result, media_type="video/mp4")
+    finally:
+        MOTION_LOCK.release()
+        for upload in files: await upload.close()

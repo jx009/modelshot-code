@@ -1,5 +1,28 @@
-import { inspectHtml } from "../html/document.js";
+import { inspectHtml, walkHtml } from "../html/document.js";
 import { serialize } from "parse5";
+import { inlineTextTags, textRootTags } from "../html/text-tags.js";
+
+function textObject(markup, id, tag) {
+  // Table cells need their parsing context or the HTML parser drops the root.
+  const wrapped = ["td", "th"].includes(tag) ? `<table><tbody><tr>${markup}</tr></tbody></table>` : tag === "caption" ? `<table>${markup}</table>` : markup;
+  const parsed = inspectHtml(wrapped, { allowEmpty: true }), root = parsed.ids.get(id);
+  if (!root || root.tagName !== tag || !textRootTags.has(tag)) throw new Error("TEXT_EDIT_TARGET_CHANGED");
+  const ancestors = new Set(); for (let parent = root.parentNode; parent; parent = parent.parentNode) ancestors.add(parent);
+  walkHtml(parsed.tree, node => {
+    if (node === root || ancestors.has(node)) return;
+    let parent = node.parentNode; while (parent && parent !== root) parent = parent.parentNode;
+    if (!parent && (node.tagName && node.tagName !== "head" || node.nodeName === "#text" && node.value.trim())
+      || parent && node.tagName && !inlineTextTags.has(node.tagName)) throw new Error("TEXT_EDIT_TARGET_CHANGED");
+  });
+  return root;
+}
+function comparableText(node, root = node) {
+  // Descendant IDs are regenerated after formatting ranges. They are identity
+  // bookkeeping, not a content conflict when replaying an already saved draft.
+  return JSON.stringify([node.nodeName, node.value ?? node.data ?? null, (node.attrs || [])
+    .filter(attribute => node === root || attribute.name !== "data-node-id")
+    .map(attribute => [attribute.name, attribute.value]).sort(), (node.childNodes || []).map(child => comparableText(child, root))]);
+}
 // Small recovery records, independent of the whole layout snapshot. No renderer
 // or schema dependency is loaded for a keystroke.
 export function pendingTextSnapshot(value) {
@@ -7,6 +30,10 @@ export function pendingTextSnapshot(value) {
   if (value.format === "html-source") {
     if (!/^[a-zA-Z0-9_-]{1,128}$/.test(value.pageId || "") || ![value.original, value.text].every(text => typeof text === "string" && new TextEncoder().encode(text).length <= 160 * 1024)) throw new Error("TEXT_DRAFT_INVALID");
     return { format: "html-source", pageId: value.pageId, nodeId: "source", original: value.original, text: value.text, composing: false };
+  }
+  if (value.format === "html-text") {
+    if (![value.pageId, value.nodeId].every(id => /^[a-zA-Z0-9_-]{1,128}$/.test(id || "")) || ![value.original, value.text].every(text => typeof text === "string" && new TextEncoder().encode(text).length <= 160 * 1024)) throw new Error("TEXT_DRAFT_INVALID");
+    return { format: "html-text", pageId: value.pageId, nodeId: value.nodeId, original: value.original, text: value.text, composing: Boolean(value.composing) };
   }
   if (![value.pageId, value.nodeId].every(id => typeof id === "string" && /^[a-zA-Z0-9_-]{1,128}$/.test(id))
     || ![value.original, value.text].every(text => typeof text === "string" && text.length <= 16000)) throw new Error("TEXT_DRAFT_INVALID");
@@ -21,7 +48,19 @@ export function pendingTextOperations(content, input) {
     if (!page) throw new Error("TEXT_EDIT_TARGET_CHANGED");
     if (draft.format === "html-source") {
       if (page.html !== draft.original && page.html !== draft.text) throw new Error("TEXT_EDIT_TARGET_CHANGED");
-      return page.html === draft.text ? [] : [{ op: "setHtmlPage", pageId: page.id, html: inspectHtml(draft.text, { assignIds: true }).html }];
+      return page.html === draft.text ? [] : [{ op: "setHtmlPage", pageId: page.id, html: inspectHtml(draft.text, { assignIds: true, allowEmpty: content.kind === "slides" }).html }];
+    }
+    if (draft.format === "html-text") {
+      const current = inspectHtml(page.html, { allowEmpty: true }), node = current.ids.get(draft.nodeId);
+      if (!node) throw new Error("TEXT_EDIT_TARGET_CHANGED");
+      const original = textObject(draft.original, draft.nodeId, node.tagName);
+      const replacement = textObject(draft.text, draft.nodeId, node.tagName);
+      const currentHtml = comparableText(node), originalHtml = comparableText(original), nextHtml = comparableText(replacement);
+      if (currentHtml !== originalHtml && currentHtml !== nextHtml) throw new Error("TEXT_EDIT_TARGET_CHANGED");
+      if (currentHtml === nextHtml) return [];
+      const parent = node.parentNode; replacement.parentNode = parent;
+      parent.childNodes[parent.childNodes.indexOf(node)] = replacement;
+      return [{ op: "setHtmlPage", pageId: page.id, html: inspectHtml(serialize(current.tree), { assignIds: true, allowEmpty: true }).html }];
     }
     const parsed = inspectHtml(page.html), node = parsed.ids.get(draft.nodeId);
     if (!node || node.childNodes.some(child => child.nodeName !== "#text")) throw new Error("TEXT_EDIT_TARGET_CHANGED");

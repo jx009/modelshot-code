@@ -5,10 +5,11 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 import { AppError } from "../../http.js";
+import { officeImportBytes, PPTX_MEDIA_COUNT, OFFICE_IMPORT_VERSION } from "../../creation/office/import-policy.js";
 
 export async function importOfficeInProcess(bytes, options, { signal = new AbortController().signal, timeoutMs = 30000 } = {}) {
   if (process.env.CREATION_EXPORT_ISOLATED !== "true") throw new AppError("OFFICE_WORKER_UNAVAILABLE", 503);
-  if (!Buffer.isBuffer(bytes) || bytes.length < 22 || bytes.length > 4 * 1024 * 1024) throw new AppError("OFFICE_SOURCE_INVALID", 422);
+  if (!Buffer.isBuffer(bytes) || bytes.length < 22 || bytes.length > officeImportBytes(options.format)) throw new AppError("OFFICE_SOURCE_INVALID", 422);
   signal.throwIfAborted();
   const root = await mkdtemp(join(tmpdir(), "modelshot-office-import-"));
   try {
@@ -40,9 +41,12 @@ export async function importOfficeInProcess(bytes, options, { signal = new Abort
     signal.throwIfAborted();
     if ((await stat(join(root, "output.json"))).size > 2 * 1024 * 1024 + 16384) throw new AppError("OFFICE_OUTPUT_LIMIT", 422);
     const output = JSON.parse(await readFile(join(root, "output.json"), "utf8"));
-    if (output.version !== "office-import-2" || !Array.isArray(output.media) || output.media.length > 16) throw new AppError("OFFICE_OUTPUT_INVALID", 422);
+    if (output.version !== OFFICE_IMPORT_VERSION || !Array.isArray(output.media) || output.media.length > (options.format === "pptx" ? PPTX_MEDIA_COUNT : 16)) throw new AppError("OFFICE_OUTPUT_INVALID", 422);
     let mediaBytes = 0;
+    const mediaIds = new Set();
     for (const [index, item] of output.media.entries()) {
+      if (!/^[a-zA-Z0-9_-]{1,128}$/.test(item.id || "") || mediaIds.has(item.id) || !["image/png", "image/jpeg"].includes(item.contentType)) throw new AppError("OFFICE_OUTPUT_INVALID", 422);
+      mediaIds.add(item.id);
       if (!Number.isInteger(item.bytes) || item.bytes < 1 || item.bytes > 32 * 1024 * 1024 || (await stat(join(root, "media-" + index))).size !== item.bytes) throw new AppError("OFFICE_OUTPUT_INVALID", 422);
       mediaBytes += item.bytes;
       if (mediaBytes > 32 * 1024 * 1024 || !Number.isSafeInteger(item.width) || !Number.isSafeInteger(item.height) || item.width < 1 || item.height < 1 || item.width * item.height > 16000000) throw new AppError("OFFICE_OUTPUT_INVALID", 422);

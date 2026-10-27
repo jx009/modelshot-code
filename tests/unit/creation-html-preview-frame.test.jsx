@@ -33,6 +33,16 @@ it("applies the newest projection if it arrives before the initial frame loads",
   expect(frameRef.current.contentDocument.body.textContent).toBe("Latest");
   expect(frameRef.current.getAttribute("srcdoc")).toBe(html("Initial"));
 });
+it("reconciles transient typing when a commit and undo return to the same source HTML", () => {
+  const frameRef = createRef(), onUpdate = vi.fn();
+  const view = render(<HtmlPreviewFrame html={html("Original")} revision={0} frameRef={frameRef} onUpdate={onUpdate} />);
+  frameRef.current.contentDocument.body.innerHTML = '<p data-node-id="title">Original</p>';
+  fireEvent.load(frameRef.current);
+  const paragraph = frameRef.current.contentDocument.querySelector("p"); paragraph.textContent = "Typed locally";
+  view.rerender(<HtmlPreviewFrame html={html("Original")} revision={1} frameRef={frameRef} onUpdate={onUpdate} />);
+  expect(frameRef.current.contentDocument.querySelector("p")).toBe(paragraph);
+  expect(paragraph.textContent).toBe("Original");
+});
 
 it("removes transient editor styles before patching and rebinds only after the new document is applied", () => {
   const frameRef = createRef(), onUpdate = vi.fn();

@@ -1,7 +1,7 @@
 "use client";
 
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useImperativeHandle, useRef, useState } from "react";
-import { GripVertical, EyeOff, Plus, PanelLeftOpen } from "lucide-react";
+import { Bot, Copy, GripVertical, EyeOff, Plus, PanelLeftOpen, Trash2 } from "lucide-react";
 import { useSlideReorder } from "../../useSlideReorder";
 import { createSlidePreviewAssets } from "@/lib/creation/client/slide-preview-assets";
 import { requestKey } from "@/lib/client-api";
@@ -89,7 +89,22 @@ export default function HtmlSlideViewer({ content, controllerRef, onOperations, 
       html: '<!DOCTYPE html><html><head><style>body{margin:0;background:var(--creation-background,#fff);color:var(--creation-primary,#222);font-family:sans-serif}h1{margin:64px;font-size:64px}</style></head><body><h1 data-node-id="title">' + (zh ? "新页面" : "New slide") + '</h1></body></html>' };
     if (apply([{ op: "insertHtmlPage", index, page }]) !== false) { scrollTarget.current = id; setSelected(id); onPage?.(id); }
   }
-  const activeId = content.pages.some(page => page.id === selected) ? selected : content.pages[0]?.id;
+  function duplicate(page) {
+    try {
+      commitPending();
+      const latest = editorProps?.getContent?.() || content, source = latest.pages.find(item => item.id === page.id);
+      if (!source) return;
+      const id = "page_" + requestKey();
+      if (apply([{ op: "insertHtmlPage", index: latest.pages.indexOf(source) + 1, page: { ...source, id, title: source.title.slice(0, 145) + (zh ? " 副本" : " copy") } }]) !== false) { scrollTarget.current = id; setSelected(id); onPage?.(id); }
+    } catch (error) { onError?.(error); }
+  }
+  function remove(page) {
+    if (content.pages.length < 2) return;
+    const next = content.pages[Math.max(0, content.pages.indexOf(page) - 1)];
+    if (apply([{ op: "removeHtmlPage", pageId: page.id }]) !== false) { const id = next.id === page.id ? content.pages[1].id : next.id; setSelected(id); onPage?.(id); }
+  }
+  const targetId = initialPageId || selected;
+  const activeId = content.pages.some(page => page.id === targetId) ? targetId : content.pages[0]?.id;
   return <div className="cw-deck-surface" data-editing={editing}>
     {thumbnails && <SlideThumbnails content={content} selectedId={editing ? activeId : initialPageId} onSelect={id => select(id, true)} onMove={move} onHidden={page => apply([{ op: "setHtmlPageMeta", pageId: page.id, changes: { hidden: !page.hidden } }])} onClose={() => onThumbnails?.(false)} readOnly={readOnly} loadAssets={assets.read} zh={zh} />}
     {editing && !thumbnails && <button className="cw-deck-open-thumbnails" aria-label={zh ? "展开缩略图" : "Show thumbnails"} onClick={() => onThumbnails?.(true)}><PanelLeftOpen size={15} /></button>}
@@ -97,8 +112,13 @@ export default function HtmlSlideViewer({ content, controllerRef, onOperations, 
     <span className="sr-only" role="status">{announcement && (zh ? "页面已移动到第 " : "Slide moved to position ") + announcement}</span>
     {content.pages.map((page, index) => <article key={page.id} {...rowProps(page.id)} draggable={false} className="cw-slide-paper" aria-label={(zh ? "第 " : "Slide ") + (index + 1)}>
       <header><button {...handleProps(page.id)} className="cw-slide-grip" aria-label={(zh ? "拖动排序第 " : "Reorder slide ") + (index + 1)} title={zh ? "拖动调整顺序；Alt + 上下方向键移动" : "Drag to reorder; Alt + Up/Down"}><GripVertical size={12} /><span>{index + 1}</span></button>{page.hidden && <EyeOff size={14} />}</header>
+      {editing && <div className="cw-slide-page-actions">
+        <button disabled={readOnly} aria-label={zh ? "AI 编辑此页" : "AI edit slide"} title={zh ? "AI 编辑此页" : "AI edit slide"} onClick={() => { try { commitPending(); editorProps?.onReference?.({ pageId: page.id, nodeIds: [], label: page.title }); } catch (error) { onError?.(error); } }}><Bot size={16} /></button>
+        <button disabled={readOnly || content.pages.length >= 100} aria-label={zh ? "复制当前页" : "Duplicate slide"} title={zh ? "复制当前页" : "Duplicate slide"} onClick={() => duplicate(page)}><Copy size={15} /></button>
+        <button disabled={readOnly || content.pages.length < 2} aria-label={zh ? "删除当前页" : "Delete slide"} title={zh ? "删除当前页" : "Delete slide"} onClick={() => remove(page)}><Trash2 size={15} /></button>
+      </div>}
       <div className="cw-slide-paper-content" style={{ aspectRatio: page.width + "/" + (page.height === "auto" ? heights[page.id] || 720 : page.height) }} onClick={() => { if (editing && activeId !== page.id) select(page.id); }} onDoubleClick={() => { if (!editing) onEdit(page.id); }}>
-        {editing && activeId === page.id ? <Suspense fallback={<div className="cw-slide-skeleton">{zh ? "正在打开编辑…" : "Opening editor…"}</div>}><InlineEditor key={page.id} {...editorProps} embedded onHeight={measured} content={content} initialPageId={page.id} onPageChange={editorPageChanged} controllerRef={activeEditor} onOperations={onOperations} onError={onError} readOnly={readOnly} zh={zh} /></Suspense>
+        {editing && activeId === page.id ? <Suspense fallback={<div className="cw-slide-skeleton">{zh ? "正在打开编辑…" : "Opening editor…"}</div>}><InlineEditor key={page.id} {...editorProps} loadAssets={assets.read} embedded onHeight={measured} content={content} initialPageId={page.id} onPageChange={editorPageChanged} controllerRef={activeEditor} onOperations={onOperations} onError={onError} readOnly={readOnly} zh={zh} /></Suspense>
           : visible.has(page.id) && width > 0 ? <Suspense fallback={<div className="cw-slide-skeleton">{page.title}</div>}><Card page={page} theme={content.theme} master={content.masters?.find(item => item.id === page.masterId)} width={width} measuredHeight={heights[page.id]} onHeight={measured} zh={zh} loadAssets={assets.read} /></Suspense> : <div className="cw-slide-skeleton">{page.title}</div>}
       </div>
       {(editing || notes) && <div className="cw-deck-notes"><span className="cw-deck-notes-handle" />{editing ? <textarea aria-label={(zh ? "第 " : "Slide ") + (index + 1) + (zh ? " 页备注" : " notes")} placeholder={zh ? "暂无备注内容，请输入" : "Add speaker notes"} value={page.notes || ""} maxLength={16000} disabled={readOnly} onChange={event => apply([{ op: "setHtmlPageMeta", pageId: page.id, changes: { notes: event.target.value } }])} /> : <p>{page.notes || (zh ? "暂无备注" : "No notes")}</p>}</div>}

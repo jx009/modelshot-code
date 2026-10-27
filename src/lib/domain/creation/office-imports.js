@@ -7,9 +7,10 @@ import { importOfficeInProcess } from "./office-process.js";
 import { createNativeOfficeArtifact } from "./native-office-artifacts.js";
 import { createLayoutArtifact } from "./artifacts.js";
 import { officeImportMetadata } from "../../creation/office/identity.js";
+import { officeImportBytes, OFFICE_IMPORT_VERSION } from "../../creation/office/import-policy.js";
+export { OFFICE_IMPORT_BYTES } from "../../creation/office/import-policy.js";
 
-export const OFFICE_IMPORT_VERSION = "office-import-2";
-export const OFFICE_IMPORT_BYTES = 4 * 1024 * 1024;
+export { OFFICE_IMPORT_VERSION };
 const active = ["queued", "running"], kinds = { docx: "document", xlsx: "sheet", pptx: "slides" };
 const hash = bytes => createHash("sha256").update(bytes).digest("hex");
 export function presentOfficeImport(row) {
@@ -39,13 +40,13 @@ export async function enqueueOfficeImport(tx, row, now = new Date()) {
 export async function listOfficeImports(userId, projectId, { db = prisma, env = process.env } = {}) {
   const owner = await project(userId, projectId, db);
   const rows = await db.creationImport.findMany({ where: { projectId, userId }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 12 });
-  return { items: rows.map(presentOfficeImport), enabled: await officeImportAvailable(db, env, new Date(), owner.kind) };
+  return { items: rows.map(presentOfficeImport), enabled: await officeImportAvailable(db, env, new Date(), owner.kind), maxBytes: officeImportBytes(owner.kind) };
 }
 export async function requestOfficeImport(userId, projectId, file, importKey, { db = prisma, store = objectStorage(), env = process.env, now = new Date() } = {}) {
   if (!/^[a-zA-Z0-9_-]{16,128}$/.test(importKey || "")) throw new AppError("SAVE_KEY_REQUIRED", 400);
   const format = file.name?.split(".").at(-1)?.toLowerCase();
   if (!kinds[format]) throw new AppError("OFFICE_FORMAT_UNSUPPORTED", 415);
-  if (!Number.isSafeInteger(file.size) || file.size < 22 || file.size > OFFICE_IMPORT_BYTES) throw new AppError("OFFICE_SOURCE_LIMIT", 413);
+  if (!Number.isSafeInteger(file.size) || file.size < 22 || file.size > officeImportBytes(format)) throw new AppError("OFFICE_SOURCE_LIMIT", 413);
   const p = await project(userId, projectId, db);
   if (p.kind !== kinds[format]) throw new AppError("ARTIFACT_KIND_MISMATCH", 422);
   const bytes = Buffer.from(await file.arrayBuffer());
@@ -113,16 +114,18 @@ export async function executeOfficeImport(id, { db = prisma, store = objectStora
   }, 3000);
   try {
     const blob = row.sourceBlob;
-    if (blob.state !== "ready" || blob.userId !== row.userId || blob.bytes > OFFICE_IMPORT_BYTES) throw new AppError("OFFICE_SOURCE_INVALID", 422);
+    if (blob.state !== "ready" || blob.userId !== row.userId || blob.bytes > officeImportBytes(row.format)) throw new AppError("OFFICE_SOURCE_INVALID", 422);
     const bytes = await store.get(blob.objectKey);
     if (bytes.length !== blob.bytes || hash(bytes) !== blob.checksum) throw new AppError("OFFICE_SOURCE_INVALID", 422);
     bounded.throwIfAborted();
     const output = await parse(bytes, { format: row.format, title: row.name.replace(/\.(docx|xlsx|pptx)$/i, "").slice(0, 160), unitId: "office-" + id, sourceId: id }, { signal: bounded });
     bounded.throwIfAborted();
     for (const item of output.media) {
-      const objectKey = row.userId + "/creation-imports/" + id + "/" + item.id + ".png";
-      await store.put(objectKey, item.data, "image/png");
-      await db.asset.upsert({ where: { id: item.id }, update: {}, create: { id: item.id, userId: row.userId, objectKey, kind: "image", status: "active", contentType: "image/png", width: item.width, height: item.height, bytes: item.bytes, checksum: item.checksum } });
+      const contentType = item.contentType;
+      if (!["image/png", "image/jpeg"].includes(contentType)) throw new AppError("OFFICE_OUTPUT_INVALID", 422);
+      const objectKey = row.userId + "/creation-imports/" + id + "/" + item.id + (contentType === "image/jpeg" ? ".jpg" : ".png");
+      await store.put(objectKey, item.data, contentType);
+      await db.asset.upsert({ where: { id: item.id }, update: {}, create: { id: item.id, userId: row.userId, objectKey, kind: "image", status: "active", contentType, width: item.width, height: item.height, bytes: item.bytes, checksum: item.checksum } });
     }
     const metadata = row.format === "pptx" ? null : officeImportMetadata(output.content), report = { metadata, unitId: output.content.snapshot?.id || null, warnings: metadata?.warnings || output.warnings || output.content.metadata?.warnings || [] };
     const live = { id, status: "running", attempt: row.attempt, leaseUntil: { gt: new Date() }, deadlineAt: { gt: new Date() } };

@@ -95,11 +95,11 @@ export const htmlDocumentSchema = z.object({
   if (encoder.encode(JSON.stringify(doc)).length > 2 * 1024 * 1024) ctx.addIssue({ code: "custom", message: "ARTIFACT_TOO_LARGE" });
 });
 export const isHtmlDocument = doc => doc?.schemaVersion === HTML_SCHEMA_VERSION && ["html-poster", "html-slides"].includes(doc.format);
-export function htmlAssetIds(doc) { return [...new Set([...doc.pages.flatMap(page => inspectHtml(page.html).assets), ...(doc.masters || []).flatMap(m => inspectHtml(`<style>${m.css}</style>${m.html}<span>master</span>`).assets)])]; }
+export function htmlAssetIds(doc) { return [...new Set([...doc.pages.flatMap(page => inspectHtml(page.html, { allowEmpty: doc.kind === "slides" }).assets), ...(doc.masters || []).flatMap(m => inspectHtml(`<style>${m.css}</style>${m.html}<span>master</span>`).assets)])]; }
 export function validateHtmlSelection(target, doc) {
   const page = doc.pages.find(item => item.id === target.pageId);
   if (!page) fail("LANGUAGE_SELECTION_CHANGED");
-  const parsed = inspectHtml(page.html);
+  const parsed = inspectHtml(page.html, { allowEmpty: doc.kind === "slides" });
   for (const id of target.nodeIds || []) if (!parsed.ids.has(id)) fail("LANGUAGE_SELECTION_CHANGED");
   return { page, ...parsed };
 }

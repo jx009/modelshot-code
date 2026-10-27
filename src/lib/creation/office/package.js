@@ -56,8 +56,8 @@ export function replaceChildren(source, node, content) {
   return { start: node.openEnd, end: node.closeStart, text: content };
 }
 
-export function officePackage(bytes) {
-  const zip = openOfficeZip(bytes), cache = new Map(), budget = { nodes: 0 };
+export function officePackage(bytes, limits) {
+  const zip = openOfficeZip(bytes, limits), cache = new Map(), budget = { nodes: 0 };
   if (zip.names.some(name => /(?:^|\/)(?:vbaProject\.bin|activeX)(?:\/|$)/i.test(name))) officeFail("OFFICE_MACROS_UNSUPPORTED");
   const xml = name => {
     if (!cache.has(name)) cache.set(name, sourceXml(zip.read(name), budget));

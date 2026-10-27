@@ -125,6 +125,41 @@ it("imports editable HTML slides while retaining notes, hidden state, image asse
   expect(paragraph.style.textAlign).toBe("center");
   expect(paragraph.querySelector("span").style.fontSize).toBe("48px");
   expect(paragraph.querySelector("span").style.fontWeight).toBe("bold");
+  expect(paragraph.dataset.nodeId).toBeTruthy();
+  expect(paragraph.querySelector("span").dataset.nodeId).toBeTruthy();
+  expect(inspectHtml(html).ids.has(paragraph.dataset.nodeId)).toBe(true);
+  expect(paragraph.querySelector("span").style.letterSpacing).toBe("2px");
+});
+
+it("retains more than sixteen distinct images while reusing repeated package assets", async () => {
+  const document = deck(), media = new Map();
+  const image = await sharp({ create: { width: 2, height: 2, channels: 4, background: "#123456" } }).png().toBuffer();
+  for (let index = 0; index < 18; index++) {
+    const assetId = `photo${index}`;
+    media.set(assetId, { bytes: image, width: 2, height: 2, format: "png" });
+    document.pages[0].nodes.push({ ...base, id: assetId, type: "image", assetId, alt: assetId, fit: "contain", rotation: 0, width: 40, height: 20 });
+  }
+  document.pages[1].nodes.push({ ...document.pages[0].nodes.at(-1), id: "repeated" });
+  const imported = importPresentationHtml(await buildLayoutPptx(document, media));
+  expect(imported.media).toHaveLength(18);
+  expect(new Set(imported.media.map(item => item.source)).size).toBe(18);
+  expect(inspectHtml(imported.content.pages[0].html).assets).toHaveLength(18);
+  expect(inspectHtml(imported.content.pages[1].html).assets[0]).toBe(inspectHtml(imported.content.pages[0].html).assets.at(-1));
+});
+
+it("preserves crop geometry and does not invent borders around no-line shapes", async () => {
+  const document = deck(), image = await sharp({ create: { width: 20, height: 10, channels: 4, background: "#123456" } }).png().toBuffer();
+  document.pages[0].nodes.push({ ...base, id: "cropped", name: "Crop", type: "image", assetId: "photo", alt: "Crop", fit: "cover", rotation: 0, width: 100, height: 100 });
+  const zip = await JSZip.loadAsync(await buildLayoutPptx(document, new Map([["photo", { bytes: image, width: 20, height: 10, format: "png" }]])));
+  const path = "ppt/slides/slide1.xml";
+  zip.file(path, (await zip.file(path).async("string")).replace("</p:spTree>", '<p:sp><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="952500" cy="952500"/></a:xfrm><a:prstGeom prst="rect"/><a:gradFill><a:gsLst><a:gs pos="0"><a:srgbClr val="112233"><a:alpha val="50000"/></a:srgbClr></a:gs><a:gs pos="100000"><a:srgbClr val="445566"/></a:gs></a:gsLst><a:lin ang="5400000"/></a:gradFill><a:ln><a:noFill/></a:ln></p:spPr></p:sp></p:spTree>'));
+  const result = importPresentationHtml(await zip.generateAsync({ type: "nodebuffer" }));
+  const dom = new DOMParser().parseFromString(result.content.pages[0].html, "text/html"), photo = dom.querySelector('img[alt="Crop"]');
+  expect(photo.style.width).toBe("200%");
+  expect(photo.style.left).toBe("-50%");
+  expect(photo.parentElement.style.overflow).toBe("hidden");
+  expect(result.content.pages[0].html).toContain("linear-gradient(180deg,#11223380 0%,#445566 100%)");
+  expect(result.content.pages[0].html).toContain("border:none");
 });
 
 it("imports cached native chart data as editable HTML charts and safely escapes table cell text", async () => {
@@ -149,4 +184,8 @@ it("imports cached native chart data as editable HTML charts and safely escapes 
   expect(html).toContain('colspan="2"');
   expect(html).not.toContain("CONTINUATION");
   expect(() => inspectHtml(html)).not.toThrow();
+  zip.file("ppt/charts/chart1.xml", chart.replace(/<c:title>[\s\S]*?<\/c:title>/, "").replace(/<c:tx><c:v>[^<]*<\/c:v><\/c:tx>/, ""));
+  const untitled = importPresentationHtml(await zip.generateAsync({ type: "nodebuffer" }));
+  const untitledDom = new DOMParser().parseFromString(untitled.content.pages[0].html, "text/html");
+  expect(JSON.parse(untitledDom.querySelector("[data-chart]").getAttribute("data-chart"))).toMatchObject({ title: "", series: [expect.objectContaining({ name: "Series" })] });
 });

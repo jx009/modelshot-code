@@ -10,6 +10,7 @@ import WorkspaceSplit from "./WorkspaceSplit";
 import ConversationViewport from "./ConversationViewport";
 import { mergeConversationWindow } from "@/lib/creation/conversation-window";
 import ProjectFiles from "./ProjectFiles";
+import OfficeImport from "./OfficeImport";
 import AutoGrowTextarea from "@/components/ui/AutoGrowTextarea";
 import { useCreationRun } from "./useCreationRun";
 import { creationError } from "./creation-errors";
@@ -64,7 +65,7 @@ export default function CreationWorkspace({ userId, projectId, initialSessionId,
   const journalKey = `creation-submit:${userId}:${projectId}:${initialSessionId || "default"}`;
   const draftKey = `creation-composer:${userId}:${projectId}:${initialSessionId || "default"}`;
   const notify = useCallback(failure => setError(failure), []);
-  const workspaceRoot = useRef(null), outlineEditor = useRef(null);
+  const workspaceRoot = useRef(null), outlineEditor = useRef(null), officeImport = useRef(null);
   const leaving = useCreationNavigationGuard({ root: workspaceRoot, gate, onError: notify, prepare: async () => {
     clearTimeout(composerTimer.current);
     const snapshot = composerDraft.current;
@@ -356,6 +357,7 @@ export default function CreationWorkspace({ userId, projectId, initialSessionId,
           <AutoGrowTextarea aria-label={text("创作需求", "Creation request")} value={prompt} maxLength={12000} disabled={busy || Boolean(pending)} onChange={event => setPrompt(event.target.value)} placeholder={text(reference ? "描述要修改的内容…" : "说出你的想法，演示文稿、分析报告、海报长图即刻生成，Enter 发送", reference ? "Describe the changes…" : "Describe what you want to create…")} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing && event.nativeEvent.keyCode !== 229) { event.preventDefault(); if (!event.repeat) event.currentTarget.form.requestSubmit(); } }} />
           <div className="cw-composer-actions">
             <button type="button" aria-label={text("添加参考文档", "Add reference documents")} title={text("添加参考文档", "Add reference documents")} aria-expanded={attachmentsOpen} onClick={() => setAttachmentsOpen(value => !value)}><Paperclip size={16} />{referenceIds.length > 0 && <small>{referenceIds.length}</small>}</button>
+            {project?.kind === "slides" && <OfficeImport key={projectId} compact controllerRef={officeImport} dropTarget={workspaceRoot} projectId={projectId} kind="slides" zh={zh} disabled={busy || Boolean(pending) || loading || Boolean(editingFile)} onSelect={selectFile} onImported={refreshContent} />}
             <ReferenceAssets value={assetIds} onChange={setAssetIds} disabled={busy || Boolean(pending) || loading} compact zh={zh} />
             {caps?.agent && <button type="button" aria-pressed={agentMode} disabled={busy || Boolean(pending) || Boolean(occupied)} onClick={() => setAgentMode(value => !value)}>{text("多步创作", "Multi-step")}</button>}
             <button type="button" className="cw-composer-disclosure" aria-label={text("创作设置", "Creation settings")} title={text("创作设置", "Creation settings")} aria-expanded={composerOptionsOpen} onClick={() => setComposerOptionsOpen(value => !value)}><SlidersHorizontal size={15} /></button>
@@ -363,6 +365,7 @@ export default function CreationWorkspace({ userId, projectId, initialSessionId,
             <button className="cw-send" aria-label={text(pending ? "恢复上次提交" : "开始创作", pending ? "Recover submission" : "Start creation")} disabled={Boolean(editingFile && editingFile === fileId) || busy || loading || !pending && (!enabled || !prompt.trim() || Boolean(occupied))}>{busy ? <LoaderCircle size={18} className="animate-spin" /> : pending ? <RefreshCw size={18} /> : <ArrowUp size={18} />}</button>
           </div>
           {attachmentsOpen && <div className="cw-composer-advanced">
+            {project?.kind === "slides" && <button type="button" disabled={busy || Boolean(pending) || loading} onClick={() => officeImport.current?.open()}>{text("导入 PPT 并编辑（可直接拖入）", "Import PPT to edit (or drop it here)")}</button>}
             <ReferenceFiles sessionId={sessionId} value={referenceIds} onChange={setReferenceIds} disabled={busy || Boolean(pending) || loading} zh={zh} onError={notify} />
           </div>}
           {composerOptionsOpen && <div className="cw-composer-advanced">
@@ -373,10 +376,10 @@ export default function CreationWorkspace({ userId, projectId, initialSessionId,
         </form>
       </aside>
       <div className="cw-work-area"><div className="cw-file-tools">{chatCollapsed && <button aria-label={text("展开创作对话", "Expand creation chat")} onClick={() => setChatCollapsed(false)}><MessageSquare size={15} /></button>}<button aria-expanded={treeOpen} aria-label={text(treeOpen ? "收起文件列表" : "展开文件列表", treeOpen ? "Collapse files" : "Expand files")} onClick={() => setTreeOpen(!treeOpen)}>{treeOpen ? <PanelLeftClose size={15} /> : <PanelLeftOpen size={15} />}</button></div><div className="cw-file-body">
-        {treeOpen && project && <ProjectFiles key={projectId} resources={resources} project={project} onWarm={warmCreationEditor} fileId={fileId} onSelect={selectFile} onImported={refreshContent} zh={zh} />}
+        {treeOpen && project && <ProjectFiles key={projectId} externalImport={project.kind === "slides"} resources={resources} project={project} onWarm={warmCreationEditor} fileId={fileId} onSelect={selectFile} onImported={refreshContent} zh={zh} />}
         <main className="cw-artwork-area">{updatedFile && (updatedFile !== fileId || !["slides", "poster"].includes(fileKind)) && <div className="cw-error" role="status"><span>{text("生成结果已保存", "The result has been saved")}</span><button onClick={() => selectFile(updatedFile, updatedFile === fileId)}>{text("打开最新作品", "Open latest artwork")}</button><button aria-label={text("关闭提示", "Dismiss")} onClick={() => setUpdatedFile(null)}><X size={13} /></button></div>}
           {outlineRunId && <Suspense fallback={<div className="cw-loading" role="status">{text("正在打开大纲…", "Opening outline…")}</div>}><OutlineReview editorRef={outlineEditor} key={outlineRunId} userId={userId} runId={outlineRunId} zh={zh} onConfirmed={outlineConfirmed} onClose={closeOutline} /></Suspense>}
-          <div className="cw-artwork-content" style={{ display: outlineRunId ? "none" : "flex" }}>{fileId ? fileKind ? <Suspense fallback={<div className="cw-loading" role="status">{text("正在打开作品…", "Opening artwork…")}</div>}><ArtifactEditor kind={fileKind} key={`${fileId}:${editorEpoch}`} artifactId={fileId} userId={userId} zh={zh} editorRef={editor} remoteRevision={publishedRevisions[fileId]} onResources={setResources} onEditingChange={observeEditing} onError={notify} onReference={value => { if (!busy && !pending) { setReference({ ...value, artifactId: fileId }); setChatCollapsed(false); setMobileTab("chat"); } }} onArtifactCreated={() => void refreshContent().catch(notify)} onOpenArtifact={selectFile} /></Suspense> : <div className="cw-loading" role="status">{text("正在读取作品格式…", "Reading artwork format…")}</div> : <div className="cw-empty-artwork"><FileImage size={40} strokeWidth={1} /><h2>{text("你的作品会在这里呈现", "Your artwork will appear here")}</h2><p>{text("在左侧描述需求，生成后即可预览和编辑。", "Describe your idea in the conversation, then preview and edit the result here.")}</p></div>}</div>
+          <div className="cw-artwork-content" style={{ display: outlineRunId ? "none" : "flex" }}>{fileId ? fileKind ? <Suspense fallback={<div className="cw-loading" role="status">{text("正在打开作品…", "Opening artwork…")}</div>}><ArtifactEditor kind={fileKind} key={`${fileId}:${editorEpoch}`} artifactId={fileId} userId={userId} zh={zh} editorRef={editor} remoteRevision={publishedRevisions[fileId]} onResources={setResources} onEditingChange={observeEditing} onError={notify} onReference={value => { if (!busy && !pending) { setReference({ ...value, artifactId: fileId }); if (value.instruction) setPrompt(value.instruction); setChatCollapsed(false); setMobileTab("chat"); } }} onArtifactCreated={() => void refreshContent().catch(notify)} onOpenArtifact={selectFile} /></Suspense> : <div className="cw-loading" role="status">{text("正在读取作品格式…", "Reading artwork format…")}</div> : <div className="cw-empty-artwork"><FileImage size={40} strokeWidth={1} /><h2>{text("你的作品会在这里呈现", "Your artwork will appear here")}</h2><p>{text("在左侧描述需求，生成后即可预览和编辑。", "Describe your idea in the conversation, then preview and edit the result here.")}</p></div>}</div>
         </main>
       </div></div>
     </WorkspaceSplit>

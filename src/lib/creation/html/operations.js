@@ -26,7 +26,7 @@ export function applyHtmlWithInverse(document, operations) {
     const pages = [...next.pages], index = pages.findIndex(page => page.id === op.pageId), page = pages[index];
     if (!["insertHtmlPage", "setHtmlTitle"].includes(op.op) && !page) throw new HtmlDocumentError("PAGE_NOT_FOUND");
     if (op.op === "setHtmlTitle") { inverse.unshift({ ...op, title: next.title }); next = { ...next, title: op.title }; continue; }
-    if (op.op === "setHtmlPage") { inspectHtml(op.html); inverse.unshift({ ...op, html: page.html }); pages[index] = { ...page, html: op.html }; }
+    if (op.op === "setHtmlPage") { inspectHtml(op.html, { allowEmpty: document.kind === "slides" }); inverse.unshift({ ...op, html: page.html }); pages[index] = { ...page, html: op.html }; }
     if (op.op === "bindHtmlMaster") {
       if (op.masterId && !next.masters?.some(master => master.id === op.masterId)) throw new HtmlDocumentError("HTML_MASTER_NOT_FOUND");
       inverse.unshift({ ...op, masterId: page.masterId || null }); pages[index] = { ...page, masterId: op.masterId };

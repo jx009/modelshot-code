@@ -10,7 +10,7 @@ import ProjectResources from "./ProjectResources";
 // Keep one metadata page in React. Older pages retain only cursor strings,
 // never artwork bodies or mounted editors. Refresh updates the first page in place.
 const icons = { poster: FileImage, slides: Presentation, document: FileText, sheet: Sheet, web: Globe };
-export default function ProjectFiles({ project, fileId, onSelect, onImported, onWarm, resources, zh }) {
+export default function ProjectFiles({ project, fileId, onSelect, onImported, onWarm, resources, zh, externalImport = false }) {
   const [page, setPage] = useState({ items: project.artifacts, nextCursor: project.artifactsNextCursor, q: "", source: project.artifacts });
   const [query, setQuery] = useState("");
   const [cursors, setCursors] = useState([null]), [loading, setLoading] = useState(false), [error, setError] = useState(null);
@@ -65,7 +65,7 @@ export default function ProjectFiles({ project, fileId, onSelect, onImported, on
     {project.kind === "slides" && <button className="cw-new-file" disabled={createBusy} onClick={createFile}>{createBusy ? <LoaderCircle size={13} className="animate-spin" /> : <Plus size={13} />}{zh ? createError ? "重试新建文件" : "新建文件" : createError ? "Retry new file" : "New file"}</button>}
     {createError && <p role="alert">{creationError(createError, zh)}</p>}
     <header><FolderOpen size={15} /><span title={project.name}>{project.name}</span></header>
-    {["document", "sheet", "slides"].includes(project.kind) && <OfficeImport projectId={project.id} kind={project.kind} zh={zh} onSelect={onSelect} onImported={onImported} />}
+    {!externalImport && ["document", "sheet", "slides"].includes(project.kind) && <OfficeImport projectId={project.id} kind={project.kind} zh={zh} onSelect={onSelect} onImported={onImported} />}
     {page.q && <div className="cw-file-filter"><span title={page.q}>{page.q}</span><button aria-label={zh ? "清除文件搜索" : "Clear file search"} onClick={() => { setQuery(""); void load([null], ""); }}><X size={12} /></button></div>}
     <div className="cw-file-items">{shown.items.map(item => {
       const Icon = icons[item.kind] || FileText;

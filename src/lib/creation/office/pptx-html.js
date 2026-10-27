@@ -1,12 +1,15 @@
 import { randomUUID } from "node:crypto";
 import { officePackage, officeFail } from "./package.js";
-import { children, descendants, attribute, textContent } from "../references/office-xml.js";
-import { htmlDocumentSchema } from "../html/document.js";
+import { children, descendants as xmlDescendants, attribute, textContent } from "../references/office-xml.js";
+import { htmlDocumentSchema, inspectHtml } from "../html/document.js";
+import { officeImportBytes, PPTX_MEDIA_COUNT } from "./import-policy.js";
 
 const EMU = 914400, PX = 96;
 const esc = value => String(value).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const attr = (node, name) => node ? attribute(node, name) : undefined;
 const child = (node, ns, name) => children(node, ns, name)[0];
+// Chart titles, categories and placeholder properties are optional in OOXML.
+const descendants = (node, ns, name) => node ? xmlDescendants(node, ns, name) : [];
 const id = () => `ppt_${randomUUID().replaceAll("-", "")}`;
 const px = value => Math.round(Number(value || 0) / EMU * PX * 100) / 100;
 const color = node => {
@@ -14,8 +17,24 @@ const color = node => {
   const rgb = descendants(node, "a", "srgbClr")[0];
   const scheme = descendants(node, "a", "schemeClr")[0];
   const value = attr(rgb, "val") || ({ lt1: "FFFFFF", dk1: "000000", accent1: "4472C4", accent2: "ED7D31", accent3: "A5A5A5", accent4: "FFC000", accent5: "5B9BD5", accent6: "70AD47" })[attr(scheme, "val")];
-  return /^[0-9a-f]{6}$/i.test(value || "") ? `#${value}` : null;
+  if (!/^[0-9a-f]{6}$/i.test(value || "")) return null;
+  const alpha = Number(attr(child(rgb || scheme, "a", "alpha"), "val") ?? 100000);
+  return `#${value}${alpha < 100000 ? Math.round(Math.max(0, alpha) / 100000 * 255).toString(16).padStart(2, "0") : ""}`;
 };
+function fillStyle(properties, warnings) {
+  const solid = color(child(properties, "a", "solidFill"));
+  if (solid) return solid;
+  const gradient = child(properties, "a", "gradFill");
+  if (!gradient) return "transparent";
+  const linear = child(gradient, "a", "lin");
+  const stops = children(child(gradient, "a", "gsLst"), "a", "gs").map(stop => {
+    const fill = color(stop), position = Number(attr(stop, "pos")) / 1000;
+    return fill && Number.isFinite(position) ? `${fill} ${Math.min(100, Math.max(0, position))}%` : null;
+  }).filter(Boolean);
+  if (!linear || stops.length < 2) { warnings.add("PPTX_GRADIENT_SIMPLIFIED"); return color(gradient) || "transparent"; }
+  const angle = Number(attr(linear, "ang") || 0) / 60000 + 90;
+  return `linear-gradient(${Number.isFinite(angle) ? angle : 90}deg,${stops.join(",")})`;
+}
 function shapeHtml(shape, rels, pkg, media, warnings) {
   const sp = child(shape, "p", "sp") || child(shape, "p", "graphicFrame") || child(shape, "p", "pic") || child(shape, "p", "cxnSp");
   if (!sp) return "";
@@ -43,7 +62,8 @@ function shapeHtml(shape, rels, pkg, media, warnings) {
       return markup;
     }
     if (uri.endsWith("/chart")) {
-      const relationId = attribute(child(graphicData, "c", "chart"), "id", "r"), relation = rels.get(relationId);
+      const chart = child(graphicData, "c", "chart");
+      const relationId = chart && attribute(chart, "id", "r"), relation = rels.get(relationId);
       if (!relation || relation.external || !relation.target.startsWith("ppt/charts/")) { warnings.add("PPTX_CHART_RELATION_UNSUPPORTED"); return ""; }
       const chartXml = pkg.xml(relation.target), root = chartXml.root, plot = descendants(root, "c", "plotArea")[0];
       const typeNode = (plot?.children || []).find(node => ["barChart", "lineChart", "pieChart"].includes(node.local) && node.uri?.includes("chart"));
@@ -90,25 +110,39 @@ function shapeHtml(shape, rels, pkg, media, warnings) {
   if (blip) {
     const relationId = attribute(blip, "embed", "r"), relation = rels.get(relationId);
     if (relation && !relation.external && /\/media\//.test(relation.target)) {
-      if (media.length >= 16) { warnings.add("PPTX_MEDIA_LIMIT"); return ""; }
-      const bytes = pkg.read(relation.target), mediaId = id();
-      media.push({ id: mediaId, bytes });
-      return `<img data-node-id="${mediaId}" alt="${esc(name)}" src="asset:${mediaId}" style="${transform}object-fit:contain">`;
+      let asset = media.find(item => item.source === relation.target);
+      if (!asset) {
+        if (media.length >= PPTX_MEDIA_COUNT) officeFail("OFFICE_MEDIA_LIMIT");
+        asset = { id: id(), source: relation.target, bytes: pkg.read(relation.target) }; media.push(asset);
+      }
+      const crop = child(child(sp, "p", "blipFill"), "a", "srcRect");
+      const [left, top, right, bottom] = ["l", "t", "r", "b"].map(key => Number(attr(crop, key) || 0) / 100000);
+      if ([left, top, right, bottom].some(value => !Number.isFinite(value)) || left + right >= 1 || top + bottom >= 1) officeFail("OFFICE_IMAGE_CROP_INVALID");
+      const cropped = [left, top, right, bottom].some(Boolean);
+      if (cropped) {
+        const imageStyle = `position:absolute;left:${-left / (1 - left - right) * 100}%;top:${-top / (1 - top - bottom) * 100}%;width:${100 / (1 - left - right)}%;height:${100 / (1 - top - bottom)}%;max-width:none;object-fit:fill;`;
+        return `<div data-node-id="${id()}" style="${transform}"><img data-node-id="${id()}" alt="${esc(name)}" src="asset:${asset.id}" style="${imageStyle}"></div>`;
+      }
+      const fit = child(child(sp, "p", "blipFill"), "a", "stretch") ? "fill" : "contain";
+      return `<img data-node-id="${id()}" alt="${esc(name)}" src="asset:${asset.id}" style="${transform}object-fit:${fit}">`;
     }
     warnings.add("PPTX_IMAGE_RELATION_UNSUPPORTED"); return "";
   }
   const paragraphs = descendants(sp, "a", "p");
   const text = paragraphs.map(paragraph => descendants(paragraph, "a", "t").map(textContent).join("")).join("\n");
   if (!text.trim()) {
-    const fill = color(child(child(sp, "p", "spPr"), "a", "solidFill"));
-    const geometry = child(child(sp, "p", "spPr"), "a", "prstGeom");
-    if (geometry || fill) return `<div data-node-id="${id()}" aria-label="${esc(name)}" style="${transform}background:${fill || "transparent"};border:1px solid #404040;${attr(geometry, "prst") === "ellipse" ? "border-radius:50%;" : ""}"></div>`;
+    const properties = child(sp, "p", "spPr"), fill = fillStyle(properties, warnings);
+    const geometry = child(properties, "a", "prstGeom"), line = child(properties, "a", "ln");
+    const stroke = color(child(line, "a", "solidFill"));
+    const border = stroke ? `${Math.max(0, px(attr(line, "w") || 9525))}px solid ${stroke}` : "none";
+    if (geometry || fill !== "transparent") return `<div data-node-id="${id()}" aria-label="${esc(name)}" style="${transform}background:${fill};border:${border};${attr(geometry, "prst") === "ellipse" ? "border-radius:50%;" : ""}"></div>`;
     return "";
   }
   const textStyle = properties => {
     const font = child(properties, "a", "ea") || child(properties, "a", "latin");
     const size = attr(properties, "sz"), fill = color(child(properties, "a", "solidFill"));
-    return `${size ? `font-size:${Math.min(682, Math.max(1, Number(size) / 100 * 96 / 72))}px;` : ""}${font ? `font-family:${JSON.stringify(attr(font, "typeface") || "Arial")},sans-serif;` : ""}${fill ? `color:${fill};` : ""}${attr(properties, "b") !== undefined ? `font-weight:${attr(properties, "b") === "1" ? "bold" : "normal"};` : ""}${attr(properties, "i") !== undefined ? `font-style:${attr(properties, "i") === "1" ? "italic" : "normal"};` : ""}${attr(properties, "u") && attr(properties, "u") !== "none" ? "text-decoration:underline;" : ""}`;
+    const spacing = attr(properties, "spc");
+    return `${spacing !== undefined ? `letter-spacing:${Number(spacing) / 100 * 96 / 72}px;` : ""}${size ? `font-size:${Math.min(682, Math.max(1, Number(size) / 100 * 96 / 72))}px;` : ""}${font ? `font-family:${JSON.stringify(attr(font, "typeface") || "Arial")},sans-serif;` : ""}${fill ? `color:${fill};` : ""}${attr(properties, "b") !== undefined ? `font-weight:${attr(properties, "b") === "1" ? "bold" : "normal"};` : ""}${attr(properties, "i") !== undefined ? `font-style:${attr(properties, "i") === "1" ? "italic" : "normal"};` : ""}${attr(properties, "u") && attr(properties, "u") !== "none" ? "text-decoration:underline;" : ""}`;
   };
   const richText = paragraphs.map(paragraph => {
     const properties = child(paragraph, "a", "pPr"), defaults = child(properties, "a", "defRPr");
@@ -119,18 +153,23 @@ function shapeHtml(shape, rels, pkg, media, warnings) {
       const value = descendants(run, "a", "t").map(textContent).join("");
       return `<span style="${esc(textStyle(child(run, "a", "rPr")))}">${esc(value)}</span>`;
     }).join("");
-    return `<p style="${esc(`margin:0;text-align:${align};${textStyle(defaults)}`)}">${runs || "<br>"}</p>`;
+    const spacing = child(properties, "a", "lnSpc"), percent = attr(child(spacing, "a", "spcPct"), "val"), points = attr(child(spacing, "a", "spcPts"), "val");
+    const lineHeight = percent !== undefined ? Number(percent) / 100000 : points !== undefined ? `${Number(points) / 100 * 96 / 72}px` : "normal";
+    return `<p style="${esc(`margin:0;text-align:${align};line-height:${lineHeight};${textStyle(defaults)}`)}">${runs || "<br>"}</p>`;
   }).join("");
-  const baseStyle = `${transform}font-size:24px;color:#202124;white-space:pre-wrap;overflow-wrap:anywhere;`;
+  const bodyProperties = child(child(sp, "p", "txBody"), "a", "bodyPr");
+  const padding = ["tIns", "rIns", "bIns", "lIns"].map((key, index) => `${Math.max(0, px(attr(bodyProperties, key) ?? (index % 2 ? 91440 : 45720)))}px`).join(" ");
+  const verticalAlign = ({ ctr: "center", b: "flex-end" })[attr(bodyProperties, "anchor")] || "flex-start";
+  const baseStyle = `${transform}display:flex;flex-direction:column;justify-content:${verticalAlign};padding:${padding};font-size:24px;color:#202124;white-space:pre-wrap;overflow-wrap:anywhere;`;
   return `<div data-node-id="${id()}" style="${esc(baseStyle)}">${richText}</div>`;
 }
 
 export function importPresentationHtml(bytes, { title = "Imported presentation" } = {}) {
-  const pkg = officePackage(bytes);
+  const pkg = officePackage(bytes, { maxBytes: officeImportBytes("pptx") });
   const presentationPath = "ppt/presentation.xml";
   if (!pkg.has(presentationPath)) officeFail("OFFICE_PRESENTATION_INVALID");
   const presentation = pkg.xml(presentationPath), slideRefs = descendants(presentation.root, "p", "sldId"), rels = pkg.relationships(presentationPath);
-  const dimensions = child(presentation.root, "p", "sldSz"), width = Math.max(1, Math.min(8192, px(attr(dimensions, "cx")))), height = Math.max(1, Math.min(8192, px(attr(dimensions, "cy"))));
+  const dimensions = child(presentation.root, "p", "sldSz"), width = Math.max(1, Math.min(8192, Math.round(px(attr(dimensions, "cx"))))), height = Math.max(1, Math.min(8192, Math.round(px(attr(dimensions, "cy")))));
   if (!slideRefs.length || slideRefs.length > 100) officeFail("OFFICE_SLIDE_LIMIT");
   const warnings = new Set(), media = [], pages = [];
   for (const [index, reference] of slideRefs.entries()) {
@@ -147,7 +186,8 @@ export function importPresentationHtml(bytes, { title = "Imported presentation" 
     if (notesXml && !notesShape && descendants(notesXml.root, "a", "t").length) warnings.add("PPTX_NOTES_LAYOUT_UNSUPPORTED");
     const background = color(child(child(tree, "p", "bg"), "p", "bgPr")) || "#ffffff";
     const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="vimg-width" content="${width}"><meta name="vimg-height" content="${height}"><style>html,body{margin:0;width:${width}px;height:${height}px;background:${background};font-family:Arial,"Microsoft YaHei",sans-serif}body{position:relative;overflow:hidden}</style></head><body>${body}</body></html>`;
-    pages.push({ id: id(), title: `Slide ${index + 1}`, width, height, html, notes, hidden: attr(xml.root, "show") === "0" });
+    // Keep text runs/paragraphs addressable in the source as well as its preview.
+    pages.push({ id: id(), title: `Slide ${index + 1}`, width, height, html: inspectHtml(html, { assignIds: true, allowEmpty: true }).html, notes, hidden: attr(xml.root, "show") === "0" });
   }
   const document = htmlDocumentSchema.parse({ schemaVersion: 3, format: "html-slides", kind: "slides", title: title.replace(/\.pptx$/i, "").slice(0, 160) || "Imported presentation",
     theme: { name: "Imported", primary: "#4472C4", accent: "#ED7D31", background: "#FFFFFF", fontFamily: "sans" }, pages, metadata: { importedFrom: "pptx", warnings: [...warnings] }, templates: [] });

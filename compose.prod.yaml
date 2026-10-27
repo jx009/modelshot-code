@@ -258,6 +258,41 @@ services:
         condition: service_completed_successfully
     stop_grace_period: 210s
 
+  # PPTX 可编辑导入：按需开启，不随默认 up 占用资源。
+  # --profile office-import up -d creation-export
+  # 已部署独立 compose.creation-export.yaml 时请继续使用它，不要重复启动。
+  # 普通应用镜像具备 Office 导入能力；HTML/PDF 渲染仍由专用镜像提供。
+  creation-export:
+    <<: *modelshot-service
+    profiles: [office-import]
+    entrypoint: ["node"]
+    command: ["src/workers/creation-export-main.mjs"]
+    user: "node"
+    init: true
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 64
+    cpus: 1.0
+    mem_limit: 768m
+    memswap_limit: 768m
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,noexec,size=384m,mode=1777
+    environment:
+      <<: *app-environment
+      CREATION_EXPORT_ISOLATED: "true"
+      CREATION_HTML_RUNTIME: "false"
+      CREATION_RASTER_RUNTIME: "false"
+      CREATION_PDF_RUNTIME: "false"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      storage-init:
+        condition: service_completed_successfully
+    stop_grace_period: 60s
+
   # ---- 以下为一次性工具，不会随 up 启动，用 --profile tools run 调用 ----
   # 初始化供应商、预设模特、场景和提示词模板（幂等，可重复执行）。
   seed:

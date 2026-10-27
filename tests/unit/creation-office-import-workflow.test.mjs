@@ -1,6 +1,7 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
-import { executeOfficeImport, cancelOfficeImport, recoverOfficeImports, requestOfficeImport } from "../../src/lib/domain/creation/office-imports.js";
+import { executeOfficeImport, cancelOfficeImport, recoverOfficeImports, requestOfficeImport, officeImportAvailable } from "../../src/lib/domain/creation/office-imports.js";
+import { OFFICE_IMPORT_VERSION } from "../../src/lib/creation/office/import-policy.js";
 const mock = vi.hoisted(() => ({ create: vi.fn() }));
 vi.mock("../../src/lib/prisma.js", () => ({ prisma: {} }));
 vi.mock("../../src/lib/infra/storage/s3.js", () => ({ objectStorage: () => { throw new Error("No external storage"); } }));
@@ -69,4 +70,38 @@ it("rejects unavailable workers and replays an existing upload before checking a
   expect(await requestOfficeImport("u", "p", file, "upload-key-123456", { ...f, env: {} })).toMatchObject({ id: "import" });
   f.row.sourceBlob.checksum = "different";
   await expect(requestOfficeImport("u", "p", file, "upload-key-123456", f)).rejects.toThrow("SAVE_KEY_REUSED");
+});
+
+it("admits PPTX beyond 4 MiB while retaining the smaller document and sheet limits", async () => {
+  const f = fixture(), bytes = Buffer.alloc(5 * 1024 * 1024);
+  bytes.writeUInt32LE(0x04034b50);
+  f.db.creationProject.findFirst.mockResolvedValue({ id: "p", kind: "slides" });
+  const file = { name: "deck.pptx", size: bytes.length, arrayBuffer: async () => bytes };
+  // Reaching worker admission proves the upload passed the size boundary.
+  await expect(requestOfficeImport("u", "p", file, "upload-key-123456", { ...f, env: {} })).rejects.toThrow("OFFICE_WORKER_UNAVAILABLE");
+  for (const name of ["document.docx", "sheet.xlsx"]) {
+    await expect(requestOfficeImport("u", "p", { ...file, name }, "upload-key-123456", f)).rejects.toThrow("OFFICE_SOURCE_LIMIT");
+  }
+  const read = vi.fn();
+  await expect(requestOfficeImport("u", "p", { ...file, size: 32 * 1024 * 1024 + 1, arrayBuffer: read }, "upload-key-123456", f)).rejects.toThrow("OFFICE_SOURCE_LIMIT");
+  expect(read).not.toHaveBeenCalled();
+});
+
+it("requires the updated isolated importer without requiring native-sheet support for slides", async () => {
+  const f = fixture(), now = new Date(), env = { CREATION_OFFICE_IMPORT_ENABLED: "true" };
+  f.db.serviceHeartbeat.findUnique.mockResolvedValue({ updatedAt: now, details: { importer: "office-import-2" } });
+  expect(await officeImportAvailable(f.db, env, now, "slides")).toBe(false);
+  f.db.serviceHeartbeat.findUnique.mockResolvedValue({ updatedAt: now, details: { importer: OFFICE_IMPORT_VERSION } });
+  expect(await officeImportAvailable(f.db, env, now, "slides")).toBe(true);
+  expect(await officeImportAvailable(f.db, env, now, "sheet")).toBe(false);
+});
+
+it("stores converted JPEG photos with matching object extension and content type", async () => {
+  const f = fixture(), photo = { id: "photo", data: Buffer.from("decoded jpeg"), contentType: "image/jpeg", width: 10, height: 10, bytes: 12, checksum: "checksum" };
+  const output = await f.parse();
+  f.parse.mockResolvedValue({ ...output, media: [photo] });
+  await executeOfficeImport("import", f);
+  expect(f.row.status).toBe("succeeded");
+  expect(f.store.put).toHaveBeenCalledWith("u/creation-imports/import/photo.jpg", photo.data, "image/jpeg");
+  expect(f.db.asset.upsert).toHaveBeenCalledWith(expect.objectContaining({ create: expect.objectContaining({ contentType: "image/jpeg", objectKey: "u/creation-imports/import/photo.jpg" }) }));
 });

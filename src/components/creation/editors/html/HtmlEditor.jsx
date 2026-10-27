@@ -5,13 +5,19 @@ import { useCallback, useEffect, useLayoutEffect, useImperativeHandle, useMemo, 
 import { Undo2, Redo2, Type, Square, ImagePlus, Trash2, Copy, SlidersHorizontal, MessageSquarePlus, Code, X, Plus, Play, GripVertical } from "lucide-react";
 import { useSlideReorder } from "../../useSlideReorder";
 import { groupHtmlNodes, ungroupHtmlNode, alignHtmlNodes, inspectRenderedHtml } from "@/lib/creation/html/dom-edit";
+import { pendingTextOperations } from "@/lib/creation/client/pending-text";
 import { inspectHtml } from "@/lib/creation/html/document";
 import { projectHtml } from "@/lib/creation/html/projection";
 import { createWebPreviewAssetLoader } from "@/lib/creation/client/web-preview-assets";
 import HtmlPreviewFrame from "./HtmlPreviewFrame";
+import HtmlFloatingTools from "./HtmlFloatingTools";
+import useHtmlInteractions from "./useHtmlInteractions";
+import HtmlImageSize from "./HtmlImageSize";
+import HtmlSelectionHandles from "./HtmlSelectionHandles";
 import { requestKey } from "@/lib/client-api";
 import Modal from "@/components/ui/Modal";
 import "./html-editor.css";
+import "./html-floating-tools.css";
 
 const ThemeDialog = dynamic(() => import("../layout/ThemeDialog"));
 const HtmlDataDialog = dynamic(() => import("./HtmlDataDialog"));
@@ -22,19 +28,22 @@ function sourceDocument(html) { return new DOMParser().parseFromString(html, "te
 function sourceHtml(doc) { return `<!DOCTYPE html>\n${doc.documentElement.outerHTML}`; }
 const byId = (doc, id) => doc.querySelector(`[data-node-id="${CSS.escape(id)}"]`);
 
-export default function HtmlEditor({ content, getContent, controllerRef, onOperations, onUndo, onRedo, canUndo, canRedo, onReference, onError, onDraftChange, onPendingChange, initialPageId, onPageChange, onHeight, embedded = false, readOnly, zh = true }) {
+export default function HtmlEditor({ content, getContent, controllerRef, onOperations, onUndo, onRedo, canUndo, canRedo, onReference, onError, onDraftChange, onPendingChange, initialPageId, onPageChange, onHeight, loadAssets: sharedAssets, embedded = false, readOnly, zh = true }) {
   const [pageId, setPageId] = useState(initialPageId || content.pages[0].id), [selection, setSelection] = useState([]), [inspector, setInspector] = useState(false);
   const [sourceOpen, setSourceOpen] = useState(false), [source, setSource] = useState("");
   const [picker, setPicker] = useState(false), [presenting, setPresenting] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false), [masterOpen, setMasterOpen] = useState(false), [masterCss, setMasterCss] = useState(""), [masterHtml, setMasterHtml] = useState("");
   const [images, setImages] = useState(() => new Map()), [fault, setFault] = useState(null), [size, setSize] = useState({ width: 800, height: 600 });
-  const [loadAssets] = useState(createWebPreviewAssetLoader);
+  const [localAssets] = useState(createWebPreviewAssetLoader);
+  const loadAssets = sharedAssets || localAssets;
   const [assetRetry, setAssetRetry] = useState(0);
+  const [previewRevision, setPreviewRevision] = useState(0);
   const [autoHeight, setAutoHeight] = useState(720);
   const [issues, setIssues] = useState([]);
   const [dataEdit, setDataEdit] = useState(null);
-  const [toolsOpen, setToolsOpen] = useState(false);
-  const host = useRef(null), frame = useRef(null), pending = useRef(null), clean = useRef(null), latest = useRef(null), dragging = useRef(false);
+  const [toolsOpen, setToolsOpen] = useState(false), [toolbarClosed, setToolbarClosed] = useState(false), [resizeImage, setResizeImage] = useState(false);
+  const replaceImage = useRef(false);
+  const host = useRef(null), frame = useRef(null), pending = useRef(null), latest = useRef(null), finishEditing = useRef(null);
   const page = content.pages.find(item => item.id === pageId) || content.pages[0];
   useEffect(() => { onPageChange?.(page.id); }, [page.id, onPageChange]);
   useEffect(() => { if (embedded && page.height === "auto") onHeight?.(page.id, autoHeight); }, [embedded, page.id, page.height, autoHeight, onHeight]);
@@ -49,13 +58,18 @@ export default function HtmlEditor({ content, getContent, controllerRef, onOpera
   const apply = useCallback(operations => {
     try { return latest.current.onOperations(operations); } catch (error) { latest.current.onError?.(error); return false; }
   }, []);
-  const commitPending = useCallback(() => {
+  const commitDraft = useCallback(() => {
     const draft = pending.current;
     if (!draft) return;
     const current = getContent().pages.find(item => item.id === draft.pageId);
     if (!current) throw new Error("HTML_SOURCE_CHANGED");
     // A blur may have committed this text just before a toolbar click. Treat
     // that second commit as complete instead of trapping the user in edit mode.
+    if (draft.rich) {
+      const operations = pendingTextOperations(getContent(), draft.recovery);
+      if (operations.length && apply(operations) === false) throw new Error("HTML_EDIT_NOT_COMMITTED");
+      pending.current = null; latest.current.onDraftChange?.(null); latest.current.onPendingChange?.(false); return;
+    }
     if (current.html !== draft.base) {
       const alreadyApplied = draft.source !== undefined ? current.html === inspectHtml(draft.source, { assignIds: true, allowEmpty: true }).html : byId(sourceDocument(current.html), draft.nodeId)?.textContent === draft.text;
       if (!alreadyApplied) throw new Error("HTML_SOURCE_CHANGED");
@@ -71,13 +85,11 @@ export default function HtmlEditor({ content, getContent, controllerRef, onOpera
     if (apply([{ op: "setHtmlPage", pageId: draft.pageId, html }]) === false) throw new Error("HTML_EDIT_NOT_COMMITTED");
     pending.current = null; latest.current.onDraftChange?.(null); latest.current.onPendingChange?.(false);
   }, [getContent, apply]);
+  const commitPending = useCallback(() => { finishEditing.current?.(); commitDraft(); }, [commitDraft]);
   const { root: pageList, rowProps, handleProps, announcement, isDragging } = useSlideReorder({ pages: content.pages, readOnly, onMove: (id, index) => {
     try { commitPending(); return apply([{ op: "reorderHtmlPage", pageId: id, index }]); }
     catch (error) { onError?.(error); return false; }
   } });
-  useImperativeHandle(controllerRef, () => ({ commitPending, getPendingText: () => pending.current?.recovery || null,
-    canRefreshRemote: () => !pending.current && !dragging.current && !isDragging() && !latest.current.remoteBlocked && !frame.current?.contentDocument?.activeElement?.isContentEditable,
-    discardPending: () => { pending.current = null; latest.current.onDraftChange?.(null); latest.current.onPendingChange?.(false); } }));
   useEffect(() => {
     const warn = event => { if (pending.current) { event.preventDefault(); event.returnValue = ""; } };
     window.addEventListener("beforeunload", warn); return () => window.removeEventListener("beforeunload", warn);
@@ -100,12 +112,11 @@ export default function HtmlEditor({ content, getContent, controllerRef, onOpera
     })();
     return () => controller.abort();
   }, [assetKey, loadAssets, assetRetry]);
-  useEffect(() => () => clean.current?.(), []);
 
   const stageDraft = useCallback(draft => {
     const current = latest.current.page;
-    const original = draft.source !== undefined ? current.html : byId(sourceDocument(current.html), draft.nodeId)?.textContent;
-    const recovery = draft.source !== undefined ? { format: "html-source", pageId: draft.pageId, original, text: draft.source } : { pageId: draft.pageId, nodeId: draft.nodeId, original, text: draft.text, composing: false };
+    const original = draft.rich ? draft.rich.original : draft.source !== undefined ? draft.base : byId(sourceDocument(current.html), draft.nodeId)?.textContent;
+    const recovery = draft.rich ? { format: "html-text", pageId: draft.pageId, nodeId: draft.nodeId, ...draft.rich } : draft.source !== undefined ? { format: "html-source", pageId: draft.pageId, original, text: draft.source } : { pageId: draft.pageId, nodeId: draft.nodeId, original, text: draft.text, composing: false };
     latest.current.onDraftChange?.(recovery); latest.current.onPendingChange?.(true);
     pending.current = { ...draft, recovery };
   }, []);
@@ -119,94 +130,46 @@ export default function HtmlEditor({ content, getContent, controllerRef, onOpera
       return apply([{ op: "setHtmlPage", pageId: current.id, html }]);
     } catch (error) { latest.current.onError?.(error); return false; }
   }, [apply, getContent, commitPending]);
-  const loaded = useCallback(() => {
-    clean.current?.();
-    const doc = frame.current?.contentDocument; if (!doc) return;
-    const measure = () => {
-      setAutoHeight(Math.min(8192, Math.max(720, doc.body.scrollHeight)));
-      const currentPage = latest.current.page;
-      setIssues(inspectRenderedHtml(doc, currentPage.width, currentPage.height === "auto" ? doc.body.scrollHeight : currentPage.height));
-    };
-    measure();
-    for (const id of latest.current.selection) {
-      const node = byId(doc, id);
-      if (node && !node.hasAttribute("data-cw-selected")) { node.dataset.cwOutline = node.style.outline; node.dataset.cwSelected = "true"; node.style.outline = "2px solid #6759ed"; }
-    }
-    // The iframe is same-origin ONLY for DOM editing; sandbox never allows scripts.
-    let drag = null;
-    const select = event => {
-      if (event.target.closest("a")) event.preventDefault();
-      if (latest.current.readOnly || presenting) return;
-      const element = event.target.closest("[data-node-id]"); if (!element) { setSelection([]); return; }
-      if (element.isContentEditable || element.closest("[data-cw-master]")) return;
-      event.preventDefault();
-      const id = element.dataset.nodeId;
-      setSelection(current => event.shiftKey ? current.includes(id) ? current.filter(value => value !== id) : [...current, id] : [id]);
-      const style = doc.defaultView.getComputedStyle(element);
-      if (!event.shiftKey) drag = { id, x: event.clientX, y: event.clientY, left: parseFloat(style.left) || 0, top: parseFloat(style.top) || 0, position: style.position, element, moved: false, transform: element.style.transform };
-      dragging.current = Boolean(drag);
-    };
-    const move = event => {
-      if (!drag || !event.buttons || latest.current.readOnly) return;
-      const dx = event.clientX - drag.x, dy = event.clientY - drag.y;
-      if (Math.abs(dx) + Math.abs(dy) < 4) return;
-      drag.moved = true; drag.dx = dx; drag.dy = dy;
-      drag.element.style.transform = `${drag.transform} translate(${dx}px,${dy}px)`;
-    };
-    const up = () => {
-      const ended = drag; drag = null; dragging.current = false; if (!ended) return;
-      ended.element.style.transform = ended.transform;
-      if (!ended.moved) return;
-      edit(doc => {
-        const node = byId(doc, ended.id); if (!node) return;
-        if (["absolute", "fixed"].includes(ended.position)) { node.style.left = `${ended.left + ended.dx}px`; node.style.top = `${ended.top + ended.dy}px`; }
-        else { node.style.position = "relative"; node.style.left = `${ended.left + ended.dx}px`; node.style.top = `${ended.top + ended.dy}px`; }
-      });
-    };
-    const double = event => {
-      if (latest.current.readOnly || presenting) return;
-      const node = event.target.closest("[data-node-id]"); if (!node || node.children.length || ["IMG", "SVG", "PATH"].includes(node.tagName)) return;
-      node.contentEditable = "plaintext-only"; node.focus();
-    };
-    const input = event => {
-      const node = event.target.closest("[contenteditable]"); if (!node) return;
-      const current = latest.current.page;
-      stageDraft({ pageId: current.id, base: current.html, nodeId: node.dataset.nodeId, text: node.textContent });
-    };
-    const blur = event => {
-      const node = event.target.closest("[contenteditable]"); if (!node) return;
-      node.removeAttribute("contenteditable");
-      try { commitPending(); } catch (error) { latest.current.onError?.(error); }
-    };
-    const cancelDrag = () => { if (drag) drag.element.style.transform = drag.transform; drag = null; dragging.current = false; };
-    window.addEventListener("pointerup", up); window.addEventListener("blur", cancelDrag);
-    doc.addEventListener("pointercancel", cancelDrag);
-    doc.addEventListener("load", measure, true);
-    doc.addEventListener("pointerdown", select); doc.addEventListener("pointermove", move); doc.addEventListener("pointerup", up); doc.addEventListener("dblclick", double); doc.addEventListener("input", input); doc.addEventListener("focusout", blur);
-    clean.current = () => { cancelDrag(); window.removeEventListener("pointerup", up); window.removeEventListener("blur", cancelDrag); doc.removeEventListener("pointercancel", cancelDrag); doc.removeEventListener("load", measure, true); doc.removeEventListener("pointerdown", select); doc.removeEventListener("pointermove", move); doc.removeEventListener("pointerup", up); doc.removeEventListener("dblclick", double); doc.removeEventListener("input", input); doc.removeEventListener("focusout", blur); };
-  }, [edit, commitPending, presenting, stageDraft]);
-  useEffect(() => {
-    const doc = frame.current?.contentDocument; if (!doc) return;
-    doc.querySelectorAll("[data-cw-selected]").forEach(node => { node.removeAttribute("data-cw-selected"); node.style.outline = node.dataset.cwOutline || ""; delete node.dataset.cwOutline; });
-    for (const id of selection) { const node = byId(doc, id); if (node) { node.dataset.cwOutline = node.style.outline; node.dataset.cwSelected = "true"; node.style.outline = "2px solid #6759ed"; } }
-  }, [selection, projection]);
   const selected = useMemo(() => { try { const doc = sourceDocument(page.html); return selection[0] ? byId(doc, selection[0]) : null; } catch { return null; } }, [page.html, selection]);
+  const interactions = useHtmlInteractions({ frame, page, selection, setSelection, readOnly: readOnly || Boolean(presenting), getContent, edit, commitPending: commitDraft, stageDraft, onError, onUndo, onRedo, canUndo, canRedo, onSynchronize: () => setPreviewRevision(value => value + 1), onActivate: () => setToolbarClosed(false),
+    onMeasure: doc => {
+      setAutoHeight(Math.min(8192, Math.max(720, doc.body.scrollHeight)));
+      setIssues(inspectRenderedHtml(doc, latest.current.page.width, latest.current.page.height === "auto" ? doc.body.scrollHeight : latest.current.page.height));
+    } });
+  const loaded = interactions.loaded;
+  useLayoutEffect(() => { finishEditing.current = interactions.finishText; }, [interactions.finishText]);
+  useImperativeHandle(controllerRef, () => ({ commitPending: () => { interactions.finishText(); commitPending(); }, getPendingText: () => pending.current?.recovery || null,
+    canRefreshRemote: () => !pending.current && !interactions.moving.current && !isDragging() && !latest.current.remoteBlocked && !frame.current?.contentDocument?.activeElement?.isContentEditable,
+    discardPending: () => { interactions.discardText(); pending.current = null; latest.current.onDraftChange?.(null); latest.current.onPendingChange?.(false); } }));
+  const finishAction = callback => { try { interactions.finishText(); commitPending(); return callback(); } catch (error) { onError?.(error); return false; } };
+  const openImage = replace => finishAction(() => { replaceImage.current = replace; setPicker(true); });
+  const duplicateObject = () => finishAction(() => edit((doc, ids) => ids.forEach(id => { const node = byId(doc, id); if (!node) return; const clone = node.cloneNode(true); [clone, ...clone.querySelectorAll("[data-node-id]")].forEach(item => { item.dataset.nodeId = key(); }); node.after(clone); })));
+  const deleteObject = () => finishAction(() => { if (edit((doc, ids) => ids.forEach(id => byId(doc, id)?.remove())) !== false) setSelection([]); });
+  const resetObject = () => finishAction(() => edit((doc, ids) => ids.forEach(id => { const node = byId(doc, id); if (!node) return; const original = new DOMParser().parseFromString(initialSource.current.html, "text/html"); const base = byId(original, id); for (const property of ["left", "top", "position", "transform"]) node.style[property] = base?.style[property] || ""; })));
+  const initialSource = useRef({ id: page.id, html: page.html });
+  useEffect(() => { if (initialSource.current.id !== page.id) initialSource.current = { id: page.id, html: page.html }; }, [page.id, page.html]);
+  const requestAI = instruction => finishAction(() => onReference?.({ pageId: page.id, nodeId: selection[0] || null, nodeIds: selection, instruction, label: selected?.textContent?.slice(0, 40) || page.title || text("当前页面", "Current page") }));
   const style = (name, value) => edit((doc, ids) => ids.forEach(id => { const node = byId(doc, id); if (node) node.style[name] = value; }));
   const add = (tag, label) => edit(doc => { const node = doc.createElement(tag); node.dataset.nodeId = key(); node.textContent = label; node.style.cssText = tag === "div" ? "width:160px;height:100px;background:#7868e6;position:absolute;left:60px;top:60px" : "font-size:48px;position:absolute;left:60px;top:60px"; doc.body.append(node); setSelection([node.dataset.nodeId]); });
   function selectPage(id) { try { commitPending(); setPageId(id); setSelection([]); setSourceOpen(false); } catch (error) { onError?.(error); } }
   function openSource() { try { commitPending(); setSource(getContent().pages.find(p => p.id === page.id).html); setSourceOpen(true); } catch (error) { onError?.(error); } }
   const pageHeight = page.height === "auto" ? autoHeight : page.height;
   const scale = embedded ? Math.max(0.01, size.width / page.width) : Math.min(Math.max(0.05, (size.width - 24) / page.width), Math.max(0.05, (size.height - 24) / pageHeight), 1);
-  return <div className={"cw-html-editor" + (embedded ? " cw-html-embedded" : "")} data-tools-open={toolsOpen || selection.length > 0 || undefined}>
+  return <div className={"cw-html-editor" + (embedded ? " cw-html-embedded" : "")} data-tools-open={toolsOpen || undefined}>
     {presenting && <HtmlSlidePresentation content={presenting} startPageId={page.id} initialImages={images} zh={zh} onClose={() => setPresenting(false)} />}
     {dataEdit && <HtmlDataDialog {...dataEdit} zh={zh} onClose={() => setDataEdit(null)} onApply={html => { if (edit(doc => { const node = sourceDocument(html).body.firstElementChild; node.dataset.nodeId ||= key(); if (dataEdit.id) { const target = byId(doc, dataEdit.id); if (!target) throw new Error("LANGUAGE_SELECTION_CHANGED"); target.replaceWith(node); } else doc.body.append(node); }) !== false) setDataEdit(null); }} />}
-    {embedded && <button className="cw-embedded-tools-toggle" aria-expanded={toolsOpen} onClick={() => setToolsOpen(value => !value)} title={text("编辑工具", "Editing tools")}><SlidersHorizontal size={14} /></button>}
+    {embedded && <button className="cw-embedded-tools-toggle" aria-label={text("打开编辑工具", "Open editing tools")} onClick={() => { setToolbarClosed(false); setToolsOpen(value => !value); }} title={text("编辑工具", "Editing tools")}><SlidersHorizontal size={14} /></button>}
+    {embedded && !toolbarClosed && !resizeImage && !picker && !sourceOpen && !themeOpen && !masterOpen && !dataEdit && !presenting && <HtmlFloatingTools anchor={interactions.anchor} selected={interactions.object} textEditing={interactions.textEditing} readOnly={readOnly} canUndo={canUndo || interactions.textEditing} canRedo={canRedo} zh={zh}
+      onUndo={() => interactions.history("undo")} onRedo={() => interactions.history("redo")} onText={() => finishAction(() => add("p", text("添加文字", "Your text")))} onShape={() => finishAction(() => add("div", ""))} onImage={openImage} onFormat={interactions.format} onResize={() => finishAction(() => setResizeImage(true))} onDuplicate={duplicateObject} onDelete={deleteObject} onReset={resetObject}
+      onClose={() => { if (interactions.close() !== false) setToolbarClosed(true); }} onAdvanced={() => finishAction(() => { setToolsOpen(value => !value); setInspector(true); })} onAI={requestAI} />}
+    {embedded && !readOnly && !interactions.textEditing && !resizeImage && !picker && !sourceOpen && <HtmlSelectionHandles box={interactions.box} resize={interactions.resize} zh={zh} />}
+    {resizeImage && interactions.object?.tag === "IMG" && <HtmlImageSize image={interactions.object} zh={zh} onClose={() => setResizeImage(false)} onApply={(width, height) => { if (finishAction(() => edit((doc, ids) => { const node = byId(doc, ids[0]); if (node?.tagName === "IMG") { node.style.width = width + "px"; node.style.height = height + "px"; node.style.maxWidth = "none"; } })) !== false) setResizeImage(false); }} />}
     <div className="cw-html-tools">
-      <button disabled={readOnly || !canUndo} title={text("撤销", "Undo")} onClick={() => { commitPending(); onUndo(); }}><Undo2 size={16} /></button>
-      <button disabled={readOnly || !canRedo} title={text("重做", "Redo")} onClick={() => { commitPending(); onRedo(); }}><Redo2 size={16} /></button>
+      <button disabled={readOnly || !canUndo && !interactions.textEditing} title={text("撤销", "Undo")} onClick={() => interactions.history("undo")}><Undo2 size={16} /></button>
+      <button disabled={readOnly || !canRedo} title={text("重做", "Redo")} onClick={() => interactions.history("redo")}><Redo2 size={16} /></button>
       <button disabled={readOnly} onClick={() => add("p", text("添加文字", "Your text"))}><Type size={16} />{text("文字", "Text")}</button>
       <button disabled={readOnly} onClick={() => add("div", "")}><Square size={16} />{text("形状", "Shape")}</button>
-      <button disabled={readOnly} onClick={() => setPicker(true)}><ImagePlus size={16} />{text("图片", "Image")}</button>
+      <button disabled={readOnly} onClick={() => openImage(false)}><ImagePlus size={16} />{text("图片", "Image")}</button>
       <button disabled={readOnly} onClick={() => { commitPending(); const table = selected?.closest("table"); setDataEdit({ kind: "table", id: table?.dataset.nodeId, html: table?.outerHTML }); }}>{text("表格", "Table")}</button>
       <button disabled={readOnly} onClick={() => { commitPending(); const chart = selected?.closest("[data-chart]"); setDataEdit({ kind: "chart", id: chart?.dataset.nodeId, html: chart?.outerHTML }); }}>{text("图表", "Chart")}</button>
       <button disabled={!selection.length || readOnly} onClick={() => edit((doc, ids) => ids.forEach(id => { const node = byId(doc, id); if (!node) return; const clone = node.cloneNode(true); [clone, ...clone.querySelectorAll("[data-node-id]")].forEach(n => { n.dataset.nodeId = key(); }); node.after(clone); }))}><Copy size={16} /><span className="sr-only">{text("复制对象", "Duplicate object")}</span></button>
@@ -227,7 +190,7 @@ export default function HtmlEditor({ content, getContent, controllerRef, onOpera
         <button disabled={readOnly} onClick={() => { commitPending(); const id = key(); apply([{ op: "insertHtmlPage", index: content.pages.length, page: { ...page, id, title: text("新页面", "New slide"), html: '<!DOCTYPE html><html><head><style>body{margin:0;background:#fff;font-family:sans-serif}h1{padding:64px}</style></head><body><h1 data-node-id="title">新页面</h1></body></html>' } }]); setPageId(id); }}><Plus size={15} /></button>
       </nav>}
       <div className="cw-html-stage" ref={host}>
-        <div style={{ width: page.width * scale, height: pageHeight * scale }}><HtmlPreviewFrame key={page.id} frameRef={frame} title={text("可编辑作品", "Editable artwork")} html={projection} onUpdate={loaded} style={{ width: page.width, height: pageHeight, transform: `scale(${scale})`, transformOrigin: "top left" }} /></div>
+        <div style={{ width: page.width * scale, height: pageHeight * scale }}><HtmlPreviewFrame key={page.id} frameRef={frame} title={text("可编辑作品", "Editable artwork")} html={projection} revision={previewRevision} onBeforeUpdate={interactions.beforeUpdate} onUpdate={loaded} style={{ width: page.width, height: pageHeight, transform: `scale(${scale})`, transformOrigin: "top left" }} /></div>
       </div>
       {inspector && <aside className="cw-html-inspector">
         <header><strong>{text("属性", "Properties")}</strong><button aria-label={text("关闭属性", "Close properties")} onClick={() => setInspector(false)}><X size={14} /></button></header>
@@ -239,7 +202,7 @@ export default function HtmlEditor({ content, getContent, controllerRef, onOpera
           <label>{text("对齐", "Alignment")}<select disabled={readOnly} value={selected.style.textAlign || "left"} onChange={e => style("textAlign", e.target.value)}><option value="left">{text("左", "Left")}</option><option value="center">{text("中", "Center")}</option><option value="right">{text("右", "Right")}</option></select></label>
           <label>{text("宽度", "Width")}<input key={`width:${selection[0]}`} type="number" min="1" max="8192" defaultValue={parseFloat(selected.style.width) || 200} disabled={readOnly} onBlur={e => style("width", `${Math.max(1, Math.min(8192, Number(e.target.value) || 200))}px`)} /></label>
           <label>{text("旋转", "Rotation")}<input type="number" min="-360" max="360" disabled={readOnly} onBlur={e => style("rotate", `${Math.max(-360, Math.min(360, Number(e.target.value) || 0))}deg`)} /></label>
-          {selected.tagName === "IMG" && <><button disabled={readOnly} onClick={() => setPicker(true)}>{text("替换图片", "Replace image")}</button><select disabled={readOnly} onChange={e => style("objectFit", e.target.value)} defaultValue={selected.style.objectFit || "cover"}><option value="cover">{text("填充", "Cover")}</option><option value="contain">{text("完整显示", "Contain")}</option></select></>}
+          {selected.tagName === "IMG" && <><button disabled={readOnly} onClick={() => openImage(true)}>{text("替换图片", "Replace image")}</button><select disabled={readOnly} onChange={e => style("objectFit", e.target.value)} defaultValue={selected.style.objectFit || "cover"}><option value="cover">{text("填充", "Cover")}</option><option value="contain">{text("完整显示", "Contain")}</option></select></>}
           <button disabled={readOnly} onClick={() => edit((doc, ids) => ids.forEach(id => { const node = byId(doc, id); if (node) node.parentElement.append(node); }))}>{text("置于顶层", "Bring forward")}</button>
           <button disabled={readOnly} onClick={() => edit((doc, ids) => ids.forEach(id => { const node = byId(doc, id); if (node) node.parentElement.prepend(node); }))}>{text("置于底层", "Send backward")}</button>
           <label>{text("高度", "Height")}<input key={`height:${selection[0]}`} type="number" min="1" max="8192" defaultValue={parseFloat(selected.style.height) || 100} disabled={readOnly} onBlur={e => style("height", `${Math.max(1, Math.min(8192, Number(e.target.value) || 100))}px`)} /></label>
@@ -267,7 +230,7 @@ export default function HtmlEditor({ content, getContent, controllerRef, onOpera
     {sourceOpen && <Modal label="HTML" className="cw-html-source" onClose={() => { try { commitPending(); setSourceOpen(false); } catch (error) { onError?.(error); } }}><header><strong>HTML</strong><button onClick={() => { try { commitPending(); setSourceOpen(false); } catch (error) { onError?.(error); } }}><X size={16} /></button></header><textarea aria-label="HTML" value={source} readOnly={readOnly} onChange={e => { setSource(e.target.value); stageDraft({ pageId: page.id, base: page.html, source: e.target.value }); }} /><button onClick={() => { try { commitPending(); setSourceOpen(false); } catch (error) { onError?.(error); } }}>{text("应用并关闭", "Apply and close")}</button></Modal>}
     {picker && <Modal label={text("选择图片", "Choose image")} className="cw-asset-dialog" onClose={() => setPicker(false)}><AssetLibrary maxSelection={1} onSelect={items => {
       const asset = Array.isArray(items) ? items[0] : items; if (!asset?.id) return;
-      if (edit((doc, ids) => { let image = ids[0] ? byId(doc, ids[0]) : null; if (image?.tagName !== "IMG") { image = doc.createElement("img"); image.dataset.nodeId = key(); image.style.cssText = "width:320px;height:320px;object-fit:cover;position:absolute;left:40px;top:40px"; doc.body.append(image); } image.setAttribute("src", `asset:${asset.id}`); image.setAttribute("alt", asset.name || ""); }) !== false) setPicker(false);
+      if (edit((doc, ids) => { let image = replaceImage.current && ids[0] ? byId(doc, ids[0]) : null; if (image?.tagName !== "IMG") { image = doc.createElement("img"); image.dataset.nodeId = key(); image.style.cssText = "width:320px;height:320px;object-fit:cover;position:absolute;left:40px;top:40px"; doc.body.append(image); } image.setAttribute("src", `asset:${asset.id}`); image.setAttribute("alt", asset.name || ""); setSelection([image.dataset.nodeId]); }) !== false) setPicker(false);
     }} /></Modal>}
   </div>;
 }

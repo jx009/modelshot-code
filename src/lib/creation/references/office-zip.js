@@ -16,9 +16,9 @@ function pathName(bytes) {
 
 // Read the central directory before inflating anything. A forged length cannot
 // allocate beyond maxOutputLength. ZIP64/encryption/split archives are refused.
-export function openOfficeZip(input) {
+export function openOfficeZip(input, { maxBytes = REFERENCE_OFFICE_BYTES } = {}) {
   const bytes = Buffer.from(input);
-  if (bytes.length < 22 || bytes.length > REFERENCE_OFFICE_BYTES) fail();
+  if (bytes.length < 22 || bytes.length > maxBytes) fail();
   let end = -1;
   for (let i = bytes.length - 22; i >= Math.max(0, bytes.length - 65557); i--) {
     if (bytes.readUInt32LE(i) === 0x06054b50 && i + 22 + bytes.readUInt16LE(i + 20) === bytes.length) { end = i; break; }
@@ -41,7 +41,7 @@ export function openOfficeZip(input) {
     const localName = bytes.readUInt16LE(local + 26), localExtra = bytes.readUInt16LE(local + 28), data = local + 30 + localName + localExtra;
     if (data + compressed > start || localName !== nameLength || !bytes.subarray(local + 30, local + 30 + localName).equals(nameBytes)) fail();
     if (!(flags & 8) && (bytes.readUInt32LE(local + 14) !== crc || bytes.readUInt32LE(local + 18) !== compressed || bytes.readUInt32LE(local + 22) !== length)) fail();
-    // ZIP64 is not needed for a four-MiB upload, even for zero-sized entries.
+    // ZIP64 is unnecessary within the bounded upload size, including empty entries.
     for (const [at, endAt] of [[offset + 46 + nameLength, offset + 46 + nameLength + extraLength], [local + 30 + localName, data]]) {
       let p = at;
       while (p < endAt) { if (p + 4 > endAt || bytes.readUInt16LE(p) === 1) fail(); const n = bytes.readUInt16LE(p + 2); p += 4 + n; if (p > endAt) fail(); }

@@ -2,6 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import OfficeImport from "../../src/components/creation/OfficeImport";
+import { useRef } from "react";
 const mocks = vi.hoisted(() => ({ api: vi.fn(), key: vi.fn(() => "fixed-upload-key-123") }));
 vi.mock("../../src/lib/client-api", () => ({ api: (...args) => mocks.api(...args), requestKey: () => mocks.key() }));
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
@@ -40,4 +41,84 @@ it("aborts pending status reads on unmount and refuses oversized uploads before 
   const signal = mocks.api.mock.calls[0][1].signal;
   act(() => view.unmount());
   expect(signal.aborted).toBe(true);
+});
+
+function SlideWorkspace(props) {
+  const root = useRef(null);
+  return <form ref={root} data-testid="workspace" onSubmit={props.onSubmit}>
+    <OfficeImport projectId="p" kind="slides" compact dropTarget={root} zh={false} {...props} />
+  </form>;
+}
+const drop = files => fireEvent.drop(screen.getByTestId("workspace"), { dataTransfer: { types: ["Files"], files } });
+const sizedFile = (name, size) => {
+  const file = new File(["zip"], name);
+  Object.defineProperty(file, "size", { value: size });
+  return file;
+};
+it("accepts an 11 MiB dropped PPT and opens the editable result once without submitting the chat", async () => {
+  const onSelect = vi.fn(), onImported = vi.fn(), onSubmit = vi.fn(event => event.preventDefault());
+  const item = { id: "deck-import", status: "succeeded", artifactId: "deck", name: "deck.pptx", sourceUrl: "/source", warnings: [] };
+  let uploaded = false;
+  mocks.api.mockImplementation(async (_url, options = {}) => {
+    if (options.method === "POST") { uploaded = true; return item; }
+    return { enabled: true, maxBytes: 32 * 1024 * 1024, items: uploaded ? [item] : [] };
+  });
+  render(<SlideWorkspace onSelect={onSelect} onImported={onImported} onSubmit={onSubmit} />);
+  await waitFor(() => expect(screen.getByLabelText("Import Office file").disabled).toBe(false));
+  const file = sizedFile("deck.pptx", 11630042);
+  fireEvent.dragEnter(screen.getByTestId("workspace"), { dataTransfer: { types: ["Files"] } });
+  expect(screen.getByText("Drop to import PPT")).toBeTruthy();
+  drop([file]);
+  await waitFor(() => expect(onSelect).toHaveBeenCalledWith("deck", false, "slides"));
+  expect(onImported).toHaveBeenCalledOnce();
+  expect(onSelect).toHaveBeenCalledOnce();
+  expect(screen.queryByText("Drop to import PPT")).toBeNull();
+  const writes = mocks.api.mock.calls.filter(([, options]) => options?.method === "POST");
+  expect(writes).toHaveLength(1);
+  expect(writes[0][1].body.get("file")).toBe(file);
+  fireEvent.click(screen.getByRole("button", { name: "Open" }));
+  expect(onSubmit).not.toHaveBeenCalled();
+});
+
+it.each([
+  ["too large", [sizedFile("big.pptx", 32 * 1024 * 1024 + 1)]],
+  ["legacy format", [sizedFile("old.ppt", 100)]],
+  ["multiple files", [sizedFile("a.pptx", 100), sizedFile("b.pptx", 100)]],
+])("rejects %s before sending an import", async (_reason, files) => {
+  mocks.api.mockResolvedValue({ enabled: true, items: [] });
+  render(<SlideWorkspace />);
+  await waitFor(() => expect(screen.getByLabelText("Import Office file").disabled).toBe(false));
+  drop(files);
+  await screen.findByRole("alert");
+  expect(mocks.api.mock.calls.filter(([, options]) => options?.method === "POST")).toHaveLength(0);
+});
+
+it("keeps a completed import ready without replacing an edit started during upload", async () => {
+  const onSelect = vi.fn(), onImported = vi.fn();
+  const item = { id: "deck-import", status: "succeeded", artifactId: "deck", name: "deck.pptx", sourceUrl: "/source", warnings: [] };
+  let finish, uploaded = false;
+  mocks.api.mockImplementation(async (_url, options = {}) => {
+    if (options.method === "POST") { await new Promise(resolve => { finish = resolve; }); uploaded = true; return item; }
+    return { enabled: true, items: uploaded ? [item] : [] };
+  });
+  const view = render(<SlideWorkspace onSelect={onSelect} onImported={onImported} />);
+  await waitFor(() => expect(screen.getByLabelText("Import Office file").disabled).toBe(false));
+  drop([sizedFile("deck.pptx", 11630042)]);
+  view.rerender(<SlideWorkspace disabled onSelect={onSelect} onImported={onImported} />);
+  await act(async () => finish());
+  await waitFor(() => expect(onImported).toHaveBeenCalledOnce());
+  expect(onSelect).not.toHaveBeenCalled();
+  expect(screen.getByRole("button", { name: "Open" }).disabled).toBe(true);
+  view.rerender(<SlideWorkspace onSelect={onSelect} onImported={onImported} />);
+  fireEvent.click(screen.getByRole("button", { name: "Open" }));
+  expect(onSelect).toHaveBeenCalledWith("deck", false, "slides");
+});
+
+it("does not upload when the import worker is unavailable", async () => {
+  mocks.api.mockResolvedValue({ enabled: false, items: [] });
+  render(<SlideWorkspace />);
+  await screen.findByText(/Import service is unavailable/);
+  drop([sizedFile("deck.pptx", 100)]);
+  await screen.findByRole("alert");
+  expect(mocks.api.mock.calls.filter(([, options]) => options?.method === "POST")).toHaveLength(0);
 });

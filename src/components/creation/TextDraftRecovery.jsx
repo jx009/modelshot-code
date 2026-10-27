@@ -16,7 +16,7 @@ export default function TextDraftRecovery({ draft, content, onChange, onRestore,
     <strong>{t("发现上次未提交的文字", "Unfinished text from your last visit")}</strong>
     <p>{t("请核对输入后恢复。若原对象已变化，可先复制下方文字，再自行决定如何处理。", "Review the text before restoring. If the original object changed, copy the text below and decide how to use it.")}</p>
     {node && <small>{page.title} · {node.name}</small>}
-    <textarea aria-label={t("待恢复文字", "Text to recover")} value={text} maxLength={draft.format === "html-source" ? 160 * 1024 : 16000} disabled={disabled || busy} onChange={event => {
+    <textarea aria-label={t("待恢复文字", "Text to recover")} value={text} maxLength={["html-source", "html-text"].includes(draft.format) ? 160 * 1024 : 16000} disabled={disabled || busy} onChange={event => {
       const value = event.target.value; setText(value); onChange({ ...draft, text: value, composing: false });
     }} />
     <div><button disabled={disabled || busy || !canRestore} onClick={() => void act(onRestore)}>{t("恢复到作品", "Restore to artwork")}</button>

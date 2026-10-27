@@ -5,12 +5,13 @@ import { inspectHtml } from "@/lib/creation/html/document";
 import { projectHtml } from "@/lib/creation/html/projection";
 import HtmlPreviewFrame from "./HtmlPreviewFrame";
 
-export default memo(function HtmlSlideCard({ page, theme, master, width, measuredHeight, onHeight, zh, loadAssets }) {
+export default memo(function HtmlSlideCard({ page, theme, master, width, measuredHeight, onHeight, zh, loadAssets, interactive = true }) {
   const frame = useRef(null), [images, setImages] = useState(() => new Map()), [error, setError] = useState(false), [attempt, setAttempt] = useState(0);
   const cleanup = useRef(null);
   const assets = useMemo(() => JSON.stringify([...new Set([...inspectHtml(page.html, { allowEmpty: true }).assets,
     ...(master ? inspectHtml("<style>" + master.css + "</style>" + master.html + "<span>master</span>").assets : [])])]), [page.html, master]);
-  const html = useMemo(() => projectHtml(page, images, { theme, master }), [page, images, theme, master]);
+  const previewPage = useMemo(() => ({ html: page.html, width: page.width, height: page.height }), [page.html, page.width, page.height]);
+  const html = useMemo(() => projectHtml(previewPage, images, { theme, master }), [previewPage, images, theme, master]);
   useEffect(() => {
     const abort = new AbortController();
     const next = new Map();
@@ -22,7 +23,7 @@ export default memo(function HtmlSlideCard({ page, theme, master, width, measure
   const loaded = useCallback(() => {
     cleanup.current?.();
     const doc = frame.current?.contentDocument;
-    if (page.height !== "auto" || !doc?.body) return;
+    if (page.height !== "auto" || !doc?.body || !onHeight) return;
     const measure = () => onHeight(page.id, Math.max(1, Math.min(8192, doc.body.scrollHeight)));
     const observer = new ResizeObserver(measure); observer.observe(doc.body);
     doc.addEventListener("load", measure, true); measure();
@@ -32,5 +33,5 @@ export default memo(function HtmlSlideCard({ page, theme, master, width, measure
   const height = page.height === "auto" ? measuredHeight || 720 : page.height, scale = width / page.width;
   return <><HtmlPreviewFrame frameRef={frame} html={html} onUpdate={loaded} title={page.title || (zh ? "幻灯片预览" : "Slide preview")} tabIndex={-1}
     style={{ width: page.width, height, transform: "scale(" + scale + ")", transformOrigin: "top left", pointerEvents: "none" }} />
-    {error && <button className="cw-slide-image-error" onClick={() => setAttempt(value => value + 1)}>{zh ? "部分配图未加载 · 重试" : "Some images unavailable · retry"}</button>}</>;
+    {error && interactive && <button className="cw-slide-image-error" onClick={() => setAttempt(value => value + 1)}>{zh ? "部分配图未加载 · 重试" : "Some images unavailable · retry"}</button>}</>;
 });

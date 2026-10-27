@@ -22,7 +22,7 @@ function sourceDocument(html) { return new DOMParser().parseFromString(html, "te
 function sourceHtml(doc) { return `<!DOCTYPE html>\n${doc.documentElement.outerHTML}`; }
 const byId = (doc, id) => doc.querySelector(`[data-node-id="${CSS.escape(id)}"]`);
 
-export default function HtmlEditor({ content, getContent, controllerRef, onOperations, onUndo, onRedo, canUndo, canRedo, onReference, onError, onDraftChange, onPendingChange, initialPageId, onPageChange, readOnly, zh = true }) {
+export default function HtmlEditor({ content, getContent, controllerRef, onOperations, onUndo, onRedo, canUndo, canRedo, onReference, onError, onDraftChange, onPendingChange, initialPageId, onPageChange, onHeight, embedded = false, readOnly, zh = true }) {
   const [pageId, setPageId] = useState(initialPageId || content.pages[0].id), [selection, setSelection] = useState([]), [inspector, setInspector] = useState(false);
   const [sourceOpen, setSourceOpen] = useState(false), [source, setSource] = useState("");
   const [picker, setPicker] = useState(false), [presenting, setPresenting] = useState(false);
@@ -33,15 +33,17 @@ export default function HtmlEditor({ content, getContent, controllerRef, onOpera
   const [autoHeight, setAutoHeight] = useState(720);
   const [issues, setIssues] = useState([]);
   const [dataEdit, setDataEdit] = useState(null);
+  const [toolsOpen, setToolsOpen] = useState(false);
   const host = useRef(null), frame = useRef(null), pending = useRef(null), clean = useRef(null), latest = useRef(null), dragging = useRef(false);
   const page = content.pages.find(item => item.id === pageId) || content.pages[0];
   useEffect(() => { onPageChange?.(page.id); }, [page.id, onPageChange]);
+  useEffect(() => { if (embedded && page.height === "auto") onHeight?.(page.id, autoHeight); }, [embedded, page.id, page.height, autoHeight, onHeight]);
   const text = (cn, en) => zh ? cn : en;
   useLayoutEffect(() => { latest.current = { page, readOnly: readOnly || presenting, selection, sourceOpen, source, onOperations, onError, onDraftChange, onPendingChange, remoteBlocked: Boolean(sourceOpen || presenting || picker || themeOpen || masterOpen || dataEdit) }; });
   const master = content.masters?.find(item => item.id === page.masterId);
   const theme = content.theme;
   const previewPage = useMemo(() => ({ id: page.id, html: page.html, width: page.width, height: page.height }), [page.id, page.html, page.width, page.height]);
-  const assetKey = useMemo(() => JSON.stringify([...new Set([...inspectHtml(previewPage.html).assets,
+  const assetKey = useMemo(() => JSON.stringify([...new Set([...inspectHtml(previewPage.html, { allowEmpty: true }).assets,
     ...(master ? inspectHtml(`<style>${master.css}</style>${master.html}<span>master</span>`).assets : [])])].sort()), [previewPage.html, master]);
   const projection = useMemo(() => projectHtml(previewPage, images, { theme, master }), [previewPage, images, theme, master]);
   const apply = useCallback(operations => {
@@ -51,9 +53,16 @@ export default function HtmlEditor({ content, getContent, controllerRef, onOpera
     const draft = pending.current;
     if (!draft) return;
     const current = getContent().pages.find(item => item.id === draft.pageId);
-    if (!current || current.html !== draft.base) throw new Error("HTML_SOURCE_CHANGED");
+    if (!current) throw new Error("HTML_SOURCE_CHANGED");
+    // A blur may have committed this text just before a toolbar click. Treat
+    // that second commit as complete instead of trapping the user in edit mode.
+    if (current.html !== draft.base) {
+      const alreadyApplied = draft.source !== undefined ? current.html === inspectHtml(draft.source, { assignIds: true, allowEmpty: true }).html : byId(sourceDocument(current.html), draft.nodeId)?.textContent === draft.text;
+      if (!alreadyApplied) throw new Error("HTML_SOURCE_CHANGED");
+      pending.current = null; latest.current.onDraftChange?.(null); latest.current.onPendingChange?.(false); return;
+    }
     let html;
-    if (draft.source !== undefined) html = inspectHtml(draft.source, { assignIds: true }).html;
+    if (draft.source !== undefined) html = inspectHtml(draft.source, { assignIds: true, allowEmpty: true }).html;
     else {
       const doc = sourceDocument(current.html), node = byId(doc, draft.nodeId);
       if (!node) throw new Error("LANGUAGE_SELECTION_CHANGED");
@@ -106,7 +115,7 @@ export default function HtmlEditor({ content, getContent, controllerRef, onOpera
       commitPending();
       const current = getContent().pages.find(item => item.id === latest.current.page.id), doc = sourceDocument(current.html);
       mutator(doc, latest.current.selection);
-      const html = inspectHtml(sourceHtml(doc), { assignIds: true }).html;
+      const html = inspectHtml(sourceHtml(doc), { assignIds: true, allowEmpty: true }).html;
       return apply([{ op: "setHtmlPage", pageId: current.id, html }]);
     } catch (error) { latest.current.onError?.(error); return false; }
   }, [apply, getContent, commitPending]);
@@ -187,10 +196,11 @@ export default function HtmlEditor({ content, getContent, controllerRef, onOpera
   function selectPage(id) { try { commitPending(); setPageId(id); setSelection([]); setSourceOpen(false); } catch (error) { onError?.(error); } }
   function openSource() { try { commitPending(); setSource(getContent().pages.find(p => p.id === page.id).html); setSourceOpen(true); } catch (error) { onError?.(error); } }
   const pageHeight = page.height === "auto" ? autoHeight : page.height;
-  const scale = Math.min(Math.max(0.05, (size.width - 24) / page.width), Math.max(0.05, (size.height - 24) / pageHeight), 1);
-  return <div className="cw-html-editor">
+  const scale = embedded ? Math.max(0.01, size.width / page.width) : Math.min(Math.max(0.05, (size.width - 24) / page.width), Math.max(0.05, (size.height - 24) / pageHeight), 1);
+  return <div className={"cw-html-editor" + (embedded ? " cw-html-embedded" : "")} data-tools-open={toolsOpen || selection.length > 0 || undefined}>
     {presenting && <HtmlSlidePresentation content={presenting} startPageId={page.id} initialImages={images} zh={zh} onClose={() => setPresenting(false)} />}
     {dataEdit && <HtmlDataDialog {...dataEdit} zh={zh} onClose={() => setDataEdit(null)} onApply={html => { if (edit(doc => { const node = sourceDocument(html).body.firstElementChild; node.dataset.nodeId ||= key(); if (dataEdit.id) { const target = byId(doc, dataEdit.id); if (!target) throw new Error("LANGUAGE_SELECTION_CHANGED"); target.replaceWith(node); } else doc.body.append(node); }) !== false) setDataEdit(null); }} />}
+    {embedded && <button className="cw-embedded-tools-toggle" aria-expanded={toolsOpen} onClick={() => setToolsOpen(value => !value)} title={text("编辑工具", "Editing tools")}><SlidersHorizontal size={14} /></button>}
     <div className="cw-html-tools">
       <button disabled={readOnly || !canUndo} title={text("撤销", "Undo")} onClick={() => { commitPending(); onUndo(); }}><Undo2 size={16} /></button>
       <button disabled={readOnly || !canRedo} title={text("重做", "Redo")} onClick={() => { commitPending(); onRedo(); }}><Redo2 size={16} /></button>
@@ -211,7 +221,7 @@ export default function HtmlEditor({ content, getContent, controllerRef, onOpera
     </div>
     {fault && <p role="alert" className="cw-error">{text("部分图片加载失败，文字和排版仍可编辑。", "Some images failed to load. Text and layout remain editable.")}<button onClick={() => setAssetRetry(value => value + 1)}>{text("重试图片", "Retry images")}</button></p>}
     <div className="cw-html-body">
-      {content.kind === "slides" && <nav ref={pageList} className="cw-html-pages" aria-label={text("幻灯片", "Slides")}>
+      {content.kind === "slides" && !embedded && <nav ref={pageList} className="cw-html-pages" aria-label={text("幻灯片", "Slides")}>
         <small>{text("拖动排序", "Drag to reorder")}</small><span className="sr-only" role="status">{announcement && text("已移动到第 " + announcement + " 页", "Moved to slide " + announcement)}</span>
         {content.pages.map((item, index) => <div className="cw-html-page-row" key={item.id} {...rowProps(item.id)}><button {...handleProps(item.id)} className="cw-page-handle" aria-label={text("拖动排序第 " + (index + 1) + " 页", "Reorder slide " + (index + 1))}><GripVertical size={12} /></button><button aria-current={item.id === page.id} onClick={() => selectPage(item.id)}><b>{index + 1}</b><span>{item.title || text("幻灯片", "Slide")}</span></button></div>)}
         <button disabled={readOnly} onClick={() => { commitPending(); const id = key(); apply([{ op: "insertHtmlPage", index: content.pages.length, page: { ...page, id, title: text("新页面", "New slide"), html: '<!DOCTYPE html><html><head><style>body{margin:0;background:#fff;font-family:sans-serif}h1{padding:64px}</style></head><body><h1 data-node-id="title">新页面</h1></body></html>' } }]); setPageId(id); }}><Plus size={15} /></button>
@@ -241,7 +251,7 @@ export default function HtmlEditor({ content, getContent, controllerRef, onOpera
           <button disabled={readOnly || selected.dataset.group !== "true"} onClick={() => { if (edit(doc => ungroupHtmlNode(doc, selection[0])) !== false) setSelection([]); }}>{text("取消组合", "Ungroup")}</button>
 
         </> : <p>{text("点击作品中的文字、图片或形状。双击文字直接编辑。", "Select text, an image or a shape. Double-click text to edit.")}</p>}
-        <details><summary>{text("图层", "Layers")}</summary>{[...inspectHtml(page.html).ids.entries()].slice(0, 150).map(([id, node]) => <button key={id} onClick={() => setSelection([id])}>{node.tagName} · {id}</button>)}</details>
+        <details><summary>{text("图层", "Layers")}</summary>{[...inspectHtml(page.html, { allowEmpty: true }).ids.entries()].slice(0, 150).map(([id, node]) => <button key={id} onClick={() => setSelection([id])}>{node.tagName} · {id}</button>)}</details>
         {issues.length > 0 && <details><summary>{text("排版检查", "Layout checks")} · {issues.length}</summary>{issues.map((issue, index) => <button key={index} onClick={() => setSelection([issue.id])}>{text(issue.code === "HTML_OUTSIDE_PAGE" ? "内容超出页面" : issue.code === "HTML_TEXT_OVERFLOW" ? "文字可能被截断" : "图片未加载", issue.code)} · {issue.id}</button>)}</details>}
         {content.kind === "slides" && <>
           <button disabled={readOnly} onClick={() => { commitPending(); const id = key(); if (apply([{ op: "insertHtmlPage", index: content.pages.indexOf(page) + 1, page: { ...page, id, title: `${page.title.slice(0, 145)} ${text("副本", "copy")}` } }]) !== false) selectPage(id); }}>{text("复制页面", "Duplicate slide")}</button>

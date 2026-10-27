@@ -59,5 +59,9 @@ export function usePendingTextDraft(userId, artifactId, persistOperations, draft
   // A source editor can resume an unfinished draft without committing invalid
   // intermediate code. Keep the recovery record until its later commit.
   const acceptRecovery = useCallback(() => setState(value => ({ ...value, recovery: null })), []);
-  return { ...state, ready, change, flush, clear, retry, snapshot, acceptRecovery };
+  const reviewPending = useCallback(() => {
+    const recovery = current.current?.snapshot();
+    if (recovery) setState(value => ({ ...value, recovery }));
+  }, []);
+  return { ...state, ready, change, flush, clear, retry, snapshot, acceptRecovery, reviewPending };
 }

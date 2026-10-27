@@ -8,7 +8,7 @@ import Modal from "@/components/ui/Modal";
 import { downloadUrl, previewUrl } from "@/lib/studio/image-url";
 import { MessageText } from "./CreationMessage";
 
-export default function ProjectResources({ resources, zh }) {
+export default function ProjectResources({ resources, zh, children }) {
   const [expanded, setExpanded] = useState(true), [selected, setSelected] = useState(null);
   const [zoomed, setZoomed] = useState(false), preview = useRef(null);
   const t = (cn, en) => zh ? cn : en;
@@ -31,6 +31,7 @@ export default function ProjectResources({ resources, zh }) {
   return <div className="cw-file-resources">
     {images.length > 0 && <><button className="cw-resource-folder" aria-expanded={expanded} onClick={() => setExpanded(value => !value)}>{expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}<FolderOpen size={14} /><span>{t("配图素材", "Images")}</span><small>{images.length}</small></button>
       {expanded && images.map(item => <button className="cw-resource-image" key={item.id} title={label(item)} onClick={() => selectResource({ type: "image", id: item.id })}><ImageIcon size={14} /><span>{label(item)}</span></button>)}</>}
+    {children}
     {resources.design && <button onClick={() => selectResource({ type: "design" })}><FileText size={14} /><span>DESIGN.md</span></button>}
     {(image || showingDesign) && createPortal(<Modal className="cw-resource-dialog" label={image ? label(image) : "DESIGN.md"} onClose={() => selectResource(null)}>
       <header><strong>{image ? label(image) : "DESIGN.md"}</strong>{image && <button type="button" aria-label={zoomLabel} title={zoomLabel} aria-pressed={zoomed} onClick={() => setZoomed(value => !value)}>{zoomed ? <ZoomOut size={16} /> : <ZoomIn size={16} />}<span>{zoomed ? "200%" : "100%"}</span></button>}{image ? <a href={downloadUrl(image.id)} download><Download size={15} />{t("下载", "Download")}</a> : <button onClick={downloadDesign}><Download size={15} />{t("下载", "Download")}</button>}<button aria-label={t("关闭资源预览", "Close resource preview")} onClick={() => selectResource(null)}><X size={17} /></button></header>

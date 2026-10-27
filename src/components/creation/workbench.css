@@ -73,3 +73,56 @@
 @media(max-width:1100px) and (min-width:761px){.cw-workspace .cw-file-tree{width:148px;padding:8px}.cw-message-file>span{align-items:flex-start;flex-direction:column;gap:2px}.cw-message-file small{margin-left:0}.cw-workspace .cw-messages{padding:14px 16px}.cw-artifact-bar .cw-view-label{display:none}}
 @media(max-width:760px){.cw-workspace .cw-workspace-body{padding:4px}.cw-workspace .cw-chat{flex:1;border-radius:12px}.cw-workspace .cw-file-tree{position:absolute;top:0;bottom:0;left:0;width:min(240px,75%);z-index:6;box-shadow:6px 0 24px #0002}.cw-workspace .cw-work-area{border-radius:12px}.cw-file-tools{z-index:7}.cw-workspace .cw-composer{margin:6px 10px 10px}.cw-run-strip{margin-left:10px;margin-right:10px}.cw-workspace .cw-messages{padding:14px 16px}.cw-file-body{position:relative}.cw-artifact-bar .cw-save-state{max-width:85px}.cw-workspace .cw-chat>header{padding:10px 14px}}
 @media(prefers-reduced-motion:reduce){.cw-workspace .animate-spin{animation:none}}
+
+/* Match the supplied browse/edit workspace proportions without fixed chat width. */
+.cw-workspace .cw-workspace-body{padding:8px 0 8px 0}
+.cw-workspace .cw-chat,.cw-workspace .cw-work-area{border-radius:20px}
+.cw-workspace .cw-split-handle{flex-basis:18px}
+.cw-workspace .cw-chat>header{min-height:52px;padding-inline:16px}
+.cw-workspace .cw-messages{padding:8px 24px 24px}
+.cw-workspace .cw-composer{margin:12px 20px 16px;padding:14px 16px 10px;border-radius:20px}
+.cw-workspace .cw-composer>textarea{min-height:62px}
+.cw-workspace .cw-file-tree{width:clamp(170px,12vw,252px);padding:12px 14px}
+.cw-workspace .cw-artifact-bar{height:52px;min-height:52px;padding:8px 50px 8px 18px;gap:7px;overflow:visible}
+.cw-workspace .cw-artifact-bar>div:first-child{flex:0 1 auto;min-width:80px;max-width:40%}
+.cw-artifact-toolbar-spacer{flex:1;min-width:4px}
+.cw-workspace .cw-artifact-bar .cw-save-state{max-width:110px;margin-left:0}
+.cw-workspace .cw-artifact-bar>button{font-size:12px;min-height:28px;padding:4px 8px}
+.cw-workspace .cw-artifact-bar .cw-mode-icon{border:0;padding:4px;color:var(--secondary-text)}
+.cw-workspace .cw-artifact-bar .cw-mode-icon[aria-pressed=true]{color:var(--primary-text);background:var(--bg-card-hover)}
+.cw-workspace .cw-artifact-bar .cw-exit-editing{white-space:nowrap;border:1px solid var(--divider);background:var(--bg-card);color:var(--primary-text)}
+.cw-workspace .cw-artifact-bar .cw-save-editing{white-space:nowrap;border:1px solid var(--primary-text);background:var(--primary-text);color:var(--bg-card)}
+.cw-artifact:fullscreen{width:100vw;height:100dvh;background:var(--bg-card);color:var(--primary-text)}
+.cw-editing-notice{display:flex;align-items:center;justify-content:center;gap:8px;margin:8px 20px 0;padding:10px;font-size:12px;color:var(--secondary-text);background:var(--bg-card);border-radius:10px}
+.cw-editing-notice svg{color:#db9e38;flex-shrink:0}
+.cw-completion-card{padding:14px 18px;border:1px solid var(--divider);border-radius:18px;background:var(--bg-page);margin:18px 0}
+.cw-completion-card>header{display:flex;align-items:center;gap:8px;margin:4px 0 16px;font-size:14px;color:var(--primary-text)}
+.cw-completion-card>header>svg{color:#c69b45}.cw-completion-card time{font-size:11px;color:var(--secondary-text);font-weight:400}
+.cw-completion-card .cw-message-file{margin:0;background:var(--bg-card-hover);padding:8px 10px;border-radius:5px}
+.cw-completed-details{margin:14px 0;font-size:12px;color:var(--secondary-text)}
+.cw-completed-details>button{width:100%;justify-content:flex-start!important}
+.cw-workspace .cw-composer-actions{gap:3px}.cw-workspace .cw-composer>small{display:none}
+.cw-workspace .cw-composer-cost{font-size:10px}
+@container creation-artwork (max-width:800px){.cw-workspace .cw-artifact-bar{overflow-x:auto}.cw-workspace .cw-artifact-bar .cw-exit-editing,.cw-workspace .cw-artifact-bar .cw-save-editing{flex-shrink:0}.cw-workspace .cw-artifact-bar .cw-save-state{max-width:76px}}
+@media(max-width:760px){.cw-workspace .cw-workspace-body{padding:4px}.cw-workspace .cw-file-tree{width:min(240px,75%)}.cw-workspace .cw-composer{margin:8px 10px 10px}.cw-workspace .cw-artifact-bar{padding-right:46px}.cw-workspace .cw-messages{padding:10px 16px}}
+.cr-shell.cr-shell-creation{--cr-topbar-height:52px}
+.cr-shell.cr-shell-creation .cr-topbar{border-bottom:0}
+.cr-shell.cr-shell-creation .cr-creation-navigation{display:flex;align-items:center;gap:18px;padding-right:18px;margin-right:4px;border-right:1px solid var(--divider)}
+.cr-creation-navigation>a,.cr-creation-navigation>button{display:grid;place-items:center;padding:3px;background:transparent;border:0;color:var(--secondary-text);cursor:pointer}
+.cr-shell.cr-shell-creation .cr-topbar .cr-workspace-title{max-width:min(50vw,760px)}
+.cw-workspace .cw-file-tools{top:11px}
+.cw-workspace .cw-file-resources{margin:2px 0 8px;border:0;padding:0}
+.cw-workspace .cw-file-resources>button{font-size:12px;padding:7px 4px;gap:7px}
+.cw-workspace .cw-file-resources>.cw-resource-image{padding-left:24px}
+.cw-workspace .cw-file-resources>button.is-selected{background:var(--bg-card-hover);color:var(--primary-text)}
+.cw-workspace .cw-file-resources>button>span{flex:1;text-align:left}
+.cw-workspace .cw-file-tree>header{font-size:12px;padding:10px 4px}
+.cw-workspace .cw-file-tree .cw-office-import{font-size:11px;margin:8px 0 12px;color:var(--secondary-text)}
+.cw-workspace .cw-new-file{display:flex;width:100%;border:1px solid var(--divider);border-radius:5px;min-height:29px;padding:4px 8px;font-size:12px;justify-content:center;margin:0 0 9px}
+.cw-workspace .cw-file-resources>button>svg{flex-shrink:0}
+.cw-workspace .cw-file-resources>button>small{margin-left:auto;font-size:10px}
+.cw-workspace .cw-artifact-bar[data-editing=true] .cw-save-state{max-width:90px}
+.cw-workspace .cw-artifact-bar[data-editing=true]>div:first-child{max-width:50%}
+.cw-workspace .cw-file-tools>button{background:transparent}
+@media(min-width:601px){.cr-shell.cr-shell-creation:not([data-navigation-expanded]) .cr-sidebar{display:none}.cr-shell.cr-shell-creation:not([data-navigation-expanded]) .cr-main{margin-left:0}.cr-shell.cr-shell-creation[data-navigation-expanded] .cr-sidebar{z-index:40;box-shadow:8px 0 24px #0002}.cr-shell.cr-shell-creation[data-navigation-expanded] .cr-main{margin-left:0}}
+@media(max-width:600px){.cr-shell.cr-shell-creation .cr-creation-navigation{display:none}}

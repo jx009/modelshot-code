@@ -1,7 +1,7 @@
 "use client";
 
 import { memo } from "react";
-import { ChevronRight, Download, FileImage, FileText, Presentation, Sheet, Globe, ListChecks } from "lucide-react";
+import { ChevronRight, Download, FileImage, FileText, Presentation, Sheet, Globe, ListChecks, Bot } from "lucide-react";
 import { MessageReferenceAssets } from "./ReferenceAssets";
 
 const icons = { slides: Presentation, poster: FileImage, document: FileText, sheet: Sheet, web: Globe };
@@ -18,15 +18,18 @@ export function MessageText({ value = "" }) {
     return <p key={i}>{inline(part)}</p>;
   })}</div>;
 }
-export default memo(function CreationMessage({ message, artifacts, projectKind, zh, onOpen, onOutline, onWarm }) {
+export default memo(function CreationMessage({ message, artifacts, projectKind, zh, onOpen, onOutline, onWarm, completed = false }) {
   const refs = Array.isArray(message.references) ? message.references : [], t = (cn, en) => zh ? cn : en;
   return <article data-message-id={message.id} className={"cw-message is-" + message.role}>
     <MessageText value={message.text} />
     <MessageReferenceAssets references={message.references} zh={zh} />
+    <div className={completed ? "cw-completion-card" : undefined}>
+    {completed && <header><Bot size={20} /><strong>{t("最终结果", "Final result")}</strong>{message.createdAt && <time>{new Date(message.createdAt).toLocaleString(zh ? "zh-CN" : "en-US", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}</time>}</header>}
     {refs.filter(item => item.type === "artifact").map(item => {
       const file = artifacts?.find(file => file.id === item.artifactId), kind = file?.kind || projectKind, Icon = icons[kind] || FileText;
       return <button className="cw-message-file" key={item.artifactId + ":" + item.revision} onPointerEnter={() => onWarm(kind)} onFocus={() => onWarm(kind)} onClick={() => onOpen(item.artifactId, kind)}><Icon size={19} data-kind={kind} /><span><strong>{file?.name || t(kind === "slides" ? "演示文稿" : "创作作品", kind === "slides" ? "Presentation" : "Artwork")}</strong><small>{t("已保存", "Saved")} · V{item.revision}</small></span><ChevronRight size={16} /></button>;
     })}
+    </div>
     {refs.filter(item => item.type === "outline").map(item => <button className="cw-message-file" key={item.runId} onClick={() => onOutline(item.runId)}><ListChecks size={18} /><span>{t("查看并确认大纲", "Review outline")}</span><ChevronRight size={16} /></button>)}
     {refs.filter(item => item.type === "export").map(item => <a className="cw-message-file" key={item.exportId} href={"/api/creation/exports/" + encodeURIComponent(item.exportId) + "/download"}><Download size={17} /><span>{t("下载文件", "Download file")} · {item.format.toUpperCase()}</span><ChevronRight size={16} /></a>)}
   </article>;

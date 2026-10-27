@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 
-const MIN = 300, MAX = 640, DEFAULT = 380;
+const MIN = 300, MAX = 840, DEFAULT = 380;
 export default function WorkspaceSplit({ userId, zh, children }) {
   const root = useRef(null), separator = useRef(null);
   useEffect(() => {

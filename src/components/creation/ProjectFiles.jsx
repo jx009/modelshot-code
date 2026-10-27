@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, FileImage, FileText, FolderOpen, Globe, Presentation, Search, Sheet, X } from "lucide-react";
-import { api } from "@/lib/client-api";
+import { ChevronLeft, ChevronRight, FileImage, FileText, FolderOpen, Globe, Presentation, Search, Sheet, X, Plus, LoaderCircle } from "lucide-react";
+import { api, requestKey } from "@/lib/client-api";
 import { creationError } from "./creation-errors";
 import OfficeImport from "./OfficeImport";
 import ProjectResources from "./ProjectResources";
@@ -15,6 +15,25 @@ export default function ProjectFiles({ project, fileId, onSelect, onImported, on
   const [query, setQuery] = useState("");
   const [cursors, setCursors] = useState([null]), [loading, setLoading] = useState(false), [error, setError] = useState(null);
   const pending = useRef(null);
+  const creation = useRef(null), creating = useRef(false);
+  const [createBusy, setCreateBusy] = useState(false), [createError, setCreateError] = useState(null);
+  async function createFile() {
+    if (creating.current) return;
+    creating.current = true; setCreateBusy(true); setCreateError(null);
+    try {
+      const title = zh ? "未命名演示文稿" : "Untitled presentation";
+      creation.current ||= { key: requestKey(), body: { projectId: project.id, content: {
+        schemaVersion: 3, format: "html-slides", kind: "slides", title,
+        theme: { name: "Default", primary: "#243530", accent: "#1e7a6f", background: "#ffffff", fontFamily: "sans" }, metadata: {},
+        pages: [{ id: "page_" + requestKey(), title, width: 1920, height: 1080, notes: "", hidden: false, html: '<html><head><style>body{margin:0;background:#fff;color:#243530;font-family:sans-serif}h1{margin:96px;font-size:80px}</style></head><body><h1 data-node-id="title">' + title + '</h1></body></html>' }],
+      } } };
+      const result = await api("/api/creation/artifacts", { method: "POST", ...creation.current, timeoutMs: 30000 });
+      await onImported?.();
+      await onSelect(result.artifactId, false, "slides");
+      creation.current = null;
+    } catch (failure) { setCreateError(failure); }
+    finally { creating.current = false; setCreateBusy(false); }
+  }
   const shown = cursors.length === 1 && !page.q && page.source !== project.artifacts ? { ...page, items: project.artifacts, nextCursor: project.artifactsNextCursor } : page;
   useEffect(() => {
     let connected = true;
@@ -43,14 +62,17 @@ export default function ProjectFiles({ project, fileId, onSelect, onImported, on
       <input type="search" aria-label={zh ? "文件名" : "File name"} placeholder={zh ? "搜索文件…" : "Search files…"} maxLength={100} value={query} onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229)) event.preventDefault(); }} />
       <button type="submit" aria-label={zh ? "搜索" : "Search"}><Search size={14} /></button>
     </form>
+    {project.kind === "slides" && <button className="cw-new-file" disabled={createBusy} onClick={createFile}>{createBusy ? <LoaderCircle size={13} className="animate-spin" /> : <Plus size={13} />}{zh ? createError ? "重试新建文件" : "新建文件" : createError ? "Retry new file" : "New file"}</button>}
+    {createError && <p role="alert">{creationError(createError, zh)}</p>}
     <header><FolderOpen size={15} /><span title={project.name}>{project.name}</span></header>
     {["document", "sheet", "slides"].includes(project.kind) && <OfficeImport projectId={project.id} kind={project.kind} zh={zh} onSelect={onSelect} onImported={onImported} />}
     {page.q && <div className="cw-file-filter"><span title={page.q}>{page.q}</span><button aria-label={zh ? "清除文件搜索" : "Clear file search"} onClick={() => { setQuery(""); void load([null], ""); }}><X size={12} /></button></div>}
     <div className="cw-file-items">{shown.items.map(item => {
       const Icon = icons[item.kind] || FileText;
-      return <div className="cw-file-entry" key={item.id}><button className={fileId === item.id ? "is-selected" : ""} aria-current={fileId === item.id ? "true" : undefined} onPointerEnter={() => onWarm?.(item.kind)} onFocus={() => onWarm?.(item.kind)} onClick={() => onSelect(item.id, false, item.kind)} title={item.name}>
+      const entry = <button className={fileId === item.id ? "is-selected" : ""} aria-current={fileId === item.id ? "true" : undefined} onPointerEnter={() => onWarm?.(item.kind)} onFocus={() => onWarm?.(item.kind)} onClick={() => onSelect(item.id, false, item.kind)} title={item.name}>
         <Icon size={15} data-kind={item.kind} /><span>{item.name}</span>{item.currentRevision != null && <small>V{item.currentRevision}</small>}
-      </button>{fileId === item.id && resources?.artifactId === item.id && <ProjectResources key={item.id} resources={resources} zh={zh} />}</div>;
+      </button>;
+      return <div className="cw-file-entry" key={item.id}>{fileId === item.id && resources?.artifactId === item.id ? <ProjectResources resources={resources} zh={zh}>{entry}</ProjectResources> : entry}</div>;
     })}</div>
     {!shown.items.length && !loading && <p>{page.q ? zh ? "没有匹配的文件" : "No matching files" : zh ? "暂无作品，生成的作品会保存在这里" : "Generated artwork will appear here"}</p>}
     {loading && <p role="status">{zh ? "正在读取文件…" : "Loading files…"}</p>}

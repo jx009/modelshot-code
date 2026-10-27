@@ -4,6 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import HtmlSlideViewer from "../../src/components/creation/editors/html/HtmlSlideViewer";
 
 vi.mock("../../src/components/creation/editors/html/HtmlSlideCard", () => ({ default: ({ page }) => <div data-testid={"preview-" + page.id}>{page.title}</div> }));
+vi.mock("../../src/components/creation/editors/html/HtmlEditor", () => ({ default: ({ initialPageId, onPageChange }) => <div data-testid={"editor-" + initialPageId}>inline editor<button onClick={() => onPageChange("b")}>Select page inside editor</button></div> }));
 const observers = [];
 beforeEach(() => {
   observers.length = 0;
@@ -25,12 +26,29 @@ it("renders only nearby slide previews and preserves the selected edit target", 
   await act(async () => near.callback(near.elements.map(element => ({ target: element, isIntersecting: element.dataset.slideId === "c" }))));
   await screen.findByTestId("preview-c");
   expect(screen.queryByTestId("preview-a")).toBeNull();
-  fireEvent.click(screen.getAllByText("Edit slide")[2]);
+  fireEvent.doubleClick(screen.getByTestId("preview-c"));
   expect(onEdit).toHaveBeenCalledWith("c");
+});
+it("shows notes and insertion controls for every page in edit mode", async () => {
+  const onOperations = vi.fn();
+  render(<HtmlSlideViewer content={content} editing onEdit={() => {}} onOperations={onOperations} readOnly />);
+  expect(screen.getAllByRole("textbox")).toHaveLength(3);
+  expect(screen.getAllByText("New slide")).toHaveLength(3);
+  expect(screen.getByLabelText("Slide 2 notes").disabled).toBe(true);
+  expect(onOperations).not.toHaveBeenCalled();
 });
 it("reorders in the continuous viewer using the existing journal operation", () => {
   const onOperations = vi.fn();
   render(<HtmlSlideViewer content={content} onEdit={() => {}} onOperations={onOperations} />);
   fireEvent.keyDown(screen.getByLabelText("Reorder slide 2"), { altKey: true, key: "ArrowUp" });
   expect(onOperations).toHaveBeenCalledExactlyOnceWith([{ op: "reorderHtmlPage", pageId: "b", index: 0 }]);
+});
+it("keeps the outer active page in sync when the inline editor changes pages", async () => {
+  const onPage = vi.fn();
+  render(<HtmlSlideViewer content={content} editing onPage={onPage} onOperations={() => true} />);
+  await screen.findByTestId("editor-a");
+  fireEvent.click(screen.getByText("Select page inside editor"));
+  await screen.findByTestId("editor-b");
+  expect(screen.queryByTestId("editor-a")).toBeNull();
+  expect(onPage).toHaveBeenLastCalledWith("b");
 });

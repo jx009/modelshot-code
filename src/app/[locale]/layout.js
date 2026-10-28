@@ -3,7 +3,6 @@ import "../globals.css";
 import StylesheetRecovery from "../../components/StylesheetRecovery";
 import { Providers } from "../providers";
 import NavigationContent from "@/components/ui/NavigationContent";
-import Navbar from "../../components/Navbar";
 import AnnouncementBanner from "../../components/AnnouncementBanner";
 import { ThemeProvider } from "next-themes";
 import { NextIntlClientProvider } from "next-intl";
@@ -67,7 +66,6 @@ export default async function LocaleLayout({ children, params }) {
           <NextIntlClientProvider messages={messages}>
             <Providers>
               <AnnouncementBanner />
-              <Navbar />
               <div className="flex-1 flex flex-col min-h-0">
                 <NavigationContent>{children}</NavigationContent>
               </div>

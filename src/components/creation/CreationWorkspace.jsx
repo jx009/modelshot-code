@@ -17,6 +17,7 @@ import { creationError } from "./creation-errors";
 import { invalidateProjectLists } from "@/lib/studio/project-list";
 import { useCreationNavigationGuard } from "./useCreationNavigationGuard";
 import { posterImageChoice } from "@/lib/creation/poster-image-choice";
+import GenerationModelSelect from "./GenerationModelSelect";
 import ArtifactEditor, { warmCreationEditor } from "./CreationArtifactEditor";
 import CreationMessage from "./CreationMessage";
 import CreationTaskStatus, { RunStatusStrip } from "./CreationTaskStatus";
@@ -53,6 +54,7 @@ export default function CreationWorkspace({ userId, projectId, initialSessionId,
   const [assetIds, setAssetIds] = useState([]);
   const [referenceIds, setReferenceIds] = useState([]);
   const [generateImage, setGenerateImage] = useState(true);
+  const [imageProvider, setImageProvider] = useState("");
   const [outlineRunId, setOutlineRunId] = useState(null);
   const [resources, setResources] = useState(null), [editingFile, setEditingFile] = useState(null);
   const observeEditing = useCallback((id, editing) => setEditingFile(current => editing ? id : current === id ? null : current), []);
@@ -108,6 +110,7 @@ export default function CreationWorkspace({ userId, projectId, initialSessionId,
           if (saved?.key && saved?.body && saved.sessionId === chosen) {
             pendingRequest.current = saved; setPending(saved); setPrompt(saved.body.prompt); setAssetIds(referenceAssetIds(saved.body.assetIds)); setReferenceIds(referenceAssetIds(saved.body.referenceIds)); setGenerateImage(Boolean(saved.body.image));
             if (saved.body.width && saved.body.height) setRatio(`${saved.body.width}x${saved.body.height}`); setPages(saved.body.pageCount || 1); setBudget(String(saved.body.maxCredits));
+            setImageProvider(saved.body.image?.provider || saved.body.imageProvider || "");
             const target = saved.body.target;
             if (target) {
               const selected = saved.body.kind === "web" ? { kind: "web", fileIds: target.fileIds, paths: target.paths }
@@ -119,7 +122,7 @@ export default function CreationWorkspace({ userId, projectId, initialSessionId,
             }
           }
           else if (draft && typeof draft.prompt === "string") { setPrompt(draft.prompt.slice(0, 12000)); setReference(draft.reference || null); setAssetIds(referenceAssetIds(draft.assetIds)); setReferenceIds(referenceAssetIds(draft.referenceIds));
-            setGenerateImage(draft.generateImage ?? true);
+            setGenerateImage(draft.generateImage ?? true); setImageProvider(typeof draft.imageProvider === "string" ? draft.imageProvider : "");
             if (["1080x1440", "1080x1080", "1920x1080", "1080x1920"].includes(draft.ratio)) setRatio(draft.ratio);
             if (Number.isInteger(draft.pages) && draft.pages >= 1 && draft.pages <= 100) setPages(draft.pages);
             if (Number.isInteger(draft.sectionCount) && draft.sectionCount >= 1 && draft.sectionCount <= 50) setSectionCount(draft.sectionCount);
@@ -146,11 +149,11 @@ export default function CreationWorkspace({ userId, projectId, initialSessionId,
   }, [fileId, project, listedKind, notify]);
   useEffect(() => {
     if (loading || !sessionId) return;
-    const snapshot = { key: draftKey, value: JSON.stringify({ prompt, reference, assetIds, referenceIds, ratio, pages, sectionCount, sheetCount, targetRows, generateImage, agentMode }) };
+    const snapshot = { key: draftKey, value: JSON.stringify({ prompt, reference, assetIds, referenceIds, ratio, pages, sectionCount, sheetCount, targetRows, generateImage, imageProvider, agentMode }) };
     composerDraft.current = snapshot;
     composerTimer.current = setTimeout(() => { try { sessionStorage.setItem(snapshot.key, snapshot.value); } catch { /* Sending still requires a durable pending journal. */ } }, 300);
     return () => clearTimeout(composerTimer.current);
-  }, [prompt, reference, assetIds, referenceIds, ratio, pages, sectionCount, sheetCount, targetRows, generateImage, agentMode, draftKey, loading, sessionId]);
+  }, [prompt, reference, assetIds, referenceIds, ratio, pages, sectionCount, sheetCount, targetRows, generateImage, imageProvider, agentMode, draftKey, loading, sessionId]);
   useEffect(() => {
     const save = () => {
       clearTimeout(composerTimer.current);
@@ -204,7 +207,7 @@ export default function CreationWorkspace({ userId, projectId, initialSessionId,
   const occupied = run && (active(run.status) || run.status.startsWith("awaiting_"));
   const kind = reference ? fileKind || project?.kind : project?.kind, useAgent = agentMode, enabled = Boolean(caps?.[useAgent ? "agent" : kind]);
   const estimatedCalls = reference ? 1 : kind === "slides" ? pages + 1 : kind === "document" ? sectionCount + 1 : kind === "sheet" ? sheetGenerationCalls(sheetCount, targetRows) : 1;
-  const imageChoice = pending ? pending.body.image : !useAgent && kind === "poster" && !reference ? posterImageChoice(caps, ratio) : null;
+  const imageChoice = pending ? pending.body.image : !useAgent && kind === "poster" && !reference ? posterImageChoice(caps, ratio, imageProvider) : null;
   const withImage = Boolean(imageChoice && generateImage && assetIds.length < 8);
   const estimated = pending ? pending.body.maxCredits : (caps?.languageUnitCost ?? 0) * (useAgent ? 1 : estimatedCalls) + (withImage ? imageChoice.expectedCost : 0);
   const title = project?.name || text("AI 创作", "AI Creation");
@@ -288,7 +291,9 @@ export default function CreationWorkspace({ userId, projectId, initialSessionId,
         const typedRequest = { kind, prompt: prompt.trim(), locale: zh ? "zh" : "en", ...parameters, assetIds: [], referenceIds: [], maxCredits: 0, ...(target ? { target } : {}) };
         const body = { kind: useAgent ? "agent" : kind, prompt: prompt.trim(), locale: zh ? "zh" : "en", ...(useAgent ? (target ? { editRequest: typedRequest } : {}) : parameters),
           assetIds, referenceIds, maxCredits: Number(budget || estimated), ...(!useAgent && target ? { target } : {}) };
+        if (!useAgent && kind === "poster" && !target && generateImage && imageProvider && !imageChoice) throw new Error("PROVIDER_CAPABILITY_UNSUPPORTED");
         if (withImage && !target) body.image = imageChoice;
+        if (!useAgent && kind === "slides" && !target && imageProvider) body.imageProvider = imageProvider;
         submission = { key: requestKey(), sessionId, body };
         sessionStorage.setItem(journalKey, JSON.stringify(submission));
         pendingRequest.current = submission; setPending(submission);
@@ -372,6 +377,7 @@ export default function CreationWorkspace({ userId, projectId, initialSessionId,
             {imageChoice && <label className="cw-poster-image-choice" title={text("先生成视觉素材，再排版可编辑文字；最多使用前两张参考图。选择八张素材时使用已有素材排版。", "Generate artwork, then lay out editable text. Uses the first two reference images. Eight selected assets use existing artwork only.")}><input type="checkbox" checked={withImage} disabled={busy || Boolean(pending) || assetIds.length >= 8} onChange={event => setGenerateImage(event.target.checked)} />{text("AI 配图", "AI artwork")} · {imageChoice.expectedCost} {text("积分", "credits")}</label>}
             <div className="cw-composer-options">{!reference && !useAgent && <>{["poster", "slides"].includes(kind) && <select aria-label={text("画板尺寸", "Page dimensions")} disabled={busy || Boolean(pending)} value={ratio} onChange={event => setRatio(event.target.value)}><option value="1080x1440">3:4</option><option value="1080x1080">1:1</option><option value="1920x1080">16:9</option><option value="1080x1920">9:16</option></select>}{["slides", "web"].includes(kind) && <label><input aria-label={text("页数", "Page count")} type="number" min={1} max={kind === "web" ? 20 : 100} value={pages} disabled={busy || Boolean(pending)} onChange={event => setPages(Math.min(kind === "web" ? 20 : 100, Math.max(1, Number(event.target.value) || 1)))} />{text("页", "pages")}</label>}{kind === "document" && <label>{text("章节数", "Sections")}<input aria-label={text("章节数", "Section count")} type="number" min={1} max={50} value={sectionCount} disabled={busy || Boolean(pending)} onChange={event => setSectionCount(Math.min(50, Math.max(1, Number(event.target.value) || 1)))} /></label>}{kind === "sheet" && <><label>{text("工作表", "Sheets")}<input aria-label={text("工作表数量", "Sheet count")} type="number" min={1} max={5} value={sheetCount} disabled={busy || Boolean(pending)} onChange={event => setSheetCount(Math.min(5, Math.max(1, Number(event.target.value) || 1)))} /></label><label>{text("目标行数", "Target rows")}<input aria-label={text("目标行数", "Target rows")} type="number" min={1} max={500} value={targetRows} disabled={busy || Boolean(pending)} onChange={event => setTargetRows(Math.min(500, Math.max(1, Number(event.target.value) || 1)))} /></label></>}</>}</div>
           </div>}
+          {!reference && !useAgent && ["poster", "slides"].includes(kind) && <div className="cw-composer-options"><GenerationModelSelect zh={zh} models={caps?.imageModels} value={pending ? pending.body.image?.provider || pending.body.imageProvider : imageProvider} onChange={setImageProvider} disabled={busy || Boolean(pending)} /></div>}
           <small>{pending ? text("上次提交尚未确认，点击恢复即可核对同一任务。", "The last submission is unconfirmed. Recover it to check the same task.") : reference ? text("提交前会先保存当前修改。", "Current edits are saved before sending.") : !enabled && !loading ? text("此类型暂未开放新创作，已有作品仍可打开。", "New creation is unavailable. Existing artwork remains accessible.") : text("Enter 发送 · Shift+Enter 换行", "Enter to send · Shift+Enter for a new line")}</small>
         </form>
       </aside>

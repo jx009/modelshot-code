@@ -1,4 +1,7 @@
 import { z } from "zod";
+import { VIDEO_DURATIONS } from "./model-protocols.js";
+
+export const videoDurationSchema = z.union(VIDEO_DURATIONS.map(value => z.literal(value)));
 
 const id = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
 const color = z.string().regex(/^#[0-9a-fA-F]{6}$/);
@@ -27,10 +30,11 @@ export const motionSchema = z.object({
   if (value.scenes.reduce((sum, scene) => sum + scene.duration, 0) > 180) ctx.addIssue({ code: "custom", message: "VIDEO_TOO_LONG" });
 });
 export const videoDocumentSchema = z.object({
+  provider: id.optional(),
   mode: z.enum(["video", "motion"]), media: z.array(videoMediaSchema).max(40).default([]),
   composition: motionSchema.nullable().default(null), ratio: z.enum(videoRatios).default("16:9"),
   confirmed: z.boolean().default(false),
-  duration: z.union([z.literal(5), z.literal(10)]).default(5),
+  duration: videoDurationSchema.default(5),
 }).strict().superRefine((value, ctx) => {
   if (value.mode === "video" && (value.composition || value.media.length > 1 || value.media.some(item => item.type !== "image"))) ctx.addIssue({ code: "custom", message: "VIDEO_REFERENCE_IMAGE_ONLY" });
   if (new Set(value.media.map(item => item.id)).size !== value.media.length) ctx.addIssue({ code: "custom", message: "DUPLICATE_MEDIA" });

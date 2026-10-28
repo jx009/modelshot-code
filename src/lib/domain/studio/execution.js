@@ -8,6 +8,7 @@ import { downloadProviderVideo } from "../../infra/storage/download.js";
 import { createImage, readOwnedImage } from "../assets/service.js";
 import { claimOutput, finishOutput, deferOutput, safeProviderError } from "../generation/execution.js";
 import { studioConfig, generateImage, vision, toolService, videoRequest } from "./providers.js";
+import { downloadVideoContent } from "./video-providers.js";
 import { alphaMask, compositeSelection, cropOutputs } from "./pixels.js";
 import { runRegionMove } from "./region-move.js";
 import { runObjectEdit } from "./object-edit.js";
@@ -79,8 +80,9 @@ export async function executeStudio(id, { db = prisma, store = objectStorage(), 
     }
     const dependency = getTool(snapshot.tool)?.dependency;
     const modelTool = ["image", "vision", "split", "ocr", "upscale"].includes(dependency);
-    const selectedConfig = supplied || (dependency === "local" ? {} : await studioConfig(db, modelTool ? snapshot.provider : undefined, ["split", "ocr", "upscale"].includes(dependency) ? dependency : dependency === "vision" ? "language" : "image", null, { pinned: modelTool, skipPreview: true }));
-    const config = { ...selectedConfig, imageModel: snapshot.imageModel, chatModel: snapshot.chatModel, videoModel: snapshot.videoModel };
+    const selectedConfig = supplied || (dependency === "local" ? {} : await studioConfig(db, dependency === "video" ? snapshot.videoProvider || undefined : modelTool ? snapshot.provider : undefined, dependency === "video" ? "video" : ["split", "ocr", "upscale"].includes(dependency) ? dependency : dependency === "vision" ? "language" : "image", null, { pinned: modelTool || dependency === "video", skipPreview: true }));
+    const config = { ...selectedConfig, imageModel: snapshot.imageModel, chatModel: snapshot.chatModel, videoModel: snapshot.videoModel, videoOptions: snapshot.videoOptions || selectedConfig.videoOptions };
+    if (dependency === "video" && snapshot.videoBaseURL && (snapshot.videoBaseURL !== config.videoURL || snapshot.videoKind !== config.videoKind)) throw new AppError("PROVIDER_CONFIGURATION_CHANGED", 422);
     const channel = ["split", "ocr", "upscale"].includes(dependency) ? config[`${dependency}Channel`] : dependency === "vision" ? { kind: config.plannerKind, baseURL: config.visionBaseURL } : { kind: config.imageKind || "openai", baseURL: config.baseURL };
     if (modelTool && snapshot.providerKind && (snapshot.providerKind !== channel?.kind || snapshot.providerBaseURL !== (channel?.baseURL || null))) throw new AppError("PROVIDER_CONFIGURATION_CHANGED", 422);
     if (["split", "ocr", "upscale"].includes(dependency) && channel) config[`${dependency}Channel`] = { ...channel, model: snapshot.imageModel };
@@ -116,7 +118,9 @@ export async function executeStudio(id, { db = prisma, store = objectStorage(), 
       if (remote.requestId) await db.generationAttempt.update({ where: { id: attempt.id }, data: { requestId: remote.requestId, state: "provider_pending" } });
       if (remote.state === "pending") { await deferOutput(claim, "PROVIDER_PENDING", false, db); return; }
       if (remote.state === "failed") { await finishOutput(id, output.fence, { errorCode: "VIDEO_PROVIDER_FAILED" }, db); return; }
-      const bytes = await (adapters.downloadVideo || downloadProviderVideo)(remote.url);
+      const bytes = remote.contentRequestId
+        ? await (adapters.downloadVideoContent || downloadVideoContent)(config, remote.contentRequestId, controller.signal)
+        : await (adapters.downloadVideo || downloadProviderVideo)(remote.url);
       if (bytes.length < 12 || bytes.toString("ascii", 4, 8) !== "ftyp") throw new AppError("INVALID_VIDEO", 502);
       const assetId = `${id}_studio_video`, objectKey = `${output.userId}/original/${assetId}.mp4`;
       await store.put(objectKey, bytes, "video/mp4");

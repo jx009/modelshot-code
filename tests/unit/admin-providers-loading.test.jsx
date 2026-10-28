@@ -38,3 +38,22 @@ test("invalid model responses show an error rather than an empty success screen"
   expect((await screen.findByRole("alert")).textContent).toContain("加载模型配置失败");
   expect(screen.queryByRole("button", { name: "新增模型" })).toBeNull();
 });
+
+test("separates video models from image models and creates supported video configurations", async () => {
+  mocks.api.mockResolvedValue([{ id: "video-provider", name: "video-channel", kind: "volcengine", displayName: "My video model", creditCost: 24, costPerImage: 0, isActive: true, priority: 1, config: { scope: "public", studioCapability: "video", model: "endpoint-video", hasKey: true, studioDefault: true } }]);
+  render(<AdminProviders />);
+  await screen.findByRole("heading", { name: "模型配置" });
+  expect(screen.queryByText("My video model")).toBeNull();
+  fireEvent.click(screen.getByRole("tab", { name: "视频模型" }));
+  expect(screen.getByText("My video model")).toBeTruthy();
+  expect(screen.getByText("默认视频模型")).toBeTruthy();
+  expect(screen.queryByText("测试功能（产生上游费用）")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "新增模型" }));
+  const protocol = screen.getByLabelText("视频接口协议");
+  expect(protocol.value).toBe("volcengine");
+  expect(protocol.disabled).toBe(false);
+  fireEvent.change(protocol, { target: { value: "openai" } });
+  expect(protocol.value).toBe("openai");
+  expect(screen.getByLabelText("Base URL").value).toBe("");
+  expect(screen.getAllByLabelText("4 秒").length).toBeGreaterThan(0);
+});

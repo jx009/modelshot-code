@@ -21,7 +21,7 @@ vi.mock("@/components/studio/AssetLibrary", () => ({ default: function Assets() 
 } }));
 vi.mock("../../src/components/discover/CommercePage", () => ({ default: () => <h1>电商内容</h1> }));
 vi.mock("@/components/studio/StudioPage", () => ({ default: () => <h1>画布内容</h1> }));
-vi.mock("@/components/billing/PricingPage", () => ({ default: () => <h1>充值内容</h1> }));
+vi.mock("@/components/video/VideoWorkspace", () => ({ default: () => <h1>视频内容</h1> }));
 vi.mock("next/navigation", () => ({ usePathname: () => {
   const pathname = useSyncExternalStore(subscribe, () => window.location.pathname);
   return mocks.pathname ?? pathname;
@@ -60,7 +60,7 @@ function Shell({ children = <h1>其他页面</h1> }) {
     <NavigationLink href="/assets">素材</NavigationLink>
     <NavigationLink href="/commerce?document=commerce-one">电商</NavigationLink>
     <NavigationLink href="/studio-v2?document=canvas-one">画布</NavigationLink>
-    <NavigationLink href="/pricing">充值</NavigationLink>
+    <NavigationLink href="/video">视频</NavigationLink>
     <NavigationLink href="/admin">管理台</NavigationLink>
     <NavigationLink href="/assets" onNavigate={event => event.preventDefault()}>取消导航</NavigationLink>
     <NavigationLink href="/" locale="en">English</NavigationLink>
@@ -245,7 +245,7 @@ test("all primary modules switch locally and retained pages survive canvas and p
   render(<Shell />);
   await screen.findByRole("heading", { name: "创作内容" });
   fireEvent.change(screen.getByLabelText("草稿"), { target: { value: "跨模块保留" } });
-  for (const [label, heading] of [["项目", "项目内容"], ["素材", "素材内容"], ["电商", "电商内容"], ["画布", "画布内容"], ["充值", "充值内容"]]) {
+  for (const [label, heading] of [["项目", "项目内容"], ["素材", "素材内容"], ["电商", "电商内容"], ["画布", "画布内容"], ["视频", "视频内容"]]) {
     fireEvent.click(screen.getByRole("link", { name: label, exact: true }));
     await screen.findByRole("heading", { name: heading });
     expect(screen.queryByRole("heading", { name: "创作内容" })).toBeNull();
@@ -255,7 +255,7 @@ test("all primary modules switch locally and retained pages survive canvas and p
   expect(mocks.navigate).not.toHaveBeenCalled();
 });
 
-test.each([["/projects", "项目内容"], ["/assets", "素材内容"], ["/commerce?document=one", "电商内容"], ["/studio-v2?new=1", "画布内容"], ["/pricing", "充值内容"]])("direct entry %s renders the correct module", async (path, heading) => {
+test.each([["/projects", "项目内容"], ["/assets", "素材内容"], ["/commerce?document=one", "电商内容"], ["/studio-v2?new=1", "画布内容"], ["/video?document=one", "视频内容"]])("direct entry %s renders the correct module", async (path, heading) => {
   window.history.replaceState(null, "", `/zh${path}`);
   render(<Shell />);
   await screen.findByRole("heading", { name: heading });

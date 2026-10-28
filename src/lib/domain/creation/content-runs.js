@@ -72,6 +72,7 @@ export async function createContentRun(userId, sessionId, input, key, { db = pri
   const cost = config.plannerCreditCost ?? 1, count = data.target ? 1 : data.kind === "sheet" ? sheetGenerationCalls(data.sheetCount, data.targetRows) : ["poster", "web"].includes(data.kind) ? 1 : (data.kind === "document" ? data.sectionCount : data.pageCount) + 1;
   if (!Number.isSafeInteger(cost) || cost < 0) throw new AppError("INVALID_PRICE", 503);
   const imageQuote = data.image ? await quoteImage(db, data.image.provider) : null;
+  if (data.imageProvider) await quoteImage(db, data.imageProvider);
   const imageCost = imageQuote?.prices[data.image?.size] ?? (data.image ? null : 0);
   if (imageCost === null) throw new AppError("IMAGE_SIZE_UNSUPPORTED", 422);
   if (data.image && data.image.expectedCost !== imageCost) throw new AppError("PRICE_CHANGED", 409);
@@ -127,7 +128,7 @@ export async function createContentRun(userId, sessionId, input, key, { db = pri
     if (await tx.creationRun.count({ where: { status: { in: RUN_ACTIVE } } }) >= 1000) throw new AppError("CREATION_QUEUE_FULL", 503);
     const stepIds = Array.from({ length: data.image ? 2 : 1 }, () => randomUUID());
     const run = await tx.creationRun.create({ data: { userId, projectId: session.projectId, sessionId, requestId, digest, kind: data.kind, maxCredits: data.maxCredits,
-      input: { ...(parent ? { agentParent: { runId: parent.id, stepId: parentStep.id } } : {}), summary: data.prompt.slice(0, 1000), clientKey: key, locale: data.locale, languageProvider: config.plannerProvider || null,
+      input: { ...(parent ? { agentParent: { runId: parent.id, stepId: parentStep.id } } : {}), ...(data.imageProvider ? { imageProvider: data.imageProvider } : {}), summary: data.prompt.slice(0, 1000), clientKey: key, locale: data.locale, languageProvider: config.plannerProvider || null,
         languageUnitCost: cost, assetIds: params.assetIds, referenceIds: params.referenceIds, ...(data.image ? { posterImage: { ...data.image, provider: imageQuote.provider } } : {}), ...(data.kind === "document" ? { sectionCount: data.sectionCount, audience: data.audience } : data.kind === "sheet" ? { sheetCount: data.sheetCount, targetRows: data.targetRows } : data.kind === "web" ? { pageCount: data.pageCount } : { width: data.width, height: data.height, pageCount: data.pageCount }) },
       steps: { create: [
         ...(data.image ? [{ id: stepIds[0], position: 0, dependsOn: [], tool: POSTER_IMAGE_TOOL, params: posterImageStep(data, imageQuote.provider), explanation: data.locale === "zh" ? "生成海报视觉素材" : "Generate poster artwork", expectedCost: imageCost, status: "ready" }] : []),

@@ -11,13 +11,8 @@
 .cw-workspace-title>div>span,.cw-chat-welcome>span { border:1px solid var(--divider); display:inline-grid; place-items:center; width:26px; height:26px; border-radius:7px; font-size:11px; font-weight:600; }
 .cw-workspace-title strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:500; }
 .cw-workspace-title>span { color:var(--secondary-text); }
-.cw-workspace-body { display:flex; flex:1; min-height:0; padding:8px; background:var(--bg-page); }
+.cw-workspace>.cw-workspace-body { padding:0; background:var(--bg-page); }
 .cw-chat { flex:0 0 var(--cw-chat-width,360px); min-width:0; min-height:0; display:flex; flex-direction:column; border:1px solid var(--divider); border-radius:12px; background:var(--bg-card); overflow:hidden; }
-.cw-split-handle { flex:0 0 10px; display:grid; place-items:center; cursor:col-resize; touch-action:none; outline:none; }
-.cw-split-handle::after { content:""; height:44px; width:2px; border-radius:2px; background:var(--divider); }
-.cw-split-handle:hover::after,.cw-split-handle:focus-visible::after,.cw-workspace-body[data-resizing] .cw-split-handle::after { background:var(--primary); width:3px; }
-.cw-workspace-body[data-resizing] { cursor:col-resize; user-select:none; }
-.cw-workspace-body[data-resizing] iframe { pointer-events:none; }
 .cw-chat>header { display:flex; align-items:center; gap:8px; padding:13px 20px; font-size:12px; }
 .cw-chat>header strong { font-weight:500; }
 .cw-conversation-viewport { position:relative; display:flex; flex:1; min-height:0; }

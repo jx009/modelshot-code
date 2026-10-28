@@ -6,9 +6,9 @@ import { promptTitle } from "@/lib/studio/project-title";
 import { uploadImage } from "@/lib/upload-image";
 import { registerNavigationGuard } from "@/lib/navigation-guard";
 
-const blank = mode => ({ name: mode === "motion" ? "视频制作" : "视频生成", content: { schemaVersion: 1, layers: [], messages: [], jobs: [], appliedJobs: [], video: { mode, media: [], composition: null, ratio: "16:9", duration: 5 } } });
-export default function useVideoProject({ documentId, mode, userId, guardNavigation = false }) {
-  const [draft, setDraft] = useState(() => blank(mode)), live = useRef(draft);
+const blank = (mode, provider) => ({ name: mode === "motion" ? "视频制作" : "视频生成", content: { schemaVersion: 1, layers: [], messages: [], jobs: [], appliedJobs: [], video: { mode, ...(provider ? { provider } : {}), media: [], composition: null, ratio: "16:9", duration: 5 } } });
+export default function useVideoProject({ documentId, mode, userId, guardNavigation = false, initialProvider }) {
+  const [draft, setDraft] = useState(() => blank(mode, initialProvider)), live = useRef(draft);
   const [id, setId] = useState(documentId), idRef = useRef(documentId), version = useRef(null);
   const [loading, setLoading] = useState(Boolean(documentId)), [error, setError] = useState(""), [jobs, setJobs] = useState([]);
   const [loadFailed, setLoadFailed] = useState(false), [jobsLoading, setJobsLoading] = useState(Boolean(documentId)), [pollEpoch, setPollEpoch] = useState(0);
@@ -143,7 +143,7 @@ export default function useVideoProject({ documentId, mode, userId, guardNavigat
       if (!pending.body) {
         const saved = await save(), video = live.current.content.video;
         const source = video.media.find(item => item.type === "image");
-        pending.body = { origin: "chat", tool, expectedCost: offer.cost, documentId: saved.id, documentVersion: saved.version, ...(tool === "video" && source ? { assetId: source.id } : {}),
+        pending.body = { origin: "chat", tool, ...(tool === "video" && offer.provider ? { provider: offer.provider } : {}), expectedCost: offer.cost, documentId: saved.id, documentVersion: saved.version, ...(tool === "video" && source ? { assetId: source.id } : {}),
           params: { prompt, ratio: video.ratio, duration: video.duration, ...(["motion-plan", "motion-render"].includes(tool) ? { media: video.media, ...(video.composition ? { motion: video.composition } : {}) } : {}) } };
       }
       try { sessionStorage.setItem(`${storageKey}:submission`, JSON.stringify(pending)); } catch { /* In-memory idempotency still protects this tab. */ }

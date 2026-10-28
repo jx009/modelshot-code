@@ -8,7 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { DOCUMENT_PIPELINE_VERSION, DOCUMENT_SCHEDULER_HEARTBEAT, DOCUMENT_LANGUAGE_HEARTBEAT } from "@/lib/creation/contracts/document-runtime";
 import { SHEET_PIPELINE_VERSION, SHEET_SCHEDULER_HEARTBEAT, SHEET_LANGUAGE_HEARTBEAT } from "@/lib/creation/contracts/sheet-runtime";
 import { WEB_PIPELINE_VERSION, WEB_SCHEDULER_HEARTBEAT, WEB_LANGUAGE_HEARTBEAT } from "@/lib/creation/contracts/web-runtime";
-import { posterImageQuote } from "@/lib/domain/creation/poster-images";
+import { posterImageQuote, posterImageModels } from "@/lib/domain/creation/poster-images";
 import { POSTER_IMAGE_SCHEDULER_HEARTBEAT, POSTER_IMAGE_LANGUAGE_HEARTBEAT, posterImageWorkersReady } from "@/lib/creation/contracts/poster-runtime";
 
 const runtimes = {
@@ -27,7 +27,7 @@ export async function GET() {
     const baseEnabled = env.CREATION_RUNS_ENABLED === "true" && env.CREATION_WORKSPACE_ENABLED === "true";
     const configuredKinds = Object.entries(runtimes).filter(([, value]) => baseEnabled && env[value.enabled] === "true");
     const workerIds = [...new Set(configuredKinds.flatMap(([, value]) => value.workers))];
-    if (configuredKinds.some(([kind]) => kind === "poster")) workerIds.push(POSTER_IMAGE_SCHEDULER_HEARTBEAT, POSTER_IMAGE_LANGUAGE_HEARTBEAT);
+    if (configuredKinds.some(([kind]) => ["poster", "slides"].includes(kind))) workerIds.push(POSTER_IMAGE_SCHEDULER_HEARTBEAT, POSTER_IMAGE_LANGUAGE_HEARTBEAT);
     const rows = workerIds.length ? await prisma.serviceHeartbeat.findMany({
       where: { id: { in: workerIds }, updatedAt: { gt: new Date(Date.now() - 90000) } },
       select: { id: true, details: true },
@@ -43,12 +43,14 @@ export async function GET() {
     }));
     // Image availability is optional: an unavailable image channel must not
     // hide typography-only posters or prevent existing artwork from opening.
-    const posterImage = available.poster && posterImageWorkersReady(rows) ? await posterImageQuote().catch(() => null) : null;
+    const imageReady = (available.poster || available.slides) && posterImageWorkersReady(rows);
+    const posterImage = imageReady ? await posterImageQuote().catch(() => null) : null;
+    const imageModels = imageReady ? await posterImageModels().catch(() => []) : [];
     // No editor code, credentials or document contents are returned here.
     return Response.json({ ...available, video: env.CREATION_WORKSPACE_ENABLED === "true" && env.CREATION_VIDEO_ENABLED === "true", motion: env.CREATION_WORKSPACE_ENABLED === "true" && env.CREATION_MOTION_ENABLED === "true",
       languageUnitCost: configured ? config.plannerCreditCost ?? 1 : null,
       maxPages: 100, maxReferenceAssets: 8,
-      posterImage,
+      posterImage, imageModels,
     }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) { return errorResponse(error); }
 }

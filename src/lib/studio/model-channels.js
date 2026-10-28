@@ -1,7 +1,13 @@
 // Shared, credential-free channel metadata for the administrator and workbench.
+import { VIDEO_KINDS, VIDEO_PROTOCOLS, VIDEO_DURATIONS } from "../video/model-protocols.js";
+
 export const STUDIO_KINDS = ["openai", "dashscope", "volcengine", "volc-visual", "fal"];
-export const CHANNEL_CAPABILITIES = ["image", "segment", "split", "language", "ocr", "upscale"];
+export const CHANNEL_CAPABILITIES = ["image", "video", "segment", "split", "language", "ocr", "upscale"];
 export const CHANNEL_PRESETS = [
+  { label: "火山方舟 · 视频生成", kind: "volcengine", studioCapability: "video", scope: "public", model: "", baseURL: "https://ark.cn-beijing.volces.com/api/v3", creditCost: 30 },
+  { label: "第三方 · OpenAI Videos 兼容", kind: "openai", studioCapability: "video", scope: "public", model: "", baseURL: "", videoInputMode: "both", videoDurations: [4, 8, 12], creditCost: 30 },
+  { label: "百炼万相 · 文生视频", kind: "dashscope", studioCapability: "video", scope: "public", model: "wan2.6-t2v", baseURL: "https://dashscope.aliyuncs.com/api/v1", videoInputMode: "text", videoDurations: [5, 10, 15], creditCost: 30 },
+  { label: "百炼万相 · 图生视频", kind: "dashscope", studioCapability: "video", scope: "public", model: "wan2.6-i2v", baseURL: "https://dashscope.aliyuncs.com/api/v1", videoInputMode: "image", videoDurations: [5, 10, 15], creditCost: 30 },
   { label: "阿里百炼 · Qwen 图像编辑", kind: "dashscope", studioCapability: "image", imageMode: "edit", model: "qwen-image-edit-max", baseURL: "https://dashscope.aliyuncs.com" },
   { label: "阿里百炼 · Qwen 生成与编辑", kind: "dashscope", studioCapability: "image", imageMode: "both", model: "qwen-image-2.0-pro", baseURL: "https://dashscope.aliyuncs.com" },
   { label: "火山方舟 · Seedream", kind: "volcengine", studioCapability: "image", imageMode: "both", model: "", baseURL: "https://ark.cn-beijing.volces.com/api/v3" },
@@ -44,7 +50,7 @@ export function supportsImageTask(config, task) {
 export function channelScope(row, config = JSON.parse(row.config || "{}")) {
   if ((row.kind || row.name) === "volc-visual" || ["ocr", "upscale"].includes(channelCapability(row, config))) return "tool";
   if (channelCapability(row, config) === "language") return "language";
-  return config.scope || (channelCapability(row, config) === "image" && supportsImageTask(config, "generate") ? "public" : "tool");
+  return config.scope || (channelCapability(row, config) === "video" || channelCapability(row, config) === "image" && supportsImageTask(config, "generate") ? "public" : "tool");
 }
 
 export function toolRouting(tool, row) {
@@ -66,6 +72,11 @@ export function validChannel(kind, config) {
   if (kind === "volc-visual") return config.scope === "tool" && (capability === "segment" && config.model === "entity_seg" || capability === "upscale" && config.model === "lens_vida_nnsr");
   if (kind === "fal") return ["segment", "split"].includes(capability) && /^[a-zA-Z0-9_-]+\/[a-zA-Z0-9_/-]+$/.test(config.model || "") && !config.model.includes("..");
   if (capability === "language") return config.scope === "language";
+  if (capability === "video") return VIDEO_KINDS.includes(kind) && (!config.scope || config.scope === "public") && Boolean(config.model?.trim())
+    && (kind !== "openai" || Boolean(config.baseURL?.trim()))
+    && (!config.videoInputMode || ["text", "image", "both"].includes(config.videoInputMode))
+    && (!config.videoDurations || Array.isArray(config.videoDurations) && config.videoDurations.length > 0 && config.videoDurations.length <= VIDEO_DURATIONS.length
+      && new Set(config.videoDurations).size === config.videoDurations.length && config.videoDurations.every(value => (kind === "openai" ? VIDEO_PROTOCOLS.openai.durations : VIDEO_DURATIONS).includes(value)));
   if (capability === "ocr") return ["openai", "volcengine"].includes(kind) && config.scope === "tool" && Boolean(config.model?.trim());
   return capability === "image" && ["both", "generate", "edit"].includes(config.imageMode || "both") && (!config.scope || ["public", "tool"].includes(config.scope)) && (config.scope !== "public" || supportsImageTask(config, "generate"));
 }

@@ -1,0 +1,6 @@
+.cw-workspace-body { display:flex; flex:1; min-height:0; min-width:0; }
+.cw-split-handle { flex:0 0 6px; display:grid; place-items:center; cursor:col-resize; touch-action:none; outline:none; background:var(--bg-page); }
+.cw-split-handle::after { content:""; height:44px; width:2px; border-radius:2px; background:var(--divider); }
+.cw-split-handle:hover::after,.cw-split-handle:focus-visible::after,.cw-workspace-body[data-resizing] .cw-split-handle::after { background:var(--primary); width:3px; }
+.cw-workspace-body[data-resizing] { cursor:col-resize; user-select:none; }
+.cw-workspace-body[data-resizing] iframe { pointer-events:none; }

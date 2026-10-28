@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import "./workspace-split.css";
 
 const MIN = 300, MAX = 840, DEFAULT = 380;
 export default function WorkspaceSplit({ userId, zh, children }) {

@@ -19,6 +19,7 @@ import { nextImageSource } from "../../creation/contracts/runs.js";
 import { POSTER_IMAGE_TOOL, posterImageStepSchema } from "../../creation/contracts/poster-image.js";
 import { lockRun } from "../creation/runs.js";
 import { appendRunEvent, enqueueRun } from "../creation/events.js";
+import { videoInputError, videoModelOptions } from "../../video/model-protocols.js";
 
 export async function submitStudioJob(userId, input, key, db = prisma, deps = {}) {
   const data = jobSchema.parse(input);
@@ -61,7 +62,7 @@ export async function submitCreationPosterImageStep(userId, runId, stepId, seque
 
 async function submitAdmittedJob(userId, data, key, db, deps, posterContext = null) {
   if (!/^[a-zA-Z0-9_-]{16,128}$/.test(key || "")) throw new AppError("IDEMPOTENCY_KEY_REQUIRED");
-  const config = deps.config || await studioConfig(db, data.provider, "image", data.tool, { skipPreview: Boolean(data.maskId) });
+  const config = deps.config || await studioConfig(db, data.provider, data.tool === "video" ? "video" : "image", data.tool, { skipPreview: Boolean(data.maskId) });
   if (data.tool === "inpaint" && config.imageKind === "dashscope" && data.referenceAssetIds?.length > 1) throw new AppError("TOO_MANY_EDIT_REFERENCES", 422);
   const caps = deps.capabilities || await capabilities(db, config);
   const requestId = createHash("sha256").update(`studio:${userId}:${key}`).digest("hex");
@@ -85,6 +86,10 @@ async function submitAdmittedJob(userId, data, key, db, deps, posterContext = nu
     // mask exists, an outage of the preview service must not block image editing.
     if (!tool?.available && !(tool?.reason === "SEGMENTATION_NOT_CONFIGURED" && data.maskId)) throw new AppError(tool?.reason || "TOOL_UNAVAILABLE", 503);
     if (data.expectedCost !== undefined && data.expectedCost !== cost) throw new AppError("PRICE_CHANGED", 409);
+    if (data.tool === "video") {
+      const error = videoInputError(config.videoOptions || videoModelOptions(config.videoKind), { ...data.params, hasImage: Boolean(data.assetId) });
+      if (error) throw new AppError(error, 422);
+    }
     const document = posterContext ? null : await tx.studioDocument.findFirst({ where: { id: data.documentId, userId, deletedAt: null } });
     if (!posterContext && !document) throw new AppError("DOCUMENT_NOT_FOUND", 404);
     if (["motion", "video"].includes(document?.kind) && !["motion-plan", "motion-render", "video"].includes(data.tool)) throw new AppError("INVALID_VIDEO_TOOL", 422);
@@ -159,7 +164,8 @@ async function submitAdmittedJob(userId, data, key, db, deps, posterContext = nu
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended('queue-admission', 0))::text`;
     if (await tx.tryOn.count({ where: { status: { in: ACTIVE } } }) >= LIMITS.queue) throw new AppError("QUEUE_FULL", 503);
     if (await tx.tryOn.count({ where: { userId, status: { in: ACTIVE } } }) >= LIMITS.activePerUser) throw new AppError("USER_QUEUE_FULL", 429);
-    const channel = ["split", "ocr", "upscale"].includes(data.tool) ? config[`${data.tool}Channel`] : getTool(data.tool).dependency === "vision" ? { name: config.plannerProvider, kind: config.plannerKind, model: config.chatModel, baseURL: config.visionBaseURL } : null;
+    if (data.tool === "video") creation = { ...creation, videoProvider: config.videoProvider || null, videoBaseURL: config.videoURL || null, videoKind: config.videoKind || "volcengine", videoOptions: config.videoOptions || videoModelOptions(config.videoKind) };
+    const channel = data.tool === "video" ? { name: config.videoProvider, kind: config.videoKind, model: config.videoModel, baseURL: config.videoURL } : ["split", "ocr", "upscale"].includes(data.tool) ? config[`${data.tool}Channel`] : getTool(data.tool).dependency === "vision" ? { name: config.plannerProvider, kind: config.plannerKind, model: config.chatModel, baseURL: config.visionBaseURL } : null;
     const output = await tx.tryOn.create({ data: { id: randomUUID(), userId, requestId, personImage: "", clothesImage: inputAsset ? `/api/assets/${inputAsset.id}` : "", prompt: data.params.prompt, provider: data.tool === "video" ? "ark" : channel?.name || config.imageProvider || "studio", creditCost: cost, billingType: "credits",
       snapshot: { kind: "studio", ...data, ...creation, provider: channel?.name || config.imageProvider, providerKind: channel?.kind || config.imageKind || "openai", providerBaseURL: (channel ? channel.baseURL : config.baseURL) || null, digest, checksum: inputAsset?.checksum || null, price: cost, priceVersion: "studio-base-plus-resolution-v3", pricing: { mode: tool.resolutionSurcharges ? "base-plus-resolution" : "fixed", basePrice: tool.cost, resolutionSurcharge: cost - tool.cost, resolution: billingResolution(tool, data.params.size), requestedResolution: imageSizeChoice(data.params.size).resolution, unitPrice: cost }, imageModel: channel?.model || config.imageModel, chatModel: config.chatModel || null, videoModel: config.videoModel || null } } });
     if (cost) {

@@ -55,6 +55,29 @@ it("can use typography and existing artwork without generating a paid image", as
   expect(body.maxCredits).toBe(2); expect(body.image).toBeUndefined();
 });
 
+it("quotes and submits the chosen poster image model rather than the default", async () => {
+  render(<CreationLauncher kind="poster" userId="user_1" zh={false} initialCaps={{ poster: true, languageUnitCost: 2, posterImage: { provider: "default", prices: { "1024x1536": 4 } }, imageModels: [{ id: "custom", provider: "custom", label: "Custom images", prices: { "1024x1536": 9 } }] }} />);
+  fireEvent.change(screen.getByLabelText("Creation request"), { target: { value: "Coffee opening" } });
+  fireEvent.click(screen.getByText("Settings"));
+  fireEvent.change(screen.getByLabelText("Image model"), { target: { value: "custom" } });
+  expect(screen.getByRole("checkbox", { name: "AI artwork · 9 credits" }).checked).toBe(true);
+  fireEvent.submit(screen.getByRole("button", { name: "Start creating" }).closest("form"));
+  await waitFor(() => expect(mocks.push).toHaveBeenCalled());
+  expect(mocks.api.mock.calls.find(([url]) => url.includes("/messages"))[1].body).toMatchObject({ maxCredits: 11, image: { provider: "custom", size: "1024x1536", expectedCost: 9 } });
+});
+
+it("carries the slide image model to outline review without charging for unapproved visuals", async () => {
+  render(<CreationLauncher kind="slides" userId="user_1" zh={false} initialCaps={{ slides: true, languageUnitCost: 2, imageModels: [{ id: "custom", provider: "custom", label: "Custom images", prices: { "1536x1024": 9 } }] }} />);
+  fireEvent.change(screen.getByLabelText("Creation request"), { target: { value: "Pitch deck" } });
+  fireEvent.click(screen.getByText("Settings"));
+  fireEvent.change(screen.getByLabelText("Image model"), { target: { value: "custom" } });
+  fireEvent.submit(screen.getByRole("button", { name: "Start creating" }).closest("form"));
+  await waitFor(() => expect(mocks.push).toHaveBeenCalled());
+  const body = mocks.api.mock.calls.find(([url]) => url.includes("/messages"))[1].body;
+  expect(body).toMatchObject({ imageProvider: "custom", maxCredits: 22 });
+  expect(body.image).toBeUndefined();
+});
+
 it("replays the exact unconfirmed artwork request even when current quotes change", async () => {
   const body = { kind: "poster", prompt: "Coffee opening", locale: "en", maxCredits: 6, assetIds: [], width: 1080, height: 1440, pageCount: 1, image: { size: "1024x1536", expectedCost: 4, provider: "old-channel" } };
   sessionStorage.setItem("creation-launch:user_1:poster", JSON.stringify({ userId: "user_1", createKey: "saved-create-key", runKey: "saved-run-key", project: { id: "project_1", sessionId: "session_1" }, body }));

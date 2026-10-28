@@ -4,7 +4,7 @@ import { imageCreditCost } from "./image-pricing.js";
 import { commerceSchema } from "../commerce/schema.js";
 import { TOOLS, getTool } from "./tool-catalog.js";
 import { ADJUSTMENT_KEYS } from "./adjustments.js";
-import { motionSchema, videoDocumentSchema, videoMediaSchema, videoRatios } from "../video/schema.js";
+import { motionSchema, videoDocumentSchema, videoMediaSchema, videoRatios, videoDurationSchema } from "../video/schema.js";
 
 export { TOOLS, getTool } from "./tool-catalog.js";
 const id = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
@@ -30,7 +30,7 @@ export const paramsSchema = z.object({
   moveTarget: boundsSchema.extend({ rotation: z.number().min(-360).max(360).default(0) }).optional(),
   selectionMode: z.enum(["mask", "object", "region"]).default("mask"),
   editPadding: z.number().min(0.05).max(0.5).default(0.25),
-  duration: z.union([z.literal(5), z.literal(10)]).default(5),
+  duration: videoDurationSchema.default(5),
   ratio: z.enum(videoRatios).optional(),
   motion: motionSchema.optional(),
   media: z.array(videoMediaSchema).max(40).optional(),

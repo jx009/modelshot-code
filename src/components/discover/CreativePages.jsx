@@ -28,7 +28,6 @@ const loaders = {
   "/studio-v2": () => import("@/components/studio/StudioPage"),
   "/creation": () => import("@/components/creation/CreationPage"),
   "/video": () => import("@/components/video/VideoWorkspace"),
-  "/pricing": () => import("@/components/billing/PricingPage"),
 };
 const pages = { "/": DiscoverHome, ...Object.fromEntries(Object.entries(loaders).map(([path, load]) => [path, lazy(load)])) };
 const retained = new Set(["/", "/explore", "/projects", "/assets"]);
@@ -110,7 +109,7 @@ function RetainedPages({ children }) {
   const { path, entry, visited, details } = useLocalNavigation(), locale = useLocale();
   const detail = details[path];
   const supported = Object.hasOwn(pages, path);
-  const standalone = path === "/studio-v2" || path === "/pricing";
+  const standalone = path === "/studio-v2";
   const ActivePage = supported && !retained.has(path) ? pages[path] : null;
   const active = supported && !retained.has(path) && <PageError key={`${path}:${entry}`} href={`/${locale}${path}`} zh={locale === "zh"}>
     <Suspense fallback={<p role="status">{locale === "zh" ? "正在打开模块…" : "Opening module…"}</p>}><ActivePage /></Suspense>

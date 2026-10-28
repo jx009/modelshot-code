@@ -6,7 +6,9 @@ test("normalizes locale prefixes and includes the canvas in the creative layout"
   expect(destinationPath("/en/")).toBe("/");
   expect(destinationSection("/zh/explore/example")).toBe("creative");
   expect(destinationSection("/zh/studio-v2")).toBe("creative");
-  expect(destinationSection("/zh/pricing")).toBe("creative");
+  expect(destinationSection("/zh/video?document=one")).toBe("creative");
+  expect(destinationSection("/en/creation?project=one")).toBe("creative");
+  expect(destinationSection("/zh/pricing")).toBe("root");
   expect(destinationSection("/zh/admin/users")).toBe("admin");
 });
 

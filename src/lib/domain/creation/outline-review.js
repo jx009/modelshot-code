@@ -15,7 +15,7 @@ import { requireContentCreation, ensureContentWorkers } from "./content-runs.js"
 import { creationLanguageConfig } from "./language-jobs.js";
 import { appendRunEvent, enqueueRun } from "./events.js";
 import { appendCreationMessage } from "./messages.js";
-import { posterImageQuote } from "./poster-images.js";
+import { posterImageQuote, posterImageModels } from "./poster-images.js";
 import { plannedSlideVisuals } from "../../creation/contracts/slide-design.js";
 import { posterImageSize } from "../../creation/poster-image-choice.js";
 
@@ -49,7 +49,7 @@ export async function readApprovedOutline(userId, run, { db = prisma, store = ob
   return outlineSchema.parse(JSON.parse(bytes.toString("utf8")));
 }
 
-export async function readOutlineReview(userId, id, { db = prisma, store = objectStorage(), configFor = creationLanguageConfig, quoteImage = posterImageQuote } = {}) {
+export async function readOutlineReview(userId, id, { db = prisma, store = objectStorage(), configFor = creationLanguageConfig, quoteImage = posterImageQuote, modelsFor = posterImageModels } = {}) {
   const run = await ownedRun(userId, id, db), step = reviewStep(run);
   const outline = await readApprovedOutline(userId, run, { db, store });
   let unitCost = null;
@@ -57,15 +57,20 @@ export async function readOutlineReview(userId, id, { db = prisma, store = objec
     const config = await configFor(db, run.input.languageProvider);
     if (config.visionApiKey && config.chatModel && Number.isSafeInteger(config.plannerCreditCost ?? 1) && (config.plannerCreditCost ?? 1) >= 0) unitCost = config.plannerCreditCost ?? 1;
   } catch { /* A temporarily unavailable model must not prevent reading the outline. */ }
-  let image = null;
+  let image = null, imageModels = [];
   if (run.kind === "slides" && plannedSlideVisuals(outline).length && (step.params.assetIds || []).length < 8) {
     try {
-      const quote = await quoteImage(db), preferred = posterImageSize(run.input.width, run.input.height);
+      const quote = await quoteImage(db, run.input.imageProvider), preferred = posterImageSize(run.input.width, run.input.height);
       const size = Number.isSafeInteger(quote.prices[preferred]) ? preferred : ["1024x1024", "1536x1024", "1024x1536"].find(candidate => Number.isSafeInteger(quote.prices[candidate]));
       if (Number.isSafeInteger(quote.prices[size])) image = { size, expectedCost: quote.prices[size], ...(quote.provider ? { provider: quote.provider } : {}) };
     } catch { /* Illustrations are optional; text/layout generation remains available. */ }
+    const models = await modelsFor(db).catch(() => []), preferred = posterImageSize(run.input.width, run.input.height);
+    imageModels = models.flatMap(model => {
+      const size = [preferred, "1024x1024", "1536x1024", "1024x1536"].find(candidate => Number.isSafeInteger(model.prices[candidate]));
+      return size ? [{ id: model.id, label: model.label, image: { provider: model.provider, size, expectedCost: model.prices[size] } }] : [];
+    });
   }
-  return { kind: run.kind, outline, image, expectedSequence: run.eventSequence, unitCost, committedCredits: run.committedCredits, maxCredits: run.maxCredits,
+  return { kind: run.kind, outline, image, imageModels, imageProvider: run.input.imageProvider || image?.provider || null, expectedSequence: run.eventSequence, unitCost, committedCredits: run.committedCredits, maxCredits: run.maxCredits,
     confirmed: Boolean(step.result?.confirmation), canConfirm: run.status === "awaiting_input" && run.errorCode === OUTLINE_CONFIRMATION_REQUIRED && !run.cancelRequestedAt };
 }
 

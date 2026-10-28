@@ -1,7 +1,8 @@
 import OpenAI, { toFile } from "openai";
 import sharp from "sharp";
 import { imageSizeError, resolveImageSize } from "../../studio/image-size.js";
-import { imageBillingResolutions } from "../../studio/image-pricing.js";
+import { imageBillingResolutions, imageCreditCost } from "../../studio/image-pricing.js";
+import { POSTER_IMAGE_SIZES } from "../../creation/poster-image-choice.js";
 import { prisma } from "../../prisma.js";
 import { getResolutionSurcharges } from "../billing/resolution-pricing.js";
 import { decryptSecret } from "../../crypto.js";
@@ -12,6 +13,8 @@ import { TOOLS } from "../../studio/tools.js";
 import { channelCapability, channelScope, toolRouting, supportsImageTask, supportsChannelCapability, segmentChannelReady, splitChannelReady, ocrChannelReady, upscaleChannelReady } from "../../studio/model-channels.js";
 import { generateCloudImage } from "./cloud.js";
 import { IMAGE_REQUEST_TIMEOUT_MS, imageFetch } from "../../ai/image-request.js";
+import { VIDEO_KINDS, VIDEO_PROTOCOLS, videoModelOptions } from "../../video/model-protocols.js";
+export { videoRequest } from "./video-providers.js";
 
 // Resolve user-visible image selection separately from administrator-owned tool stages.
 export function resolveStudioConfig(rows, toolRows = [], channelName, capability = "image", toolId = null, { pinned = false, skipPreview = false, imageOnly = false } = {}) {
@@ -20,14 +23,14 @@ export function resolveStudioConfig(rows, toolRows = [], channelName, capability
   const routing = tool ? toolRouting(tool, setting) : null;
   const select = cap => {
     const candidates = rows.filter(row => supportsChannelCapability(row, cap));
-    let name, internal = pinned || !toolId && capability !== "image";
+    let name, internal = pinned || !toolId && !["image", "video"].includes(capability);
     if (pinned && capability === cap) name = channelName;
     else if (cap === "image" && tool?.dependency === "image" && routing.mode === "dedicated") { name = routing.channelName; internal = true; if (!name) throw new AppError("SERVICE_NOT_CONFIGURED", 503); }
     else if (cap === "segment" && tool?.preview === "segment") {
       if (routing.segmentMode === "dedicated") { name = routing.segmentChannelName; internal = true; if (!name) throw new AppError("SEGMENTATION_NOT_CONFIGURED", 503); }
     } else if (["split", "ocr", "upscale"].includes(cap) && tool?.dependency === cap) { name = routing.channelName; internal = true; }
-    if (!name && capability === cap && (!tool || tool.dependency === "image" && cap === "image")) name = channelName;
-    const eligible = cap === "image" && !internal ? candidates.filter(row => channelScope(row) === "public") : candidates;
+    if (!name && capability === cap && (!tool || tool.dependency === cap && ["image", "video"].includes(cap))) name = channelName;
+    const eligible = ["image", "video"].includes(cap) && !internal ? candidates.filter(row => channelScope(row) === "public") : candidates;
     if (name) {
       const selected = eligible.find(row => row.name === name);
       if (!selected) throw new AppError("PROVIDER_CAPABILITY_UNSUPPORTED", 422);
@@ -36,6 +39,8 @@ export function resolveStudioConfig(rows, toolRows = [], channelName, capability
     return eligible.find(row => channelCapability(row) === cap && JSON.parse(row.config || "{}").studioDefault) || (["segment", "split"].includes(cap) ? eligible.find(row => row.kind === "volc-visual") : null) || eligible[0];
   };
   const row = select("image");
+  const videoChannel = pinned && capability === "video" && !channelName ? null : select("video");
+  const videoConfig = videoChannel ? JSON.parse(videoChannel.config || "{}") : {};
   const planner = pinned && capability === "language" ? select("language") : rows.find(candidate => candidate.isPlanner);
   const config = row ? JSON.parse(row.config || "{}") : {};
   const plannerConfig = planner ? JSON.parse(planner.config || "{}") : {};
@@ -65,8 +70,12 @@ export function resolveStudioConfig(rows, toolRows = [], channelName, capability
     visionApiKey: secret(planner, plannerConfig), visionBaseURL,
     chatModel: (channelCapability(planner || {}, plannerConfig) === "language" ? plannerConfig.model : plannerConfig.chatModel) || (!planner ? process.env.STUDIO_CHAT_MODEL : undefined),
     plannerProvider: planner?.name || null, plannerKind: planner?.kind || "openai", plannerCreditCost: planner?.creditCost ?? 1,
-    videoKey: process.env.ARK_API_KEY, videoModel: process.env.ARK_VIDEO_MODEL,
-    videoURL: process.env.ARK_BASE_URL || "https://ark.cn-beijing.volces.com/api/v3",
+    videoProvider: videoChannel?.name || null, videoKind: videoChannel?.kind || "volcengine",
+    videoDisplayName: videoChannel?.displayName || "Video model", videoCreditCost: videoChannel?.creditCost,
+    videoKey: videoChannel ? videoConfig.apiKeyEnc ? decryptSecret(videoConfig.apiKeyEnc) : undefined : process.env.ARK_API_KEY,
+    videoModel: videoChannel ? videoConfig.model : process.env.ARK_VIDEO_MODEL,
+    videoURL: videoConfig.baseURL || (!videoChannel ? process.env.ARK_BASE_URL : null) || VIDEO_PROTOCOLS[videoChannel?.kind || "volcengine"]?.baseURL,
+    videoOptions: videoModelOptions(videoChannel?.kind || "volcengine", videoConfig),
     toolsURL: process.env.STUDIO_TOOLS_URL, toolsKey: process.env.STUDIO_TOOLS_KEY,
     segmentChannel, splitChannel: imageOnly ? null : external("split"), ocrChannel: imageOnly ? null : external("ocr"), upscaleChannel: imageOnly ? null : external("upscale"),
   };
@@ -101,17 +110,22 @@ export async function capabilities(db = prisma, config, channelName, { imageOnly
   ]);
   const c = config || resolveStudioConfig(rows, settings, channelName, "image", null, { imageOnly });
   const imageModels = rows.filter(row => channelScope(row) === "public" && channelCapability(row) === "image").filter(row => { const parsed = JSON.parse(row.config || "{}"); return Boolean(parsed.apiKeyEnc || row.kind === "openai" && (process.env.OPENAI_API_KEY || process.env.STUDIO_API_KEY)); }).map(row => ({ id: row.name, label: row.displayName, creditCost: row.creditCost ?? 18, resolutionSurcharges: surcharges, maxReferenceImages: supportsImageTask(JSON.parse(row.config || "{}"), "edit") ? 3 : 0 }));
-  return { imageModel: c.imageDisplayName, imageProvider: c.toolId ? c.requestedProvider : c.imageProvider, imageModels, planningCost: c.plannerCreditCost, planningAvailable: Boolean(c.visionApiKey && c.chatModel),
+  if (imageOnly) for (const model of imageModels) {
+    const selected = resolveStudioConfig(rows, settings, model.id, "image", "generate", { pinned: true, skipPreview: true, imageOnly: true });
+    model.prices = selected.toolEnabled && supportsImageTask(selected, "generate") ? Object.fromEntries(POSTER_IMAGE_SIZES.filter(size => !imageSizeError(selected, size)).map(size => [size, imageCreditCost({ id: "generate", cost: model.creditCost, resolutionSurcharges: surcharges }, size, 0)])) : {};
+  }
+  const videoModels = rows.filter(row => channelScope(row) === "public" && channelCapability(row) === "video" && VIDEO_KINDS.includes(row.kind)).filter(row => { const parsed = JSON.parse(row.config || "{}"); return Boolean(parsed.apiKeyEnc && parsed.model && (parsed.baseURL || VIDEO_PROTOCOLS[row.kind].baseURL)); }).map(row => ({ id: row.name, label: row.displayName, cost: row.creditCost, ...videoModelOptions(row.kind, JSON.parse(row.config || "{}")) }));
+  return { imageModel: c.imageDisplayName, imageProvider: c.toolId ? c.requestedProvider : c.imageProvider, imageModels, videoModels, videoProvider: c.videoProvider, planningCost: c.plannerCreditCost, planningAvailable: Boolean(c.visionApiKey && c.chatModel),
     tools: TOOLS.filter(tool => !imageOnly || ["generate", "edit"].includes(tool.id)).map(tool => {
       const setting = settings.find(row => row.toolId === tool.id), enabled = setting?.isEnabled !== false;
       let chosen, error;
-      try { chosen = c.toolId === tool.id ? c : resolveStudioConfig(rows, settings, c.requestedProvider, "image", tool.id, { imageOnly });
+      try { chosen = c.toolId === tool.id ? c : resolveStudioConfig(rows, settings, tool.dependency === "video" ? undefined : c.requestedProvider, tool.dependency === "video" ? "video" : "image", tool.id, { imageOnly });
         // Explicit configurations are also used by isolated provider diagnostics.
         if (!("requestedProvider" in c) && !setting?.routing) chosen = { ...chosen, ...c }; }
       catch (e) { error = e.code; chosen = {}; }
-      const ready = { local: true, motion: external.includes("motion-render"), image: Boolean(chosen.apiKey) && supportsImageTask(chosen, tool.id === "generate" ? "generate" : "edit"), vision: Boolean(chosen.visionApiKey && chosen.chatModel), video: Boolean(chosen.videoKey && chosen.videoModel), segment: segmentChannelReady(chosen.segmentChannel), split: splitChannelReady(chosen.splitChannel), "remove-bg": external.includes("remove-bg"), upscale: upscaleChannelReady(chosen.upscaleChannel), ocr: ocrChannelReady(chosen.ocrChannel) };
+      const ready = { local: true, motion: external.includes("motion-render"), image: Boolean(chosen.apiKey) && supportsImageTask(chosen, tool.id === "generate" ? "generate" : "edit"), vision: Boolean(chosen.visionApiKey && chosen.chatModel), video: Boolean(chosen.videoKey && chosen.videoModel && chosen.videoURL), segment: segmentChannelReady(chosen.segmentChannel), split: splitChannelReady(chosen.splitChannel), "remove-bg": external.includes("remove-bg"), upscale: upscaleChannelReady(chosen.upscaleChannel), ocr: ocrChannelReady(chosen.ocrChannel) };
       const prices = tool.dependency === "image" ? surcharges : null;
-      const cost = tool.dependency === "image" ? chosen.imageCreditCost ?? 18 : tool.dependency === "vision" ? c.plannerCreditCost : setting?.creditCost ?? tool.cost;
+      const cost = tool.dependency === "image" ? chosen.imageCreditCost ?? 18 : tool.dependency === "vision" ? c.plannerCreditCost : tool.dependency === "video" ? chosen.videoCreditCost ?? setting?.creditCost ?? tool.cost : setting?.creditCost ?? tool.cost;
       const dependencyReady = !error && ready[tool.dependency], previewReady = !tool.preview || tool.previewOptional || ready[tool.preview];
       return { ...tool, cost, resolutionSurcharges: prices, billingResolutions: imageBillingResolutions(tool.id, chosen), enabled, ...(tool.id === "inpaint" ? { maxUserReferences: chosen.imageKind === "dashscope" ? 1 : 2 } : {}), ...(tool.id === "upscale" ? { supportedScales: [2] } : {}), ...(tool.preview ? { objectSelectionAvailable: Boolean(enabled && ready[tool.preview]) } : {}), ...(tool.id === "split" ? { layerCountMode: chosen.splitChannel?.kind === "volc-visual" ? "auto" : "custom" } : {}), available: Boolean(enabled && dependencyReady && previewReady), reason: !enabled ? "TOOL_DISABLED" : !dependencyReady ? error || "SERVICE_NOT_CONFIGURED" : !previewReady ? "SEGMENTATION_NOT_CONFIGURED" : null };
     }) };
@@ -169,23 +183,4 @@ export async function vision(config, { image, references = [], messages = [], in
   const text = result.choices?.[0]?.message?.content;
   if (!text) throw new AppError("EMPTY_PROVIDER_RESULT", 502);
   return text;
-}
-
-export async function videoRequest(config, { image, prompt, duration, ratio, requestId, signal }) {
-  const base = config.videoURL.replace(/\/$/, "");
-  const response = await fetch(`${base}/contents/generations/tasks${requestId ? `/${encodeURIComponent(requestId)}` : ""}`, {
-    method: requestId ? "GET" : "POST", signal,
-    headers: { Authorization: `Bearer ${config.videoKey}`, "Content-Type": "application/json" },
-    ...(requestId ? {} : { body: JSON.stringify({ model: config.videoModel, content: [{ type: "text", text: `${prompt} --duration ${duration} --watermark false${ratio ? ` --ratio ${ratio}` : ""}` }, ...(image ? [{ type: "image_url", image_url: { url: `data:image/png;base64,${image.toString("base64")}` }, role: "first_frame" }] : [])] }) }),
-  });
-  if (!response.ok) throw new AppError("VIDEO_PROVIDER_REJECTED", response.status);
-  const data = await response.json();
-  if (!requestId) {
-    if (typeof data.id !== "string" || data.id.length > 256) throw new AppError("INVALID_PROVIDER_TASK", 502);
-    return { state: "pending", requestId: data.id };
-  }
-  if (["failed", "cancelled", "expired"].includes(data.status)) return { state: "failed" };
-  if (data.status !== "succeeded") return { state: "pending", requestId };
-  if (!data.content?.video_url) throw new AppError("EMPTY_PROVIDER_RESULT", 502);
-  return { state: "succeeded", url: data.content.video_url };
 }

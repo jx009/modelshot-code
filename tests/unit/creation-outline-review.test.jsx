@@ -43,6 +43,23 @@ it("persists the edited outline through its navigation handle without confirming
   await act(async () => { await expect(editorRef.current.flush()).rejects.toThrow("LOCAL_DRAFT_UNAVAILABLE"); });
 });
 
+it("recalculates illustration totals and confirms the selected model", async () => {
+  const remote = review(); remote.kind = "slides";
+  remote.outline.design = { visuals: [{ id: "hero", prompt: "Workspace" }] };
+  remote.outline.pages[0].visualId = "hero";
+  remote.image = { size: "1536x1024", provider: "default", expectedCost: 4 };
+  remote.imageModels = [{ id: "custom", label: "Custom images", image: { provider: "custom", size: "1536x1024", expectedCost: 9 } }];
+  mocks.api.mockResolvedValueOnce(remote).mockResolvedValueOnce({ id: "run", status: "queued" });
+  render(<OutlineReview userId="owner" runId="run" zh={false} onClose={() => {}} onConfirmed={vi.fn()} />);
+  fireEvent.change(await screen.findByLabelText("Image model"), { target: { value: "custom" } });
+  expect(screen.getByText(/Estimated total: 15 credits/)).toBeTruthy();
+  expect(screen.getByText("Confirm and generate slides").disabled).toBe(true);
+  fireEvent.change(screen.getByLabelText("Total budget limit"), { target: { value: "15" } });
+  fireEvent.click(screen.getByText("Confirm and generate slides"));
+  await waitFor(() => expect(mocks.api.mock.calls.some(([, options]) => options?.method === "POST")).toBe(true));
+  expect(mocks.api.mock.calls.find(([, options]) => options?.method === "POST")[1].body.image).toEqual(remote.imageModels[0].image);
+});
+
 it("does not submit on open, allows reordering/removal, and confirms exactly the reviewed content", async () => {
   const confirmed = vi.fn();
   mocks.api.mockResolvedValueOnce(review()).mockResolvedValueOnce({ id: "run", status: "queued" });

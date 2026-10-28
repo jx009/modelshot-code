@@ -13,17 +13,19 @@ const RechargePanel = dynamic(() => import("./RechargePanel"));
 const InviteCenter = dynamic(() => import("@/components/InviteCenter"));
 export function useRecharge() { return useContext(RechargeContext); }
 
-function RecordsRouteEntry({ openRecords, openInvite }) {
+function RecordsRouteEntry({ openRecords, openInvite, open }) {
   const params = useSearchParams(), path = usePathname();
-  const requested = params.get("panel") === "invite" ? "invite" : params.get("records"), handled = useRef(null);
+  const panel = params.get("panel"), orderId = params.get("orderId");
+  const requested = ["invite", "recharge"].includes(panel) ? panel : params.get("records"), handled = useRef(null);
   useEffect(() => {
-    if (!["usage", "orders", "invite"].includes(requested)) { handled.current = null; return; }
-    const key = `${path}:${requested}`;
+    if (!["usage", "orders", "invite", "recharge"].includes(requested)) { handled.current = null; return; }
+    const key = `${path}:${requested}:${orderId || ""}`;
     if (handled.current === key) return;
     handled.current = key;
-    if (requested === "invite") openInvite();
+    if (requested === "recharge") open();
+    else if (requested === "invite") openInvite();
     else openRecords(requested);
-  }, [requested, path, openRecords, openInvite]);
+  }, [requested, path, orderId, openRecords, openInvite, open]);
   return null;
 }
 
@@ -43,9 +45,10 @@ export function RechargeProvider({ children }) {
     activeView.current = null;
     setView(null);
     const url = new URL(window.location.href);
-    if (url.searchParams.has("records") || url.searchParams.get("panel") === "invite") {
+    if (url.searchParams.has("records") || ["invite", "recharge"].includes(url.searchParams.get("panel"))) {
       url.searchParams.delete("records");
-      if (url.searchParams.get("panel") === "invite") url.searchParams.delete("panel");
+      if (url.searchParams.get("panel") === "recharge") { url.searchParams.delete("orderId"); url.searchParams.delete("checkout"); }
+      if (["invite", "recharge"].includes(url.searchParams.get("panel"))) url.searchParams.delete("panel");
       window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
     }
   }, []);
@@ -58,7 +61,7 @@ export function RechargeProvider({ children }) {
   const value = useMemo(() => ({ open, close, openRecords, openInvite }), [open, close, openRecords, openInvite]);
   return <RechargeContext.Provider value={value}>
     {children}
-    <Suspense fallback={null}><RecordsRouteEntry openRecords={openRecords} openInvite={openInvite} /></Suspense>
+    <Suspense fallback={null}><RecordsRouteEntry openRecords={openRecords} openInvite={openInvite} open={open} /></Suspense>
     {view === "recharge" && <Modal onClose={close} returnFocusRef={returnFocusRef} label={locale === "zh" ? "积分充值" : "Buy credits"} className={styles.dialog}>
       <RechargePanel onClose={close} onRecords={() => openRecords("orders")} />
     </Modal>}

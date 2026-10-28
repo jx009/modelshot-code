@@ -12,11 +12,10 @@ export default function MotionEditor({ composition, media, selected, onSelect, o
   const add = duplicate => { if (composition.scenes.length >= 40 || timelineDuration(composition) + (duplicate ? scene.duration : 3) > 180) return; const value = duplicate ? { ...scene, id: requestKey() } : emptyScene(requestKey()); onChange({ ...composition, scenes: [...composition.scenes, value] }); onSelect(value.id); onTime(timelineDuration(composition) + .7); };
   const asset = media.find(item => item.id === scene.assetId);
   return <div className="vm-editor">
-    <div className="vm-timeline-heading"><strong>{zh ? "场景时间轴" : "Scene timeline"}</strong><span>{zh ? "拖动调整顺序 · 点击编辑" : "Drag to reorder · click to edit"}</span><button type="button" disabled={disabled} onClick={() => add(false)}><Plus size={14} />{zh ? "添加场景" : "Add scene"}</button></div>
     <div className="vm-timeline" aria-label="场景列表">{composition.scenes.map((item, index) => <div key={item.id} className={`vm-scene ${item.id === scene.id ? "is-selected" : ""}`} draggable={!disabled} onDragStart={() => { drag.current = index; }} onDragEnd={() => { drag.current = null; }} onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); if (drag.current !== null) move(drag.current, index); drag.current = null; }}>
       <button type="button" disabled={disabled} onClick={() => select(item)} style={{ background: item.background, color: item.color }}><small>{index + 1}</small><span>{item.title || item.name}</span><small>{item.duration}s</small></button>
       <div><button aria-label="前移场景" disabled={disabled || index === 0} onClick={() => move(index, index - 1)}><ArrowLeft size={12} /></button><button aria-label="后移场景" disabled={disabled || index === composition.scenes.length - 1} onClick={() => move(index, index + 1)}><ArrowRight size={12} /></button></div>
-    </div>)}</div>
+    </div>)}<button className="vm-add-scene" type="button" disabled={disabled || composition.scenes.length >= 40 || timelineDuration(composition) + 3 > 180} onClick={() => add(false)}><Plus size={16} />{zh ? "添加场景" : "Add scene"}</button></div>
     <fieldset className="vm-inspector" disabled={disabled}>
       <label>{zh ? "标题" : "Title"}<textarea maxLength={160} value={scene.title} onChange={event => patch({ title: event.target.value })} /></label>
       <label>{zh ? "副标题" : "Subtitle"}<textarea maxLength={320} value={scene.subtitle} onChange={event => patch({ subtitle: event.target.value })} /></label>

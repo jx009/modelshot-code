@@ -22,6 +22,10 @@
 .cr-shell .cr-creation-hero .cr-creation-options>.cr-send { grid-column:5; grid-row:3; margin:0; min-width:0; width:auto; aspect-ratio:1; height:36px; padding:8px; border-radius:10px; background:var(--primary-text); color:var(--bg-page); }
 .cr-creation-note,.cr-creation-error { grid-column:1 / -1; margin:4px 0 0; font-size:11px; line-height:1.7; color:var(--secondary-text); }
 .cr-creation-error button { margin-left:8px; text-decoration:underline; }
+.cr-creation-note button { padding:0; border:0; background:transparent; color:inherit; font:inherit; text-decoration:underline; cursor:pointer; }
+.cr-creation-settings-panel .cr-creation-secondary { padding:8px; border:1px solid var(--divider); border-radius:8px; background:var(--bg-card); color:var(--secondary-text); font:inherit; cursor:pointer; }
+.cr-creation-media-icon { display:flex; align-items:center; justify-content:center; height:100%; color:var(--secondary-text); }
+.cr-creation-launcher .cw-reference-asset>span { max-width:calc(100% - 4px); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .cr-creation-launcher button:disabled { opacity:.5; cursor:default; }
 @media(max-width:600px) {
   .cr-shell .cr-home-composer .cr-creation-launcher { column-gap:5px; }

@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowUp, LoaderCircle, RefreshCw, SlidersHorizontal, ChevronDown } from "lucide-react";
 import { api, requestKey } from "@/lib/client-api";
 import { useNavigationRouter } from "@/hooks/useNavigationRouter";
 import { invalidateProjectLists } from "@/lib/studio/project-list";
 import { creationError } from "@/components/creation/creation-errors";
 import ReferenceAssets, { referenceAssetIds } from "@/components/creation/ReferenceAssets";
 import { posterImageChoice } from "@/lib/creation/poster-image-choice";
-import "./creation-launcher.css";
+import GenerationModelSelect from "@/components/creation/GenerationModelSelect";
+import CreationComposer from "./CreationComposer";
 
 // Ship this small form with the homepage so switching types needs no download.
 // AssetLibrary stays lazy; editors, canvases and schemas are not imported here.
@@ -21,11 +21,12 @@ export default function CreationLauncher({ kind, userId, zh, initialDraft, onDra
   const [assetIds, setAssetIds] = useState(() => referenceAssetIds(initialDraft?.assetIds ?? attachmentIds));
   const [projectReady, setProjectReady] = useState(false);
   const [generateImage, setGenerateImage] = useState(initialDraft?.generateImage ?? true);
+  const [imageProvider, setImageProvider] = useState(initialDraft?.imageProvider || "");
   const [pendingQuote, setPendingQuote] = useState(null);
   const key = `creation-launch:${userId}:${kind}`, text = (cn, en) => zh ? cn : en;
   useEffect(() => { draftCallback.current = onDraft; }, [onDraft]);
   useEffect(() => { isVisible.current = visible; }, [visible]);
-  useEffect(() => { draftCallback.current?.({ prompt, size, pages, sectionCount, sheetCount, targetRows, assetIds, generateImage }); }, [prompt, size, pages, sectionCount, sheetCount, targetRows, assetIds, generateImage]);
+  useEffect(() => { draftCallback.current?.({ prompt, size, pages, sectionCount, sheetCount, targetRows, assetIds, generateImage, imageProvider }); }, [prompt, size, pages, sectionCount, sheetCount, targetRows, assetIds, generateImage, imageProvider]);
   useEffect(() => {
     const abort = new AbortController(); life.current = abort;
     return () => abort.abort();
@@ -43,8 +44,9 @@ export default function CreationLauncher({ kind, userId, zh, initialDraft, onDra
         if (raw && !abort.signal.aborted) {
           const saved = JSON.parse(raw);
           if (saved.userId === userId && saved.body?.kind === kind && saved.createKey && saved.runKey) {
-            pending.current = saved; setPendingQuote({ maxCredits: saved.body.maxCredits, image: saved.body.image || null }); setUncertain(true); setProjectReady(Boolean(saved.project)); setPrompt(saved.body.prompt); setAssetIds(referenceAssetIds(saved.body.assetIds)); setGenerateImage(Boolean(saved.body.image));
+            pending.current = saved; setPendingQuote({ maxCredits: saved.body.maxCredits, image: saved.body.image || null, imageProvider: saved.body.imageProvider }); setUncertain(true); setProjectReady(Boolean(saved.project)); setPrompt(saved.body.prompt); setAssetIds(referenceAssetIds(saved.body.assetIds)); setGenerateImage(Boolean(saved.body.image));
             if (saved.body.width && saved.body.height) setSize(`${saved.body.width}x${saved.body.height}`);
+            setImageProvider(saved.body.image?.provider || saved.body.imageProvider || "");
             if (Number.isInteger(saved.body.pageCount)) setPages(saved.body.pageCount);
             if (Number.isInteger(saved.body.sectionCount)) setSectionCount(saved.body.sectionCount);
             if (Number.isInteger(saved.body.sheetCount)) setSheetCount(saved.body.sheetCount);
@@ -56,7 +58,7 @@ export default function CreationLauncher({ kind, userId, zh, initialDraft, onDra
     void load();
     return () => abort.abort();
   }, [userId, key, kind, visible, attempt, initialCaps]);
-  const imageChoice = uncertain ? pendingQuote?.image : kind === "poster" ? posterImageChoice(caps, size) : null;
+  const imageChoice = uncertain ? pendingQuote?.image : kind === "poster" ? posterImageChoice(caps, size, imageProvider) : null;
   const withImage = Boolean(imageChoice && generateImage && assetIds.length < 8);
   const cost = uncertain ? pendingQuote?.maxCredits : caps?.languageUnitCost == null ? null : caps.languageUnitCost * (kind === "slides" ? pages + 1 : kind === "document" ? sectionCount + 1 : 1) + (withImage ? imageChoice.expectedCost : 0);
   async function start(event) {
@@ -67,7 +69,9 @@ export default function CreationLauncher({ kind, userId, zh, initialDraft, onDra
     try {
       let request = pending.current;
       if (!request) {
+        if (kind === "poster" && generateImage && imageProvider && !imageChoice) throw new Error("PROVIDER_CAPABILITY_UNSUPPORTED");
         const body = { kind, prompt: prompt.trim(), locale: zh ? "zh" : "en", maxCredits: cost, assetIds };
+        if (kind === "slides" && imageProvider) body.imageProvider = imageProvider;
         if (withImage) body.image = imageChoice;
         if (kind === "poster" || kind === "slides") {
           const [width, height] = size.split("x").map(Number);
@@ -76,7 +80,7 @@ export default function CreationLauncher({ kind, userId, zh, initialDraft, onDra
         else if (kind === "document") Object.assign(body, { sectionCount, audience: "" });
         else if (kind === "sheet") Object.assign(body, { sheetCount, targetRows });
         request = { userId, createKey: requestKey(), runKey: requestKey(), body };
-        sessionStorage.setItem(key, JSON.stringify(request)); pending.current = request; setPendingQuote({ maxCredits: body.maxCredits, image: body.image || null }); setUncertain(true);
+        sessionStorage.setItem(key, JSON.stringify(request)); pending.current = request; setPendingQuote({ maxCredits: body.maxCredits, image: body.image || null, imageProvider: body.imageProvider }); setUncertain(true);
       }
       if (!request.project) {
         const project = await api("/api/creation/projects", { method: "POST", body: { createKey: request.createKey, name: request.body.prompt.slice(0, 100), kind }, signal, timeoutMs: 30000 });
@@ -122,19 +126,19 @@ export default function CreationLauncher({ kind, userId, zh, initialDraft, onDra
     sheet: ["描述表格用途、字段、数据关系和需要的计算…", "Describe the workbook purpose, fields, data relationships and calculations…"],
     web: ["描述网站目标、受众、页面和视觉方向…", "Describe the website goal, audience, pages and visual direction…"],
   }[kind];
-  return <form className="cr-creation-launcher" onSubmit={start}>
-    <textarea aria-label={text("创作需求", "Creation request")} value={prompt} disabled={busy || uncertain} maxLength={12000} onChange={event => setPrompt(event.target.value)} placeholder={text(...placeholders)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing && event.nativeEvent.keyCode !== 229) { event.preventDefault(); if (!event.repeat) event.currentTarget.form.requestSubmit(); } }} />
-    <ReferenceAssets value={assetIds} onChange={setAssetIds} disabled={busy || uncertain} zh={zh} />
-    <div className="cr-creation-options">
-      <details className="cr-creation-settings">
-        <summary><SlidersHorizontal size={15} /><span>{text("参数", "Settings")}</span><ChevronDown size={12} /></summary>
-        <div className="cr-creation-settings-panel">
+  return <CreationComposer
+    zh={zh} prompt={prompt} onPromptChange={setPrompt} placeholder={text(...placeholders)} onSubmit={start}
+    disabled={busy || uncertain} busy={busy} recovering={uncertain} cost={cost}
+    submitDisabled={busy || !uncertain && (!caps?.[kind] || !prompt.trim() || cost == null)}
+    attachments={<ReferenceAssets value={assetIds} onChange={setAssetIds} disabled={busy || uncertain} zh={zh} />}
+    settings={<>
+          {["poster", "slides"].includes(kind) && <GenerationModelSelect zh={zh} models={caps?.imageModels} value={uncertain ? pendingQuote?.image?.provider || pendingQuote?.imageProvider : imageProvider} onChange={setImageProvider} disabled={busy || uncertain} />}
+          {kind === "slides" && <span className="cr-creation-note">{text("配图数量与积分在确认大纲时核对。", "Review illustration count and credits when confirming the outline.")}</span>}
           {["poster", "slides"].includes(kind) && <label>{text("尺寸", "Size")}<select value={size} disabled={busy || uncertain} onChange={event => setSize(event.target.value)}>{["1080x1440", "1080x1080", "1920x1080", "1080x1920"].map((value, index) => <option value={value} key={value}>{["3:4", "1:1", "16:9", "9:16"][index]}</option>)}</select></label>}{["slides", "web"].includes(kind) && <label>{text(kind === "web" ? "页面数" : "页数", kind === "web" ? "Pages" : "Slides")}<input type="number" min={1} max={kind === "web" ? 20 : 100} value={pages} disabled={busy || uncertain} onChange={event => setPages(Math.min(kind === "web" ? 20 : 100, Math.max(1, Number(event.target.value) || 1)))} /></label>}{kind === "document" && <label>{text("章节数", "Sections")}<input type="number" min={1} max={50} value={sectionCount} disabled={busy || uncertain} onChange={event => setSectionCount(Math.min(50, Math.max(1, Number(event.target.value) || 1)))} /></label>}{kind === "sheet" && <><label>{text("工作表", "Sheets")}<input type="number" min={1} max={5} value={sheetCount} disabled={busy || uncertain} onChange={event => setSheetCount(Math.min(5, Math.max(1, Number(event.target.value) || 1)))} /></label><label>{text("目标行数", "Target rows")}<input type="number" min={1} max={100} value={targetRows} disabled={busy || uncertain} onChange={event => setTargetRows(Math.min(100, Math.max(1, Number(event.target.value) || 1)))} /></label></>}
           {imageChoice && <label className="cr-poster-image-choice" title={text("先生成视觉素材，再排版可编辑文字；最多使用前两张参考图。选择八张素材时使用已有素材排版。", "Generate artwork, then lay out editable text. Uses the first two reference images. Eight selected assets use existing artwork only.")}><input type="checkbox" checked={withImage} disabled={busy || uncertain || assetIds.length >= 8} onChange={event => setGenerateImage(event.target.checked)} />{text("AI 配图", "AI artwork")} · {imageChoice.expectedCost} {text("积分", "credits")}</label>}
-        </div>
-      </details>
-      <span className="cr-creation-cost" aria-live="polite">{cost ?? "—"} {text("积分", "credits")}</span><button className="cr-send" disabled={busy || !uncertain && (!caps?.[kind] || !prompt.trim() || cost == null)} aria-label={text(uncertain ? "恢复提交" : "开始创作", uncertain ? "Recover submission" : "Start creating")}>{busy ? <LoaderCircle size={18} className="ca-spin" /> : uncertain ? <RefreshCw size={18} /> : <ArrowUp size={18} />}</button></div>
+    </>}
+  >
     {uncertain && <p className="cr-creation-note">{text("提交尚未确认，重试会核对同一项目和任务。", "Submission is unconfirmed. Retry checks the same project and task.")}</p>}
     {error && <div role="alert" className="cr-creation-error">{creationError(error, zh)}{projectReady ? <button type="button" onClick={openDraft}>{text("打开项目处理", "Open project")}</button> : <button type="button" onClick={() => setAttempt(value => value + 1)}>{text("刷新可用能力", "Refresh availability")}</button>}</div>}
-  </form>;
+  </CreationComposer>;
 }

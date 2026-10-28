@@ -11,11 +11,16 @@ import { newlyUnblockedSteps } from "../../creation/run-dependencies.js";
 
 export async function posterImageQuote(db = prisma, provider, { configFor = studioConfig, capabilitiesFor = capabilities } = {}) {
   const config = await configFor(db, provider, "image", "generate", { pinned: Boolean(provider), skipPreview: true });
-  const caps = await capabilitiesFor(db, config), tool = caps.tools.find(item => item.id === "generate");
+  const caps = await capabilitiesFor(db, config, undefined, { imageOnly: true }), tool = caps.tools.find(item => item.id === "generate");
   if (!tool?.available) throw new AppError(tool?.reason || "TOOL_UNAVAILABLE", 503);
   const prices = Object.fromEntries(POSTER_IMAGE_SIZES.filter(size => !imageSizeError(config, size)).map(size => [size, imageCreditCost(tool, size, 0)]));
   if (Object.values(prices).some(price => !Number.isSafeInteger(price) || price < 0 || price > 200000)) throw new AppError("INVALID_PRICE", 503);
   return { provider: config.imageProvider || null, prices };
+}
+
+export async function posterImageModels(db = prisma) {
+  const caps = await capabilities(db, undefined, undefined, { imageOnly: true });
+  return caps.imageModels.filter(model => Object.values(model.prices || {}).some(price => Number.isSafeInteger(price) && price >= 0 && price <= 200000)).map(model => ({ id: model.id, label: model.label, provider: model.id, prices: model.prices }));
 }
 
 // Bind the actual generated asset to the next language input atomically with

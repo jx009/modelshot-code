@@ -14,10 +14,12 @@ import { allowedProviderBaseURL, channelCapability, channelScope, validChannel }
 import sharp from "sharp";
 import { recognizeText } from "../../../../lib/domain/studio/ocr.js";
 import { upscaleVolcImage } from "../../../../lib/domain/studio/upscale.js";
+import { VIDEO_DURATIONS, videoModelOptions } from "../../../../lib/video/model-protocols.js";
 
 const kindSchema = z.enum(["openai", "gemini", "fashn", "dashscope", "volcengine", "volc-visual", "fal"]);
 const visualSecrets = { accessKeyId: z.string().max(4096).optional(), secretAccessKey: z.string().max(4096).optional() };
-const channelFields = { scope: z.enum(["public", "tool", "language"]).optional(), studioCapability: z.enum(["image", "segment", "split", "language", "ocr", "upscale"]).optional(), imageMode: z.enum(["both", "generate", "edit"]).optional(), studioDefault: z.boolean().optional() };
+const channelFields = { scope: z.enum(["public", "tool", "language"]).optional(), studioCapability: z.enum(["image", "video", "segment", "split", "language", "ocr", "upscale"]).optional(), imageMode: z.enum(["both", "generate", "edit"]).optional(), studioDefault: z.boolean().optional(),
+  videoInputMode: z.enum(["text", "image", "both"]).optional(), videoDurations: z.array(z.union(VIDEO_DURATIONS.map(value => z.literal(value)))).min(1).max(VIDEO_DURATIONS.length).refine(values => new Set(values).size === values.length).optional() };
 
 /**
  * 模型提供商管理
@@ -41,6 +43,7 @@ function safeConfig(configStr, row) {
     model: cfg.model || "",
     chatModel: cfg.chatModel || "",
     scope: channelScope(row, cfg), studioCapability: channelCapability(row, cfg), imageMode: cfg.imageMode || "both", studioDefault: Boolean(cfg.studioDefault),
+    ...(channelCapability(row, cfg) === "video" ? { videoInputMode: videoModelOptions(row.kind, cfg)?.inputMode, videoDurations: videoModelOptions(row.kind, cfg)?.durations } : {}),
   };
 }
 
@@ -132,6 +135,7 @@ export async function PATCH(req) {
         }
       }
       if (input.isDefault) {
+        if (channelCapability({ kind }, cfg) === "video") throw new AppError("PROVIDER_CAPABILITY_UNSUPPORTED", 422);
         if (!["openai", "gemini", "fashn"].includes(kind)) throw new AppError("PROVIDER_CAPABILITY_UNSUPPORTED", 422);
         await tx.modelProvider.updateMany({ data: { isDefault: false } });
       }
@@ -158,7 +162,7 @@ export async function PUT(req) {
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended('provider-config', 0))::text`;
       const priority = (await tx.modelProvider.aggregate({ _max: { priority: true } }))._max.priority || 0;
       const config = { model: input.model, ...(input.chatModel ? { chatModel: input.chatModel } : {}), ...(input.baseURL ? { baseURL: normalizeBaseURL(input.baseURL) } : {}), ...(input.apiKey.trim() ? { apiKeyEnc: encryptSecret(input.apiKey.trim()) } : {}) };
-      for (const field of ["studioCapability", "imageMode", "scope"]) if (input[field] !== undefined) config[field] = input[field];
+      for (const field of ["studioCapability", "imageMode", "scope", "videoInputMode", "videoDurations"]) if (input[field] !== undefined) config[field] = input[field];
       if (input.accessKeyId?.trim()) config.accessKeyIdEnc = encryptSecret(input.accessKeyId.trim());
       if (input.secretAccessKey?.trim()) config.secretAccessKeyEnc = encryptSecret(input.secretAccessKey.trim());
       if (input.kind === "volc-visual" && (!config.accessKeyIdEnc || !config.secretAccessKeyEnc)) throw new AppError(config.studioCapability === "upscale" ? "UPSCALE_NOT_CONFIGURED" : "SEGMENTATION_NOT_CONFIGURED", 422);
@@ -182,6 +186,8 @@ export async function POST(req) {
     const { id, mode = "image" } = await req.json();
     const provider = await prisma.modelProvider.findUnique({ where: { id } });
     if (!provider) return new NextResponse("Provider not found", { status: 404 });
+
+    if (channelCapability(provider) === "video") throw new AppError("VIDEO_TEST_USE_WORKSPACE", 422);
 
     const started = Date.now();
     if (mode === "planner" || channelCapability(provider) === "language") {

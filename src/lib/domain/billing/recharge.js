@@ -3,6 +3,7 @@ import { AppError } from "../../http.js";
 import { getCreditPackages, getPaymentConfig, localizePackage, paymentMethods, validateGateway } from "./recharge-config.js";
 import { createEpayPurchase } from "./epay.js";
 import { getStripe } from "../../stripe.js";
+import { rechargeReturnPath } from "../../billing-return.js";
 
 export async function startRecharge(userId, input, key, { db = prisma, stripe } = {}) {
   if (!/^[a-zA-Z0-9_-]{16,128}$/.test(key || "")) throw new AppError("IDEMPOTENCY_KEY_REQUIRED");
@@ -43,7 +44,7 @@ export async function startRecharge(userId, input, key, { db = prisma, stripe } 
   const metadata = { orderId: order.id, userId, planId: order.planId };
   const session = await stripe.checkout.sessions.create({ mode: "payment", client_reference_id: userId, metadata, payment_intent_data: { metadata },
     line_items: [{ quantity: 1, price_data: { currency, unit_amount: order.amountMinor, product_data: { name: `来塔绘梦 · ${JSON.parse(order.metadata).name}` } } }],
-    success_url: `${root}/${locale}/pricing?orderId=${encodeURIComponent(order.id)}`, cancel_url: `${root}/${locale}/pricing?checkout=cancelled`,
+    success_url: `${root}${rechargeReturnPath(locale, { orderId: order.id })}`, cancel_url: `${root}${rechargeReturnPath(locale, { checkout: "cancelled" })}`,
   }, { idempotencyKey: `checkout:${order.id}` });
   await db.order.update({ where: { id: order.id }, data: { stripeSessionId: session.id } });
   return { orderId: order.id, provider: "stripe", url: session.url };

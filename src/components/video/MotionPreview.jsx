@@ -16,7 +16,7 @@ function Media({ asset, time, playing, volume, trimStart = 0 }) {
   return asset.type === "audio" ? <audio ref={ref} src={src} preload="metadata" /> : <video ref={ref} src={src} preload="metadata" playsInline muted={volume === 0} />;
 }
 
-export default function MotionPreview({ composition, media, time, onTime, selected, onSelect, editing, zh }) {
+export default function MotionPreview({ composition, media, time, onTime, selected, onSelect, editing, generating = false, zh }) {
   const [playing, setPlaying] = useState(false), [clock, setClock] = useState(time), [stageSize, setStageSize] = useState(null), root = useRef(null), stageWrap = useRef(null), current = useRef(time);
   const duration = timelineDuration(composition);
   useEffect(() => { current.current = Math.min(time, duration); const frame = requestAnimationFrame(() => { setClock(current.current); setPlaying(false); }); return () => cancelAnimationFrame(frame); }, [time, duration, editing]);
@@ -59,6 +59,7 @@ export default function MotionPreview({ composition, media, time, onTime, select
       <button type="button" aria-label={playing ? "暂停" : "播放"} onClick={() => { if (clock >= duration) { current.current = 0; setClock(0); } setPlaying(value => !value); }}>{playing ? <Pause size={17} /> : <Play size={17} />}</button>
       <button type="button" aria-label="重新播放" onClick={() => seek(0)}><RotateCcw size={15} /></button>
       <span>{videoTime(clock)} / {videoTime(duration)}</span>
+      <span className="vm-playback-meta" title={`${composition.scenes.length} ${zh ? "个场景" : "scenes"} · ${composition.ratio} · 24fps`}>{composition.ratio}{generating && (zh ? " · 新版本生成中" : " · Generating")}</span>
       <input type="range" min={0} max={duration} step={1 / 24} value={Math.min(clock, duration)} aria-label={zh ? "播放位置" : "Playback position"} onChange={event => seek(Number(event.target.value))} />
       <button type="button" aria-label={zh ? "全屏预览" : "Fullscreen"} onClick={full}><Maximize2 size={16} /></button>
     </div>

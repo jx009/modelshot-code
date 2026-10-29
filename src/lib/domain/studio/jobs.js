@@ -144,6 +144,8 @@ async function submitAdmittedJob(userId, data, key, db, deps, posterContext = nu
     }
     // Reject known unsupported dimensions before reserving any credits.
     if (getTool(data.tool).dependency === "image") {
+      if (config.imageKind === "minimax" && (data.assetId || data.maskId || data.referenceAssetIds?.length)) throw new AppError("PROVIDER_CAPABILITY_UNSUPPORTED", 422);
+      if (config.imageKind === "minimax" && (!data.params.prompt?.trim() || Array.from(data.params.prompt).length > 1500)) throw new AppError("IMAGE_PROMPT_INVALID", 422);
       const targetSize = GUIDED_EDIT_TOOLS.includes(data.tool) ? editTargetSize(data.tool, inputAsset, data.params.padding) : null;
       if (targetSize && (Math.max(targetSize.width, targetSize.height) > 8192 || targetSize.width * targetSize.height > 40000000)) throw new AppError("IMAGE_TOO_LARGE", 413);
       const sizeError = targetSize ? editOutputSize(config, data.params.size, targetSize).error : imageSizeError(config, data.params.size, inputAsset);

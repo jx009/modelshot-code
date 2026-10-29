@@ -33,6 +33,7 @@ export function resolveImageSize(size = "1024x1024", source) {
 export function imageSizeError(config, size, source) {
   const dimensions = resolveImageSize(size, source);
   const [width, height] = dimensions.split("x").map(Number);
+  if (config.imageKind === "minimax" && [width, height].some(edge => edge < 512 || edge > 2048 || edge % 8 !== 0)) return "IMAGE_SIZE_UNSUPPORTED";
   if (config.imageKind === "volcengine" && !LEGACY_IMAGE_SIZES.includes(size) && width * height < 3686400) return "IMAGE_RESOLUTION_UNSUPPORTED";
   if (config.imageKind === "dashscope" && config.imageModel === "qwen-image-edit" && !LEGACY_IMAGE_SIZES.includes(size)) return "IMAGE_SIZE_UNSUPPORTED";
   if ((config.imageKind || "openai") === "openai" && !config.baseURL) {

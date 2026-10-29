@@ -57,3 +57,29 @@ test("separates video models from image models and creates supported video confi
   expect(screen.getByLabelText("Base URL").value).toBe("");
   expect(screen.getAllByLabelText("4 秒").length).toBeGreaterThan(0);
 });
+
+test("offers Ali, Volcengine and MiniMax image presets and native MiniMax defaults", async () => {
+  mocks.api.mockResolvedValue([]);
+  render(<AdminProviders />);
+  fireEvent.click(await screen.findByRole("button", { name: "新增模型" }));
+  expect(screen.getByRole("option", { name: "阿里百炼 · Qwen 生成与编辑" })).toBeTruthy();
+  expect(screen.getByRole("option", { name: "火山方舟 · Seedream" })).toBeTruthy();
+  const preset = screen.getByRole("option", { name: "MiniMax · Image-01 文生图" });
+  fireEvent.change(screen.getByLabelText("配置预设"), { target: { value: preset.value } });
+  expect(screen.getByLabelText("协议类型").value).toBe("minimax");
+  expect(screen.getByLabelText("模型名 / 火山 Endpoint ID").value).toBe("image-01");
+  expect(screen.getByLabelText("Base URL").value).toBe("https://api.minimax.cn/v1");
+  expect(screen.getByText(/MiniMax 当前接入 image-01 文生图/)).toBeTruthy();
+  fireEvent.change(screen.getByLabelText("协议类型"), { target: { value: "openai" } });
+  fireEvent.change(screen.getByLabelText("协议类型"), { target: { value: "minimax" } });
+  expect(screen.getByLabelText("模型名 / 火山 Endpoint ID").value).toBe("image-01");
+  expect(screen.getByLabelText("Base URL").value).toBe("https://api.minimax.cn/v1");
+});
+
+test("does not offer editing or language roles for MiniMax image channels", async () => {
+  mocks.api.mockResolvedValue([{ id: "minimax", name: "minimax-image", kind: "minimax", displayName: "MiniMax", creditCost: 18, costPerImage: 0, isActive: true, priority: 1,
+    config: { scope: "public", studioCapability: "image", imageMode: "generate", model: "image-01", hasKey: true } }]);
+  render(<AdminProviders />);
+  await screen.findByText("MiniMax");
+  expect([...screen.getByLabelText("用途").options].map(option => option.value)).toEqual(["public"]);
+});

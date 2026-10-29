@@ -16,7 +16,7 @@ import { recognizeText } from "../../../../lib/domain/studio/ocr.js";
 import { upscaleVolcImage } from "../../../../lib/domain/studio/upscale.js";
 import { VIDEO_DURATIONS, videoModelOptions } from "../../../../lib/video/model-protocols.js";
 
-const kindSchema = z.enum(["openai", "gemini", "fashn", "dashscope", "volcengine", "volc-visual", "fal"]);
+const kindSchema = z.enum(["openai", "gemini", "fashn", "dashscope", "volcengine", "minimax", "volc-visual", "fal"]);
 const visualSecrets = { accessKeyId: z.string().max(4096).optional(), secretAccessKey: z.string().max(4096).optional() };
 const channelFields = { scope: z.enum(["public", "tool", "language"]).optional(), studioCapability: z.enum(["image", "video", "segment", "split", "language", "ocr", "upscale"]).optional(), imageMode: z.enum(["both", "generate", "edit"]).optional(), studioDefault: z.boolean().optional(),
   videoInputMode: z.enum(["text", "image", "both"]).optional(), videoDurations: z.array(z.union(VIDEO_DURATIONS.map(value => z.literal(value)))).min(1).max(VIDEO_DURATIONS.length).refine(values => new Set(values).size === values.length).optional() };
@@ -195,7 +195,7 @@ export async function POST(req) {
       await vision(config, { instruction: "Return only the word OK.", messages: [{ role: "user", text: "Connection test" }], maxTokens: 8, signal: AbortSignal.timeout(30000) });
       return NextResponse.json({ ok: true, provider: provider.name, mode, durationMs: Date.now() - started });
     }
-    if (["openai", "dashscope", "volcengine", "volc-visual", "fal"].includes(provider.kind)) {
+    if (["openai", "dashscope", "volcengine", "minimax", "volc-visual", "fal"].includes(provider.kind)) {
       const capability = channelCapability(provider);
       const config = await studioConfig(prisma, provider.name, capability, null, { pinned: true });
       const image = await sharp({ create: { width: 512, height: 512, channels: 4, background: "white" } })

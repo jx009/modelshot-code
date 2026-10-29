@@ -40,11 +40,25 @@ export async function regionGuide(image, mask) {
 
 export async function generateCloudImage(config, { image, references = [], mask, prompt, size = "1024x1024", sizeSource, signal }) {
   const kind = config.imageKind;
+  if (kind === "minimax" && (image || mask || references.length)) throw new AppError("PROVIDER_CAPABILITY_UNSUPPORTED", 422);
   const legacySize = LEGACY_IMAGE_SIZES.includes(size);
   const source = sizeSource || (image && !legacySize ? await sharp(image).metadata() : null);
   const sizeError = imageSizeError(config, size, source);
   if (sizeError) throw new AppError(sizeError, 422);
   size = resolveImageSize(size, source);
+  if (kind === "minimax") {
+    if (config.imageModel !== "image-01") throw new AppError("PROVIDER_CAPABILITY_UNSUPPORTED", 422);
+    if (typeof prompt !== "string" || !prompt.trim() || Array.from(prompt).length > 1500) throw new AppError("IMAGE_PROMPT_INVALID", 422);
+    const base = (config.baseURL || "https://api.minimax.cn/v1").replace(/\/+$/, "").replace(/\/image_generation$/, "");
+    const endpoint = base.endsWith("/v1") ? `${base}/image_generation` : `${base}/v1/image_generation`;
+    const [width, height] = size.split("x").map(Number);
+    const data = await jsonRequest(endpoint, { apiKey: config.apiKey, signal, body: {
+      model: config.imageModel, prompt, width, height, response_format: "base64", n: 1, prompt_optimizer: false, aigc_watermark: false,
+    } });
+    if (data.base_resp?.status_code !== 0) throw new AppError("PROVIDER_REJECTED", 502);
+    const encoded = data.data?.image_base64?.[0];
+    return providerImage(encoded ? `data:image/png;base64,${encoded}` : data.data?.image_urls?.[0]);
+  }
   let inputs = image ? [image, ...references] : [];
   if (mask && image) {
     inputs = [image, ...references.slice(0, 1), await regionGuide(image, mask)];

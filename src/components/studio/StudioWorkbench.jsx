@@ -116,6 +116,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
       INSUFFICIENT_CREDITS: t("可用积分不足，请补充积分后重试。", "Not enough available credits."),
       UNAUTHORIZED: t("请先登录，素材和作品会保存到你的账户。", "Sign in to save assets and projects."),
       IMAGE_SIZE_UNSUPPORTED: t("当前模型不支持所选比例或分辨率，请更换模型或尺寸。", "This model does not support the selected dimensions. Change the model or size."),
+      IMAGE_PROMPT_INVALID: t("MiniMax 生图需要非空提示词，且最多 1500 字符，请精简后重试。", "MiniMax requires a non-empty prompt of at most 1,500 characters. Shorten it and retry."),
       IMAGE_RESOLUTION_UNSUPPORTED: t("当前模型不支持此分辨率，请选择 2K 或 4K。", "This model requires a larger resolution. Choose 2K or 4K."),
       SERVICE_NOT_CONFIGURED: t("这个工具还没有连接模型服务，请在部署配置中启用。", "This tool needs a configured provider."),
       SEGMENTATION_NOT_CONFIGURED: t("请先启用物体分割服务，再选择需要移动或修改的物体。", "Object editing requires the segmentation service."),

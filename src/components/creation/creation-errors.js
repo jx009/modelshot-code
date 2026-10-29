@@ -1,4 +1,5 @@
 const messages = {
+  IMAGE_PROMPT_INVALID: ["MiniMax 生图需要非空提示词，且最多 1500 字符，请精简后重试。", "MiniMax requires a non-empty prompt of at most 1,500 characters. Shorten it and retry."],
   PROVIDER_CAPABILITY_UNSUPPORTED: ["所选模型暂不可用或不支持此操作，请重新选择模型。", "The selected model is unavailable or does not support this operation. Choose another model."],
   CREATION_DEPENDENCY_BLOCKED: ["前序步骤未成功，后续步骤已暂停。已完成内容保留，请先处理失败步骤。", "A prerequisite did not succeed. Later steps are paused; completed work is retained. Resolve the failed step first."],
   CREATION_STEP_FAILED: ["部分生成步骤失败，任务已停止。已完成内容保留，可重试失败步骤。", "A generation step failed and the task stopped. Completed work is retained; retry failed steps."],

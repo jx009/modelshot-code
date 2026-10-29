@@ -64,7 +64,7 @@ export function resolveStudioConfig(rows, toolRows = [], channelName, capability
   return {
     requestedProvider: channelName, toolId, routing, toolEnabled: setting?.isEnabled !== false,
     apiKey: secret(row, config), baseURL: config.baseURL || (envFallback ? process.env.STUDIO_BASE_URL : undefined),
-    imageKind: row?.kind || "openai", imageMode: config.imageMode || "both",
+    imageKind: row?.kind || "openai", imageMode: row?.kind === "minimax" ? "generate" : config.imageMode || "both",
     imageModel: config.model || (envFallback ? process.env.STUDIO_IMAGE_MODEL : undefined) || "gpt-image-2",
     imageProvider: row?.name || null, imageDisplayName: row?.displayName || "Image model", imageCreditCost: row?.creditCost ?? 18,
     visionApiKey: secret(planner, plannerConfig), visionBaseURL,
@@ -152,7 +152,7 @@ export function imageClient(config, { imageRequest = false } = {}) {
 export async function generateImage(config, { image, references = [], mask, prompt, size, sizeSource, signal, onResponse }) {
   if (!config.apiKey) throw new AppError("PROVIDER_UNAVAILABLE", 503);
   if (!supportsImageTask(config, image ? "edit" : "generate")) throw new AppError("PROVIDER_CAPABILITY_UNSUPPORTED", 422);
-  if (["dashscope", "volcengine"].includes(config.imageKind)) return generateCloudImage(config, { image, references, mask, prompt, size, sizeSource, signal });
+  if (["dashscope", "volcengine", "minimax"].includes(config.imageKind)) return generateCloudImage(config, { image, references, mask, prompt, size, sizeSource, signal });
   const source = sizeSource || (image && size?.includes("@") ? await sharp(image).metadata() : null);
   const sizeError = imageSizeError(config, size, source);
   if (sizeError) throw new AppError(sizeError, 422);

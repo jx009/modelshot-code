@@ -1,7 +1,7 @@
 // Shared, credential-free channel metadata for the administrator and workbench.
 import { VIDEO_KINDS, VIDEO_PROTOCOLS, VIDEO_DURATIONS } from "../video/model-protocols.js";
 
-export const STUDIO_KINDS = ["openai", "dashscope", "volcengine", "volc-visual", "fal"];
+export const STUDIO_KINDS = ["openai", "dashscope", "volcengine", "minimax", "volc-visual", "fal"];
 export const CHANNEL_CAPABILITIES = ["image", "video", "segment", "split", "language", "ocr", "upscale"];
 export const CHANNEL_PRESETS = [
   { label: "火山方舟 · 视频生成", kind: "volcengine", studioCapability: "video", scope: "public", model: "", baseURL: "https://ark.cn-beijing.volces.com/api/v3", creditCost: 30 },
@@ -11,6 +11,7 @@ export const CHANNEL_PRESETS = [
   { label: "阿里百炼 · Qwen 图像编辑", kind: "dashscope", studioCapability: "image", imageMode: "edit", model: "qwen-image-edit-max", baseURL: "https://dashscope.aliyuncs.com" },
   { label: "阿里百炼 · Qwen 生成与编辑", kind: "dashscope", studioCapability: "image", imageMode: "both", model: "qwen-image-2.0-pro", baseURL: "https://dashscope.aliyuncs.com" },
   { label: "火山方舟 · Seedream", kind: "volcengine", studioCapability: "image", imageMode: "both", model: "", baseURL: "https://ark.cn-beijing.volces.com/api/v3" },
+  { label: "MiniMax · Image-01 文生图", kind: "minimax", studioCapability: "image", scope: "public", imageMode: "generate", model: "image-01", baseURL: "https://api.minimax.cn/v1" },
   { label: "火山智能视觉 · EntitySegment 物体分割", kind: "volc-visual", studioCapability: "segment", scope: "tool", model: "entity_seg", baseURL: "https://visual.volcengineapi.com" },
   { label: "fal · SAM 3 物体分割", kind: "fal", studioCapability: "segment", model: "fal-ai/sam-3/image", baseURL: "https://fal.run" },
   { label: "fal · Qwen 图层拆分", kind: "fal", studioCapability: "split", model: "fal-ai/qwen-image-layered", baseURL: "https://fal.run" },
@@ -43,6 +44,7 @@ export function supportsChannelCapability(row, capability, config = JSON.parse(r
 }
 
 export function supportsImageTask(config, task) {
+  if ((config.imageKind || config.kind) === "minimax") return task === "generate";
   const mode = config.imageMode || "both";
   return mode === "both" || mode === task;
 }
@@ -69,6 +71,7 @@ export function validChannel(kind, config) {
   if (!STUDIO_KINDS.includes(kind)) return !config.studioCapability;
   const capability = channelCapability({ kind }, config);
   if (!CHANNEL_CAPABILITIES.includes(capability)) return false;
+  if (kind === "minimax") return capability === "image" && config.scope === "public" && config.imageMode === "generate" && config.model === "image-01";
   if (kind === "volc-visual") return config.scope === "tool" && (capability === "segment" && config.model === "entity_seg" || capability === "upscale" && config.model === "lens_vida_nnsr");
   if (kind === "fal") return ["segment", "split"].includes(capability) && /^[a-zA-Z0-9_-]+\/[a-zA-Z0-9_/-]+$/.test(config.model || "") && !config.model.includes("..");
   if (capability === "language") return config.scope === "language";

@@ -74,6 +74,17 @@ test("reports model load failures separately and retries without replacing the c
   expect(screen.getByLabelText("描述你的创意").value).toBe("保留输入");
 });
 
+test("shows only individually enabled creation buttons", async () => {
+  mocks.read.mockImplementation(() => new Promise(() => {}));
+  mocks.api.mockResolvedValue({ launcherVisibility: { image: true, motion: false, video: false, poster: true, slides: true, document: false, sheet: false, web: false } });
+  render(<DiscoverHome />);
+  expect(await screen.findByRole("button", { name: "演示文稿" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "图片创作" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "海报设计" })).toBeTruthy();
+  for (const name of ["视频制作", "视频生成", "文档", "表格", "网页"]) expect(screen.queryByRole("button", { name })).toBeNull();
+  expect(document.querySelector(".cr-creation-types").className).toContain("cr-creation-types");
+});
+
 test("does not start a model read for a retained hidden homepage", () => {
   render(<PageVisibilityContext.Provider value={false}><DiscoverHome /></PageVisibilityContext.Provider>);
   expect(mocks.read).not.toHaveBeenCalled();

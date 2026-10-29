@@ -12,7 +12,9 @@ vi.mock("../../src/lib/site-config", () => ({
 }));
 vi.mock("../../src/lib/domain/identity/admin-operation", () => ({ auditedOperation: ports.audit }));
 import { GET, PATCH } from "../../src/app/api/admin/creation-access/route.js";
+import { GET as getLauncher, PATCH as patchLauncher } from "../../src/app/api/admin/creation-launcher-visibility/route.js";
 import { CREATION_ACCESS_FLAGS } from "../../src/lib/creation/access-flags.js";
+import { CREATION_LAUNCHER_ITEMS, DEFAULT_CREATION_LAUNCHER_VISIBILITY } from "../../src/lib/creation/launcher-items.js";
 
 const config = Object.fromEntries(CREATION_ACCESS_FLAGS.map(({ key }) => [key, true]));
 const request = body => new Request("https://example.test/api/admin/creation-access", { method: "PATCH", headers: {
@@ -49,4 +51,21 @@ it.each([{ ...config, poster: "false" }, { poster: false }, { ...config, injecte
   expect((await PATCH(request({ config: invalid, reason: "调整配置" }))).status).toBe(400);
   expect(ports.audit).not.toHaveBeenCalled();
   expect(ports.write).not.toHaveBeenCalled();
+});
+
+it("lets admins inspect individually visible launcher buttons while only root may update them", async () => {
+  ports.role = "admin";
+  expect(await (await getLauncher(new Request("https://example.test/api/admin/creation-launcher-visibility"))).json()).toEqual({ config: DEFAULT_CREATION_LAUNCHER_VISIBILITY, canManage: false });
+  const request = new Request("https://example.test/api/admin/creation-launcher-visibility", { method: "PATCH", headers: { "content-type": "application/json", "idempotency-key": "launcher-visibility-save-123" }, body: JSON.stringify({ config: DEFAULT_CREATION_LAUNCHER_VISIBILITY, reason: "调整首页入口" }) });
+  expect((await patchLauncher(request)).status).toBe(403);
+  expect(ports.write).not.toHaveBeenCalled();
+  expect(CREATION_LAUNCHER_ITEMS).toHaveLength(8);
+});
+
+it("saves per-button visibility through the root audit", async () => {
+  const config = { ...DEFAULT_CREATION_LAUNCHER_VISIBILITY, motion: false, video: false, document: false, sheet: false, web: false };
+  const request = new Request("https://example.test/api/admin/creation-launcher-visibility", { method: "PATCH", headers: { "content-type": "application/json", "idempotency-key": "launcher-visibility-save-456" }, body: JSON.stringify({ config, reason: "精简首页创作入口" }) });
+  expect((await patchLauncher(request)).status).toBe(200);
+  expect(ports.write).toHaveBeenCalledWith("creation_launcher_visibility", JSON.stringify(config), {});
+  expect(ports.audit.mock.calls[0].slice(0, 3)).toEqual(["actor", "launcher-visibility-save-456", "UPDATE_CREATION_LAUNCHER_VISIBILITY"]);
 });

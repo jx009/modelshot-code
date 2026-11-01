@@ -41,7 +41,8 @@ openssl rand -hex 32   # STUDIO_TOOLS_KEY
 
 | 变量 | 不改会怎样 |
 | --- | --- |
-| `PUBLIC_URL` | 留成 `example.com` 会让所有 POST 接口返回 403。`readJson` 会调用 `sameOrigin`，拿 `NEXTAUTH_URL` 当期望 origin 和浏览器实际 origin 比对，对不上就抛 `CROSS_ORIGIN_REQUEST`。登录、注册、提交生成全部失败。 |
+| `PUBLIC_URL` | 主站公开地址，映射到 `NEXTAUTH_URL`。API 来源校验允许该地址及对应的 www 地址，协议和端口必须一致；其他入口需加入 `ALLOWED_ORIGINS`，否则写入请求返回 `CROSS_ORIGIN_REQUEST`。不要保留示例域名。 |
+| `ALLOWED_ORIGINS` | 额外允许的站点 origin，逗号分隔，例如 `https://acm.letaidraw.com`。仅允许完整 HTTP(S) origin，不支持通配符、路径或任意子域名。 |
 | `SMTP_HOST` + `SMTP_FROM` | 注册强制要求 6 位邮箱验证码，验证码只能走 SMTP 发送。不配就无法注册账号 → 无法创建 root → 后台进不去。`SMTP_PORT=587` 表示 STARTTLS，用 465 才是隐式 TLS（`secure` 由端口自动判断）。内网 relay 允许匿名投递时可留空 `SMTP_USER` / `SMTP_PASS`。 |
 | `BIND_ADDR` | 默认 `127.0.0.1` 只允许宿主机访问，必须在前面挂 Nginx/Caddy。不打算装反代就改 `0.0.0.0`。 |
 | `TRUST_PROXY` | 只有前面确实挂着会覆盖 `X-Forwarded-For` 的反代时才留 `true`。否则客户端可以伪造这个头，`clientAddress()` 会采信，限流和审计记录里的 IP 全是假的。裸跑公网请改 `false`。 |
@@ -51,7 +52,7 @@ openssl rand -hex 32   # STUDIO_TOOLS_KEY
 
 ### 还没买域名时先跑起来
 
-`PUBLIC_URL` 必须和浏览器地址栏的 origin 完全一致（含端口），所以没域名也能跑，用公网 IP 顶替：
+没有域名时，`PUBLIC_URL` 填浏览器实际访问的完整 origin（含端口），用公网 IP 即可：
 
 ```ini
 PUBLIC_URL=http://服务器公网IP:3000
@@ -166,6 +167,23 @@ docker compose --env-file .env.production -f compose.prod.yaml exec -T postgres 
 Web 默认只绑 `127.0.0.1:3000`，由宿主机 Nginx/Caddy 终止 TLS 再转发。反代要透传 `Host`、`X-Forwarded-For`、`X-Forwarded-Proto`，并把 `PUBLIC_URL` 设为对外域名、`TRUST_PROXY=true`。不想装反代就把 `BIND_ADDR` 改成 `0.0.0.0`，但这样没有 TLS，登录 Cookie 和支付回调都不安全，不建议长期这么跑。
 
 不要在 `PUBLIC_URL` 里带结尾斜杠或容器端口。
+
+### 同时开放多个访问域名
+
+`PUBLIC_URL=https://www.letaidraw.com` 时，`https://letaidraw.com` 自动通过本站 API 来源校验；反过来设置也支持。协议和端口保持一致，不自动允许其他子域名。若美国域名也用作用户入口，配置：
+
+```ini
+PUBLIC_URL=https://www.letaidraw.com
+ALLOWED_ORIGINS=https://acm.letaidraw.com
+```
+
+更新到包含此修复的镜像后，修改环境变量需重新创建 Web 容器：
+
+```bash
+docker compose --env-file .env.production -f compose.prod.yaml up -d --no-deps --force-recreate web
+```
+
+每个域名都需正确配置 DNS、TLS 和 Nginx `server_name`，通过各自域名访问本站相对路径 API。该配置不添加浏览器跨域 CORS 授权，不信任客户端提交的 Host/转发头作为白名单，也不共享各域名的登录 Cookie。Google OAuth 回调仍使用主站配置，需单独按登录提供商要求配置。
 
 ## 5. 验证
 

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { allowedRequestOrigins } from "./request-origins.js";
 
 export class AppError extends Error {
   constructor(code, status = 400, retryable = false) {
@@ -23,8 +24,8 @@ export function errorResponse(error) {
 
 export function sameOrigin(request) {
   const origin = request.headers.get("origin");
-  const expected = new URL(process.env.NEXTAUTH_URL || request.url).origin;
-  if ((origin && origin !== expected) || request.headers.get("sec-fetch-site") === "cross-site") {
+  const allowed = allowedRequestOrigins(request.url);
+  if ((origin && !allowed.has(origin)) || request.headers.get("sec-fetch-site") === "cross-site") {
     throw new AppError("CROSS_ORIGIN_REQUEST", 403);
   }
 }

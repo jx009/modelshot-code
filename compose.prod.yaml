@@ -39,6 +39,7 @@ x-app-environment: &app-environment
   S3_SECRET_ACCESS_KEY: ${STORAGE_ROOT_PASSWORD}
   S3_BUCKET: ${STORAGE_BUCKET:-modelshot-assets}
   NEXTAUTH_URL: ${PUBLIC_URL:?PUBLIC_URL is required, e.g. https://modelshot.example.com}
+  ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
   TRUST_PROXY: ${TRUST_PROXY:-false}
   STUDIO_TOOLS_URL: http://tools:8090
   STUDIO_TOOLS_KEY: ${STUDIO_TOOLS_KEY:?STUDIO_TOOLS_KEY is required}

@@ -11,6 +11,7 @@ vi.mock("next/link", () => ({ useLinkStatus: () => ({ pending: false }) }));
 vi.mock("@/components/auth/AuthProvider", () => ({ useAuth: () => null }));
 vi.mock("@/components/admin/AdminModules", () => ({ useAdminModules: () => null }));
 vi.mock("@/i18n/navigation", () => ({
+  useRouter: () => ({ push: state.navigate, replace: state.navigate }),
   usePathname: () => state.pathname,
   Link: ({ href, children, prefetch, onClick, onNavigate, ...props }) => (
     <a {...props} href={`/${state.locale}${href}`} data-prefetch={String(prefetch)} onClick={event => {

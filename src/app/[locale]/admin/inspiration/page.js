@@ -64,7 +64,7 @@ export default function InspirationAdminPage() {
     const additions = collection.filter(item => !gallery.items.some(current => current.id === item.id || current.cover.type === "builtin" && current.cover.file === item.cover.file));
     if (gallery.items.length + additions.length > 200) { setError("图库最多 200 件，请先移除部分案例后再导入。" ); return; }
     if (!additions.length) { setMessage("这批案例已全部存在，已有内容和发布状态保持不变。" ); return; }
-    edit(current => ({ ...current, items: [...additions, ...current.items], catalogVersion: 3 }));
+    edit(current => ({ ...current, items: [...additions, ...current.items], catalogVersion: 4 }));
     setSelected(additions[0].id);
     setMessage(`已添加 ${additions.length} 件新案例；检查预览后点击“保存并发布”，已有内容未修改。`);
   }

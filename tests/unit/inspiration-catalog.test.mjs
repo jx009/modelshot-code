@@ -38,39 +38,53 @@ it("upgrades only untouched legacy defaults, preserving the chosen layout", () =
   const upgraded = upgradeDefaultGallery(old);
   expect(upgraded.items).toEqual(DEFAULT_ITEMS);
   expect(upgraded.layout).toEqual(layout);
-  expect(upgraded.catalogVersion).toBe(3);
+  expect(upgraded.catalogVersion).toBe(4);
   expect(upgradeDefaultGallery(upgraded)).toBe(upgraded);
 });
 
-it("upgrades untouched version two defaults but preserves edits, removals and latest-version deletions", () => {
-  const previous = { items: PREVIOUS_DEFAULT_ITEMS, layout: DEFAULT_LAYOUT, catalogVersion: 2 };
-  expect(upgradeDefaultGallery(previous)).toMatchObject({ items: DEFAULT_ITEMS, catalogVersion: 3 });
-  const customized = [
-    { ...previous, items: PREVIOUS_DEFAULT_ITEMS.slice(1) },
-    { ...previous, items: [...PREVIOUS_DEFAULT_ITEMS].reverse() },
-    { ...previous, items: PREVIOUS_DEFAULT_ITEMS.map((item, index) => index ? item : { ...item, enabled: false }) },
-    { ...previous, items: PREVIOUS_DEFAULT_ITEMS.map((item, index) => index ? item : { ...item, title: "Edited" }) },
-    { ...previous, catalogVersion: 3 },
-  ];
-  for (const gallery of customized) expect(upgradeDefaultGallery(gallery)).toBe(gallery);
+it("adds the new collection to the live 39-card configuration without restoring its deleted drink", () => {
+  const items = PREVIOUS_DEFAULT_ITEMS.filter(item => item.id !== "cocoa-lux");
+  const gallery = { items, layout: DEFAULT_LAYOUT, catalogVersion: 2 };
+  const upgraded = upgradeDefaultGallery(gallery);
+  expect(upgraded.items).toHaveLength(51);
+  expect(upgraded.items.slice(0, 12)).toEqual(DIVERSE_ITEMS);
+  expect(upgraded.items.slice(12)).toEqual(items);
+  expect(upgraded.items.some(item => item.id === "cocoa-lux")).toBe(false);
+  expect(upgraded.catalogVersion).toBe(4);
 });
 
-it("does not restore removed or hidden works, overwrite edits, or reorder curated galleries", () => {
-  const custom = [
-    [],
-    LEGACY_ITEMS.slice(1),
-    [...LEGACY_ITEMS].reverse(),
-    LEGACY_ITEMS.map((item, index) => index ? item : { ...item, enabled: false }),
-    LEGACY_ITEMS.map((item, index) => index ? item : { ...item, prompt: "A completely different concept" }),
-    LEGACY_ITEMS.map((item, index) => index ? item : { ...item, title: "Custom title" }),
-    LEGACY_ITEMS.map((item, index) => index ? item : { ...item, cover: { type: "asset", assetId: "uploaded" } }),
-  ];
-  for (const items of custom) {
-    const gallery = gallerySchema.parse({ items, layout: DEFAULT_LAYOUT });
-    expect(upgradeDefaultGallery(gallery)).toBe(gallery);
-  }
-  const removedNewWorks = { items: LEGACY_ITEMS, layout: DEFAULT_LAYOUT, catalogVersion: 2 };
-  expect(upgradeDefaultGallery(removedNewWorks)).toBe(removedNewWorks);
+it("preserves curated content, order and hidden states while adding only missing new artworks", () => {
+  const hidden = { ...DIVERSE_ITEMS[0], enabled: false };
+  const renamed = { ...DIVERSE_ITEMS[1], id: "custom-id", enabled: false };
+  const items = [hidden, renamed, ...[...PREVIOUS_DEFAULT_ITEMS].reverse().slice(1).map((item, index) => index ? item : { ...item, title: "Custom title", enabled: false })];
+  const gallery = { items, layout: { mode: "grid", columns: 3, gap: 24 }, catalogVersion: 2 };
+  const upgraded = upgradeDefaultGallery(gallery);
+  expect(upgraded.items).toEqual([...DIVERSE_ITEMS.slice(2), ...items]);
+  expect(upgraded.layout).toEqual(gallery.layout);
+  expect(gallery.items).toBe(items);
+  expect(upgradeDefaultGallery(upgraded)).toBe(upgraded);
+});
+
+it("repairs version three galleries that never received any new artwork", () => {
+  const gallery = { items: PREVIOUS_DEFAULT_ITEMS.slice(1), layout: DEFAULT_LAYOUT, catalogVersion: 3 };
+  expect(upgradeDefaultGallery(gallery).items).toEqual([...DIVERSE_ITEMS, ...gallery.items]);
+});
+
+it("preserves empty galleries and deliberate removals after the new collection has been installed", () => {
+  const empty = { items: [], layout: DEFAULT_LAYOUT, catalogVersion: 2 };
+  expect(upgradeDefaultGallery(empty)).toBe(empty);
+  const latest = { items: LEGACY_ITEMS, layout: DEFAULT_LAYOUT, catalogVersion: 4 };
+  expect(upgradeDefaultGallery(latest)).toBe(latest);
+  const curatedVersionThree = { items: [DIVERSE_ITEMS[0], ...LEGACY_ITEMS], layout: DEFAULT_LAYOUT, catalogVersion: 3 };
+  expect(upgradeDefaultGallery(curatedVersionThree).items).toEqual(curatedVersionThree.items);
+});
+
+it("does not exceed the gallery limit or drop existing entries when adding new artworks", () => {
+  const items = Array.from({ length: 199 }, (_, index) => ({ ...LEGACY_ITEMS[0], id: `custom-${index}`, cover: { type: "asset", assetId: `asset-${index}` } }));
+  const upgraded = upgradeDefaultGallery({ items, layout: DEFAULT_LAYOUT, catalogVersion: 2 });
+  expect(upgraded.items).toHaveLength(200);
+  expect(upgraded.items.slice(1)).toEqual(items);
+  expect(gallerySchema.safeParse(upgraded).success).toBe(true);
 });
 
 it("validates native dimensions independently from the supported generation recipe", () => {

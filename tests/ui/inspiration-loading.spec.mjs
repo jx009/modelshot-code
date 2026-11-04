@@ -1,6 +1,8 @@
 import { test, expect } from "@playwright/test";
 import sharp from "sharp";
+import { readFile } from "node:fs/promises";
 import { DEFAULT_ITEMS, DEFAULT_LAYOUT } from "../../src/lib/inspiration/gallery.js";
+import { SHOWCASE_IDS } from "../../src/lib/inspiration/display-order.js";
 
 async function galleryFixture(page, { count = 40, onGallery } = {}) {
   const bytes = await sharp({ create: { width: 320, height: 480, channels: 3, background: "#a8b6a1" } }).webp().toBuffer();
@@ -31,20 +33,43 @@ for (const width of [1440, 390]) test(`gallery requests images only near the vie
   const cards = page.locator(".ig-card");
   await expect(cards).toHaveCount(40);
   await expect.poll(() => images.length).toBeGreaterThan(0);
-  const bottom = await cards.evaluateAll(nodes => nodes.map((node, index) => ({ index, top: node.getBoundingClientRect().top })).sort((a, b) => b.top - a.top)[0].index);
-  const bottomImage = `https://gallery-fixture.invalid/${bottom}/640.webp`;
+  const bottom = await cards.evaluateAll(nodes => nodes.map((node, index) => ({ index, id: new URL(node.href).pathname.split("/").at(-1), top: node.getBoundingClientRect().top })).sort((a, b) => b.top - a.top)[0]);
+  const bottomImage = `https://gallery-fixture.invalid/${bottom.id.replace("fixture-", "")}/640.webp`;
   expect(images).not.toContain(bottomImage);
   expect(images.length).toBeLessThan(20);
-  await expect(cards.nth(bottom).locator("img")).toHaveCount(0);
-  await cards.nth(bottom).scrollIntoViewIfNeeded();
+  await expect(cards.nth(bottom.index).locator("img")).toHaveCount(0);
+  await cards.nth(bottom.index).scrollIntoViewIfNeeded();
   await expect.poll(() => images.includes(bottomImage)).toBe(true);
-  await expect.poll(() => cards.nth(bottom).locator("img").evaluate(img => img.complete && img.naturalWidth > 0)).toBe(true);
+  await expect.poll(() => cards.nth(bottom.index).locator("img").evaluate(img => img.complete && img.naturalWidth > 0)).toBe(true);
   if (width > 650) {
     await page.getByLabel("搜索灵感").fill("作品 39");
     await expect(cards).toHaveCount(1);
     await cards.first().scrollIntoViewIfNeeded();
     await expect(cards.first().locator("img")).toBeVisible();
   }
+});
+
+for (const [width, columns] of [[390, 2], [1000, 3], [1440, 4], [1800, 5]]) test(`new artwork occupies the visible first row (${columns} columns)`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 1000 });
+  const items = DEFAULT_ITEMS.map(item => ({ ...item, imageUrl: `https://gallery-fixture.invalid/${item.id}` }));
+  await page.route("**/api/**", route => {
+    const path = new URL(route.request().url()).pathname;
+    return route.fulfill({ json: path === "/api/inspiration" ? { items, layout: { ...DEFAULT_LAYOUT, columns } } : path === "/api/auth/session" ? null : {} });
+  });
+  await page.route("https://gallery-fixture.invalid/**", async route => {
+    const item = DEFAULT_ITEMS.find(item => new URL(route.request().url()).pathname === `/${item.id}`);
+    return route.fulfill({ contentType: "image/webp", body: await readFile(`public/inspiration/generated/${item.cover.file}.${item.imageVersion}.webp`) });
+  });
+  await page.goto("/zh#inspiration");
+  await expect(page.locator(".ig-masonry-column")).toHaveCount(columns);
+  const firstRow = page.locator(".ig-masonry-column > .ig-card:first-child");
+  await expect(firstRow).toHaveCount(columns);
+  for (let index = 0; index < columns; index++) {
+    await expect(firstRow.nth(index)).toHaveAttribute("href", new RegExp(`/explore/${SHOWCASE_IDS[index]}$`));
+    await expect.poll(() => firstRow.nth(index).locator("img").evaluate(img => img.complete && img.naturalWidth > 0)).toBe(true);
+  }
+  const tops = await firstRow.evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().top));
+  expect(Math.max(...tops) - Math.min(...tops)).toBeLessThan(2);
 });
 
 test("reload displays cached gallery while metadata revalidation is pending", async ({ page }) => {

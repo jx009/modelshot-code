@@ -12,6 +12,15 @@ async function fixture() {
 }
 const gallery = { items: [], layout: { mode: "masonry", columns: 4, gap: 16 } };
 
+test("ignores old snapshots so the repaired catalogue is fetched immediately", async () => {
+  const cache = await fixture();
+  const old = JSON.stringify({ gallery: { ...gallery, items: [{ id: "sneaker-cobalt" }] }, savedAt: 1000 });
+  sessionStorage.setItem("letaidraw:inspiration:v1", old);
+  localStorage.setItem("letaidraw:inspiration:v1", old);
+  expect(cache.readGalleryCache(2000)).toBeNull();
+  expect(cache.galleryRefreshDelay(2000)).toBe(0);
+});
+
 test("detail link checks reuse memory instead of parsing browser storage for every card", async () => {
   const cache = await fixture();
   const item = { id: "public-one", title: "Public" };
@@ -56,7 +65,7 @@ test.each([31000, 61000, 601000])("expired COS links are removed without discard
   const cached = reloaded.readGalleryCache(now);
   expect(cached).toEqual({ ...gallery, items: [{ id: item.id, title: item.title, cover: item.cover }] });
   expect(signed.items[0].imageUrl).toBe(item.imageUrl);
-  expect(JSON.parse(sessionStorage.getItem("letaidraw:inspiration:v1"))).toEqual({ gallery: signed, savedAt: 1000 });
+  expect(JSON.parse(sessionStorage.getItem("letaidraw:inspiration:v2"))).toEqual({ gallery: signed, savedAt: 1000 });
   expect(reloaded.readGalleryCache(1801000)).toEqual(cached);
 });
 test("a background refresh replaces stale metadata with fresh signed links", async () => {
@@ -86,7 +95,7 @@ test("a new session restores only public metadata without persisted COS signatur
   const item = { id: "public-cover", cover: { type: "asset", assetId: "cover-asset" }, imageUrl: "https://images.invalid/original?sign=1", thumbnailUrl: "https://images.invalid/thumbnail?sign=1" };
   cache.writeGalleryCache({ ...gallery, items: [item], deliveryExpiresAt: 61000 }, 1000);
   const snapshot = { ...gallery, items: [{ id: item.id, cover: item.cover }] };
-  expect(JSON.parse(localStorage.getItem("letaidraw:inspiration:v1"))).toEqual({ gallery: snapshot, savedAt: 1000 });
+  expect(JSON.parse(localStorage.getItem("letaidraw:inspiration:v2"))).toEqual({ gallery: snapshot, savedAt: 1000 });
   vi.stubGlobal("sessionStorage", { getItem: () => null });
   vi.resetModules();
   const reloaded = await import("../../src/lib/inspiration/client-cache.js");
@@ -96,14 +105,14 @@ test("a new session restores only public metadata without persisted COS signatur
 test("newer persistent metadata wins over an old in-memory snapshot", async () => {
   const cache = await fixture();
   cache.writeGalleryCache({ ...gallery, items: [{ id: "removed" }] }, 1000);
-  localStorage.setItem("letaidraw:inspiration:v1", JSON.stringify({ gallery, savedAt: 2000 }));
+  localStorage.setItem("letaidraw:inspiration:v2", JSON.stringify({ gallery, savedAt: 2000 }));
   expect(cache.readGalleryCache(3000)).toEqual(gallery);
 });
 
 test.each(["broken JSON", JSON.stringify({ gallery, savedAt: "1000" }), JSON.stringify({ gallery, savedAt: 9000 })])("invalid session entries do not hide valid persistent metadata: %s", async invalid => {
   await fixture();
-  sessionStorage.setItem("letaidraw:inspiration:v1", invalid);
-  localStorage.setItem("letaidraw:inspiration:v1", JSON.stringify({ gallery, savedAt: 1000 }));
+  sessionStorage.setItem("letaidraw:inspiration:v2", invalid);
+  localStorage.setItem("letaidraw:inspiration:v2", JSON.stringify({ gallery, savedAt: 1000 }));
   vi.resetModules();
   const cache = await import("../../src/lib/inspiration/client-cache.js");
   expect(cache.readGalleryCache(2000)).toEqual(gallery);
@@ -114,14 +123,14 @@ test("a successful empty response replaces the old public snapshot", async () =>
   cache.writeGalleryCache({ ...gallery, items: [{ id: "removed" }] }, 1000);
   cache.writeGalleryCache(gallery, 2000);
   expect(cache.readGalleryCache(3000)).toEqual(gallery);
-  expect(JSON.parse(localStorage.getItem("letaidraw:inspiration:v1"))).toEqual({ gallery, savedAt: 2000 });
+  expect(JSON.parse(localStorage.getItem("letaidraw:inspiration:v2"))).toEqual({ gallery, savedAt: 2000 });
 });
 
 test("persists public CDN image paths across sessions without signature expiry", async () => {
   const cache = await fixture();
   const cdnGallery = { ...gallery, items: [{ id: "public-cover", imageUrl: "https://quiz.iamshuaidi.com/letaidraw/inspiration/image/original", thumbnailUrl: "https://quiz.iamshuaidi.com/letaidraw/inspiration/image/640.webp" }] };
   cache.writeGalleryCache(cdnGallery, 1000);
-  expect(JSON.parse(localStorage.getItem("letaidraw:inspiration:v1")).gallery).toEqual(cdnGallery);
+  expect(JSON.parse(localStorage.getItem("letaidraw:inspiration:v2")).gallery).toEqual(cdnGallery);
   vi.stubGlobal("sessionStorage", { getItem: () => null });
   vi.resetModules();
   const reloaded = await import("../../src/lib/inspiration/client-cache.js");

@@ -7,10 +7,12 @@ import AdminNav from "../../src/components/admin/AdminNav.js";
 
 const mocks = vi.hoisted(() => ({ nextNavigation: vi.fn(), reads: vi.fn() }));
 vi.mock("next-intl", () => ({ useLocale: () => "zh" }));
+vi.mock("next-auth/react", () => ({ useSession: () => ({ data: { user: { id: "admin-test", role: "admin" } } }) }));
 vi.mock("next/link", () => ({ useLinkStatus: () => ({ pending: false }) }));
 vi.mock("@/components/auth/AuthProvider", () => ({ useAuth: () => null }));
 vi.mock("next/navigation", () => ({ usePathname: () => useSyncExternalStore(subscribe, () => window.location.pathname) }));
 vi.mock("@/i18n/navigation", () => ({
+  useRouter: () => ({ push: mocks.nextNavigation, replace: mocks.nextNavigation }),
   usePathname: () => useSyncExternalStore(subscribe, () => window.location.pathname.replace(/^\/(?:zh|en)/, "") || "/"),
   Link: ({ href, children, prefetch, onClick, onNavigate, ...props }) => <a {...props} href={`/zh${href}`} data-prefetch={String(prefetch)} onClick={event => {
     onClick?.(event);

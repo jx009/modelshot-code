@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { DEFAULT_ITEMS, DEFAULT_LAYOUT, LEGACY_ITEMS, PREVIOUS_DEFAULT_ITEMS } from "./defaults.js";
 import { IMAGE_SIZES } from "../studio/image-size.js";
+import { DIVERSE_ITEMS } from "./diverse-defaults.js";
 
 export { DEFAULT_ITEMS, DEFAULT_LAYOUT };
 import { INSPIRATION_CATEGORIES } from "./presentation.js";
@@ -34,22 +35,28 @@ export const inspirationItemSchema = z.object({
   enabled: z.boolean().default(true),
 }).strict().refine(item => IMAGE_SIZES.includes(item.size) || Boolean(item.generationSize), "A native image size requires a supported generation size");
 export const gallerySchema = z.object({
-  catalogVersion: z.union([z.literal(2), z.literal(3)]).optional(),
+  catalogVersion: z.union([z.literal(2), z.literal(3), z.literal(4)]).optional(),
   items: z.array(inspirationItemSchema).max(200).refine(items => new Set(items.map(i => i.id)).size === items.length, "Duplicate IDs"),
   layout: z.object({ mode: z.enum(["masonry", "grid"]), columns: z.number().int().min(3).max(5), gap: z.number().int().min(8).max(40) }).strict(),
 }).strict();
-export const defaultGallery = { items: DEFAULT_ITEMS, layout: DEFAULT_LAYOUT, catalogVersion: 3 };
+export const defaultGallery = { items: DEFAULT_ITEMS, layout: DEFAULT_LAYOUT, catalogVersion: 4 };
 export function upgradeDefaultGallery(gallery) {
-  if (gallery.catalogVersion === 3) return gallery;
+  if (gallery.catalogVersion === 4 || !gallery.items.length) return gallery;
   const baseline = gallery.items.length === PREVIOUS_DEFAULT_ITEMS.length ? PREVIOUS_DEFAULT_ITEMS
     : !gallery.catalogVersion && gallery.items.length === LEGACY_ITEMS.length ? LEGACY_ITEMS : null;
-  if (!baseline) return gallery;
-  const previous = baseline.map(item => inspirationItemSchema.parse(item));
-  const untouched = gallery.items.every((item, index) => {
+  const previous = baseline?.map(item => inspirationItemSchema.parse(item));
+  const untouched = previous && gallery.items.every((item, index) => {
     const current = inspirationItemSchema.parse({ ...item, promptZh: inspirationPromptZh(item) });
     return JSON.stringify(current) === JSON.stringify(previous[index]);
   });
-  return untouched ? { ...gallery, items: DEFAULT_ITEMS, catalogVersion: 3 } : gallery;
+  if (untouched) return { ...gallery, items: DEFAULT_ITEMS, catalogVersion: 4 };
+  const represented = item => gallery.items.some(current => current.id === item.id || current.cover.type === "builtin" && current.cover.file === item.cover.file);
+  // Version three may already contain a deliberately curated subset of this
+  // collection. Preserve that choice; the broken migration left older curated
+  // galleries with NONE of the new collection (the live gallery had 39 cards).
+  const additions = gallery.catalogVersion === 3 && DIVERSE_ITEMS.some(represented) ? [] : DIVERSE_ITEMS.filter(item => !represented(item));
+  const available = 200 - gallery.items.length;
+  return { ...gallery, items: [...additions.slice(0, available), ...gallery.items], catalogVersion: 4 };
 }
 export function inspirationPromptZh(item) {
   if (typeof item.promptZh === "string") return item.promptZh.trim();

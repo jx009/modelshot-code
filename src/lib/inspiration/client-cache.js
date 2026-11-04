@@ -1,7 +1,8 @@
 import { isCdnImageUrl } from "../asset-cdn.js";
 
 // Public gallery metadata only. Never store user sessions, balances or private assets.
-const KEY = "letaidraw:inspiration:v1";
+// Invalidate pre-repair snapshots that contain only the old 39-card catalogue.
+const KEY = "letaidraw:inspiration:v2";
 let memory;
 
 function withoutDeliveryLinks(gallery) {

@@ -29,7 +29,7 @@ export default function MobileNavigation({ links, path, zh }) {
       <header><Link href="/" prefetch="intent" className="cr-drawer-brand" aria-label="来塔绘梦" onClick={() => setOpen(false)}><BrandLogo /></Link><button className="cr-drawer-close" aria-label={zh ? "关闭导航菜单" : "Close navigation"} onClick={() => setOpen(false)}><X size={19} /></button></header>
       <p>{zh ? "创意工作空间" : "YOUR CREATIVE SPACE"}</p>
       <nav aria-label={zh ? "页面导航" : "Pages"}>{links.map(([href, Icon, cn, en]) => {
-        const active = path === href || href === "/explore" && path.startsWith("/explore/");
+        const active = path === href || href === "/" && path.startsWith("/explore/");
         return <Link key={href} href={href} prefetch={active ? false : "intent"} onPrefetch={href === "/studio-v2" ? preloadCanvas : undefined} onClick={() => setOpen(false)} aria-current={active ? "page" : undefined}><Icon size={20} /><span>{zh ? cn : en}</span>{href === "/commerce" && <small>NEW</small>}</Link>;
       })}</nav>
       <footer>{zh ? "从灵感出发，让创作发生。" : "Start with inspiration. Make something yours."}</footer>

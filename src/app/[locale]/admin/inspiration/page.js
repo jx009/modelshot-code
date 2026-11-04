@@ -6,6 +6,7 @@ import { ArrowDown, ArrowUp, Check, ImagePlus, Images, Plus, Save, Search, Trash
 import { api, requestKey } from "@/lib/client-api";
 import { gallerySchema, INSPIRATION_CATEGORIES, inspirationImage, inspirationPromptZh } from "@/lib/inspiration/gallery";
 import { VIBRANT_ITEMS } from "@/lib/inspiration/vibrant-defaults";
+import { DIVERSE_ITEMS } from "@/lib/inspiration/diverse-defaults";
 import { IMAGE_SIZES } from "@/lib/studio/image-size";
 import { useAdminReason } from "@/hooks/useAdminReason";
 import Modal from "@/components/ui/Modal";
@@ -59,11 +60,11 @@ export default function InspirationAdminPage() {
   function update(field, value) { edit(g => ({ ...g, items: g.items.map(i => i.id === selected ? { ...i, [field]: value } : i) })); }
   function layout(field, value) { edit(g => ({ ...g, layout: { ...g.layout, [field]: value } })); }
   function move(index, to) { edit(g => { const items = [...g.items]; const [item] = items.splice(index, 1); items.splice(to, 0, item); return { ...g, items }; }); }
-  function importVibrant() {
-    const additions = VIBRANT_ITEMS.filter(item => !gallery.items.some(current => current.id === item.id || current.cover.type === "builtin" && current.cover.file === item.cover.file));
+  function importCollection(collection) {
+    const additions = collection.filter(item => !gallery.items.some(current => current.id === item.id || current.cover.type === "builtin" && current.cover.file === item.cover.file));
     if (gallery.items.length + additions.length > 200) { setError("图库最多 200 件，请先移除部分案例后再导入。" ); return; }
     if (!additions.length) { setMessage("这批案例已全部存在，已有内容和发布状态保持不变。" ); return; }
-    edit(current => ({ ...current, items: [...additions, ...current.items], catalogVersion: 2 }));
+    edit(current => ({ ...current, items: [...additions, ...current.items], catalogVersion: 3 }));
     setSelected(additions[0].id);
     setMessage(`已添加 ${additions.length} 件新案例；检查预览后点击“保存并发布”，已有内容未修改。`);
   }
@@ -98,7 +99,7 @@ export default function InspirationAdminPage() {
     try {
       const approval = await reasonPrompt.ask();
       await api("/api/admin/inspiration", { method: "PATCH", key: approval.key, body: { ...parsed.data, version, reason: approval.reason } });
-      await load(); setMessage("灵感库已保存，首页与灵感发现会读取最新内容。");
+      await load(); setMessage("灵感库已保存，创作首页的灵感区会读取最新内容。");
     } catch (e) {
       setError(e.code === "INSPIRATION_CHANGED" ? "其他管理员已修改灵感库，请重新加载后编辑，避免覆盖他人的修改。" : e.code === "INSPIRATION_ASSET_UNAVAILABLE" ? "有引用图片已被删除或暂不可用，请替换对应封面后重试。" : "保存失败，请检查权限或稍后重试。" );
     } finally { setSaving(false); }
@@ -109,7 +110,7 @@ export default function InspirationAdminPage() {
     <header className="ig-admin-header"><div><span className="ig-admin-eyebrow">INSPIRATION / CURATION</span><h1><Images size={22} />灵感管理</h1><p>把值得收藏的作品，变成用户下一次创作的起点。</p></div><div><span className="ig-admin-state">{dirty ? "有未保存的修改" : "已同步"}</span><button className="button primary compact" disabled={blocked} type="submit"><Save size={15} />{saving ? "保存中…" : "保存并发布"}</button></div></header>
     {error && <p className="ig-admin-error" role="alert">{error}<button type="button" onClick={() => void load().then(() => setError("")).catch(() => setError("重新加载失败"))}>重新加载（丢弃修改）</button></p>}{message && <p className="ig-admin-success" role="status"><Check size={16} />{message}</p>}
     <fieldset disabled={blocked} className="ig-admin-settings"><div><strong>画廊布局</strong><small>{gallery.items.filter(i => i.enabled).length} 件已发布 · {gallery.items.length} 件作品</small></div><Field label="展示方式"><select value={gallery.layout.mode} onChange={e => layout("mode", e.target.value)}><option value="masonry">自然瀑布流 · 原图比例</option><option value="grid">等高网格 · 完整展示</option></select></Field><Field label="桌面密度"><select value={gallery.layout.columns} onChange={e => layout("columns", Number(e.target.value))}>{[3,4,5].map(v => <option key={v} value={v}>{v === 3 ? "疏朗" : v === 4 ? "适中" : "紧凑"}（{v}）</option>)}</select></Field><Field label={`图片间距 · ${gallery.layout.gap}px`}><input type="range" min={8} max={40} value={gallery.layout.gap} onChange={e => layout("gap", Number(e.target.value))} /></Field></fieldset>
-    <fieldset disabled={blocked} className="ig-admin-editor"><section className="ig-admin-list"><div className="ig-admin-list-actions"><button type="button" className="button compact" disabled={gallery.items.length >= 200} onClick={() => { setReplaceCover(false); setPicker(true); }}><Plus size={15} />从生成记录新增</button><button type="button" className="button compact" disabled={gallery.items.length >= 200} onClick={() => uploadRef.current?.click()}><Upload size={14} />{uploading ? "上传中…" : "上传图片"}</button><button type="button" className="button compact" onClick={importVibrant}><Images size={14} />导入撞色设计精选</button><input type="file" hidden ref={uploadRef} accept="image/png,image/jpeg,image/webp" onChange={e => void upload(e.target.files?.[0])} /></div>
+    <fieldset disabled={blocked} className="ig-admin-editor"><section className="ig-admin-list"><div className="ig-admin-list-actions"><button type="button" className="button compact" disabled={gallery.items.length >= 200} onClick={() => { setReplaceCover(false); setPicker(true); }}><Plus size={15} />从生成记录新增</button><button type="button" className="button compact" disabled={gallery.items.length >= 200} onClick={() => uploadRef.current?.click()}><Upload size={14} />{uploading ? "上传中…" : "上传图片"}</button><button type="button" className="button compact" onClick={() => importCollection(VIBRANT_ITEMS)}><Images size={14} />导入撞色设计精选</button><button type="button" className="button compact" onClick={() => importCollection(DIVERSE_ITEMS)}><Images size={14} />导入多风格炫技精选</button><input type="file" hidden ref={uploadRef} accept="image/png,image/jpeg,image/webp" onChange={e => void upload(e.target.files?.[0])} /></div>
       <div className="ig-admin-list-scroll">{gallery.items.map((item,index) => <div key={item.id} className={`ig-admin-row ${selected === item.id ? "active" : ""}`}><button type="button" className="ig-admin-select" onClick={() => setSelected(item.id)}><Image src={previewImage(item)} width={54} height={64} unoptimized alt="" /><div><strong>{item.title || "未命名作品"}</strong><small>{String(index + 1).padStart(2,"0")} · {item.enabled ? "已发布" : "草稿 / 已隐藏"}</small></div></button><div className="ig-admin-reorder"><button aria-label={`上移 ${item.title}`} type="button" disabled={index === 0} onClick={() => move(index,index-1)}><ArrowUp size={13} /></button><button aria-label={`下移 ${item.title}`} type="button" disabled={index === gallery.items.length-1} onClick={() => move(index,index+1)}><ArrowDown size={13} /></button></div></div>)}{!gallery.items.length && <p className="ig-admin-empty">还没有作品，从生成记录中挑选第一张吧。</p>}</div>
     </section>
     {current ? <section className="ig-admin-edit"><div className="ig-admin-edit-title"><h2>作品信息</h2><div><label><input type="checkbox" checked={current.enabled} onChange={e => update("enabled",e.target.checked)} />发布到前台</label><button type="button" aria-label="删除当前案例" onClick={() => { const next = gallery.items.find(i => i.id !== selected)?.id || ""; edit(g => ({ ...g, items: g.items.filter(i => i.id !== selected) })); setSelected(next); }}><Trash2 size={15} />删除</button></div></div>

@@ -45,10 +45,8 @@ it("preserves text paste and does not upload from unrelated editors or dialogs",
   expect(mocks.upload).not.toHaveBeenCalled();
 });
 
-it("does not upload from explore, another homepage mode, or a hidden outgoing page", () => {
-  const view = render(<DiscoverHome explore />);
-  paste(document.body, [image()]);
-  view.rerender(<DiscoverHome />);
+it("does not upload from another homepage mode or a hidden outgoing page", () => {
+  const view = render(<DiscoverHome />);
   fireEvent.click(screen.getByRole("tab", { name: /电商套图/ }));
   paste(document.body, [image()]);
   view.rerender(<div hidden inert><DiscoverHome /></div>);

@@ -38,12 +38,9 @@ vi.mock("@/i18n/navigation", () => ({ useRouter: () => ({ push: mocks.navigate, 
 }}>{children}</a> }));
 vi.mock("../../src/components/discover/DiscoverHome", () => ({ default: function Home() {
   const [text, setText] = useState("");
-  const visible = usePageVisible();
-  return <section><h1>创作内容</h1><input aria-label="草稿" value={text} onChange={event => setText(event.target.value)} /><span data-testid="home-visible">{String(visible)}</span></section>;
-} }));
-vi.mock("../../src/components/discover/ExplorePage", () => ({ default: function Explore() {
   const [query, setQuery] = useState("");
-  return <section><h1>灵感内容</h1><input aria-label="筛选" value={query} onChange={event => setQuery(event.target.value)} /><NavigationLink href="/explore/public-one">打开灵感图片</NavigationLink><NavigationLink href="/explore/legacy">打开旧案例</NavigationLink></section>;
+  const visible = usePageVisible();
+  return <section><h1>创作内容</h1><input aria-label="草稿" value={text} onChange={event => setText(event.target.value)} /><input aria-label="筛选" value={query} onChange={event => setQuery(event.target.value)} /><NavigationLink href="/explore/public-one">打开灵感图片</NavigationLink><NavigationLink href="/explore/legacy">打开旧案例</NavigationLink><span data-testid="home-visible">{String(visible)}</span></section>;
 } }));
 
 function subscribe(callback) {
@@ -54,8 +51,8 @@ function subscribe(callback) {
 function Shell({ children = <h1>其他页面</h1> }) {
   return <CreativePages><nav>
     <NavigationLink href="/">首页</NavigationLink>
-    <NavigationLink href="/explore">灵感</NavigationLink>
-    <NavigationLink href="/explore?category=poster">海报</NavigationLink>
+    <NavigationLink href="/#inspiration">灵感</NavigationLink>
+    <NavigationLink href="/?category=poster#inspiration">海报</NavigationLink>
     <NavigationLink href="/projects">项目</NavigationLink>
     <NavigationLink href="/assets">素材</NavigationLink>
     <NavigationLink href="/commerce?document=commerce-one">电商</NavigationLink>
@@ -97,14 +94,14 @@ test("opens a cached inspiration on the first click and preserves filters on ret
   writeGalleryCache({ items: [item], layout: { mode: "masonry", columns: 4, gap: 16 } });
   render(<Shell />);
   fireEvent.click(screen.getByRole("link", { name: "灵感", exact: true }));
-  await screen.findByRole("heading", { name: "灵感内容" });
+  await screen.findByRole("heading", { name: "创作内容" });
   fireEvent.change(screen.getByLabelText("筛选"), { target: { value: "保留筛选" } });
   fireEvent.click(screen.getByRole("link", { name: "打开灵感图片" }));
   await screen.findByRole("heading", { name: "详情：已加载的灵感" });
   expect(window.location.pathname).toBe("/zh/explore/public-one");
-  expect(screen.queryByRole("heading", { name: "灵感内容" })).toBeNull();
+  expect(screen.queryByRole("heading", { name: "创作内容" })).toBeNull();
   expect(mocks.navigate).not.toHaveBeenCalled();
-  act(() => { window.history.replaceState(null, "", "/zh/explore"); window.dispatchEvent(new PopStateEvent("popstate")); });
+  act(() => { window.history.replaceState(null, "", "/zh"); window.dispatchEvent(new PopStateEvent("popstate")); });
   expect(screen.getByLabelText("筛选").value).toBe("保留筛选");
   act(() => { window.history.replaceState(null, "", "/zh/explore/public-one"); window.dispatchEvent(new PopStateEvent("popstate")); });
   expect(screen.getByRole("heading", { name: "详情：已加载的灵感" })).toBeTruthy();
@@ -116,16 +113,16 @@ function NextHistoryCommit({ pathname, children }) {
 }
 
 test("observes a Next route commit that updates history after render without popstate", async () => {
-  mocks.pathname = "/zh/explore";
+  mocks.pathname = "/zh";
   window.history.replaceState(null, "", mocks.pathname);
   const view = render(<NextHistoryCommit pathname={mocks.pathname}><Shell /></NextHistoryCommit>);
-  await screen.findByRole("heading", { name: "灵感内容" });
+  await screen.findByRole("heading", { name: "创作内容" });
   fireEvent.click(screen.getByRole("link", { name: "打开旧案例" }));
   expect(mocks.navigate).toHaveBeenCalledExactlyOnceWith("/explore/legacy");
   mocks.pathname = "/zh/explore/legacy";
   view.rerender(<NextHistoryCommit pathname={mocks.pathname}><Shell><h1>服务端旧案例详情</h1></Shell></NextHistoryCommit>);
   expect(await screen.findByRole("heading", { name: "服务端旧案例详情" })).toBeTruthy();
-  expect(screen.queryByRole("heading", { name: "灵感内容" })).toBeNull();
+  expect(screen.queryByRole("heading", { name: "创作内容" })).toBeNull();
 });
 
 test("direct detail visits keep server validation instead of trusting stored gallery entries", () => {
@@ -138,9 +135,9 @@ test("direct detail visits keep server validation instead of trusting stored gal
 
 test("disabled inspiration entries still use the validated server route", async () => {
   writeGalleryCache({ items: [{ id: "public-one", title: "已下架", enabled: false }], layout: { mode: "masonry", columns: 4, gap: 16 } });
-  window.history.replaceState(null, "", "/zh/explore");
+  window.history.replaceState(null, "", "/zh");
   render(<Shell />);
-  await screen.findByRole("heading", { name: "灵感内容" });
+  await screen.findByRole("heading", { name: "创作内容" });
   fireEvent.click(screen.getByRole("link", { name: "打开灵感图片" }));
   expect(mocks.navigate).toHaveBeenCalledExactlyOnceWith("/explore/public-one");
 });
@@ -155,8 +152,8 @@ test("renders the homepage immediately instead of a stale layout route slot", ()
 test("keeps the homepage draft when the server route slot changes", async () => {
   const view = render(<Shell><h1>首页路由插槽</h1></Shell>);
   fireEvent.change(screen.getByRole("textbox", { name: "草稿" }), { target: { value: "不要替换我的输入框" } });
-  fireEvent.click(screen.getByRole("link", { name: "灵感" }));
-  await screen.findByRole("heading", { name: "灵感内容" });
+  fireEvent.click(screen.getByRole("link", { name: "项目", exact: true }));
+  await screen.findByRole("heading", { name: "项目内容" });
   view.rerender(<Shell><h1>灵感路由插槽</h1></Shell>);
   fireEvent.click(screen.getByRole("link", { name: "首页" }));
   expect(screen.getByRole("textbox", { name: "草稿" }).value).toBe("不要替换我的输入框");
@@ -165,9 +162,9 @@ test("keeps the homepage draft when the server route slot changes", async () => 
 
 test("does not replace the homepage with the entry route after session resolution", async () => {
   mocks.user = null;
-  window.history.replaceState(null, "", "/zh/explore");
+  window.history.replaceState(null, "", "/zh/projects");
   const view = render(<Shell><h1>首次打开的灵感路由插槽</h1></Shell>);
-  await screen.findByRole("heading", { name: "灵感内容" });
+  await screen.findByRole("heading", { name: "项目内容" });
   fireEvent.click(screen.getByRole("link", { name: "首页" }));
   expect(screen.getByRole("textbox", { name: "草稿" })).toBeTruthy();
   mocks.user = "user-a";
@@ -176,20 +173,19 @@ test("does not replace the homepage with the entry route after session resolutio
   expect(screen.queryByRole("heading", { name: "首次打开的灵感路由插槽" })).toBeNull();
 });
 
-test("switches visited pages locally while preserving drafts and filters", async () => {
+test("switches visited pages locally while preserving homepage drafts and inspiration filters", async () => {
   render(<Shell />);
   await screen.findByRole("heading", { name: "创作内容" });
   fireEvent.change(screen.getByLabelText("草稿"), { target: { value: "不要丢失" } });
-  expect(screen.getByRole("link", { name: "灵感" }).dataset.prefetch).toBe("false");
-  fireEvent.click(screen.getByRole("link", { name: "灵感" }));
-  await screen.findByRole("heading", { name: "灵感内容" });
+  fireEvent.change(screen.getByLabelText("筛选"), { target: { value: "猫" } });
+  expect(screen.getByRole("link", { name: "项目", exact: true }).dataset.prefetch).toBe("false");
+  fireEvent.click(screen.getByRole("link", { name: "项目", exact: true }));
+  await screen.findByRole("heading", { name: "项目内容" });
   expect(screen.queryByRole("heading", { name: "创作内容" })).toBeNull();
   expect(screen.getByTestId("home-visible").textContent).toBe("false");
-  fireEvent.change(screen.getByLabelText("筛选"), { target: { value: "猫" } });
   fireEvent.click(screen.getByRole("link", { name: "首页" }));
   expect(screen.getByRole("heading", { name: "创作内容" })).toBeTruthy();
   expect(screen.getByLabelText("草稿").value).toBe("不要丢失");
-  fireEvent.click(screen.getByRole("link", { name: "灵感" }));
   expect(screen.getByLabelText("筛选").value).toBe("猫");
   expect(mocks.navigate).not.toHaveBeenCalled();
 });
@@ -198,18 +194,18 @@ test("handles query links and browser history without page fetches", async () =>
   render(<Shell />);
   await screen.findByRole("heading", { name: "创作内容" });
   fireEvent.click(screen.getByRole("link", { name: "海报" }));
-  await screen.findByRole("heading", { name: "灵感内容" });
+  await screen.findByRole("heading", { name: "创作内容" });
   expect(window.location.search).toBe("?category=poster");
   act(() => { window.history.replaceState(null, "", "/zh"); window.dispatchEvent(new PopStateEvent("popstate")); });
   expect(screen.getByRole("heading", { name: "创作内容" })).toBeTruthy();
   expect(mocks.navigate).not.toHaveBeenCalled();
 });
 
-test("renders a directly opened explore page and restores other routes", async () => {
-  window.history.replaceState(null, "", "/zh/explore");
+test("renders a directly opened homepage and restores other routes", async () => {
+  window.history.replaceState(null, "", "/zh");
   render(<Shell />);
-  await screen.findByRole("heading", { name: "灵感内容" });
-  expect(screen.queryByRole("heading", { name: "创作内容" })).toBeNull();
+  await screen.findByRole("heading", { name: "创作内容" });
+  expect(screen.getByRole("heading", { name: "创作内容" })).toBeTruthy();
   act(() => { window.history.replaceState(null, "", "/zh/explore/example"); window.dispatchEvent(new PopStateEvent("popstate")); });
   expect(screen.getByRole("heading", { name: "其他页面" })).toBeTruthy();
   fireEvent.click(screen.getByRole("link", { name: "首页" }));

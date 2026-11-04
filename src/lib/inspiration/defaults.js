@@ -1,5 +1,6 @@
 // Generated artwork and adapted open-source prompts. See docs/inspiration/README.md for provenance.
 import { VIBRANT_ITEMS } from "./vibrant-defaults.js";
+import { DIVERSE_ITEMS } from "./diverse-defaults.js";
 export const DEFAULT_LAYOUT = { mode: "masonry", columns: 4, gap: 16 };
 export const LEGACY_ITEMS = [
   {
@@ -503,4 +504,5 @@ export const LEGACY_ITEMS = [
     "imageVersion": "11d715efd90b"
   }
 ];
-export const DEFAULT_ITEMS = [...VIBRANT_ITEMS, ...LEGACY_ITEMS];
+export const PREVIOUS_DEFAULT_ITEMS = [...VIBRANT_ITEMS, ...LEGACY_ITEMS];
+export const DEFAULT_ITEMS = [...PREVIOUS_DEFAULT_ITEMS, ...DIVERSE_ITEMS];

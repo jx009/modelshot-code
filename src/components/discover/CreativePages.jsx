@@ -21,7 +21,6 @@ function cachedInspiration(href) {
 }
 
 const loaders = {
-  "/explore": () => import("./ExplorePage"),
   "/projects": () => import("./CreativeProjects"),
   "/assets": () => import("@/components/studio/AssetLibrary"),
   "/commerce": () => import("./CommercePage"),
@@ -30,7 +29,7 @@ const loaders = {
   "/video": () => import("@/components/video/VideoWorkspace"),
 };
 const pages = { "/": DiscoverHome, ...Object.fromEntries(Object.entries(loaders).map(([path, load]) => [path, lazy(load)])) };
-const retained = new Set(["/", "/explore", "/projects", "/assets"]);
+const retained = new Set(["/", "/projects", "/assets"]);
 const historyEvent = LOCAL_NAVIGATION_EVENT;
 const snapshot = () => destinationPath(window.location.pathname);
 function subscribe(callback) {

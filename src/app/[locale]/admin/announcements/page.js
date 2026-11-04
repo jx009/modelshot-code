@@ -80,7 +80,7 @@ export default function AnnouncementsPage() {
             const action = e.target.value;
             setItems(rows => rows.map(a => a.id === selected ? { ...a, buttonAction: action, ...(action === "qr" && (!a.buttonText || a.buttonText === "立即查看") ? { buttonText: "点击加群" } : {}) } : a)); setMessage("");
           }}><option value="link">打开链接</option><option value="qr">弹窗展示二维码</option></select></Field>
-          <Field label="按钮文案"><input className={fieldClass} maxLength={24} value={current.buttonText} onChange={e => update("buttonText", e.target.value)} /></Field>{current.buttonAction !== "qr" && <Field label="按钮链接（留空隐藏按钮）"><input className={fieldClass} placeholder="/explore 或 https://…" maxLength={500} value={current.buttonUrl} onChange={e => update("buttonUrl", e.target.value)} /></Field>}</div>
+          <Field label="按钮文案"><input className={fieldClass} maxLength={24} value={current.buttonText} onChange={e => update("buttonText", e.target.value)} /></Field>{current.buttonAction !== "qr" && <Field label="按钮链接（留空隐藏按钮）"><input className={fieldClass} placeholder="/#inspiration 或 https://…" maxLength={500} value={current.buttonUrl} onChange={e => update("buttonUrl", e.target.value)} /></Field>}</div>
         {current.buttonAction === "qr" && <div className="rounded-xl border border-divider p-4 space-y-3">
           <Field label={current.qrImage ? "更换二维码" : "上传二维码"}><input type="file" accept="image/png,image/jpeg,image/webp" className={fieldClass} onChange={e => { void uploadQr(e.target.files?.[0]); e.target.value = ""; }} /></Field>
           <p className="text-xs text-secondary-text leading-6">支持 PNG、JPG、WebP，最大 5 MB。永久存入「存储配置」中已启用的腾讯 COS，用户直接从 COS 加载。国内存储请选择中国内地地域的存储桶。</p>

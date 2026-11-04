@@ -28,9 +28,9 @@ afterAll(async () => {
   await f.cleanup();
 });
 
-it("serves 40 generated defaults only when no gallery is configured", async () => {
+it("serves the complete generated defaults only when no gallery is configured", async () => {
   const gallery = await publicInspirationGallery(f.db);
-  expect(gallery.items).toHaveLength(40);
+  expect(gallery.items).toHaveLength(DEFAULT_ITEMS.length);
   for (const item of gallery.items) {
     expect(item.prompt.length).toBeGreaterThan(200);
     expect(item.prompt.length).toBeLessThanOrEqual(4000);

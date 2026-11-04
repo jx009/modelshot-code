@@ -6,7 +6,6 @@ import { useNavigationState } from "./NavigationFeedback";
 
 const TITLES = {
   "/": ["创作首页", "Create"],
-  "/explore": ["灵感发现", "Explore"],
   "/commerce": ["电商套图 Agent", "Commerce Agent"],
   "/studio-v2": ["自由画布", "Canvas"],
   "/studio": ["工作室", "Studio"],

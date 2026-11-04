@@ -27,14 +27,16 @@ test("curates generated inspiration, publishes a site output and reuses its full
     expect((await request.get("/api/admin/inspiration")).status()).toBe(401);
     expect((await request.get("/api/inspiration/not-published/image")).status()).toBe(404);
     await page.goto("/zh/explore");
-    await expect(page.locator(".ig-card")).toHaveCount(40);
+    await expect(page).toHaveURL(/\/zh#inspiration$/);
+    await expect(page.getByRole("navigation", { name: "创作导航", exact: true }).getByRole("link", { name: "灵感发现", exact: true })).toHaveCount(0);
+    await expect(page.locator(".ig-card")).toHaveCount(DEFAULT_ITEMS.length);
     await expect(page.locator(".ig-masonry")).toBeVisible();
     await loadGalleryImages(page);
     await assertNativeImages(page);
     await page.screenshot({ path: info.outputPath("inspiration-default-native.png"), fullPage: true });
     await page.evaluate(() => localStorage.setItem("theme", "light"));
     await page.goto("/zh");
-    await expect(page.locator(".ig-card")).toHaveCount(40);
+    await expect(page.locator(".ig-card")).toHaveCount(DEFAULT_ITEMS.length);
     await loadGalleryImages(page);
     await assertNativeImages(page);
     await page.screenshot({ path: info.outputPath("inspiration-home-light.png"), fullPage: true });
@@ -81,7 +83,7 @@ test("curates generated inspiration, publishes a site output and reuses its full
     await page.getByLabel("Password", { exact: true }).fill(E2E_PASSWORD);
     await page.getByRole("button", { name: "Sign in", exact: true }).click();
     await expect(page.getByRole("heading", { name: "灵感管理", exact: true })).toBeVisible();
-    await expect(page.locator(".ig-admin-row")).toHaveCount(40);
+    await expect(page.locator(".ig-admin-row")).toHaveCount(DEFAULT_ITEMS.length);
     await page.getByRole("button", { name: `下移 ${DEFAULT_ITEMS[0].title}`, exact: true }).click();
     await expect(page.locator(".ig-admin-select strong").first()).toHaveText(DEFAULT_ITEMS[1].title);
     await page.getByLabel("展示方式", { exact: true }).selectOption("masonry");
@@ -103,7 +105,7 @@ test("curates generated inspiration, publishes a site output and reuses its full
     const publish = page.waitForResponse(r => r.url().endsWith("/api/admin/inspiration") && r.request().method() === "PATCH");
     await page.getByRole("button", { name: "保存并发布", exact: true }).click();
     expect((await publish).status()).toBe(200);
-    await expect(page.getByText("灵感库已保存，首页与灵感发现会读取最新内容。", { exact: true })).toBeVisible();
+    await expect(page.getByText("灵感库已保存，创作首页的灵感区会读取最新内容。", { exact: true })).toBeVisible();
     await page.screenshot({ path: info.outputPath("inspiration-admin.png"), fullPage: true });
     const publicData = await (await request.get("/api/inspiration")).json();
     expect(publicData.items).toHaveLength(41);
@@ -114,7 +116,7 @@ test("curates generated inspiration, publishes a site output and reuses its full
     expect((await request.get(`/api/inspiration/${custom.id}/image`)).status()).toBe(200);
     expect((await request.get(`/api/assets/${asset.id}`)).status()).toBe(401);
     await page.goto("/zh/explore");
-    await expect(page.locator(".ig-card")).toHaveCount(41);
+    await expect(page.locator(".ig-card")).toHaveCount(DEFAULT_ITEMS.length + 1);
     await loadGalleryImages(page);
     await assertNativeImages(page);
     await page.screenshot({ path: info.outputPath("inspiration-gallery.png"), fullPage: true });

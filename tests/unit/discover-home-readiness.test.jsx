@@ -12,7 +12,7 @@ vi.mock("next-auth/react", () => ({ useSession: () => ({ status: "authenticated"
 vi.mock("next-intl", () => ({ useLocale: () => "zh" }));
 vi.mock("next/navigation", () => ({ usePathname: () => window.location.pathname }));
 vi.mock("../../src/components/discover/CreativeShell", () => ({ default: ({ children }) => <main>{children}</main> }));
-vi.mock("../../src/components/discover/ExplorePage", () => ({ default: () => <h1>灵感页面</h1> }));
+vi.mock("../../src/components/discover/CreativeProjects", () => ({ default: () => <h1>项目页面</h1> }));
 vi.mock("@/hooks/useNavigationRouter", () => ({ useNavigationRouter: () => ({ push: vi.fn() }) }));
 vi.mock("@/lib/client-api", () => ({ api: mocks.api, requestKey: () => "test-key" }));
 vi.mock("@/components/studio/AssetImage", () => ({ default: ({ alt }) => <span>{alt}</span> }));
@@ -29,7 +29,7 @@ afterEach(cleanup);
 
 function PageLinks() {
   const navigation = useLocalNavigation();
-  return <nav><button onClick={() => navigation.visit("/explore", { scroll: false })}>查看灵感</button><button onClick={() => navigation.visit("/", { scroll: false })}>回到首页</button></nav>;
+  return <nav><button onClick={() => navigation.visit("/projects", { scroll: false })}>查看项目</button><button onClick={() => navigation.visit("/", { scroll: false })}>回到首页</button></nav>;
 }
 
 test("keeps the actual composer visible through local navigation while models are pending", async () => {
@@ -39,8 +39,8 @@ test("keeps the actual composer visible through local navigation while models ar
   fireEvent.change(composer, { target: { value: "切回来仍然可以继续写" } });
   expect(screen.getByRole("button", { name: "开始创作" })).toBeTruthy();
   expect(screen.queryByRole("heading", { name: "旧的服务端路由内容" })).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "查看灵感" }));
-  await screen.findByRole("heading", { name: "灵感页面" });
+  fireEvent.click(screen.getByRole("button", { name: "查看项目" }));
+  await screen.findByRole("heading", { name: "项目页面" });
   expect(screen.queryByRole("textbox", { name: "描述你的创意" })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "回到首页" }));
   expect(screen.getByRole("textbox", { name: "描述你的创意" })).toBe(composer);

@@ -28,7 +28,7 @@ export async function saveInspirationGallery(tx, input) {
   await lockInspirationGallery(tx);
   const before = await getInspirationGallery(tx);
   if (before.version !== input.version) throw new AppError("INSPIRATION_CHANGED", 409);
-  const after = gallerySchema.parse({ items: input.items, layout: input.layout, catalogVersion: 2 });
+  const after = gallerySchema.parse({ items: input.items, layout: input.layout, catalogVersion: 3 });
   const ids = [...new Set(after.items.filter(i => i.cover.type === "asset").map(i => i.cover.assetId))];
   // Lock owners just like asset deletion/retention, preventing a publication/deletion race.
   const assets = ids.length ? await tx.asset.findMany({ where: { id: { in: ids } } }) : [];

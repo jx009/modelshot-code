@@ -1,6 +1,7 @@
 // Generated artwork and adapted open-source prompts. See docs/inspiration/README.md for provenance.
+import { VIBRANT_ITEMS } from "./vibrant-defaults.js";
 export const DEFAULT_LAYOUT = { mode: "masonry", columns: 4, gap: 16 };
-export const DEFAULT_ITEMS = [
+export const LEGACY_ITEMS = [
   {
     "id": "rainy-comic",
     "promptZh": "创作一页原创日式双格漫画，正方形构图，左右并排两个大小相同的画格。一位年轻成年女性，黑色短波波头，穿赭黄色雨衣、撑透明雨伞，在下雨的京都一家小花店外等候。第一格：她望着大雨，神情有些失落；城市背景采用蓝灰色水彩与细密钢笔排线。第二格：一只小白猫躲到她的伞下，她的表情逐渐柔和，露出微笑；湿润路面倒映着店内温暖的灯光。两格中的人物造型和服装必须完全一致。手绘画格边框优雅，结合电影感近景与中景，使用低饱和靛蓝、赭黄和暖象牙白配色，精细少女漫画线条与轻柔纸张颗粒。不要对话气泡、说明文字、标志或水印。呈现完成度高的漫画页，表情细腻，人体结构准确。",
@@ -502,3 +503,4 @@ export const DEFAULT_ITEMS = [
     "imageVersion": "11d715efd90b"
   }
 ];
+export const DEFAULT_ITEMS = [...VIBRANT_ITEMS, ...LEGACY_ITEMS];

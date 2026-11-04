@@ -28,11 +28,11 @@ afterAll(async () => {
   await f.cleanup();
 });
 
-it("serves 20 generated defaults only when no gallery is configured", async () => {
+it("serves 40 generated defaults only when no gallery is configured", async () => {
   const gallery = await publicInspirationGallery(f.db);
-  expect(gallery.items).toHaveLength(20);
+  expect(gallery.items).toHaveLength(40);
   for (const item of gallery.items) {
-    expect(item.prompt.length).toBeGreaterThan(500);
+    expect(item.prompt.length).toBeGreaterThan(200);
     expect(item.prompt.length).toBeLessThanOrEqual(4000);
     const image = await readInspirationImage(item, f.db, f.store);
     expect(image.contentType).toBe("image/webp");

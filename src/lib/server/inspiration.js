@@ -4,7 +4,7 @@ import path from "node:path";
 import { prisma } from "../prisma.js";
 import { AppError } from "../http.js";
 import { objectStorage } from "../infra/storage/s3.js";
-import { defaultGallery, gallerySchema } from "../inspiration/gallery.js";
+import { defaultGallery, gallerySchema, upgradeDefaultGallery } from "../inspiration/gallery.js";
 
 // Separate from generic settings: all gallery writes must maintain asset references.
 const KEY = "inspiration_gallery_v1";
@@ -14,7 +14,7 @@ export async function lockInspirationGallery(tx) {
 }
 export async function getInspirationGallery(db = prisma) {
   const row = await db.systemConfig.findUnique({ where: { key: KEY } });
-  const gallery = gallerySchema.parse(row ? JSON.parse(row.value) : defaultGallery);
+  const gallery = gallerySchema.parse(upgradeDefaultGallery(gallerySchema.parse(row ? JSON.parse(row.value) : defaultGallery)));
   return { ...gallery, version: galleryVersion(gallery) };
 }
 export async function publicInspirationGallery(db = prisma) {
@@ -28,7 +28,7 @@ export async function saveInspirationGallery(tx, input) {
   await lockInspirationGallery(tx);
   const before = await getInspirationGallery(tx);
   if (before.version !== input.version) throw new AppError("INSPIRATION_CHANGED", 409);
-  const after = gallerySchema.parse({ items: input.items, layout: input.layout });
+  const after = gallerySchema.parse({ items: input.items, layout: input.layout, catalogVersion: 2 });
   const ids = [...new Set(after.items.filter(i => i.cover.type === "asset").map(i => i.cover.assetId))];
   // Lock owners just like asset deletion/retention, preventing a publication/deletion race.
   const assets = ids.length ? await tx.asset.findMany({ where: { id: { in: ids } } }) : [];

@@ -1,0 +1,625 @@
+{
+  "generatedAt": "2026-11-03",
+  "endpoint": "https://api.callyouai.com/codex/images/generations",
+  "requestedModel": "gpt-image-2.5",
+  "quality": "medium",
+  "note": "Twenty original designs selected from two candidates each. Native output dimensions vary and are recorded without upscaling, stretching or cropping. Reuse recipes request 2K, subject to the selected model. Provider model identity is the requested identifier, not an independent verification of internal routing. Interrupted creator-pop-a and architecture-night-b transfers were retried; club-future-b returned HTTP 524 and sneaker-chrome-a returned HTTP 502 before a successful retry. Partial responses are retained locally. The first neon-creator-a request included n=2 but returned only one image; remaining requests were made individually. Original candidates and full responses stay local and are ignored by Git. Any genuine post-selection edit is listed per image; other variants are independent generations, not claimed before/after edits.",
+  "candidateCount": 40,
+  "publishedCount": 20,
+  "totalPublishedBytes": 8561850,
+  "images": [
+    {
+      "id": "neon-creator",
+      "title": "脑洞开大",
+      "requestedSize": "1536x2048",
+      "generationSize": "3:4@2K",
+      "quality": "medium",
+      "selectedVariant": "b",
+      "selectionReason": "更大的真实输出尺寸，荧光绿主副标题完整，三个贴纸文字清楚，人物面部和双手无遮挡。",
+      "candidates": [
+        {
+          "variant": "a",
+          "localFile": "output/imagegen/inspiration-2026/neon-creator-a.png",
+          "originalSize": "768x1024",
+          "sha256": "1e845ff577bcaeca1e7615a38ff2b1733d1e342a13e9f53bbf05df33ff30adbd",
+          "durationMs": 16371,
+          "created": 1793690856
+        },
+        {
+          "variant": "b",
+          "localFile": "output/imagegen/inspiration-2026/neon-creator-b.png",
+          "originalSize": "1086x1448",
+          "sha256": "85cfc2cbad3ca12cc485d647990d5deb3ba7d3d05f592bd15dfadedd7622dabd",
+          "durationMs": 32106,
+          "created": 1793691010
+        }
+      ],
+      "publishedFile": "public/inspiration/generated/neon-creator.28d6fc2c622c.webp",
+      "publishedSize": "1086x1448",
+      "publishedBytes": 353768,
+      "sha256": "28d6fc2c622c50e23ea3e0ccfb5aebe07ecc2b35dc3fb93e22ae5d13eca023df"
+    },
+    {
+      "id": "creator-pop",
+      "title": "灵感别刹车",
+      "requestedSize": "1536x2048",
+      "generationSize": "3:4@2K",
+      "quality": "medium",
+      "selectedVariant": "b",
+      "selectionReason": "原生 1536×2048，伸手动势与蓝黄色速度线一致，标题醒目且产品式杂志排版更饱满。",
+      "candidates": [
+        {
+          "variant": "a",
+          "localFile": "output/imagegen/inspiration-2026/creator-pop-a.png",
+          "originalSize": "768x1024",
+          "sha256": "2308ebbfea4cd7c5d67af75647cf5fa3aeed1a06b2cc17280600a96bd9da52ff",
+          "durationMs": 25408,
+          "created": 1793691555
+        },
+        {
+          "variant": "b",
+          "localFile": "output/imagegen/inspiration-2026/creator-pop-b.png",
+          "originalSize": "1536x2048",
+          "sha256": "2965bc777c0353a35146ec6099e5007a0dda2e7a0ea67a1183a2aca5172083e1",
+          "created": 1793691575
+        }
+      ],
+      "publishedFile": "public/inspiration/generated/creator-pop.bc364dd5b4f0.webp",
+      "publishedSize": "1536x2048",
+      "publishedBytes": 839250,
+      "sha256": "bc364dd5b4f02147a7c1c38a632a43a18a12f42f518315778de0ff6f9f40563a"
+    },
+    {
+      "id": "creator-sticker",
+      "title": "今天画点大的",
+      "requestedSize": "1536x2048",
+      "generationSize": "3:4@2K",
+      "quality": "medium",
+      "selectedVariant": "a",
+      "selectionReason": "1086×1448 原生图，紫色面料反光细致，花哨立体标题与周围贴纸层级更丰富。",
+      "candidates": [
+        {
+          "variant": "a",
+          "localFile": "output/imagegen/inspiration-2026/creator-sticker-a.png",
+          "originalSize": "1086x1448",
+          "sha256": "95726df713858f3ca04ea895dbc71902883598fc4b5a8fc18d1fec136f4fbee6",
+          "durationMs": 25485,
+          "created": 1793691649
+        },
+        {
+          "variant": "b",
+          "localFile": "output/imagegen/inspiration-2026/creator-sticker-b.png",
+          "originalSize": "768x1024",
+          "sha256": "267daff85a5e703aa5a7414e911c65577c730a9984fc95f7d432f0aea80d82af",
+          "durationMs": 14883,
+          "created": 1793691678
+        }
+      ],
+      "publishedFile": "public/inspiration/generated/creator-sticker.e78b6c23cf24.webp",
+      "publishedSize": "1086x1448",
+      "publishedBytes": 444192,
+      "sha256": "e78b6c23cf241c5459d30ea779499d83ec3a39d125b2aa4c55611f9f439a4134"
+    },
+    {
+      "id": "creator-collage",
+      "title": "把脑洞贴出来",
+      "requestedSize": "1152x2048",
+      "generationSize": "9:16@2K",
+      "quality": "medium",
+      "selectedVariant": "b",
+      "selectionReason": "长构图节奏更清楚，双人摄影主体自然，中文大标题和三个短贴纸均可辨读。",
+      "candidates": [
+        {
+          "variant": "a",
+          "localFile": "output/imagegen/inspiration-2026/creator-collage-a.png",
+          "originalSize": "864x1536",
+          "sha256": "2620a064f708e4cec93121ed31b39f5dd12add260a55d3b5068b1aab5b880439",
+          "durationMs": 18433,
+          "created": 1793691707
+        },
+        {
+          "variant": "b",
+          "localFile": "output/imagegen/inspiration-2026/creator-collage-b.png",
+          "originalSize": "864x1536",
+          "sha256": "c54d6142c52895051feecbdd99b59dadf496e5c410ab977ecb688ce2eec33698",
+          "durationMs": 22036,
+          "created": 1793691744
+        }
+      ],
+      "publishedFile": "public/inspiration/generated/creator-collage.ea27df381e88.webp",
+      "publishedSize": "864x1536",
+      "publishedBytes": 496108,
+      "sha256": "ea27df381e88c86fe31acef601afda9ae294e7b08222436e5284bc994b99cb57"
+    },
+    {
+      "id": "cocoa-lux",
+      "title": "浓一点才过瘾",
+      "requestedSize": "1536x2048",
+      "generationSize": "3:4@2K",
+      "quality": "medium",
+      "selectedVariant": "a",
+      "selectionReason": "原生 1536×2048，巧克力和燕麦乳双弧线清晰，瓶标完整，布朗尼与液滴层次丰富。",
+      "candidates": [
+        {
+          "variant": "a",
+          "localFile": "output/imagegen/inspiration-2026/cocoa-lux-a.png",
+          "originalSize": "1536x2048",
+          "sha256": "4a3eb031d9e762c3e4a2ffedc565172cac3812b9957525369bb9b2268d026c48",
+          "created": 1793691763
+        },
+        {
+          "variant": "b",
+          "localFile": "output/imagegen/inspiration-2026/cocoa-lux-b.png",
+          "originalSize": "1086x1448",
+          "sha256": "dcb77c5d4b11d0bcc43d3c64478fe176c2add2fa62bef8a9446554955a4de2a8",
+          "durationMs": 20862,
+          "created": 1793691831
+        }
+      ],
+      "publishedFile": "public/inspiration/generated/cocoa-lux.0721fd6f8d88.webp",
+      "publishedSize": "1536x2048",
+      "publishedBytes": 501970,
+      "sha256": "0721fd6f8d889305d3e5d32b0197bbd9fc444a0d825ae5abb4c4529b22088562"
+    },
+    {
+      "id": "cocoa-orbit",
+      "title": "黑巧星球",
+      "requestedSize": "2048x2048",
+      "generationSize": "1:1@2K",
+      "quality": "medium",
+      "selectedVariant": "b",
+      "selectionReason": "更鲜明的行星液体轨道，黑巧与奶白边缘清晰，标签和主副标题易读。",
+      "candidates": [
+        {
+          "variant": "a",
+          "localFile": "output/imagegen/inspiration-2026/cocoa-orbit-a.png",
+          "originalSize": "1024x1024",
+          "sha256": "9fa7cd1be143ecee9a23e65ffe6c65ceff5d935ce050f7ad3bcb1cea5294b281",
+          "durationMs": 47739,
+          "created": 1793691893
+        },
+        {
+          "variant": "b",
+          "localFile": "output/imagegen/inspiration-2026/cocoa-orbit-b.png",
+          "originalSize": "1024x1024",
+          "sha256": "3d824625970909bc529fa94589b967f86848f9e02b287dd341cb0d2aafcf85dd",
+          "durationMs": 21893,
+          "created": 1793691925
+        }
+      ],
+      "publishedFile": "public/inspiration/generated/cocoa-orbit.410a319e0dd8.webp",
+      "publishedSize": "1024x1024",
+      "publishedBytes": 249280,
+      "sha256": "410a319e0dd81a2d3ead6d549d81866cdff0ddcc4cdbb4b6429403d90519bf87"
+    },
+    {
+      "id": "cocoa-splash",
+      "title": "可可风暴",
+      "requestedSize": "1152x2048",
+      "generationSize": "9:16@2K",
+      "quality": "medium",
+      "selectedVariant": "b",
+      "selectionReason": "原生 1152×2048，纵向流线与瓶身斜向姿态更有动感，长图文案和标签完整。",
+      "candidates": [
+        {
+          "variant": "a",
+          "localFile": "output/imagegen/inspiration-2026/cocoa-splash-a.png",
+          "originalSize": "864x1536",
+          "sha256": "f466ed2c81c576b5e88a3e074b5544ea282e55783c14caaf540cebdb3afd670b",
+          "durationMs": 32897,
+          "created": 1793691969
+        },
+        {
+          "variant": "b",
+          "localFile": "output/imagegen/inspiration-2026/cocoa-splash-b.png",
+          "originalSize": "1152x2048",
+          "sha256": "8c4fceee1ec4116a4280ea8fe9915fead98b6e52f45c0f19628c162ffead5af6",
+          "created": 1793691985
+        }
+      ],
+      "publishedFile": "public/inspiration/generated/cocoa-splash.8fe5e3931d67.webp",
+      "publishedSize": "1152x2048",
+      "publishedBytes": 472588,
+      "sha256": "8fe5e3931d67f02895b614c1c1392490ec757619fe7ee00eac788b5515b2fd14"
+    },
+    {
+      "id": "cocoa-strawberry",
+      "title": "莓果与黑巧",
+      "requestedSize": "1536x2048",
+      "generationSize": "3:4@2K",
+      "quality": "medium",
+      "selectedVariant": "a",
+      "selectionReason": "原生 1536×2048，瓶标、莓果口味和主副标题一致，双股液体与鲜果的层次更清楚。",
+      "candidates": [
+        {
+          "variant": "a",
+          "localFile": "output/imagegen/inspiration-2026/cocoa-strawberry-a.png",
+          "originalSize": "1536x2048",
+          "sha256": "42240b2b25ed3ef8bf1a92d5d4bdbf6e4b8d09a35b39e09fb173711dee0bcfaa",
+          "created": 1793692022
+        },
+        {
+          "variant": "b",
+          "localFile": "output/imagegen/inspiration-2026/cocoa-strawberry-b.png",
+          "originalSize": "768x1024",
+          "sha256": "7f1c54ec247a4b7cd1fc23f68959f4f2c7ea5d8e92d908f6a1b6e7020926738e",
+          "durationMs": 17586,
+          "created": 1793692292
+        }
+      ],
+      "publishedFile": "public/inspiration/generated/cocoa-strawberry.3c0d4bfc6863.webp",
+      "publishedSize": "1536x2048",
+      "publishedBytes": 465532,
+      "sha256": "3c0d4bfc686345bf5448ed73d8fa25fed7038334781f04db89b954b8bcd1528b"
+    },
+    {
+      "id": "club-festival",
+      "title": "脑洞俱乐部嘉年华",
+      "requestedSize": "1152x2048",
+      "generationSize": "9:16@2K",
+      "quality": "medium",
+      "selectedVariant": "a",
+      "selectionReason": "完整六模块网格与大幅主视觉节奏更好，色彩、贴纸和周边系统统一；应用样机的细字仍有乱码，局部清理请求未完整返回，保留原图并明确记录此限制。",
+      "candidates": [
+        {
+          "variant": "a",
+          "localFile": "output/imagegen/inspiration-2026/club-festival-a.png",
+          "originalSize": "864x1536",
+          "sha256": "9951bdcd42fb1d0f21ee1ac92dde9e5016d55e6501f5ec9aacdd9932fb3a24bc",
+          "durationMs": 36348,
+          "created": 1793692337
+        },
+        {
+          "variant": "b",
+          "localFile": "output/imagegen/inspiration-2026/club-festival-b.png",
+          "originalSize": "941x1672",
+          "sha256": "17f2b9cb5bec6a09bf708c76e2d11464d64604978ccb6b3362c264210103017c",
+          "durationMs": 22136,
+          "created": 1793692373
+        }
+      ],
+      "publishedFile": "public/inspiration/generated/club-festival.c57045afc459.webp",
+      "publishedSize": "864x1536",
+      "publishedBytes": 370382,
+      "sha256": "c57045afc4594ad6b6a5b585046ab3ddb57e1b7931d5191cca70128b8bad88cc"
+    },
+    {
+      "id": "club-riso",
+      "title": "脑洞俱乐部丝网版",
+      "requestedSize": "1536x2048",
+      "generationSize": "3:4@2K",
+      "quality": "medium",
+      "selectedVariant": "b",
+      "selectionReason": "人物与周边更完整，主标题、活动口号和胸牌短字可读，套色颗粒与橙绿撞色醒目。",
+      "candidates": [
+        {
+          "variant": "a",
+          "localFile": "output/imagegen/inspiration-2026/club-riso-a.png",
+          "originalSize": "768x1024",
+          "sha256": "95f377dca53b2875d7fc308dc01d029724142cdeb97cb73d6638baa02b1102d4",
+          "durationMs": 36711,
+          "created": 1793692424
+        },
+        {
+          "variant": "b",
+          "localFile": "output/imagegen/inspiration-2026/club-riso-b.png",
+          "originalSize": "1086x1448",
+          "sha256": "34babd82aa94543f43e511b6041a0eec40c5eb18440e85ea75274c84fb642128",
+          "durationMs": 20935,
+          "created": 1793692458
+        }
+      ],
+      "publishedFile": "public/inspiration/generated/club-riso.472a34e7e309.webp",
+      "publishedSize": "1086x1448",
+      "publishedBytes": 697092,
+      "sha256": "472a34e7e309a64b14754f171ae206a25682a8bac504a63427f1e66f9f0c5c36"
+    },
+    {
+      "id": "club-future",
+      "title": "一起造点新鲜的",
+      "requestedSize": "2048x2048",
+      "generationSize": "1:1@2K",
+      "quality": "medium",
+      "selectedVariant": "a",
+      "selectionReason": "1254×1254 原生输出，立体校园装置更完整，主标题层次鲜明，人物活动与周边道具分布更丰富。",
+      "candidates": [
+        {
+          "variant": "a",
+          "localFile": "output/imagegen/inspiration-2026/club-future-a.png",
+          "originalSize": "1254x1254",
+          "sha256": "0833b740419af3ac11cc0f4fca034b496b92a06ce11e5684fa0c6aeb3da9ae51",
+          "durationMs": 25938,
+          "created": 1793692969
+        },
+        {
+          "variant": "b",
+          "localFile": "output/imagegen/inspiration-2026/club-future-b.png",
+          "originalSize": "1024x1024",
+          "sha256": "86d6c5fddc15433b13b44de0c27070359052c881a9329ffba905a90476fead3b",
+          "durationMs": 18153,
+          "created": 1793693420
+        }
+      ],
+      "publishedFile": "public/inspiration/generated/club-future.de5473ebfb1f.webp",
+      "publishedSize": "1254x1254",
+      "publishedBytes": 369126,
+      "sha256": "de5473ebfb1f6644a80dc0d205d96d3566a04a0b70373951e28bedbba1856e4c"
+    },
+    {
+      "id": "club-merch",
+      "title": "把灵感穿出去",
+      "requestedSize": "1536x2048",
+      "generationSize": "3:4@2K",
+      "quality": "medium",
+      "selectedVariant": "a",
+      "selectionReason": "1086×1448 原生输出，人物脸部自然清晰，荧光黄服装与橙色墙面撞色，周边标识统一。",
+      "candidates": [
+        {
+          "variant": "a",
+          "localFile": "output/imagegen/inspiration-2026/club-merch-a.png",
+          "originalSize": "1086x1448",
+          "sha256": "a80d8cbdbfe9a4c89b0e9158fe43631be80e374f84ce0e5e9859954ac667e009",
+          "durationMs": 24876,
+          "created": 1793693457
+        },
+        {
+          "variant": "b",
+          "localFile": "output/imagegen/inspiration-2026/club-merch-b.png",
+          "originalSize": "768x1024",
+          "sha256": "a4d15b6a07032897e17913c270e98eb91c7d0dec0c336cfec6947ac0b5e8f8b7",
+          "durationMs": 18844,
+          "created": 1793693490
+        }
+      ],
+      "publishedFile": "public/inspiration/generated/club-merch.5b4d77287349.webp",
+      "publishedSize": "1086x1448",
+      "publishedBytes": 340538,
+      "sha256": "5b4d772873496d8e7bd2d47cfc0e3e9a4bb8724a7df309e7f95f1ebb38e3cbd2"
+    },
+    {
+      "id": "architecture-red",
+      "title": "城市创意发生器",
+      "requestedSize": "1152x2048",
+      "generationSize": "9:16@2K",
+      "quality": "medium",
+      "selectedVariant": "b",
+      "selectionReason": "选择文字更克制的版本：主标题和六个分析标签准确清楚，没有版本 A 多余的密集说明；建筑形体与概念图较一致。",
+      "candidates": [
+        {
+          "variant": "a",
+          "localFile": "output/imagegen/inspiration-2026/architecture-red-a.png",
+          "originalSize": "1152x2048",
+          "sha256": "4da9ad7bbfa1e960120e6da21ad56aa7f08d699135aec90c5b750dac39f3c170",
+          "created": 1793693744
+        },
+        {
+          "variant": "b",
+          "localFile": "output/imagegen/inspiration-2026/architecture-red-b.png",
+          "originalSize": "864x1536",
+          "sha256": "b67359bd167a56e09d9dbc1e51910b6f968cc0f768f6160458e2b102c4723fc6",
+          "durationMs": 28886,
+          "created": 1793693816
+        }
+      ],
+      "publishedFile": "public/inspiration/generated/architecture-red.7647a97edf7e.webp",
+      "publishedSize": "864x1536",
+      "publishedBytes": 298828,
+      "sha256": "7647a97edf7ed5eb73193bb69cdff575b86bdf0c946e958489b33885c049ae2c"
+    },
+    {
+      "id": "architecture-blueprint",
+      "title": "建筑的下一种可能",
+      "requestedSize": "1536x2048",
+      "generationSize": "3:4@2K",
+      "quality": "medium",
+      "selectedVariant": "a",
+      "selectionReason": "主标题与四个概念模块标签清晰，折板屋顶在透视、剖面和轴测中保持一致；细线图明确仅作概念表达。",
+      "candidates": [
+        {
+          "variant": "a",
+          "localFile": "output/imagegen/inspiration-2026/architecture-blueprint-a.png",
+          "originalSize": "1086x1448",
+          "sha256": "f89f92f014b6793c732a7eb4e791fa76f6a21a14d394fe0917e85a78954884c8",
+          "durationMs": 25833,
+          "created": 1793694998
+        },
+        {
+          "variant": "b",
+          "localFile": "output/imagegen/inspiration-2026/architecture-blueprint-b.png",
+          "originalSize": "1086x1448",
+          "sha256": "8bc73a8eaf24bf2f5e38086bd5e5176056195c0e07df891c90a82a0a16b6caf3",
+          "durationMs": 21724,
+          "created": 1793695035
+        }
+      ],
+      "publishedFile": "public/inspiration/generated/architecture-blueprint.052952081a77.webp",
+      "publishedSize": "1086x1448",
+      "publishedBytes": 422034,
+      "sha256": "052952081a770034b649fb075beef953da40436195cb4dec65e1b759f355b7a4"
+    },
+    {
+      "id": "architecture-night",
+      "title": "夜色里的公共客厅",
+      "requestedSize": "2048x1152",
+      "generationSize": "16:9@2K",
+      "quality": "medium",
+      "selectedVariant": "a",
+      "selectionReason": "原生 2048×1152 横版，红蓝夜景与暖金灯光层次丰富，主标题和功能分区标签清晰，线稿模块统一。",
+      "candidates": [
+        {
+          "variant": "a",
+          "localFile": "output/imagegen/inspiration-2026/architecture-night-a.png",
+          "originalSize": "2048x1152",
+          "sha256": "ca41a34c97c29573266af6280da87d9ccdf77fe93d90d42430d5240888ff3f9c",
+          "created": 1793696482
+        },
+        {
+          "variant": "b",
+          "localFile": "output/imagegen/inspiration-2026/architecture-night-b.png",
+          "originalSize": "1536x864",
+          "sha256": "c3998958a7273a07008ceb305dc1d1a9fcd430564e5350698c059bc61acf1968",
+          "durationMs": 23017,
+          "created": 1793696925
+        }
+      ],
+      "publishedFile": "public/inspiration/generated/architecture-night.a7aad7385356.webp",
+      "publishedSize": "2048x1152",
+      "publishedBytes": 449918,
+      "sha256": "a7aad738535668cd8c8bf9727066f68da01aba2ab807540cc68891c4dbc7f966"
+    },
+    {
+      "id": "architecture-terracotta",
+      "title": "红盒子与蓝色中庭",
+      "requestedSize": "2048x2048",
+      "generationSize": "1:1@2K",
+      "quality": "medium",
+      "selectedVariant": "b",
+      "selectionReason": "1254×1254 原生输出，轴测主体占比更大，构造图、剖面和材料样片清晰，标题与短标签可读。",
+      "candidates": [
+        {
+          "variant": "a",
+          "localFile": "output/imagegen/inspiration-2026/architecture-terracotta-a.png",
+          "originalSize": "1024x1024",
+          "sha256": "db21590fc3a38e14409bffaaed77184b6b4a65a2c61b24b146f5845dd3322c77",
+          "durationMs": 21996,
+          "created": 1793697014
+        },
+        {
+          "variant": "b",
+          "localFile": "output/imagegen/inspiration-2026/architecture-terracotta-b.png",
+          "originalSize": "1254x1254",
+          "sha256": "a45868ecf99a99704ab38042eaf85be9af8347e8ea392b45e0202dcd5994932c",
+          "durationMs": 24604,
+          "created": 1793697049
+        }
+      ],
+      "publishedFile": "public/inspiration/generated/architecture-terracotta.e8fa43947b8f.webp",
+      "publishedSize": "1254x1254",
+      "publishedBytes": 387566,
+      "sha256": "e8fa43947b8f021119b75abca28f4527f6569ca1cb36ac2149309afbc45b7f2e"
+    },
+    {
+      "id": "sneaker-cobalt",
+      "title": "突破边界",
+      "requestedSize": "1536x2048",
+      "generationSize": "3:4@2K",
+      "quality": "medium",
+      "selectedVariant": "b",
+      "selectionReason": "1086×1448 原生输出，球鞋结构和鞋底透明材质清楚，蓝橙轨迹与悬浮动势一致，中英标题易读。",
+      "candidates": [
+        {
+          "variant": "a",
+          "localFile": "output/imagegen/inspiration-2026/sneaker-cobalt-a.png",
+          "originalSize": "768x1024",
+          "sha256": "2be641bde30e9f96c5d4041393a2ad55cad154943f928bcc7f38f295d90545a1",
+          "durationMs": 14614,
+          "created": 1793698001
+        },
+        {
+          "variant": "b",
+          "localFile": "output/imagegen/inspiration-2026/sneaker-cobalt-b.png",
+          "originalSize": "1086x1448",
+          "sha256": "3b913c04653f62406d5b1b1f90b72bc812c3d2418782a82335e7853854ae3a3a",
+          "durationMs": 23855,
+          "created": 1793698044
+        }
+      ],
+      "publishedFile": "public/inspiration/generated/sneaker-cobalt.dff4e4ed428b.webp",
+      "publishedSize": "1086x1448",
+      "publishedBytes": 378934,
+      "sha256": "dff4e4ed428bf50c39079efd4cf560349b59dac9b1aaa2b3fc2ed393565e1006"
+    },
+    {
+      "id": "sneaker-chrome",
+      "title": "霓虹疾行",
+      "requestedSize": "2048x2048",
+      "generationSize": "1:1@2K",
+      "quality": "medium",
+      "selectedVariant": "b",
+      "selectionReason": "方图中产品占比更大，银色光环和蓝橙光轨纵深更强，中英标题完整，鞋面与冰蓝鞋底细节清楚。",
+      "candidates": [
+        {
+          "variant": "a",
+          "localFile": "output/imagegen/inspiration-2026/sneaker-chrome-a.png",
+          "originalSize": "1024x1024",
+          "sha256": "32f981a589b154bf1134180d2cf3f44023fff0e855c51dae030a4c200738f360",
+          "durationMs": 16656,
+          "created": 1793699561
+        },
+        {
+          "variant": "b",
+          "localFile": "output/imagegen/inspiration-2026/sneaker-chrome-b.png",
+          "originalSize": "1024x1024",
+          "sha256": "460e888557a830bb3fc0b7d19c60e63110d2e8ca0e84c376cabd07c397d5fc9f",
+          "durationMs": 17317,
+          "created": 1793699630
+        }
+      ],
+      "publishedFile": "public/inspiration/generated/sneaker-chrome.209c06fb2093.webp",
+      "publishedSize": "1024x1024",
+      "publishedBytes": 286768,
+      "sha256": "209c06fb20930d95b306dc6a58bd1ad1d96e502251c43881d4db6743375ccca6"
+    },
+    {
+      "id": "sneaker-track",
+      "title": "速度的形状",
+      "requestedSize": "1152x2048",
+      "generationSize": "9:16@2K",
+      "quality": "medium",
+      "selectedVariant": "a",
+      "selectionReason": "长图前后景层次与蓝橙光轨更丰富，鞋子轮廓完整，主标题和中文口号醒目清楚。",
+      "candidates": [
+        {
+          "variant": "a",
+          "localFile": "output/imagegen/inspiration-2026/sneaker-track-a.png",
+          "originalSize": "864x1536",
+          "sha256": "dff35ae274191ea45dbc39314f1aae6245265b024c4c8ecae26a9a6f20041d8e",
+          "durationMs": 78852,
+          "created": 1793699999
+        },
+        {
+          "variant": "b",
+          "localFile": "output/imagegen/inspiration-2026/sneaker-track-b.png",
+          "originalSize": "864x1536",
+          "sha256": "b48993bf77f3c7d656a9c82b598c36c9fe0a013b9c932d5008ec9c5e05989d61",
+          "durationMs": 15464,
+          "created": 1793700028
+        }
+      ],
+      "publishedFile": "public/inspiration/generated/sneaker-track.39584cf68bb1.webp",
+      "publishedSize": "864x1536",
+      "publishedBytes": 373636,
+      "sha256": "39584cf68bb1008541b7929fe3794014b48ddad69c3393236f17073fc4da0194"
+    },
+    {
+      "id": "sneaker-editorial",
+      "title": "向前一公里",
+      "requestedSize": "2048x1152",
+      "generationSize": "16:9@2K",
+      "quality": "medium",
+      "selectedVariant": "a",
+      "selectionReason": "原生 2048×1152 横图，产品细节和标题布局更清楚；右侧刻度旁仍有乱码小字，保留原图并明确记录此限制。",
+      "candidates": [
+        {
+          "variant": "a",
+          "localFile": "output/imagegen/inspiration-2026/sneaker-editorial-a.png",
+          "originalSize": "2048x1152",
+          "sha256": "b7ccc07b8f867a98cb0d5c8c2782e977e53940ff2e4a6a08df57a573ca769d8f",
+          "created": 1793700045
+        },
+        {
+          "variant": "b",
+          "localFile": "output/imagegen/inspiration-2026/sneaker-editorial-b.png",
+          "originalSize": "1536x864",
+          "sha256": "ede5cc87f3663b3c3b4f2b4e8492cc45ce415b00660b030ce5cf8e8e3a3eb90c",
+          "durationMs": 17080,
+          "created": 1793700148
+        }
+      ],
+      "publishedFile": "public/inspiration/generated/sneaker-editorial.733777202d1b.webp",
+      "publishedSize": "2048x1152",
+      "publishedBytes": 364340,
+      "sha256": "733777202d1b5732996bac78e07f83bc77c83a320f98984242443687a11ae897"
+    }
+  ]
+}

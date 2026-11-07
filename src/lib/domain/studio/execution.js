@@ -5,10 +5,11 @@ import { prisma } from "../../prisma.js";
 import { AppError } from "../../http.js";
 import { objectStorage } from "../../infra/storage/s3.js";
 import { downloadProviderVideo } from "../../infra/storage/download.js";
-import { createImage, readOwnedImage } from "../assets/service.js";
+import { createImage, readOwnedImage, ownedAsset } from "../assets/service.js";
 import { claimOutput, finishOutput, deferOutput, safeProviderError } from "../generation/execution.js";
 import { studioConfig, generateImage, vision, toolService, videoRequest } from "./providers.js";
 import { downloadVideoContent } from "./video-providers.js";
+import { videoReferenceUrl } from "./video-reference.js";
 import { alphaMask, compositeSelection, cropOutputs } from "./pixels.js";
 import { runRegionMove } from "./region-move.js";
 import { runObjectEdit } from "./object-edit.js";
@@ -114,9 +115,21 @@ export async function executeStudio(id, { db = prisma, store = objectStorage(), 
       result = { assets: [assetSummary(asset)] };
     } else if (snapshot.tool === "video") {
       if (reconcile && output.reconcileUntil <= new Date()) { await finishOutput(id, output.fence, { errorCode: "VIDEO_POLL_EXPIRED" }, db); return; }
-      const remote = await (adapters.video || videoRequest)(config, { image, ...snapshot.params, requestId: attempt.requestId, signal: controller.signal });
+      const references = [];
+      if (["zzshu", "gptbest"].includes(config.videoKind) && !attempt.requestId) {
+        const media = snapshot.params.media || (image ? [{ id: snapshot.assetId, type: "image", duration: 0 }] : []);
+        let referenceBytes = 0;
+        for (const item of media) {
+          const asset = await ownedAsset(output.userId, item.id, db);
+          if (!asset.contentType.startsWith(`${item.type}/`)) throw new AppError("VIDEO_MEDIA_INVALID", 422);
+          const binary = config.videoOptions?.api === "veo-omni";
+          if (binary && (referenceBytes += asset.bytes) > 100 * 1024 * 1024) throw new AppError("VIDEO_MEDIA_TOO_LARGE", 413);
+          references.push({ ...item, url: videoReferenceUrl(output.userId, item.id), ...(binary ? { bytes: await store.get(asset.objectKey), contentType: asset.contentType } : {}) });
+        }
+      }
+      const remote = await (adapters.video || videoRequest)(config, { image, ...snapshot.params, references, requestId: attempt.requestId, signal: controller.signal });
       if (remote.requestId) await db.generationAttempt.update({ where: { id: attempt.id }, data: { requestId: remote.requestId, state: "provider_pending" } });
-      if (remote.state === "pending") { await deferOutput(claim, "PROVIDER_PENDING", false, db); return; }
+      if (remote.state === "pending") { await deferOutput(claim, "PROVIDER_PENDING", false, db, ["zzshu", "gptbest"].includes(config.videoKind) ? 30_000 : 15_000); return; }
       if (remote.state === "failed") { await finishOutput(id, output.fence, { errorCode: "VIDEO_PROVIDER_FAILED" }, db); return; }
       const bytes = remote.contentRequestId
         ? await (adapters.downloadVideoContent || downloadVideoContent)(config, remote.contentRequestId, controller.signal)
@@ -126,7 +139,7 @@ export async function executeStudio(id, { db = prisma, store = objectStorage(), 
       await store.put(objectKey, bytes, "video/mp4");
       const checksum = createHash("sha256").update(bytes).digest("hex");
       const asset = await db.asset.upsert({ where: { id: assetId }, create: { id: assetId, userId: output.userId, objectKey, kind: "original", contentType: "video/mp4", width: 0, height: 0, bytes: bytes.length, checksum }, update: {} });
-      result = { assets: [assetSummary(asset)] };
+      result = { assets: [assetSummary(asset)], providerTaskId: remote.requestId || attempt.requestId, ...(remote.providerVideoId ? { providerVideoId: remote.providerVideoId } : {}) };
     } else {
       const modelStarted = performance.now();
       let requestReport;

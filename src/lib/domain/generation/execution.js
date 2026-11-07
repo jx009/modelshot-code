@@ -92,12 +92,12 @@ export async function finishOutput(id, fence, { asset, resultData, errorCode, ca
   });
 }
 
-export async function deferOutput(claim, errorCode, retry, db) {
+export async function deferOutput(claim, errorCode, retry, db, pollIntervalMs = 15_000) {
   return db.$transaction(async tx => {
     const output = await lockOutput(tx, claim.output.id);
     if (!output || output.fence !== claim.output.fence || TERMINAL.includes(output.status)) return;
     const until = output.reconcileUntil || new Date(Date.now() + LIMITS.reconcileMs);
-    const availableAt = new Date(Date.now() + (retry ? 5000 * output.fence : 15_000));
+    const availableAt = new Date(Date.now() + (retry ? 5000 * output.fence : pollIntervalMs));
     await tx.tryOn.update({ where: { id: output.id }, data: {
       status: retry ? "queued" : "reconciling", errorCode, leaseUntil: null,
       reconcileUntil: retry ? null : until,

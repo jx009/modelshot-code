@@ -71,7 +71,22 @@ it("accepts a pasted first frame through the composer", () => {
   render(<VideoLauncher mode="video" userId="user_1" zh={false} />);
   const file = new File(["image"], "frame.png", { type: "image/png" });
   fireEvent.paste(screen.getByRole("textbox"), { clipboardData: { files: [file] } });
-  expect(mocks.project.upload).toHaveBeenCalledWith([file]);
+  expect(mocks.project.upload.mock.calls[0][0]).toEqual([file]);
+});
+
+it("accepts multiple reference types for zzshu and permits reference-only generation", async () => {
+  const limits = { image: 30, video: 10, audio: 10 };
+  mocks.api.mockResolvedValue({ videoProvider: "zzshu", videoModels: [{ id: "zzshu", label: "Seedance", available: true, cost: 30, durations: [5], ratios: ["16:9"], inputMode: "both", promptOptional: true, mediaLimits: limits }], tools: [{ id: "video", available: true }] });
+  mocks.project.draft.content.video.media = [{ id: "image_123456789012", name: "frame.png", type: "image", duration: 0 }];
+  render(<VideoLauncher mode="video" userId="user_1" zh={false} />);
+  await waitFor(() => expect(screen.getByRole("button", { name: "Generate video" }).disabled).toBe(false));
+  const upload = screen.getByLabelText("Upload video media");
+  expect(upload.multiple).toBe(true);
+  expect(upload.accept).toContain(".mp4");
+  expect(upload.accept).toContain(".mp3");
+  const file = new File(["video"], "reference.mp4", { type: "video/mp4" });
+  fireEvent.change(upload, { target: { files: [file] } });
+  expect(mocks.project.upload).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ mediaLimits: limits }));
 });
 
 it("submits the selected video model and its quote, keeping it in the project draft", async () => {

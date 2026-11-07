@@ -27,10 +27,11 @@ describe("editable video contracts", () => {
     expect(motionSchema.safeParse({ ...composition(), scenes: Array.from({ length: 7 }, (_, i) => ({ ...emptyScene(`s${i}`), duration: 30 })) }).success).toBe(false);
     expect(motionSchema.safeParse({ ...composition(), fps: 120 }).success).toBe(false);
   });
-  it("requires owned media references and video generation only accepts one image", () => {
+  it("keeps motion references bound to its media and accepts video generation reference media", () => {
     const value = composition(); value.scenes[0].assetId = "missing";
     expect(videoDocumentSchema.safeParse({ mode: "motion", composition: value }).success).toBe(false);
-    expect(videoDocumentSchema.safeParse({ mode: "video", media: [{ id: "clip", name: "clip.mp4", type: "video", duration: 5 }] }).success).toBe(false);
+    expect(videoDocumentSchema.safeParse({ mode: "video", media: [{ id: "clip", name: "clip.mp4", type: "video", duration: 5 }] }).success).toBe(true);
+    expect(videoDocumentSchema.safeParse({ mode: "video", composition: composition() }).success).toBe(false);
     expect(videoDocumentSchema.parse({ mode: "motion", composition: composition() }).confirmed).toBe(false);
   });
   it("rejects out-of-range trims and audio used as scene imagery", () => {

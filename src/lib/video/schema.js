@@ -9,6 +9,7 @@ export const videoRatios = ["16:9", "9:16", "1:1", "4:5"];
 export const videoMediaSchema = z.object({
   id, name: z.string().max(160), type: z.enum(["image", "video", "audio"]),
   duration: z.number().finite().min(0).max(1800).default(0),
+  proof: z.string().max(2048).optional(),
 }).strict();
 export const motionSceneSchema = z.object({
   id, name: z.string().max(100), duration: z.number().finite().min(1).max(30),
@@ -31,12 +32,13 @@ export const motionSchema = z.object({
 });
 export const videoDocumentSchema = z.object({
   provider: id.optional(),
-  mode: z.enum(["video", "motion"]), media: z.array(videoMediaSchema).max(40).default([]),
+  videoFields: z.record(z.string().regex(/^[a-zA-Z][a-zA-Z0-9_]{0,63}$/), z.string().max(1000)).refine(value => Object.keys(value).length <= 12).optional(),
+  mode: z.enum(["video", "motion"]), media: z.array(videoMediaSchema).max(50).default([]),
   composition: motionSchema.nullable().default(null), ratio: z.enum(videoRatios).default("16:9"),
   confirmed: z.boolean().default(false),
   duration: videoDurationSchema.default(5),
 }).strict().superRefine((value, ctx) => {
-  if (value.mode === "video" && (value.composition || value.media.length > 1 || value.media.some(item => item.type !== "image"))) ctx.addIssue({ code: "custom", message: "VIDEO_REFERENCE_IMAGE_ONLY" });
+  if (value.mode === "video" && value.composition || value.mode === "motion" && value.media.length > 40) ctx.addIssue({ code: "custom", message: "VIDEO_MEDIA_LIMIT" });
   if (new Set(value.media.map(item => item.id)).size !== value.media.length) ctx.addIssue({ code: "custom", message: "DUPLICATE_MEDIA" });
   const ids = new Set(value.media.map(item => item.id));
   if (motionAssetIds(value.composition).some(assetId => !ids.has(assetId))) ctx.addIssue({ code: "custom", message: "MOTION_MEDIA_INVALID" });

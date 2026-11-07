@@ -49,13 +49,33 @@ test("separates video models from image models and creates supported video confi
   expect(screen.getByText("默认视频模型")).toBeTruthy();
   expect(screen.queryByText("测试功能（产生上游费用）")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "新增模型" }));
-  const protocol = screen.getByLabelText("视频接口协议");
+  const protocol = screen.getAllByLabelText("视频接口协议")[0];
   expect(protocol.value).toBe("volcengine");
   expect(protocol.disabled).toBe(false);
   fireEvent.change(protocol, { target: { value: "openai" } });
   expect(protocol.value).toBe("openai");
   expect(screen.getByLabelText("Base URL").value).toBe("");
   expect(screen.getAllByLabelText("4 秒").length).toBeGreaterThan(0);
+});
+
+test("offers the zzshu JSON preset and lets existing video channels change protocol", async () => {
+  mocks.api.mockResolvedValue([{ id: "video-provider", name: "video-channel", kind: "openai", displayName: "Seedance", creditCost: 30, costPerImage: 0, isActive: true, priority: 1,
+    config: { scope: "public", studioCapability: "video", model: "官转SD2.5-30图版-480P", baseURL: "https://sub.zzshu.cc/v1", hasKey: true } }]);
+  render(<AdminProviders />);
+  await screen.findByRole("heading", { name: "模型配置" });
+  fireEvent.click(screen.getByRole("tab", { name: "视频模型" }));
+  fireEvent.change(screen.getByLabelText("视频接口协议"), { target: { value: "zzshu" } });
+  expect(screen.getByLabelText("Base URL（对应协议地址）").value).toBe("https://sub.zzshu.cc/v1");
+  expect(screen.getByLabelText("5 秒").checked).toBe(true);
+  expect(screen.getByLabelText("图片用途（按模型选择）").value).toBe("reference_images");
+  fireEvent.change(screen.getByLabelText("图片用途（按模型选择）"), { target: { value: "first_frame" } });
+  expect(screen.getByLabelText("图片用途（按模型选择）").value).toBe("first_frame");
+  fireEvent.click(screen.getByRole("button", { name: "新增模型" }));
+  const preset = screen.getByRole("option", { name: "吱吱鼠 · Seedance 视频生成" });
+  fireEvent.change(screen.getByLabelText("配置预设"), { target: { value: preset.value } });
+  expect(screen.getByLabelText("Base URL").value).toBe("https://sub.zzshu.cc/v1");
+  expect(screen.getAllByLabelText("模型名 / 火山 Endpoint ID")[0].value).toBe("官转SD2.5-30图版-480P");
+  expect(screen.getAllByLabelText("视频接口协议")[0].value).toBe("zzshu");
 });
 
 test("offers Ali, Volcengine and MiniMax image presets and native MiniMax defaults", async () => {

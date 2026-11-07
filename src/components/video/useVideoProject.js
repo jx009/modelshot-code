@@ -144,7 +144,7 @@ export default function useVideoProject({ documentId, mode, userId, guardNavigat
         const saved = await save(), video = live.current.content.video;
         const source = video.media.find(item => item.type === "image");
         pending.body = { origin: "chat", tool, ...(tool === "video" && offer.provider ? { provider: offer.provider } : {}), expectedCost: offer.cost, documentId: saved.id, documentVersion: saved.version, ...(tool === "video" && source ? { assetId: source.id } : {}),
-          params: { prompt, ratio: video.ratio, duration: video.duration, ...(["motion-plan", "motion-render"].includes(tool) ? { media: video.media, ...(video.composition ? { motion: video.composition } : {}) } : {}) } };
+          params: { prompt, ratio: video.ratio, duration: video.duration, media: video.media, ...(tool === "video" && video.videoFields ? { videoFields: video.videoFields } : {}), ...(["motion-plan", "motion-render"].includes(tool) && video.composition ? { motion: video.composition } : {}) } };
       }
       try { sessionStorage.setItem(`${storageKey}:submission`, JSON.stringify(pending)); } catch { /* In-memory idempotency still protects this tab. */ }
       const job = await api("/api/studio/jobs", { method: "POST", key: pending.key, body: pending.body });
@@ -159,21 +159,22 @@ export default function useVideoProject({ documentId, mode, userId, guardNavigat
       setError(failure.message); return null;
     } finally { submitting.current = false; setWorking(false); }
   }
-  async function upload(files) {
+  async function upload(files, offer) {
     if (submitting.current || loading || loadFailed || applying || jobs.some(job => !terminalStatus(job.status))) return; submitting.current = true; setWorking(true); setError("");
     try {
       for (const file of Array.from(files)) {
         const video = live.current.content.video;
-        if (video.media.length >= (video.mode === "video" ? 1 : 40)) throw new Error("VIDEO_MEDIA_LIMIT");
+        const limits = offer?.mediaLimits || { image: 1, video: 0, audio: 0 };
+        const type = file.type.startsWith("image/") ? "image" : file.type.startsWith("audio/") || /\.(mp3|wav|m4a|aac|flac|ogg)$/i.test(file.name) ? "audio" : "video";
+        if (video.media.length >= (video.mode === "video" ? 50 : 40) || video.mode === "video" && video.media.filter(item => item.type === type).length >= (limits[type] || 0)) throw new Error("VIDEO_MEDIA_LIMIT");
         setUploadProgress(`正在上传 ${file.name}`);
         let media;
         if (file.type.startsWith("image/")) { const asset = await uploadImage(file); media = { id: asset.assetId, name: file.name.slice(0, 160), type: "image", duration: 0 }; }
         else {
-          if (video.mode === "video") throw new Error("VIDEO_REFERENCE_IMAGE_ONLY");
           if (file.size > 64 * 1024 * 1024) throw new Error("VIDEO_MEDIA_TOO_LARGE");
-          const response = await fetch(`/api/video/media?extension=${encodeURIComponent(file.name.split(".").at(-1).toLowerCase())}`, { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: file });
+          const response = await fetch(`/api/video/media?kind=${video.mode}&extension=${encodeURIComponent(file.name.split(".").at(-1).toLowerCase())}`, { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: file });
           const result = await response.json(); if (!response.ok) throw new Error(result.code || "VIDEO_MEDIA_INVALID");
-          media = { id: result.id, type: result.type, duration: result.duration, name: file.name.slice(0, 160) };
+          media = { id: result.id, type: result.type, duration: result.duration, proof: result.proof, name: file.name.slice(0, 160) };
         }
         change(current => ({ ...current, content: { ...current.content, video: { ...current.content.video, media: [...current.content.video.media, media] } } }));
         await save();

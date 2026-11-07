@@ -20,6 +20,9 @@ import { POSTER_IMAGE_TOOL, posterImageStepSchema } from "../../creation/contrac
 import { lockRun } from "../creation/runs.js";
 import { appendRunEvent, enqueueRun } from "../creation/events.js";
 import { videoInputError, videoModelOptions } from "../../video/model-protocols.js";
+import { assertVideoMedia } from "./video-media.js";
+import { videoReferenceUrl } from "./video-reference.js";
+import { gptBestBody } from "./gptbest-video.js";
 
 export async function submitStudioJob(userId, input, key, db = prisma, deps = {}) {
   const data = jobSchema.parse(input);
@@ -87,6 +90,7 @@ async function submitAdmittedJob(userId, data, key, db, deps, posterContext = nu
     if (!tool?.available && !(tool?.reason === "SEGMENTATION_NOT_CONFIGURED" && data.maskId)) throw new AppError(tool?.reason || "TOOL_UNAVAILABLE", 503);
     if (data.expectedCost !== undefined && data.expectedCost !== cost) throw new AppError("PRICE_CHANGED", 409);
     if (data.tool === "video") {
+      if (!data.params.prompt && !config.videoOptions?.promptOptional) throw new AppError("PROMPT_REQUIRED", 422);
       const error = videoInputError(config.videoOptions || videoModelOptions(config.videoKind), { ...data.params, hasImage: Boolean(data.assetId) });
       if (error) throw new AppError(error, 422);
     }
@@ -94,6 +98,27 @@ async function submitAdmittedJob(userId, data, key, db, deps, posterContext = nu
     if (!posterContext && !document) throw new AppError("DOCUMENT_NOT_FOUND", 404);
     if (["motion", "video"].includes(document?.kind) && !["motion-plan", "motion-render", "video"].includes(data.tool)) throw new AppError("INVALID_VIDEO_TOOL", 422);
     if (["motion-plan", "motion-render", "video"].includes(data.tool) && await tx.tryOn.count({ where: { userId, status: { in: ACTIVE }, snapshot: { path: ["documentId"], equals: data.documentId } } })) throw new AppError("DOCUMENT_BUSY", 409);
+    if (data.tool === "video" && data.params.media) {
+      if (document.content.video?.mode !== "video" || digestJson(data.params.media) !== digestJson(document.content.video.media)) throw new AppError("VIDEO_MEDIA_CHANGED", 409);
+      if ((data.params.media.find(item => item.type === "image")?.id || undefined) !== data.assetId) throw new AppError("VIDEO_MEDIA_CHANGED", 409);
+      let referenceBytes = 0;
+      for (const item of data.params.media) {
+        const asset = await ownedAsset(userId, item.id, tx);
+        if (!asset.contentType.startsWith(`${item.type}/`)) throw new AppError("VIDEO_MEDIA_INVALID", 422);
+        referenceBytes += asset.bytes;
+        assertVideoMedia(userId, item);
+      }
+      if (config.videoOptions?.api === "veo-omni" && referenceBytes > 100 * 1024 * 1024) throw new AppError("VIDEO_MEDIA_TOO_LARGE", 413);
+    }
+    if (data.tool === "video" && ["zzshu", "gptbest"].includes(config.videoKind) && (data.assetId || data.params.media?.length)) videoReferenceUrl(userId, data.assetId || data.params.media[0].id);
+    if (data.tool === "video" && config.videoKind === "gptbest") gptBestBody(config, { ...data.params, validateOnly: true,
+      references: (data.params.media || (data.assetId ? [{ id: data.assetId, type: "image" }] : [])).map(item => ({ ...item, url: "https://reference.invalid/input" })) });
+    if (data.tool === "video" && config.videoKind === "gptbest") {
+      const sourceTaskId = data.params.videoFields?.sourceTaskId || config.videoOptions.parameters?.sourceTaskId;
+      if (sourceTaskId && !await tx.generationAttempt.findFirst({ where: { requestId: sourceTaskId, output: { userId, status: "succeeded", snapshot: { path: ["videoProvider"], equals: config.videoProvider } } }, select: { id: true } })) throw new AppError("VIDEO_SOURCE_NOT_FOUND", 404);
+      const videoId = data.params.videoFields?.video_id || config.videoOptions.parameters?.video_id;
+      if (videoId && !await tx.tryOn.findFirst({ where: { userId, status: "succeeded", snapshot: { path: ["videoProvider"], equals: config.videoProvider }, resultData: { path: ["providerVideoId"], equals: videoId } }, select: { id: true } })) throw new AppError("VIDEO_SOURCE_NOT_FOUND", 404);
+    }
     // Only the server scheduler can supply this context. Verify it against the
     // persisted run; request JSON cannot opt out of canvas admission checks.
     let creation;

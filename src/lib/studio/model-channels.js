@@ -1,11 +1,14 @@
 // Shared, credential-free channel metadata for the administrator and workbench.
 import { VIDEO_KINDS, VIDEO_PROTOCOLS, VIDEO_DURATIONS } from "../video/model-protocols.js";
+import { gptBestApi, validVideoParameters } from "../video/gptbest-catalog.js";
 
-export const STUDIO_KINDS = ["openai", "dashscope", "volcengine", "minimax", "volc-visual", "fal"];
+export const STUDIO_KINDS = ["openai", "dashscope", "volcengine", "minimax", "volc-visual", "fal", "zzshu", "gptbest"];
 export const CHANNEL_CAPABILITIES = ["image", "video", "segment", "split", "language", "ocr", "upscale"];
 export const CHANNEL_PRESETS = [
   { label: "火山方舟 · 视频生成", kind: "volcengine", studioCapability: "video", scope: "public", model: "", baseURL: "https://ark.cn-beijing.volces.com/api/v3", creditCost: 30 },
   { label: "第三方 · OpenAI Videos 兼容", kind: "openai", studioCapability: "video", scope: "public", model: "", baseURL: "", videoInputMode: "both", videoDurations: [4, 8, 12], creditCost: 30 },
+  { label: "吱吱鼠 · Seedance 视频生成", kind: "zzshu", studioCapability: "video", scope: "public", model: "官转SD2.5-30图版-480P", baseURL: "https://sub.zzshu.cc/v1", videoInputMode: "both", videoDurations: [5], videoReferenceMode: "reference_images", creditCost: 30 },
+  { label: "GPT-Best · 视频生成", kind: "gptbest", studioCapability: "video", scope: "public", model: "", baseURL: "", videoApi: "unified-seedance", videoInputMode: "both", videoDurations: [5, 10], creditCost: 30 },
   { label: "百炼万相 · 文生视频", kind: "dashscope", studioCapability: "video", scope: "public", model: "wan2.6-t2v", baseURL: "https://dashscope.aliyuncs.com/api/v1", videoInputMode: "text", videoDurations: [5, 10, 15], creditCost: 30 },
   { label: "百炼万相 · 图生视频", kind: "dashscope", studioCapability: "video", scope: "public", model: "wan2.6-i2v", baseURL: "https://dashscope.aliyuncs.com/api/v1", videoInputMode: "image", videoDurations: [5, 10, 15], creditCost: 30 },
   { label: "阿里百炼 · Qwen 图像编辑", kind: "dashscope", studioCapability: "image", imageMode: "edit", model: "qwen-image-edit-max", baseURL: "https://dashscope.aliyuncs.com" },
@@ -71,13 +74,16 @@ export function validChannel(kind, config) {
   if (!STUDIO_KINDS.includes(kind)) return !config.studioCapability;
   const capability = channelCapability({ kind }, config);
   if (!CHANNEL_CAPABILITIES.includes(capability)) return false;
+  if (["zzshu", "gptbest"].includes(kind) && capability !== "video") return false;
   if (kind === "minimax") return capability === "image" && config.scope === "public" && config.imageMode === "generate" && config.model === "image-01";
   if (kind === "volc-visual") return config.scope === "tool" && (capability === "segment" && config.model === "entity_seg" || capability === "upscale" && config.model === "lens_vida_nnsr");
   if (kind === "fal") return ["segment", "split"].includes(capability) && /^[a-zA-Z0-9_-]+\/[a-zA-Z0-9_/-]+$/.test(config.model || "") && !config.model.includes("..");
   if (capability === "language") return config.scope === "language";
   if (capability === "video") return VIDEO_KINDS.includes(kind) && (!config.scope || config.scope === "public") && Boolean(config.model?.trim())
+    && (kind !== "gptbest" || Boolean(gptBestApi(config.videoApi)) && (!config.videoParameters || validVideoParameters(config.videoParameters)))
     && (kind !== "openai" || Boolean(config.baseURL?.trim()))
     && (!config.videoInputMode || ["text", "image", "both"].includes(config.videoInputMode))
+    && (!config.videoReferenceMode || kind === "zzshu" && ["first_frame", "reference_images"].includes(config.videoReferenceMode))
     && (!config.videoDurations || Array.isArray(config.videoDurations) && config.videoDurations.length > 0 && config.videoDurations.length <= VIDEO_DURATIONS.length
       && new Set(config.videoDurations).size === config.videoDurations.length && config.videoDurations.every(value => (kind === "openai" ? VIDEO_PROTOCOLS.openai.durations : VIDEO_DURATIONS).includes(value)));
   if (capability === "ocr") return ["openai", "volcengine"].includes(kind) && config.scope === "tool" && Boolean(config.model?.trim());

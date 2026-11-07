@@ -14,6 +14,7 @@ import { channelCapability, channelScope, toolRouting, supportsImageTask, suppor
 import { generateCloudImage } from "./cloud.js";
 import { IMAGE_REQUEST_TIMEOUT_MS, imageFetch } from "../../ai/image-request.js";
 import { VIDEO_KINDS, VIDEO_PROTOCOLS, videoModelOptions } from "../../video/model-protocols.js";
+import { publicVideoOptions } from "../../video/gptbest-catalog.js";
 export { videoRequest } from "./video-providers.js";
 
 // Resolve user-visible image selection separately from administrator-owned tool stages.
@@ -114,7 +115,7 @@ export async function capabilities(db = prisma, config, channelName, { imageOnly
     const selected = resolveStudioConfig(rows, settings, model.id, "image", "generate", { pinned: true, skipPreview: true, imageOnly: true });
     model.prices = selected.toolEnabled && supportsImageTask(selected, "generate") ? Object.fromEntries(POSTER_IMAGE_SIZES.filter(size => !imageSizeError(selected, size)).map(size => [size, imageCreditCost({ id: "generate", cost: model.creditCost, resolutionSurcharges: surcharges }, size, 0)])) : {};
   }
-  const videoModels = rows.filter(row => channelScope(row) === "public" && channelCapability(row) === "video" && VIDEO_KINDS.includes(row.kind)).filter(row => { const parsed = JSON.parse(row.config || "{}"); return Boolean(parsed.apiKeyEnc && parsed.model && (parsed.baseURL || VIDEO_PROTOCOLS[row.kind].baseURL)); }).map(row => ({ id: row.name, label: row.displayName, cost: row.creditCost, ...videoModelOptions(row.kind, JSON.parse(row.config || "{}")) }));
+  const videoModels = rows.filter(row => channelScope(row) === "public" && channelCapability(row) === "video" && VIDEO_KINDS.includes(row.kind)).filter(row => { const parsed = JSON.parse(row.config || "{}"); return Boolean(parsed.apiKeyEnc && parsed.model && (parsed.baseURL || VIDEO_PROTOCOLS[row.kind].baseURL)); }).map(row => ({ id: row.name, label: row.displayName, cost: row.creditCost, ...publicVideoOptions(videoModelOptions(row.kind, JSON.parse(row.config || "{}"))) }));
   return { imageModel: c.imageDisplayName, imageProvider: c.toolId ? c.requestedProvider : c.imageProvider, imageModels, videoModels, videoProvider: c.videoProvider, planningCost: c.plannerCreditCost, planningAvailable: Boolean(c.visionApiKey && c.chatModel),
     tools: TOOLS.filter(tool => !imageOnly || ["generate", "edit"].includes(tool.id)).map(tool => {
       const setting = settings.find(row => row.toolId === tool.id), enabled = setting?.isEnabled !== false;

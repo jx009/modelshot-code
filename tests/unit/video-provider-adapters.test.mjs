@@ -78,7 +78,7 @@ it("keeps zzshu channels video-only and validates configured reference mode", ()
 });
 
 it("submits zzshu multimodal references and keeps first/last frames separate", async () => {
-  mocks.fetch.mockResolvedValue(json({ id: "task", status: "queued" }));
+  mocks.fetch.mockImplementation(async () => json({ id: "task", status: "queued" }));
   const refs = [{ type: "image", url: "https://app.example/first.png" }, { type: "image", url: "https://app.example/last.png" }];
   await videoRequest({ ...config("zzshu"), videoOptions: videoModelOptions("zzshu", { videoReferenceMode: "first_frame" }) }, { prompt: "Animate", duration: 5, references: refs });
   expect(JSON.parse(mocks.fetch.mock.calls[0][1].body)).toMatchObject({ first_frame: { image_url: refs[0].url }, last_frame: { image_url: refs[1].url } });

@@ -203,7 +203,9 @@ describe("editable layers and late background repair", () => {
     expect(first[1].x).toBeGreaterThan(target.x + target.width);
     expect(second[1]).toBe(first[1]);
     expect(second[2]).toMatchObject({ assetId: "second-image", visible: true, sourceJobId: "second" });
-    expect(second[2].x).toBeGreaterThan(first[1].x + first[1].width);
+    // Related versions may be stacked below one another next to their source.
+    // Preserve both outputs without overlapping either occupied result.
+    expect(second[2].x >= first[1].x + first[1].width || second[2].y >= first[1].y + first[1].height).toBe(true);
     expect(appendResult(second, secondJob, second[0])).toBe(second);
   });
 });

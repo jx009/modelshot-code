@@ -21,11 +21,12 @@ describe("studio pixel contracts", () => {
     expect([...output.slice(0, 4)]).toEqual([255, 0, 0, 255]);
     expect([...output.slice((1 * 8 + 2) * 4, (1 * 8 + 2) * 4 + 4)]).toEqual([0, 0, 255, 255]);
   });
-  it("sends the mask plus a visual guide and delivers the full local-edit result", async () => {
+  it("keeps historical jobs on the single-guide protocol and delivers the full result", async () => {
     let called;
     const result = await runImageTool({}, { tool: "inpaint", params: { prompt: "blue", size: "1024x1024" } }, await solid("red"), await selection(), undefined, { generate: async (_config, args) => { called = args; return solid("blue"); } });
-    expect(Buffer.isBuffer(called.mask)).toBe(true);
-    expect(called.references).toHaveLength(1);
+    expect(called.mask).toBeUndefined();
+    expect(called.references).toHaveLength(0);
+    expect((await sharp(called.image).metadata()).format).toBe("jpeg");
     expect((await sharp(result.images[0]).metadata()).width).toBe(8);
     expect([...await sharp(result.images[0]).raw().toBuffer()].slice(0, 4)).toEqual([0, 0, 255, 255]);
   });

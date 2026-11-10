@@ -11,7 +11,7 @@ export default function VideoWorkspaceHeader({ project, zh, disabled, motion, ed
   const canEdit = motion && draft.content.video.composition && draft.content.video.confirmed;
   return <WorkspaceHeader
     title={<>
-      <input className="vm-project-name" value={draft.name} aria-label={text("项目名称", "Project name")} maxLength={100} disabled={disabled} onChange={event => change(current => ({ ...current, name: event.target.value }))} />
+      <input className="vm-project-name" value={draft.name} aria-label={text("项目名称", "Project name")} maxLength={100} disabled={disabled} onChange={event => { const name = event.target.value; change(current => ({ ...current, name })); }} />
       <span className="vm-save-status" role="status">{project.saving ? text("保存中", "Saving") : project.dirty ? text("待保存", "Unsaved") : project.id ? text("已保存", "Saved") : text("新项目", "New project")}</span>
     </>}
     actions={<>

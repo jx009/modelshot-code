@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 import { videoAssetIds } from "../../video/schema.js";
 import { assertCreationAccess, getCreationEnv } from "../../creation/access.js";
 import { assertMotionMedia } from "./motion.js";
+import { jobDocumentFilter } from "../../studio/job-document.js";
 
 export async function saveDocument(userId, input, db = prisma) {
   const data = documentSchema.parse(input);
@@ -15,6 +16,21 @@ export async function saveDocument(userId, input, db = prisma) {
   const saveHash = data.saveKey ? createHash("sha256").update(JSON.stringify(data)).digest("hex") : null;
   return db.$transaction(async tx => {
     await lockUser(tx, userId);
+    const origin = data.content.video?.canvasOrigin;
+    const previousVideo = data.id ? (await tx.studioDocument.findFirst({ where: { id: data.id, userId, deletedAt: null }, select: { content: true } }))?.content?.video : undefined;
+    const previousOrigin = previousVideo?.canvasOrigin;
+    if (data.id && JSON.stringify(origin) !== JSON.stringify(previousOrigin)) throw new AppError("VIDEO_ORIGIN_CHANGED", 409);
+    const sceneOrigin = data.content.video?.sceneOrigin;
+    if (data.id && JSON.stringify(sceneOrigin) !== JSON.stringify(previousVideo?.sceneOrigin)) throw new AppError("VIDEO_ORIGIN_CHANGED", 409);
+    if (!data.id && sceneOrigin) {
+      const parent = await tx.studioDocument.findFirst({ where: { id: sceneOrigin.documentId, userId, deletedAt: null, kind: "motion" }, select: { content: true } });
+      if (!parent?.content.video?.composition?.scenes.some(scene => scene.id === sceneOrigin.sceneId && scene.assetId === sceneOrigin.assetId)) throw new AppError("MOTION_SCENE_CHANGED", 409);
+      if (sceneOrigin.sourceJobId && !await tx.tryOn.findFirst({ where: { id: sceneOrigin.sourceJobId, userId, status: "succeeded", snapshot: { path: ["tool"], equals: "video" }, resultData: { path: ["assets"], array_contains: [{ id: sceneOrigin.assetId }] } }, select: { id: true } })) throw new AppError("VIDEO_SOURCE_NOT_FOUND", 404);
+    }
+    if (!data.id && origin) {
+      const parent = await tx.studioDocument.findFirst({ where: { id: origin.documentId, userId, deletedAt: null, kind: "canvas" }, select: { content: true } });
+      if (!parent?.content.layers.some(layer => layer.id === origin.layerId && layer.assetId === origin.assetId && layer.type === "image")) throw new AppError("VIDEO_SOURCE_NOT_FOUND", 404);
+    }
     if (data.id && data.saveKey) {
       const previous = await tx.studioDocument.findFirst({ where: { id: data.id, userId, deletedAt: null } });
       if (["video", "motion"].includes(previous?.kind) && previous.kind !== data.content.video?.mode) throw new AppError("DOCUMENT_KIND_CHANGED", 409);
@@ -36,9 +52,11 @@ export async function saveDocument(userId, input, db = prisma) {
       const original = await tx.studioDocument.findFirst({ where: { id: data.id, userId, deletedAt: null }, select: { kind: true } });
       if (["video", "motion"].includes(original?.kind) && original.kind !== data.content.video?.mode) throw new AppError("DOCUMENT_KIND_CHANGED", 409);
     }
-    const refs = new Set([...data.content.layers.map(l => l.assetId), ...data.content.messages.map(m => m.assetId), ...(data.content.commerce?.sections || []).map(s => s.revisionAssetId), data.content.commerce?.productAssetId, data.content.commerce?.referenceAssetId, ...videoAssetIds(data.content.video)].filter(Boolean));
+    const refs = new Set([...data.content.layers.flatMap(l => [l.assetId, l.posterAssetId, ...(l.sourceAssetIds || [])]), ...data.content.messages.map(m => m.assetId), ...(data.content.plan?.referenceAssetIds || []), ...(data.content.commerce?.sections || []).map(s => s.revisionAssetId), data.content.commerce?.productAssetId, data.content.commerce?.referenceAssetId, ...videoAssetIds(data.content.video)].filter(Boolean));
     if (refs.size && await tx.asset.count({ where: { id: { in: [...refs] }, userId, status: "active" } }) !== refs.size) throw new AppError("ASSET_NOT_FOUND", 404);
     const jobIds = [...new Set(data.content.jobs)];
+    const videoDocumentIds = [...new Set(data.content.layers.map(layer => layer.videoDocumentId).filter(Boolean))];
+    if (videoDocumentIds.length && await tx.studioDocument.count({ where: { id: { in: videoDocumentIds }, userId, kind: "video" } }) !== videoDocumentIds.length) throw new AppError("DOCUMENT_NOT_FOUND", 404);
     if (jobIds.length && await tx.tryOn.count({ where: { id: { in: jobIds }, userId } }) !== jobIds.length) throw new AppError("JOB_NOT_FOUND", 404);
     let document;
     const storedContent = { ...data.content, messages: data.content.messages.slice(-100), jobs: data.content.jobs.slice(-100), appliedJobs: data.content.appliedJobs.slice(-100) };
@@ -62,7 +80,7 @@ export async function saveDocument(userId, input, db = prisma) {
     }
     if (data.content.messages.length) await tx.studioMessage.createMany({ data: data.content.messages.map(message => ({ documentId: document.id, messageId: message.id, role: message.role, text: message.text, assetId: message.assetId })), skipDuplicates: true });
     if (data.content.appliedJobs.length) {
-      const accepted = await tx.tryOn.findMany({ where: { id: { in: data.content.appliedJobs }, userId, status: "succeeded", snapshot: { path: ["documentId"], equals: document.id } }, select: { id: true } });
+      const accepted = await tx.tryOn.findMany({ where: { id: { in: data.content.appliedJobs }, userId, status: "succeeded", ...jobDocumentFilter(document.id) }, select: { id: true } });
       if (accepted.length) await tx.studioAppliedResult.createMany({ data: accepted.map(job => ({ documentId: document.id, jobId: job.id })), skipDuplicates: true });
     }
     const historyAssets = await tx.studioMessage.findMany({ where: { documentId: document.id, assetId: { not: null } }, select: { assetId: true } });

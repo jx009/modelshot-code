@@ -40,16 +40,17 @@ function DurablePlanPanel({ plan, draftRef, save, update, flushLocal, provider, 
     if (operation.current || disabled || !pricesReady || checking || recoveryError) return;
     operation.current = true; setBusy(true);
     try {
-      const saved = await save();
-      if (!live.current || draftRef.current.plan?.id !== plan.id) return;
       const pending = draftRef.current.pendingCreation;
-      let body = pending?.planId === plan.id ? { ...pending.body, documentVersion: saved.version } : null;
+      let body = pending?.planId === plan.id ? pending.body : null;
       if (!body) {
+        const saved = await save();
+        if (!live.current || draftRef.current.plan?.id !== plan.id) return;
         const source = draftRef.current.layers.find(layer => layer.id === plan.targetId);
         if (plan.targetId && !source) throw new Error("TARGET_CHANGED");
         body = { kind: "image", documentId: saved.id, documentVersion: saved.version,
-          summary: plan.summary, steps: plan.steps, maxCredits: estimatedCost ?? plan.credits,
-          ...(provider ? { provider } : {}), ...(source ? { source: { targetId: source.id, assetId: source.assetId } } : {}),
+          summary: plan.summary, steps: plan.steps, maxCredits: estimatedCost ?? plan.credits, ...(plan.expectedCosts ? { expectedCosts: plan.expectedCosts } : {}),
+          ...(plan.referenceAssetIds?.length ? { referenceAssetIds: plan.referenceAssetIds } : {}), ...(plan.referenceRoles?.length ? { referenceRoles: plan.referenceRoles } : {}),
+          ...((plan.expectedCosts ? plan.provider : provider) ? { provider: plan.expectedCosts ? plan.provider : provider } : {}), ...(source ? { source: { targetId: source.id, assetId: source.assetId } } : {}),
         };
         update(draft => ({ ...draft, pendingCreation: { planId: plan.id, body } }));
         await flushLocal();

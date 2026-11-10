@@ -47,7 +47,7 @@ export default function MotionPreview({ composition, media, time, onTime, select
     <div className="vm-stage-wrap" ref={stageWrap} onDoubleClick={full}>
       <div className="vm-stage" style={{ ...stageSize, aspectRatio: composition.ratio.replace(":", " / "), background: scene.background }} onClick={() => editing && onSelect(scene.id)}>
         <Media key={scene.id} asset={asset} time={local} trimStart={scene.trimStart} playing={playing} volume={scene.volume} />
-        {asset && <div className="vm-shade" />}
+        {asset && (scene.title.trim() || scene.subtitle.trim()) && <div className="vm-shade" />}
         <div className={`vm-copy vm-copy-${scene.position} ${editing && selected === scene.id ? "is-selected" : ""}`} style={{ color: scene.color, textAlign: scene.align, ...style }}>
           <div style={{ fontSize: `${scene.fontSize / (composition.ratio === "16:9" ? 1280 : 720) * 100}cqw` }}>{scene.title}</div>
           {scene.subtitle && <p style={{ fontSize: `${scene.fontSize * .42 / (composition.ratio === "16:9" ? 1280 : 720) * 100}cqw` }}>{scene.subtitle}</p>}

@@ -1,0 +1,70 @@
+{
+  "date": "2026-11-11",
+  "title": "【即梦AI新画布】发布了 配合最新GPT6建模动态镜头预演 详细教程 AGI全智能体制作影片时代开启_哔哩哔哩_bilibili",
+  "url": "https://www.bilibili.com/video/BV19Lt26dEt9/?p=1",
+  "cid": 41608482289,
+  "part": 1,
+  "duration": 494,
+  "frames": [
+    {
+      "requested": 20,
+      "time": 20,
+      "width": 640,
+      "height": 360,
+      "filename": "frame-0020.jpg"
+    },
+    {
+      "requested": 70,
+      "time": 70,
+      "width": 640,
+      "height": 360,
+      "filename": "frame-0070.jpg"
+    },
+    {
+      "requested": 120,
+      "time": 120,
+      "width": 640,
+      "height": 360,
+      "filename": "frame-0120.jpg"
+    },
+    {
+      "requested": 180,
+      "error": "Playback reset to 0"
+    },
+    {
+      "requested": 240,
+      "time": 240.016239,
+      "width": 640,
+      "height": 360,
+      "filename": "frame-0240.jpg"
+    },
+    {
+      "requested": 300,
+      "time": 300,
+      "width": 640,
+      "height": 360,
+      "filename": "frame-0300.jpg"
+    },
+    {
+      "requested": 360,
+      "time": 360,
+      "width": 640,
+      "height": 360,
+      "filename": "frame-0360.jpg"
+    },
+    {
+      "requested": 420,
+      "time": 420,
+      "width": 640,
+      "height": 360,
+      "filename": "frame-0420.jpg"
+    },
+    {
+      "requested": 475,
+      "time": 475,
+      "width": 640,
+      "height": 360,
+      "filename": "frame-0475.jpg"
+    }
+  ]
+}

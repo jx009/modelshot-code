@@ -14,6 +14,8 @@ vi.mock("../../src/components/auth/AuthProvider", () => ({ useAuth: () => ({ ope
 vi.mock("../../src/components/ui/NavigationLink", () => ({ default: ({ children, ...props }) => <a {...props}>{children}</a> }));
 vi.mock("../../src/lib/client-api", () => ({ api: (...args) => mocks.api(...args), requestKey: () => "test-request-key", terminalStatus: status => ["succeeded", "failed", "cancelled"].includes(status) }));
 vi.mock("../../src/components/video/useVideoProject", () => ({ default: () => mocks.project }));
+vi.mock("../../src/hooks/useNavigationRouter", () => ({ useNavigationRouter: () => ({ push: vi.fn() }) }));
+vi.mock("../../src/components/video/VideoShotPlan", () => ({ default: () => <div aria-label="Shot generation plan" /> }));
 vi.mock("../../src/components/video/MotionPreview", () => ({ default: () => <div aria-label="Motion preview" /> }));
 vi.mock("../../src/components/video/MotionEditor", () => ({ default: () => <div aria-label="Scene editor" /> }));
 

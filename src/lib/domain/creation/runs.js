@@ -1,4 +1,4 @@
-import { getCreationEnv } from "../../creation/access.js";
+import { assertCreationAccess, getCreationEnv } from "../../creation/access.js";
 import { createHash, randomUUID } from "node:crypto";
 import { prisma } from "../../prisma.js";
 import { AppError } from "../../http.js";
@@ -29,6 +29,7 @@ export function presentRun(run) {
     eventSequence: run.eventSequence, errorCode: run.errorCode,
     cancelRequested: Boolean(run.cancelRequestedAt), createdAt: run.createdAt, updatedAt: run.updatedAt,
     steps: run.steps.map(step => ({ id: step.id, position: step.position, tool: step.tool,
+      ...(run.kind === "video" ? { prompt: step.params.params?.prompt, duration: step.params.params?.duration, ratio: step.params.params?.ratio, provider: step.params.provider } : {}),
       explanation: step.explanation, status: step.status, jobId: step.jobId,
       expectedCost: step.expectedCost, attempt: step.attempt, errorCode: step.errorCode, result: step.result || null })),
   };
@@ -58,6 +59,7 @@ export async function createImageRun(userId, input, key, db = prisma, deps = {})
   }
   await (deps.ensureWorkers || ensureWorkers)(db);
   const quote = await (deps.priceSteps || priceSteps)(data.steps, data.provider, db);
+  if (data.expectedCosts && data.expectedCosts.some((cost, index) => cost !== quote.costs[index])) throw new AppError("PRICE_CHANGED", 409);
   if (quote.costs.reduce((sum, cost) => sum + cost, 0) > data.maxCredits) throw new AppError("CREATION_BUDGET_EXCEEDED", 409);
   return db.$transaction(async tx => {
     await lockUser(tx, userId);
@@ -75,6 +77,10 @@ export async function createImageRun(userId, input, key, db = prisma, deps = {})
       const asset = await ownedAsset(userId, data.source.assetId, tx);
       if (!asset.contentType.startsWith("image/")) throw new AppError("INVALID_SOURCE");
     }
+    for (const id of data.referenceAssetIds || []) {
+      const reference = await ownedAsset(userId, id, tx);
+      if (!reference.contentType.startsWith("image/")) throw new AppError("INVALID_SOURCE");
+    }
     const occupying = [...RUN_ACTIVE, ...RUN_WAITING];
     if (await tx.creationRun.count({ where: { userId, status: { in: occupying } } }) >= 1) throw new AppError("CREATION_USER_QUEUE_FULL", 429);
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended('creation-admission', 0))::text`;
@@ -82,10 +88,12 @@ export async function createImageRun(userId, input, key, db = prisma, deps = {})
     const stepIds = data.steps.map(() => randomUUID());
     const run = await tx.creationRun.create({ data: {
       userId, documentId: data.documentId, requestId, digest, kind: "image", maxCredits: data.maxCredits,
-      input: { summary: data.summary, provider: quote.provider || data.provider || null, source: data.source || null, clientKey: key },
+      input: { summary: data.summary, provider: quote.provider || data.provider || null, source: data.source || null, clientKey: key,
+        ...(data.referenceAssetIds ? { referenceAssetIds: data.referenceAssetIds } : {}), ...(data.referenceRoles ? { referenceRoles: data.referenceRoles } : {}) },
       steps: { create: data.steps.map((step, position) => ({ id: stepIds[position], ...step, position, dependsOn: position ? [stepIds[position - 1]] : [], expectedCost: quote.costs[position], status: position ? "blocked" : "ready" })) },
     }, include: { steps: { orderBy: { position: "asc" } } } });
     if (data.source) await tx.assetReference.create({ data: { assetId: data.source.assetId, entityId: run.id, kind: "creation_input" } });
+    for (const assetId of data.referenceAssetIds || []) await tx.assetReference.create({ data: { assetId, entityId: run.id, kind: "creation_input" } });
     const updated = await appendRunEvent(tx, run.id, "run.created", { stepCount: data.steps.length, maxCredits: data.maxCredits });
     await enqueueRun(tx, run.id, "initial");
     return presentRun({ ...updated, steps: run.steps });
@@ -143,9 +151,12 @@ export async function resumeRun(userId, id, input, db = prisma, deps = {}) {
     const { resumeContentRun } = await import("./content-runs.js");
     return resumeContentRun(userId, current, data, { ...deps, db });
   }
-  if (!creationAdmissionEnabled(deps.env ?? await getCreationEnv(userId, { db }))) throw new AppError("CREATION_NOT_ENABLED", 503);
+  const accessEnv = deps.env ?? await getCreationEnv(userId, { db });
+  if (!creationAdmissionEnabled(accessEnv)) throw new AppError("CREATION_NOT_ENABLED", 503);
+  if (current.kind === "video") assertCreationAccess(accessEnv, { kind: "video", runs: true });
   await (deps.ensureWorkers || ensureWorkers)(db);
-  const quote = await (deps.priceSteps || priceSteps)(remaining, current.input.provider || undefined, db);
+  const priceRemaining = current.kind === "video" ? (await import("./video-runs.js")).priceVideoShots : priceSteps;
+  const quote = await (deps.priceSteps || priceRemaining)(remaining, current.input.provider || undefined, db);
   return db.$transaction(async tx => {
     await lockUser(tx, userId);
     const run = await lockRun(tx, userId, id);
@@ -154,6 +165,7 @@ export async function resumeRun(userId, id, input, db = prisma, deps = {}) {
     if (run.committedCredits + quote.costs.reduce((sum, cost) => sum + cost, 0) > data.maxCredits) throw new AppError("CREATION_BUDGET_EXCEEDED", 409);
     for (const [index, step] of remaining.entries()) await tx.creationStep.update({ where: { id: step.id }, data: {
       status: index ? "blocked" : "ready", expectedCost: quote.costs[index], errorCode: null,
+      ...(current.kind === "video" ? { params: { ...step.params, provider: quote.providers[index] || undefined } } : {}),
       ...(step.jobId ? { attempt: { increment: 1 }, jobId: null } : {}),
     } });
     await appendRunEvent(tx, id, "run.resumed", { maxCredits: data.maxCredits, retryFailed: data.retryFailed }, {

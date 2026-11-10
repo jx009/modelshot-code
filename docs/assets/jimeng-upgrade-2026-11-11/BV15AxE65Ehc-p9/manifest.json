@@ -1,0 +1,87 @@
+{
+  "date": "2026-11-11",
+  "title": "【即梦AI教程】09-无限画布_哔哩哔哩_bilibili",
+  "url": "https://www.bilibili.com/zh-Hans/video/BV15AxE65Ehc/?p=9",
+  "cid": 43124919013,
+  "part": 9,
+  "duration": 498,
+  "frames": [
+    {
+      "requested": 15,
+      "time": 15,
+      "width": 640,
+      "height": 360,
+      "filename": "frame-0015.jpg"
+    },
+    {
+      "requested": 55,
+      "time": 55,
+      "width": 640,
+      "height": 360,
+      "filename": "frame-0055.jpg"
+    },
+    {
+      "requested": 100,
+      "time": 100,
+      "width": 640,
+      "height": 360,
+      "filename": "frame-0100.jpg"
+    },
+    {
+      "requested": 150,
+      "time": 150,
+      "width": 640,
+      "height": 360,
+      "filename": "frame-0150.jpg"
+    },
+    {
+      "requested": 200,
+      "time": 200,
+      "width": 640,
+      "height": 360,
+      "filename": "frame-0200.jpg"
+    },
+    {
+      "requested": 250,
+      "time": 250,
+      "width": 640,
+      "height": 360,
+      "filename": "frame-0250.jpg"
+    },
+    {
+      "requested": 300,
+      "time": 300,
+      "width": 640,
+      "height": 360,
+      "filename": "frame-0300.jpg"
+    },
+    {
+      "requested": 350,
+      "time": 350,
+      "width": 640,
+      "height": 360,
+      "filename": "frame-0350.jpg"
+    },
+    {
+      "requested": 400,
+      "time": 400,
+      "width": 640,
+      "height": 360,
+      "filename": "frame-0400.jpg"
+    },
+    {
+      "requested": 450,
+      "time": 450,
+      "width": 640,
+      "height": 360,
+      "filename": "frame-0450.jpg"
+    },
+    {
+      "requested": 485,
+      "time": 485,
+      "width": 640,
+      "height": 360,
+      "filename": "frame-0485.jpg"
+    }
+  ]
+}

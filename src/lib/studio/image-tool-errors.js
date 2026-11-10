@@ -1,4 +1,6 @@
 const messages = {
+  IMAGE_SUBMISSION_UNCONFIRMED: ["上次提交结果尚未确认，请先恢复原提交。", "The previous submission is unconfirmed. Recover the original request first."],
+  EDIT_STRATEGY_UNSUPPORTED: ["当前通道不支持所选区域保护，请更换通道或清除保护设置。", "This channel does not support the selected region protection. Change channels or clear those settings."],
   EDIT_GEOMETRY_MISMATCH: ["模型返回的比例不符合编辑画布，已保留原图，请重试或更换模型。", "The result does not match the editing canvas. Your original was preserved; retry or change the model."],
   EDIT_INCOMPLETE: ["模型未补全扩图区域，已保留原图，请重试或更换模型。", "The model did not fill the expanded area. Your original was preserved; retry or change the model."],
   TOO_MANY_EDIT_REFERENCES: ["当前模型的局部修改最多可添加 1 张参考图，请移除多余参考图。", "Local edits with this model allow one reference image. Remove extra references."],

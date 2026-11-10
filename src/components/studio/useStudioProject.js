@@ -90,10 +90,12 @@ export function useStudioProject({ userId, sessionLoading = false, initialDocume
         persist(draftRef.current);
       }
       const d = draftRef.current, rev = revision.current;
+      if (copy && (d.pendingSubmit || d.pendingCreation)) throw new Error("IMAGE_SUBMISSION_UNCONFIRMED");
       if (!meaningful(d)) return null;
       if (!copy && d.id && savedRevision.current === rev) return { ...d, content: documentContent(d) };
       setSaveState("saving");
-      const body = { saveKey: requestKey(), ...(copy && d.id ? { copyFromId: d.id } : {}), ...(!copy && d.id ? { id: d.id, version: d.version } : { createKey: copy ? requestKey() : d.createKey }), name: d.name, nameSource: d.nameSource || "manual", content: documentContent(d) };
+      const copied = copy ? { ...d, jobs: [], appliedJobs: [], plan: null, taskPositions: undefined } : d;
+      const body = { saveKey: requestKey(), ...(copy && d.id ? { copyFromId: d.id } : {}), ...(!copy && d.id ? { id: d.id, version: d.version } : { createKey: copy ? requestKey() : d.createKey }), name: d.name, nameSource: d.nameSource || "manual", content: documentContent(copied) };
       let saved = await send(body);
       // A creation retry may return the first accepted snapshot. Preserve edits made since then.
       if (!body.id && saved.replayed && !saved.acknowledged) {
@@ -108,7 +110,8 @@ export function useStudioProject({ userId, sessionLoading = false, initialDocume
       }
       if (scope !== epoch.current) return saved;
       savedRevision.current = rev;
-      const current = { ...draftRef.current, ...(revision.current === rev ? { messages: saved.content.messages, name: saved.name } : {}), id: saved.id, version: saved.version, _pendingSave: undefined, _dirty: revision.current !== rev };
+      const current = { ...draftRef.current, ...(revision.current === rev ? { messages: saved.content.messages, name: saved.name } : {}), ...(copy ? { createKey: body.createKey, jobs: [], appliedJobs: [], plan: null, taskPositions: undefined, pendingSubmit: null, pendingCreation: null, pendingBatch: null, pendingMessage: null } : {}), id: saved.id, version: saved.version, _pendingSave: undefined, _dirty: revision.current !== rev };
+      if (copy) epoch.current++;
       draftRef.current = current; setDraft(current); persist(current);
       setSaveState(current._dirty ? "local" : "saved"); projectURL(saved.id);
       return saved;

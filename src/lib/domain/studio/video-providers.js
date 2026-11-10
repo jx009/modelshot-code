@@ -35,11 +35,11 @@ async function request(config, path, { signal, body, headers = {} } = {}) {
   return response.json();
 }
 
-export async function videoRequest(config, { image, imageUrl, references = [], media = [], videoFields = {}, prompt, duration, ratio = "16:9", requestId, signal }) {
+export async function videoRequest(config, { image, imageUrl, references = [], media = [], videoFields = {}, videoVariant, prompt, duration, ratio = "16:9", requestId, signal }) {
   const kind = config.videoKind || "volcengine";
   if (!config.videoKey || !config.videoModel) throw new AppError("SERVICE_NOT_CONFIGURED", 503);
   if (!requestId) {
-    const error = videoInputError(config.videoOptions || videoModelOptions(kind), { duration, ratio, hasImage: Boolean(image), media, videoFields });
+    const error = videoInputError(config.videoOptions || videoModelOptions(kind), { duration, ratio, hasImage: Boolean(image), media, videoFields, videoVariant });
     if (error) throw new AppError(error, 422);
   } else taskId(requestId);
   const encodedId = requestId ? encodeURIComponent(requestId) : null;

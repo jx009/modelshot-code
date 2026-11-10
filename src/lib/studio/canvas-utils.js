@@ -1,6 +1,7 @@
 // Adapted from fancyboi999/Loomic apps/web/src/lib/canvas-elements.ts.
 // Copyright (c) 2026 Xinmin Zeng. MIT; see THIRD_PARTY_NOTICES.md.
 import { textLayerHeight } from "./text-layer.js";
+import { jobSourceAssets, jobSourceLayers, nextResultPosition } from "./canvas-lineage.js";
 export function scaleToFit(width, height, maxSize) {
   if (width <= maxSize && height <= maxSize) return { width, height };
   const ratio = Math.min(maxSize / width, maxSize / height);
@@ -13,7 +14,7 @@ export function isVideoUrl(url) {
   catch { return false; }
 }
 
-export function appendResult(layers, job, target) {
+export function appendResult(layers, job, target, position) {
   if (job.tool === "ocr" && job.resultData?.ocr) {
     // Keep the result linked to its image across project reloads, even when
     // this job no longer appears in the most recent job snapshot.
@@ -45,7 +46,7 @@ export function appendResult(layers, job, target) {
     const created = outputs.map((asset, i) => ({ ...target, id: `${job.id}-${i}`, assetId: asset.id,
       name: asset.label || `${target.name} · ${i + 1}`,
       x: right, pixelWidth: asset.width, pixelHeight: asset.height, sourceJobId: job.id,
-      groupId: job.id, layerRole: "decomposed", repairJobId: undefined }));
+      groupId: job.id, layerRole: "decomposed", repairJobId: undefined, sourceLayerIds: [target.id], sourceAssetIds: jobSourceAssets(job) }));
     if (!created.length) return layers;
     return [...layers, ...created];
   }
@@ -53,15 +54,17 @@ export function appendResult(layers, job, target) {
   // Keep every existing image and its visibility exactly as the user left it.
   const existing = new Set(layers.map(layer => layer.id));
   const assets = job.resultData?.assets || (job.asset ? [job.asset] : []);
-  let right = Math.max(80, ...layers.map(layer => layer.x + layer.width)) + 50;
   const next = [...layers];
+  const sourceLayerIds = jobSourceLayers(layers, job), sourceAssetIds = jobSourceAssets(job);
   for (const [index, asset] of assets.entries()) {
     const id = `${job.id}-${index}`;
     if (existing.has(id)) continue;
     const size = scaleToFit(asset.width || 768, asset.height || 432, 480);
     next.push({ id, type: asset.contentType === "video/mp4" ? "video" : "image", assetId: asset.id, name: asset.label || job.tool,
-      x: right, y: target?.y || 100, ...size, rotation: 0, visible: true, opacity: 1, pixelWidth: asset.width || 768, pixelHeight: asset.height || 432, sourceJobId: job.id });
-    right += size.width + 32;
+      ...(index === 0 && position ? position : nextResultPosition(next, target, size)), ...size, rotation: 0, visible: true, opacity: 1, pixelWidth: asset.width || 768, pixelHeight: asset.height || 432, sourceJobId: job.id,
+      ...(sourceLayerIds.length ? { sourceLayerIds } : {}), ...(sourceAssetIds.length ? { sourceAssetIds } : {}),
+      ...(asset.posterAssetId ? { posterAssetId: asset.posterAssetId } : {}), ...(asset.duration ? { duration: asset.duration } : {}),
+      ...(asset.contentType === "video/mp4" && job.canvasOrigin ? { videoDocumentId: job.documentId } : {}) });
   }
   return next;
 }
@@ -73,8 +76,9 @@ export function beginObjectMove(layers, target, job, bundle, offset) {
   const bounds = bundle.bounds, radians = (target.rotation || 0) * Math.PI / 180;
   const x = (bounds.left + offset.dx) * target.width / target.pixelWidth;
   const y = (bounds.top + offset.dy) * target.height / target.pixelHeight;
-  const background = { ...target, id: `${job.id}-background`, assetId: bundle.holeAssetId, name: `${target.name} · Background`, groupId: job.id, layerRole: "background", repairJobId: job.id, sourceJobId: job.id };
-  const object = { ...target, id: `${job.id}-object`, assetId: bundle.objectAssetId, name: `${target.name} · Object`, groupId: job.id, layerRole: "object", sourceJobId: job.id,
+  const lineage = { sourceLayerIds: [target.id], sourceAssetIds: [target.assetId] };
+  const background = { ...target, ...lineage, id: `${job.id}-background`, assetId: bundle.holeAssetId, name: `${target.name} · Background`, groupId: job.id, layerRole: "background", repairJobId: job.id, sourceJobId: job.id };
+  const object = { ...target, ...lineage, id: `${job.id}-object`, assetId: bundle.objectAssetId, name: `${target.name} · Object`, groupId: job.id, layerRole: "object", sourceJobId: job.id,
     x: target.x + x * Math.cos(radians) - y * Math.sin(radians), y: target.y + x * Math.sin(radians) + y * Math.cos(radians),
     width: bounds.width * target.width / target.pixelWidth, height: bounds.height * target.height / target.pixelHeight, pixelWidth: bounds.width, pixelHeight: bounds.height, repairJobId: undefined };
   return [...layers.slice(0, index), { ...target, visible: false }, background, object, ...layers.slice(index + 1)];

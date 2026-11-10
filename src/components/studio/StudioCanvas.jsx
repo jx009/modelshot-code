@@ -3,6 +3,7 @@
 import { forwardRef, memo, startTransition, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import { Stage, Layer, Image as CanvasImage, Transformer, Text, Group, Line, Rect, Circle } from "react-konva";
 import CanvasArtwork from "./canvas/CanvasArtwork";
+import CanvasCreationGraph from "./canvas/CanvasCreationGraph";
 import CanvasTextEditor from "./canvas/CanvasTextEditor";
 import CanvasOcrEntries from "./canvas/CanvasOcrEntries";
 import { ArrowUpRight, Pencil } from "lucide-react";
@@ -90,7 +91,7 @@ function ExpansionBox({ value, width, height, accent, onChange }) {
       enabledAnchors={["top-left", "top-center", "top-right", "middle-left", "middle-right", "bottom-left", "bottom-center", "bottom-right"]} /></>;
 }
 
-const StudioCanvas = forwardRef(function StudioCanvas({ layers, projectKey, readOnly = false, ocrEntries = [], onOpenOcr, onUsePrompt, selectedId, selectedIds = [], focusPoints = [], onFocusPoint, adjustmentPreview, onSelect, onChange, mode, onMaskChange, panning: requestedPanning = false, moveRegions, onMoveRegions, onPreview, onViewport, onCamera, zh, selectionTool, editPadding = 0.25, brushSize = 35, moveOffset = { dx: 0, dy: 0 }, onMoveOffset, onMovePreparing, onMoveReady, onMoveFailed, onCrop, cropRect, cropShape, cropGrid, onCropGrid, expandPadding = 256, onExpandPadding, onZoom, onUpload, onError, label }, ref) {
+const StudioCanvas = forwardRef(function StudioCanvas({ layers, jobs = [], appliedJobs = [], taskPositions, projectKey, readOnly = false, ocrEntries = [], onOpenOcr, onUsePrompt, selectedId, selectedIds = [], focusPoints = [], onFocusPoint, adjustmentPreview, onSelect, onChange, mode, onMaskChange, panning: requestedPanning = false, moveRegions, onMoveRegions, onPreview, onViewport, onCamera, zh, selectionTool, editPadding = 0.25, brushSize = 35, moveOffset = { dx: 0, dy: 0 }, onMoveOffset, onMovePreparing, onMoveReady, onMoveFailed, onCrop, cropRect, cropShape, cropGrid, onCropGrid, expandPadding = 256, onExpandPadding, onZoom, onUpload, onError, label }, ref) {
   const { resolvedTheme } = useTheme();
   const textColor = resolvedTheme === "light" ? "#27272a" : "#e8e8e4";
   const [textEditor, setTextEditor] = useState(null);
@@ -392,7 +393,7 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, projectKey, read
       setTextEditor({ layer: item, projectKey: current.projectKey });
       return;
     }
-    if (!current.editing && item.type === "image") current.onPreview?.(item.assetId, image);
+    if (!current.editing && ["image", "video"].includes(item.type)) current.onPreview?.(item.assetId, image, item.type);
   }, []);
   function writeAtPointer(event) {
     if (event.target !== stage.current || mode !== "select" || panning || readOnly || editingText) return;
@@ -481,6 +482,7 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, projectKey, read
       onMouseDown={handleMouseDown} onTouchStart={handleMouseDown}
       onMouseMove={handleMouseMove} onTouchMove={handleMouseMove}
       onMouseUp={finishDrawing} onTouchEnd={finishDrawing}>
+      <CanvasCreationGraph camera={camera} dimensions={dimensions} taskPositions={taskPositions} layers={layers} jobs={jobs} appliedJobs={appliedJobs} selectedId={selectedId} scale={camera.scale} light={resolvedTheme === "light"} zh={zh} />
       <CanvasArtwork editingTextId={editingText?.id} textColor={textColor} selectedIds={selectedIds} adjustmentPreview={adjustmentPreview} ref={artwork} layers={layers} camera={camera} dimensions={dimensions} selectedId={selectedId} interactive={!readOnly && !panning && mode === "select"} accent={color} onError={onError} onPreview={previewPicture} onSelect={selectPicture} onChange={changePicture} />
       {!panning && mode === "select" && selectedIds.length > 1 && <MultiSelectionTransform stage={stage} layers={layers} ids={selectedIds.filter(id => layers.some(layer => layer.id === id && layer.visible && !layer.locked))} accent={color} onCommit={transformSelection} />}
       {marquee && <Layer listening={false}><Rect {...marquee} stroke={color} strokeWidth={1 / camera.scale} fill={`${color}22`} /></Layer>}

@@ -6,7 +6,13 @@ import VideoLauncher from "../../src/components/video/VideoLauncher";
 const mocks = vi.hoisted(() => ({ api: vi.fn(), push: vi.fn(), project: null }));
 vi.mock("../../src/lib/client-api", () => ({ api: (...args) => mocks.api(...args) }));
 vi.mock("../../src/hooks/useNavigationRouter", () => ({ useNavigationRouter: () => ({ push: mocks.push }) }));
-vi.mock("../../src/components/video/useVideoProject", () => ({ default: () => mocks.project }));
+vi.mock("../../src/components/video/useVideoProject", async () => {
+  const { useState } = await import("react");
+  return { default: function useMockVideoProject(options) {
+    const [draft, setDraft] = useState(() => ({ ...mocks.project.draft, content: { ...mocks.project.draft.content, video: { ...mocks.project.draft.content.video, ...options.initialVideo, prompt: options.initialPrompt || "" } } }));
+    return { ...mocks.project, draft, change: transform => { mocks.project.change(transform); setDraft(transform); } };
+  } };
+});
 
 beforeEach(() => {
   mocks.api.mockReset().mockResolvedValue({ tools: [{ id: "video", available: true, cost: 10 }, { id: "motion-plan", available: true, cost: 2 }] });
@@ -45,7 +51,7 @@ it("restores the homepage prompt and reports edits without saving a project", ()
   const prompt = screen.getByRole("textbox");
   expect(prompt.value).toBe("A saved scene");
   fireEvent.change(prompt, { target: { value: "A revised scene" } });
-  expect(onDraft).toHaveBeenLastCalledWith({ prompt: "A revised scene" });
+  expect(onDraft).toHaveBeenLastCalledWith(expect.objectContaining({ prompt: "A revised scene", video: expect.objectContaining({ prompt: "A revised scene" }) }));
   expect(mocks.project.save).not.toHaveBeenCalled();
 });
 

@@ -1,6 +1,8 @@
+import VideoSourcePicker from "./VideoSourcePicker";
+
 export default function VideoModelFields({ offer, value = {}, onChange, disabled, zh }) {
   if (!offer?.fields?.length) return null;
-  return <div className="space-y-2">{offer.fields.map(field => <label key={field.key} className="block text-xs text-secondary-text">{zh ? field.label : field.key}
-    <input className="block w-full rounded border border-divider bg-bg-page p-2 text-primary-text" disabled={disabled} maxLength={1000} value={value[field.key] || ""} placeholder={offer.configuredFields?.includes(field.key) ? zh ? "留空使用已配置的值" : "Use configured value" : ""} onChange={event => onChange({ ...value, [field.key]: event.target.value })} />
+  return <div className="space-y-2">{offer.fields.map(field => <label key={field.key} className="block text-xs text-secondary-text">{["sourceTaskId", "video_id"].includes(field.key) ? zh ? "原视频作品" : "Original video" : zh ? field.label.replace(/\s*ID$/, "").replace("模板名称", "模板") : "Preset"}
+    {["sourceTaskId", "video_id"].includes(field.key) ? <VideoSourcePicker key={`${offer.provider}:${field.key}`} provider={offer.provider} field={field.key} value={value[field.key]} onChange={source => onChange({ ...value, [field.key]: source })} disabled={disabled} configured={offer.configuredFields?.includes(field.key)} zh={zh} /> : <select className="block w-full rounded border border-divider bg-bg-page p-2 text-primary-text" disabled={disabled || !offer.fieldChoices?.[field.key]?.length} value={value[field.key] || ""} onChange={event => onChange({ ...value, [field.key]: event.target.value })}><option value="">{offer.configuredFields?.includes(field.key) ? zh ? "使用默认模板" : "Use default preset" : zh ? "选择模板（需管理员配置）" : "Choose a preset (admin configuration required)"}</option>{value[field.key] && !offer.fieldChoices?.[field.key]?.some(choice => choice.value === value[field.key]) && <option value={value[field.key]} disabled>{zh ? "历史模板，当前不可选" : "Previous preset unavailable"}</option>}{(offer.fieldChoices?.[field.key] || []).map(choice => <option key={choice.value} value={choice.value}>{choice.label}</option>)}</select>}
   </label>)}</div>;
 }

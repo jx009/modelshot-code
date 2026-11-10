@@ -16,7 +16,7 @@ export async function GET(request) {
     const limit = paged ? 24 : 100;
     const rows = await prisma.studioDocument.findMany({
       where: { userId: user.id, deletedAt: query.get("kind") === "trash" ? { not: null } : null, ...(search ? { name: { contains: search, mode: "insensitive" } } : {}),
-        ...(["commerce", "canvas"].includes(query.get("kind")) ? { kind: query.get("kind") } : {}),
+        ...(["commerce", "canvas", "motion", "video"].includes(query.get("kind")) ? { kind: query.get("kind") } : {}),
         ...(cursor ? { OR: [{ updatedAt: { lt: new Date(cursor.date) } }, { updatedAt: new Date(cursor.date), id: { lt: cursor.id } }] } : {}),
       }, orderBy: [{ updatedAt: "desc" }, { id: "desc" }], take: limit + 1,
       select: { id: true, name: true, version: true, nameSource: true, updatedAt: true, kind: true, coverAssetId: true, itemCount: true },

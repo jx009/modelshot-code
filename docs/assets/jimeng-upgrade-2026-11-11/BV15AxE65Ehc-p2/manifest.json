@@ -1,0 +1,80 @@
+{
+  "date": "2026-11-11",
+  "title": "【即梦AI教程】02-agent模式_哔哩哔哩_bilibili",
+  "url": "https://www.bilibili.com/video/BV15AxE65Ehc/?p=2",
+  "cid": 43123937232,
+  "part": 2,
+  "duration": 530,
+  "frames": [
+    {
+      "requested": 15,
+      "time": 15,
+      "width": 640,
+      "height": 360,
+      "filename": "frame-0015.jpg"
+    },
+    {
+      "requested": 55,
+      "time": 0,
+      "width": 640,
+      "height": 360,
+      "filename": "frame-0055.jpg"
+    },
+    {
+      "requested": 105,
+      "time": 105.274393,
+      "width": 640,
+      "height": 360,
+      "filename": "frame-0105.jpg"
+    },
+    {
+      "requested": 165,
+      "time": 165.003814,
+      "width": 640,
+      "height": 360,
+      "filename": "frame-0165.jpg"
+    },
+    {
+      "requested": 225,
+      "time": 225,
+      "width": 640,
+      "height": 360,
+      "filename": "frame-0225.jpg"
+    },
+    {
+      "requested": 285,
+      "time": 285.019506,
+      "width": 640,
+      "height": 360,
+      "filename": "frame-0285.jpg"
+    },
+    {
+      "requested": 345,
+      "time": 345,
+      "width": 640,
+      "height": 360,
+      "filename": "frame-0345.jpg"
+    },
+    {
+      "requested": 405,
+      "time": 405.013247,
+      "width": 640,
+      "height": 360,
+      "filename": "frame-0405.jpg"
+    },
+    {
+      "requested": 465,
+      "time": 465.009842,
+      "width": 640,
+      "height": 360,
+      "filename": "frame-0465.jpg"
+    },
+    {
+      "requested": 515,
+      "time": 515.008598,
+      "width": 640,
+      "height": 360,
+      "filename": "frame-0515.jpg"
+    }
+  ]
+}

@@ -67,8 +67,8 @@ export function validVideoParameters(value) {
 
 export function publicVideoOptions(options) {
   if (!options?.api) return options;
-  const { parameters, ...rest } = options;
-  return { ...rest, configuredFields: Object.keys(parameters || {}).filter(key => parameters[key]) };
+  const { parameters, variants, ...rest } = options;
+  return { ...rest, ...(variants ? { variants: variants.map(({ parameters: variantParameters, ...variant }) => ({ ...variant, configuredFields: Object.keys(variantParameters || {}).filter(key => variantParameters[key]) })) } : {}), configuredFields: Object.keys(parameters || {}).filter(key => parameters[key]) };
 }
 
 export function gptBestInputError(options, { media = [], videoFields = {}, hasImage = false } = {}) {
@@ -81,5 +81,6 @@ export function gptBestInputError(options, { media = [], videoFields = {}, hasIm
   }
   if ((api.fields || []).some(field => field.required && !videoFields[field.key]?.trim() && !options.parameters?.[field.key] && !options.configuredFields?.includes(field.key))) return "VIDEO_FIELDS_REQUIRED";
   if (Object.keys(videoFields).some(key => !(api.fields || []).some(field => field.key === key))) return "VIDEO_FIELDS_INVALID";
+  if (Object.entries(videoFields).some(([key, value]) => value && options.fieldChoices?.[key] && !options.fieldChoices[key].some(choice => choice.value === value))) return "VIDEO_FIELDS_INVALID";
   return null;
 }

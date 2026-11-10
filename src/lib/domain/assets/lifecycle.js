@@ -31,6 +31,13 @@ export async function cleanupStorage({ db = prisma, store = objectStorage(), now
     await scheduleCosRemoval(asset, { db });
     if (asset.contentType.startsWith("image/")) for (const size of [320, 640, 1280]) await store.delete(previewKey(asset, size));
     await store.delete(asset.objectKey);
+    if (asset.contentType.startsWith("video/")) await db.$transaction(async tx => {
+      await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${asset.userId} FOR UPDATE`;
+      const posters = await tx.assetReference.findMany({ where: { entityId: asset.id, kind: "video_poster" }, select: { assetId: true } });
+      await tx.assetReference.deleteMany({ where: { entityId: asset.id, kind: "video_poster" } });
+      for (const poster of posters) if (!await tx.assetReference.count({ where: { assetId: poster.assetId } })) await tx.asset.updateMany({ where: { id: poster.assetId, userId: asset.userId, status: "active" }, data: { status: "deleted", deletedAt: now } });
+      await tx.processingStep.deleteMany({ where: { entityId: asset.id, kind: "video-media" } });
+    });
     await db.asset.update({ where: { id: asset.id }, data: { status: "purged" } });
   }
   const exports = await db.exportJob.findMany({ where: { OR: [{ expiresAt: { lt: now }, objectKey: { not: null } }, { status: { in: ["failed", "cancelled"] }, updatedAt: { lt: new Date(+now - 86400_000) } }] }, take: 100 });

@@ -15,8 +15,11 @@ export default function StudioImageViewer(props) {
   </Modal>;
 }
 
-function PreviewSession({ assetId, initialImage, layers, zh, onSelect, onClose }) {
+function PreviewSession({ assetId, initialImage, layers, zh, onSelect, onClose, onReuse, onVariation, onCommerce }) {
   const [view, setView] = useState(DEFAULT_PREVIEW_VIEW);
+  const [comparing, setComparing] = useState(false), [working, setWorking] = useState(false);
+  const selected = layers.find(layer => layer.assetId === assetId);
+  const sourceAssetId = selected?.sourceAssetIds?.find(id => id !== assetId);
   const activeThumbnail = useRef(null);
   const t = (cn, en) => zh ? cn : en;
   const reset = () => setView({ ...DEFAULT_PREVIEW_VIEW });
@@ -39,8 +42,14 @@ function PreviewSession({ assetId, initialImage, layers, zh, onSelect, onClose }
   }, [assetId, layers, onSelect]);
   return <div className="ms-preview-shell">
     <button autoFocus className="ms-preview-close ms-icon" title={t("关闭预览", "Close preview")} onClick={onClose}><X size={22} /></button>
-    <StudioPreviewImage assetId={assetId} initialImage={initialImage} view={view} onView={setView} zh={zh} />
+    {comparing && sourceAssetId ? <div className="ms-preview-compare"><section><span>{t("原图／首张参考", "Original / first reference")}</span><StudioPreviewImage key={sourceAssetId} assetId={sourceAssetId} view={view} onView={setView} zh={zh} /></section><section><span>{t("当前结果", "Current result")}</span><StudioPreviewImage key={assetId} assetId={assetId} initialImage={initialImage} view={view} onView={setView} zh={zh} /></section></div> : <StudioPreviewImage assetId={assetId} initialImage={initialImage} view={view} onView={setView} zh={zh} />}
     <div className="ms-preview-dock">
+      <div className="ms-preview-result-actions">
+        {sourceAssetId && <button type="button" aria-pressed={comparing} onClick={() => { reset(); setComparing(value => !value); }}>{t("对比原图", "Compare original")}</button>}
+        {onVariation && selected && <button type="button" disabled={working} onClick={() => onVariation(selected)}>{t("以此为基准创作", "Create from this image")}</button>}
+        {onCommerce && selected && <button type="button" disabled={working} onClick={async () => { setWorking(true); try { await onCommerce(selected); } finally { setWorking(false); } }}>{t("用作电商套图基准", "Use for a product image series")}</button>}
+        {onReuse && selected?.sourceJobId && <button type="button" disabled={working} onClick={async () => { setWorking(true); try { await onReuse(selected); } finally { setWorking(false); } }}>{t("复用创作参数", "Reuse settings")}</button>}
+      </div>
       {layers.length > 1 && <div className="ms-preview-history" aria-label={t("项目图片", "Project images")}>{layers.map((layer, index) => <button key={layer.id} ref={layer.assetId === assetId ? activeThumbnail : undefined} className={layer.assetId === assetId ? "active" : ""} aria-label={layer.name} aria-current={layer.assetId === assetId ? "true" : undefined} onClick={() => onSelect(layer.assetId)}><Image unoptimized src={previewUrl(layer.assetId, 320)} width={64} height={64} alt="" /><span>{index + 1}</span></button>)}</div>}
       <div className="ms-preview-controls" role="toolbar" aria-label={t("预览工具", "Preview tools")}>
         <button className="ms-icon" disabled={view.zoom <= MIN_PREVIEW_ZOOM} title={t("缩小预览", "Zoom preview out")} onClick={() => setView(current => zoomPreview(current, current.zoom - .25))}><Minus size={18} /></button>

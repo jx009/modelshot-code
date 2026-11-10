@@ -27,7 +27,7 @@ export async function languageCall(userId, purpose, input, key, config, invoke, 
       snapshot: { kind: "language", purpose, input, digest, model: config.chatModel, price: cost },
     } });
     // Keep the original reference images available for later audit, even if the canvas changes.
-    for (const assetId of new Set([input.assetId, input.productAssetId, input.referenceAssetId].filter(Boolean))) {
+    for (const assetId of new Set([input.assetId, input.productAssetId, input.referenceAssetId, ...(input.referenceAssetIds || [])].filter(Boolean))) {
       const asset = await tx.asset.findFirst({ where: { id: assetId, userId, status: "active" }, select: { id: true } });
       if (!asset) throw new AppError("ASSET_NOT_FOUND", 404);
       await tx.assetReference.create({ data: { assetId, entityId: output.id, kind: "generation_input" } });

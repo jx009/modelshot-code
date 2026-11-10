@@ -99,3 +99,22 @@ it("uses a legal output size for older official image models", () => {
   const resolved = editOutputSize({ imageModel: "gpt-image-1" }, "1:1@1K", { width: 1600, height: 900 });
   expect(resolved).toEqual({ choice: "1536x1024", dimensions: "1536x1024", error: null });
 });
+
+it("sends a native alpha mask and preserves pixels outside a feathered selection", async () => {
+  const original = await solid("red", 24, 24);
+  const mask = await sharp(await solid("black", 24, 24)).composite([{ input: await solid("white", 12, 12), left: 6, top: 6 }]).png().toBuffer();
+  const generate = vi.fn(async () => solid("blue", 24, 24));
+  const result = await runGuidedEdit({}, { imageEditStrategy: "native-mask", tool: "inpaint", params: { size: "1:1@1K", preserveOutside: true, feather: 6, prompt: "blue" } }, original, mask, undefined, generate);
+  const sent = generate.mock.calls[0][1];
+  const alpha = await sharp(sent.mask).ensureAlpha().raw().toBuffer();
+  expect(alpha[3]).toBe(255);
+  expect(alpha[(12 * 24 + 12) * 4 + 3]).toBeLessThan(5);
+  const pixels = await sharp(result.images[0]).ensureAlpha().raw().toBuffer();
+  expect([...pixels.subarray(0, 4)]).toEqual([255, 0, 0, 255]);
+  expect(pixels[(12 * 24 + 12) * 4 + 2]).toBeGreaterThan(250);
+  expect(result.edit).toMatchObject({ inputMode: "native-mask", maskSent: true, preserveOutside: true });
+});
+
+it("rejects a mismatched native response instead of stretching the subject", async () => {
+  await expect(runGuidedEdit({}, { imageEditStrategy: "native-mask", tool: "inpaint", params: { size: "1:1@1K" } }, await solid("red"), await solid("white"), undefined, () => solid("blue", 80, 40))).rejects.toThrow("EDIT_GEOMETRY_MISMATCH");
+});

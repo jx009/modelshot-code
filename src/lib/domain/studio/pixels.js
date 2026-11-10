@@ -49,7 +49,7 @@ export async function expandInput(image, padding) {
   const edges = typeof padding === "number" ? { left: padding, right: padding, top: padding, bottom: padding } : padding;
   const w = width + edges.left + edges.right, h = height + edges.top + edges.bottom;
   if (w > 8192 || h > 8192 || w * h > 40000000) throw new AppError("IMAGE_TOO_LARGE", 413);
-  const expanded = await sharp(image).extend({ ...edges, background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toBuffer();
+  const expanded = await sharp(image).ensureAlpha().extend({ ...edges, background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toBuffer();
   const mask = await sharp({ create: { width: w, height: h, channels: 3, background: "white" } }).composite([{ input: await sharp({ create: { width, height, channels: 3, background: "black" } }).png().toBuffer(), left: edges.left, top: edges.top }]).png().toBuffer();
   return { image: expanded, mask };
 }

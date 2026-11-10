@@ -1,7 +1,37 @@
 import sharp from "sharp";
 import { AppError } from "../../http.js";
 import { editOutputSize, editTargetSize, expansionEdges } from "../../studio/edit-geometry.js";
-import { maskPixels } from "./pixels.js";
+import { alphaMask, compositeSelection, expandInput, maskPixels } from "./pixels.js";
+import { editFrame, restoreEditFrame } from "./edit-frame.js";
+
+async function nativeEdit(config, snapshot, original, mask, signal, generate, references, onPrepared) {
+  const { tool, params } = snapshot;
+  const meta = await sharp(original).metadata();
+  const target = editTargetSize(tool, meta, params.padding), output = editOutputSize(config, params.size, target);
+  if (output.error) throw new AppError(output.error, 422);
+  const prepared = tool === "expand" ? await expandInput(original, params.padding) : { image: original, mask };
+  let selection = prepared.mask;
+  if (params.feather) {
+    const originalSelection = await maskPixels(selection, target.width, target.height);
+    const blurred = await sharp(originalSelection, { raw: { width: target.width, height: target.height, channels: 1 } }).blur(Math.max(.3, params.feather / 3)).greyscale().raw().toBuffer();
+    // Fade inside the selected region. Outside pixels stay strictly protected.
+    for (let i = 0; i < blurred.length; i++) blurred[i] = Math.min(originalSelection[i], blurred[i]);
+    selection = await sharp(blurred, { raw: { width: target.width, height: target.height, channels: 1 } }).png().toBuffer();
+  }
+  const providerMask = await alphaMask(selection, target.width, target.height);
+  const [outputWidth, outputHeight] = output.dimensions.split("x").map(Number);
+  const frame = Math.abs(outputWidth / outputHeight - target.width / target.height) > .001
+    ? await editFrame(prepared.image, providerMask, output.dimensions) : null;
+  const prompt = `${tool === "expand" ? "Extend the scene naturally into the transparent border. Preserve the original subject, proportions, lighting and perspective." : "Edit only the transparent masked region, maintaining scene continuity."}\n${params.prompt || "Reconstruct the selected region naturally."}`;
+  const edit = { tool, inputMode: "native-mask", maskSent: true, preserveOutside: Boolean(params.preserveOutside), feather: params.feather || 0, targetWidth: target.width, targetHeight: target.height, providerSize: output.dimensions };
+  await onPrepared?.(edit);
+  let result = await generate(config, { image: frame?.image || prepared.image, mask: frame?.mask || providerMask, references, prompt: prompt + (frame ? "\nKeep the outer gray padding unchanged; edit only the image inside it." : ""), size: output.choice, sizeSource: target, signal });
+  if (frame) result = await restoreEditFrame(result, frame);
+  const actual = await sharp(result).metadata();
+  if (!actual.width || !actual.height || Math.abs((actual.width / actual.height) / (target.width / target.height) - 1) > .025) throw new AppError("EDIT_GEOMETRY_MISMATCH", 422);
+  if (params.preserveOutside) result = await compositeSelection(prepared.image, result, selection);
+  return { images: [result], placement: "append", edit: { ...edit, actualWidth: params.preserveOutside ? target.width : actual.width, actualHeight: params.preserveOutside ? target.height : actual.height } };
+}
 
 export async function greenEditGuide(image, mask) {
   const { width, height } = await sharp(image).metadata();
@@ -15,6 +45,9 @@ export async function greenEditGuide(image, mask) {
 
 export async function runGuidedEdit(config, snapshot, original, mask, signal, generate, references = [], { onPrepared } = {}) {
   const { tool, params } = snapshot;
+  // Jobs admitted before strategy snapshots keep their original guide protocol.
+  if (snapshot.imageEditStrategy === "native-mask") return nativeEdit(config, snapshot, original, mask, signal, generate, references, onPrepared);
+  if (params.preserveOutside || params.feather) throw new AppError("EDIT_STRATEGY_UNSUPPORTED", 422);
   if (config.imageKind === "dashscope" && references.length > 1) throw new AppError("TOO_MANY_EDIT_REFERENCES", 422);
   const meta = await sharp(original).metadata();
   const target = editTargetSize(tool, meta, params.padding);
@@ -38,9 +71,8 @@ export async function runGuidedEdit(config, snapshot, original, mask, signal, ge
     references.length ? "后续图片仅作为用户提供的参考，不要把它们拼贴到成品。" : "",
     "输出一张完整的修改后图片，不要保留绿色标记、边框或文字说明。",
   ].filter(Boolean).join("\n");
-  // Match the observed reference frontend: a green canvas with the source at
-  // its actual offset (expand), or green strokes on a white-backed source
-  // (inpaint), exported as JPEG quality .99 with a 3072px longest edge.
+  // Compatibility fallback for channels without a verified native mask
+  // protocol. This is ModelShot's guide strategy, not a Jimeng API claim.
   const marked = tool === "expand"
     ? await sharp(original).extend({ ...edges, background: "#00ff00" }).flatten({ background: "#00ff00" }).png().toBuffer()
     : await greenEditGuide(original, mask);

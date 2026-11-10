@@ -1,10 +1,10 @@
 import { advanceAgentRun } from "./agent-runs.js";
 import { prisma } from "../../prisma.js";
 import { AppError } from "../../http.js";
-import { RUN_ACTIVE, isRunTerminal, nextImageSource } from "../../creation/contracts/runs.js";
+import { RUN_ACTIVE, isRunTerminal, nextImageSource, imageRunStepInputs } from "../../creation/contracts/runs.js";
 import { TERMINAL } from "../generation/contracts.js";
 import { cancelOutput } from "../generation/execution.js";
-import { submitStudioJob, submitCreationPosterImageStep } from "../studio/jobs.js";
+import { submitStudioJob, submitCreationPosterImageStep, submitCreationVideoStep } from "../studio/jobs.js";
 import { POSTER_IMAGE_TOOL } from "../../creation/contracts/poster-image.js";
 import { publishPosterImage } from "./poster-images.js";
 import { studioConfig, capabilities } from "../studio/providers.js";
@@ -53,6 +53,7 @@ export async function advanceRun(id, { db = prisma, store, configFor = studioCon
       }
     }
     if (!initial.cancelRequestedAt && pending && !pending.jobId) {
+      if (initial.kind === "video") return await submitCreationVideoStep(initial.userId, id, pending.id, initial.eventSequence, db);
       if (["poster", "slides", "document", "sheet", "web"].includes(initial.kind)) {
         if (pending.tool === POSTER_IMAGE_TOOL) return await submitPosterImage(initial.userId, id, pending.id, initial.eventSequence, { db, now });
         const languageConfig = await languageConfigFor(db, initial.input.languageProvider);
@@ -146,7 +147,7 @@ export async function advanceRun(id, { db = prisma, store, configFor = studioCon
       const output = await submit(run.userId, {
         origin: "chat", tool: step.tool, documentId: document.id, documentVersion: document.version,
         expectedCost: step.expectedCost, ...(run.input.provider ? { provider: run.input.provider } : {}),
-        ...(source || {}), params: step.params,
+        ...(source || {}), ...imageRunStepInputs(run, step),
       }, `creation-${step.id}-${step.attempt}`, db, { config, capabilities: caps, transaction: tx, creationStepId: step.id });
       await tx.creationStepAttempt.create({ data: { stepId: step.id, number: step.attempt, jobId: output.id, cost: output.cost } });
       await tx.creationStep.update({ where: { id: step.id }, data: { jobId: output.id, status: "queued", errorCode: null } });

@@ -9,7 +9,7 @@ import subprocess
 import tempfile
 import shutil
 import re
-from motion import inspect_media, render as render_motion
+from motion import inspect_media, inspect_video_poster, render as render_motion
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Depends, File, Form, Header, HTTPException, UploadFile
@@ -144,6 +144,25 @@ async def execute(tool: str, image: UploadFile = File(...), params: str = Form("
 
 
 MOTION_LOCK = asyncio.Semaphore(1)
+
+@app.post("/motion/poster", dependencies=[Depends(authorize)])
+async def video_poster(file: UploadFile = File(...)):
+    if "motion-render" not in ENGINES: raise HTTPException(503, "Video tools unavailable")
+    try: await asyncio.wait_for(MOTION_LOCK.acquire(), timeout=10)
+    except asyncio.TimeoutError as exc: raise HTTPException(429, "Video renderer busy") from exc
+    try:
+        with tempfile.TemporaryDirectory(prefix="modelshot-poster-") as folder:
+            path = Path(folder) / "input.mp4"
+            total = 0
+            with path.open("wb") as output:
+                while chunk := await file.read(1024 * 1024):
+                    total += len(chunk)
+                    if total > 128 * 1024 * 1024: raise HTTPException(413, "File too large")
+                    output.write(chunk)
+            return await asyncio.to_thread(inspect_video_poster, path)
+    finally:
+        await file.close()
+        MOTION_LOCK.release()
 
 @app.post("/motion/inspect", dependencies=[Depends(authorize)])
 async def inspect_upload(file: UploadFile = File(...)):

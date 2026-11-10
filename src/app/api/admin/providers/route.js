@@ -16,10 +16,19 @@ import { recognizeText } from "../../../../lib/domain/studio/ocr.js";
 import { upscaleVolcImage } from "../../../../lib/domain/studio/upscale.js";
 import { VIDEO_DURATIONS, videoModelOptions } from "../../../../lib/video/model-protocols.js";
 import { GPTBEST_VIDEO_APIS, validVideoParameters } from "../../../../lib/video/gptbest-catalog.js";
+import { videoVariantsSchema, videoFieldChoicesSchema } from "../../../../lib/video/variants.js";
 
 const kindSchema = z.enum(["openai", "gemini", "fashn", "dashscope", "volcengine", "minimax", "volc-visual", "fal", "zzshu", "gptbest"]);
+function assertVideoSettings(kind, config) {
+  if (kind !== "gptbest" || config.studioCapability !== "video") return;
+  const options = videoModelOptions(kind, config);
+  if ((config.videoVariants || []).some(row => row.durations.some(value => !options.durations.includes(value)) || row.ratios.some(value => !options.ratios.includes(value)))) throw new AppError("VIDEO_VARIANT_UNSUPPORTED", 422);
+  const keys = (options.fields || []).filter(field => !["sourceTaskId", "video_id"].includes(field.key)).map(field => field.key);
+  if (Object.keys(config.videoFieldChoices || {}).some(key => !keys.includes(key))) throw new AppError("VIDEO_FIELDS_INVALID", 422);
+}
 const visualSecrets = { accessKeyId: z.string().max(4096).optional(), secretAccessKey: z.string().max(4096).optional() };
 const channelFields = { scope: z.enum(["public", "tool", "language"]).optional(), studioCapability: z.enum(["image", "video", "segment", "split", "language", "ocr", "upscale"]).optional(), imageMode: z.enum(["both", "generate", "edit"]).optional(), studioDefault: z.boolean().optional(),
+  videoVariants: videoVariantsSchema.optional(), videoFieldChoices: videoFieldChoicesSchema.optional(),
   videoApi: z.enum(GPTBEST_VIDEO_APIS.map(api => api.id)).optional(), videoParameters: z.record(z.string(), z.json()).refine(validVideoParameters).optional(),
   videoInputMode: z.enum(["text", "image", "both"]).optional(), videoReferenceMode: z.enum(["first_frame", "reference_images"]).optional(), videoDurations: z.array(z.union(VIDEO_DURATIONS.map(value => z.literal(value)))).min(1).max(VIDEO_DURATIONS.length).refine(values => new Set(values).size === values.length).optional() };
 
@@ -46,7 +55,7 @@ function safeConfig(configStr, row) {
     chatModel: cfg.chatModel || "",
     scope: channelScope(row, cfg), studioCapability: channelCapability(row, cfg), imageMode: cfg.imageMode || "both", studioDefault: Boolean(cfg.studioDefault),
     ...(channelCapability(row, cfg) === "video" ? { videoInputMode: videoModelOptions(row.kind, cfg)?.inputMode, videoDurations: videoModelOptions(row.kind, cfg)?.durations,
-      ...(row.kind === "gptbest" ? { videoApi: videoModelOptions(row.kind, cfg).api, videoParameters: cfg.videoParameters || {} } : {}),
+      ...(row.kind === "gptbest" ? { videoApi: videoModelOptions(row.kind, cfg).api, videoParameters: cfg.videoParameters || {}, videoVariants: cfg.videoVariants || [], videoFieldChoices: cfg.videoFieldChoices || {} } : {}),
       ...(row.kind === "zzshu" ? { videoReferenceMode: videoModelOptions(row.kind, cfg).referenceMode } : {}) } : {}),
   };
 }
@@ -128,8 +137,9 @@ export async function PATCH(req) {
       const kind = input.kind || existing.kind || existing.name;
       for (const field of Object.keys(channelFields)) if (input[field] !== undefined) cfg[field] = input[field];
       if (kind !== "zzshu" || cfg.studioCapability !== "video") delete cfg.videoReferenceMode;
-      if (kind !== "gptbest" || cfg.studioCapability !== "video") { delete cfg.videoApi; delete cfg.videoParameters; }
+      if (kind !== "gptbest" || cfg.studioCapability !== "video") { delete cfg.videoApi; delete cfg.videoParameters; delete cfg.videoVariants; delete cfg.videoFieldChoices; }
       if (!validChannel(kind, cfg)) throw new AppError("PROVIDER_CAPABILITY_UNSUPPORTED", 422);
+      assertVideoSettings(kind, cfg);
       if (kind === "volc-visual" && (!cfg.accessKeyIdEnc || !cfg.secretAccessKeyEnc)) throw new AppError(cfg.studioCapability === "upscale" ? "UPSCALE_NOT_CONFIGURED" : "SEGMENTATION_NOT_CONFIGURED", 422);
       if (cfg.studioCapability === "ocr" && !cfg.apiKeyEnc) throw new AppError("OCR_NOT_CONFIGURED", 422);
       if (channelScope({ kind }, cfg) !== "public" && channelCapability({ kind }, cfg) === "image") cfg.studioDefault = false;
@@ -168,12 +178,13 @@ export async function PUT(req) {
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended('provider-config', 0))::text`;
       const priority = (await tx.modelProvider.aggregate({ _max: { priority: true } }))._max.priority || 0;
       const config = { model: input.model, ...(input.chatModel ? { chatModel: input.chatModel } : {}), ...(input.baseURL ? { baseURL: normalizeBaseURL(input.baseURL) } : {}), ...(input.apiKey.trim() ? { apiKeyEnc: encryptSecret(input.apiKey.trim()) } : {}) };
-      for (const field of ["studioCapability", "imageMode", "scope", "videoInputMode", "videoDurations", "videoReferenceMode", "videoApi", "videoParameters"]) if (input[field] !== undefined) config[field] = input[field];
+      for (const field of ["studioCapability", "imageMode", "scope", "videoInputMode", "videoDurations", "videoReferenceMode", "videoApi", "videoParameters", "videoVariants", "videoFieldChoices"]) if (input[field] !== undefined) config[field] = input[field];
       if (input.accessKeyId?.trim()) config.accessKeyIdEnc = encryptSecret(input.accessKeyId.trim());
       if (input.secretAccessKey?.trim()) config.secretAccessKeyEnc = encryptSecret(input.secretAccessKey.trim());
       if (input.kind === "volc-visual" && (!config.accessKeyIdEnc || !config.secretAccessKeyEnc)) throw new AppError(config.studioCapability === "upscale" ? "UPSCALE_NOT_CONFIGURED" : "SEGMENTATION_NOT_CONFIGURED", 422);
       if (config.studioCapability === "ocr" && !config.apiKeyEnc) throw new AppError("OCR_NOT_CONFIGURED", 422);
       if (!validChannel(input.kind, config) || input.studioDefault) throw new AppError("PROVIDER_CAPABILITY_UNSUPPORTED", 422);
+      assertVideoSettings(input.kind, config);
       if (input.scope === "language") await tx.modelProvider.updateMany({ data: { isPlanner: false } });
       const row = await tx.modelProvider.create({ data: { isPlanner: input.scope === "language", name: `${input.kind}-${randomUUID().slice(0, 12)}`, kind: input.kind, displayName: input.displayName, priority: priority + 1, creditCost: input.creditCost, costPerImage: input.costPerImage, config: JSON.stringify(config) } });
       return { response: { id: row.id }, audit: { provider: row.name, kind: row.kind, displayName: row.displayName, keyConfigured: Boolean(input.apiKey || input.accessKeyId && input.secretAccessKey) } };

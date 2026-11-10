@@ -10,6 +10,7 @@ import "./image-tool-toolbar.css";
 
 const ICONS = { expand: Expand, upscale: ZoomIn, enhance: Sparkles, describe: WandSparkles, template: WandSparkles, erase: Eraser, inpaint: Scissors, focus: Sparkles, merge: Layers3, "text-edit": Type, translate: Type, ocr: ScanText, "remove-bg": Scissors, split: Layers3, move: Move, crop: Crop, adjust: SlidersHorizontal, video: Video, chat: MessageCircle, library: FolderOpen, download: Download };
 const GROUPS = [
+  { id: "video" },
   { id: "expand" },
   { id: "quality", zh: "画质提升", en: "Image quality", icon: ZoomIn, items: ["upscale", "enhance"] },
   { id: "prompts", zh: "反推提示词", en: "Reverse prompt", icon: WandSparkles, items: ["describe", "template"] },
@@ -17,7 +18,7 @@ const GROUPS = [
   { id: "local", zh: "局部修改", en: "Local edit", icon: Scissors, items: ["inpaint", "focus", "merge"] },
   { id: "text", zh: "文字编辑", en: "Image text", icon: Type, items: ["text-edit", "translate", "ocr"] },
   { id: "layers", zh: "抠图与图层", en: "Cutout & layers", icon: Layers3, items: ["remove-bg", "split", "move"] },
-  { id: "more", zh: "更多", en: "More", icon: MoreHorizontal, items: ["crop", "adjust", "chat", "video", "library", "download"] },
+  { id: "more", zh: "更多", en: "More", icon: MoreHorizontal, items: ["crop", "adjust", "chat", "library", "download"] },
 ];
 
 export default function ImageToolToolbar({ selected, size, viewport, capabilities, zh, onChoose, onChat, onSave }) {
@@ -68,7 +69,7 @@ export default function ImageToolToolbar({ selected, size, viewport, capabilitie
   }
   function action(id, inMenu = false) {
     const item = getTool(id), capability = capabilities?.tools?.find(row => row.id === id);
-    const unavailable = item && !capability?.available && !item.clientOnly && id !== "crop";
+    const unavailable = item && !capability?.available && !item.clientOnly && id !== "crop" && id !== "video";
     const label = item ? (zh ? item.zh : item.en) : ({ chat: t("添加到聊天", "Add to chat"), library: t("存入素材库", "Save to library"), download: t("下载原图", "Download image") })[id];
     const Icon = ICONS[id] || WandSparkles;
     const hint = unavailable ? t("需管理员启用或配置此工具", "An administrator needs to configure or enable this tool") : item ? `${imageCreditCost(capability || item, size, 0)} ${t("积分", "credits")}` : "";

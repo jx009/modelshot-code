@@ -1,33 +1,37 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { FileAudio, Film, ImagePlus, X } from "lucide-react";
+import { ImagePlus } from "lucide-react";
 import CreationComposer from "@/components/discover/CreationComposer";
-import GenerationModelSelect from "@/components/creation/GenerationModelSelect";
-import { videoModelOffer, videoModelChange } from "@/lib/video/model-choice";
-import Image from "@/components/studio/AssetImage";
+import { videoModelOffer } from "@/lib/video/model-choice";
 import { useNavigationRouter } from "@/hooks/useNavigationRouter";
-import { api } from "@/lib/client-api";
-import { previewUrl } from "@/lib/studio/image-url";
+import useVideoCapabilities from "./useVideoCapabilities";
+import { videoMessage } from "@/lib/video/messages";
 import { clipboardImageFiles } from "@/lib/studio/image-paste";
 import { VIDEO_TEMPLATES } from "@/lib/video/timeline";
 import useVideoProject from "./useVideoProject";
 import VideoMediaHint, { VIDEO_MEDIA_ACCEPT } from "./VideoMediaHint";
-import VideoModelFields from "./VideoModelFields";
+import VideoSubmissionRecovery from "./VideoSubmissionRecovery";
+import VideoReferenceEditor from "./VideoReferenceEditor";
+import VideoParameterFields from "./VideoParameterFields";
 import "@/components/creation/reference-assets.css";
 
 export default function VideoLauncher({ mode, userId, zh, visible = true, initialDraft, onDraft }) {
-  const project = useVideoProject({ mode, userId, initialProvider: initialDraft?.provider }), router = useNavigationRouter(), input = useRef(null);
-  const [prompt, setPrompt] = useState(initialDraft?.prompt || ""), [caps, setCaps] = useState(null);
-  const [capsError, setCapsError] = useState(false), [attempt, setAttempt] = useState(0), [opening, setOpening] = useState(false);
+  const project = useVideoProject({ mode, userId, initialProvider: initialDraft?.provider, initialVideo: initialDraft?.video, initialPrompt: initialDraft?.prompt }), router = useNavigationRouter(), input = useRef(null);
+  const { data: caps, error: capsError, retry: retryCapabilities } = useVideoCapabilities(Boolean(userId && visible));
+  const [opening, setOpening] = useState(false);
   const draftCallback = useRef(onDraft), isVisible = useRef(visible);
   const video = project.draft.content.video, motion = mode === "motion", tool = motion ? "motion-plan" : "video";
+  const prompt = video.prompt || "", setPrompt = prompt => project.change(current => ({ ...current, content: { ...current.content, video: { ...current.content.video, prompt } } }));
   const offer = motion ? caps?.tools?.find(item => item.id === tool) : videoModelOffer(caps, video.provider, video);
   const hasPrompt = Boolean(prompt.trim() || !motion && offer?.promptOptional && video.media.length);
-  const busy = opening || project.working || project.active || project.applying || project.jobsLoading;
+  const busy = opening || project.working || project.applying || project.jobsLoading;
+  const submitBusy = busy || project.active || project.pendingSubmission;
   const mediaLimit = motion ? 40 : offer?.mediaLimits ? Object.values(offer.mediaLimits).reduce((sum, count) => sum + count, 0) : 1;
   const text = (cn, en) => zh ? cn : en;
   const modelError = {
+    VIDEO_REFERENCE_ROLE_UNSUPPORTED: text("素材用途与当前模型不一致，请重新分配用途或更换模型。", "Assign reference roles for this model or choose another model."),
+    VIDEO_FRAME_ORDER_INVALID: text("请先设置首帧，再设置尾帧。", "Set a first frame before the last frame."),
     VIDEO_FIELDS_REQUIRED: text("请填写当前模型所需的模板或原任务信息。", "Complete the required model fields."),
     VIDEO_MEDIA_LIMIT: text("参考素材超出当前模型限制，请移除部分素材或更换模型。", "References exceed this model’s limits."),
     VIDEO_AUDIO_DURATION_INVALID: text("参考音频每段至少 1.8 秒，合计不能超过 30 秒。", "Audio must be at least 1.8s per clip, 30s total."),
@@ -37,22 +41,12 @@ export default function VideoLauncher({ mode, userId, zh, visible = true, initia
     VIDEO_REFERENCE_UNSUPPORTED: text("当前模型仅支持文生视频，请移除图片或更换模型。", "This text-to-video model does not accept images. Remove the reference or change models."),
   }[offer?.reason];
   useEffect(() => { draftCallback.current = onDraft; }, [onDraft]);
-  useEffect(() => { draftCallback.current?.({ prompt, ...(video.provider ? { provider: video.provider } : {}) }); }, [prompt, video.provider]);
+  useEffect(() => { draftCallback.current?.({ prompt, video, ...(video.provider ? { provider: video.provider } : {}) }); }, [prompt, video]);
   useEffect(() => { isVisible.current = visible; return () => { isVisible.current = false; }; }, [visible]);
-  useEffect(() => {
-    if (!userId || !visible) return;
-    const abort = new AbortController();
-    api("/api/video/capabilities", { signal: abort.signal }).then(value => {
-      if (!abort.signal.aborted) { setCaps(value); setCapsError(false); }
-    }).catch(() => {
-      if (!abort.signal.aborted) setCapsError(true);
-    });
-    return () => abort.abort();
-  }, [userId, visible, attempt]);
   const patch = values => project.change(current => ({ ...current, content: { ...current.content, video: { ...current.content.video, ...values } } }));
   async function start(event) {
     event.preventDefault();
-    if (!userId || !visible || !hasPrompt || !offer?.available || busy) return;
+    if (!userId || !visible || !hasPrompt || !offer?.available || submitBusy) return;
     const result = await project.submit(tool, prompt.trim(), offer);
     if (result && isVisible.current) router.push(`/video?document=${result.documentId}`);
   }
@@ -77,25 +71,19 @@ export default function VideoLauncher({ mode, userId, zh, visible = true, initia
     promptLabel={text("视频创意", "Video prompt")}
     placeholder={motion ? text("描述视频创意，可添加图片、视频或音频素材…", "Describe a video idea and add images, clips or audio…") : text("描述主体、场景和镜头，或添加首帧图片…", "Describe the subject, scene and camera, or add a first-frame image…")}
     maxLength={4000} disabled={busy} busy={busy} cost={offer?.cost}
-    submitDisabled={!userId || busy || !hasPrompt || !offer?.available}
+    submitDisabled={!userId || submitBusy || !hasPrompt || !offer?.available}
     submitLabel={motion ? text("生成视频方案", "Generate video plan") : text("生成视频", "Generate video")}
     onDragOver={event => { if (event.dataTransfer.types.includes("Files")) event.preventDefault(); }}
     onDrop={event => { if (event.dataTransfer.files.length) { event.preventDefault(); upload(event.dataTransfer.files); } }}
     onPaste={event => { const files = clipboardImageFiles(event.clipboardData); if (files.length) { event.preventDefault(); upload(files); } }}
     attachments={<div className="cw-reference-assets">
-      <div className="cw-reference-assets-list">{video.media.map(media => <div key={media.id} className="cw-reference-asset" title={media.name}>
-        {media.type === "image" ? <Image src={previewUrl(media.id, 320)} unoptimized fill sizes="52px" loading="lazy" alt={media.name} /> : <div className="cr-creation-media-icon">{media.type === "audio" ? <FileAudio size={22} /> : <Film size={22} />}</div>}
-        <span>{media.name}</span>
-        <button type="button" disabled={busy || video.composition?.scenes.some(scene => scene.assetId === media.id) || video.composition?.audio?.assetId === media.id} aria-label={text(`移除 ${media.name}`, `Remove ${media.name}`)} onClick={() => patch({ media: video.media.filter(item => item.id !== media.id) })}><X size={12} /></button>
-      </div>)}</div>
+      <VideoReferenceEditor onReplace={(files, id) => project.upload(files, offer, id)} media={video.media} offer={offer} motion={motion} zh={zh} disabled={busy} onChange={media => patch({ media })} onAdd={() => input.current?.click()} lockedIds={[...(video.composition?.scenes || []).map(scene => scene.assetId), video.composition?.audio?.assetId].filter(Boolean)} />
       <button type="button" className="cw-add-reference" disabled={!userId || busy || video.media.length >= mediaLimit} onClick={() => input.current?.click()}><ImagePlus size={16} />{motion ? text("添加素材", "Add media") : text("添加参考素材", "Add references")}</button>
       <input ref={input} hidden aria-label={text("上传视频素材", "Upload video media")} type="file" multiple={motion || Boolean(offer?.mediaLimits)} accept={motion || offer?.mediaLimits?.video || offer?.mediaLimits?.audio ? VIDEO_MEDIA_ACCEPT : "image/png,image/jpeg,image/webp"} onChange={event => { upload(event.target.files); event.target.value = ""; }} />
     </div>}
     settings={<>
-      {!motion && <VideoModelFields offer={offer} value={video.videoFields} onChange={videoFields => patch({ videoFields })} disabled={busy} zh={zh} />}
-      {!motion && <GenerationModelSelect video zh={zh} models={caps?.videoModels} value={video.provider || caps?.videoProvider} disabled={busy} onChange={provider => patch(videoModelChange(caps, provider, video))} />}
-      <label>{text("比例", "Aspect ratio")}<select disabled={busy} value={video.ratio} onChange={event => patch({ ratio: event.target.value })}>{(motion ? ["16:9", "9:16", "1:1", "4:5"] : [...new Set([video.ratio, ...(offer?.ratios || ["16:9", "9:16", "1:1", "4:5"])])]).map(ratio => <option key={ratio}>{ratio}</option>)}</select></label>
-      {!motion && <label>{text("时长", "Duration")}<select disabled={busy} value={video.duration} onChange={event => patch({ duration: Number(event.target.value) })}>{[...new Set([video.duration, ...(offer?.durations || [5, 10])])].map(duration => <option key={duration} value={duration}>{duration}s</option>)}</select></label>}
+      {!motion && <VideoParameterFields caps={caps} video={video} offer={offer} onChange={patch} disabled={busy} zh={zh} />}
+      {motion && <label>{text("比例", "Aspect ratio")}<select disabled={busy} value={video.ratio} onChange={event => patch({ ratio: event.target.value })}>{["16:9", "9:16", "1:1", "4:5"].map(ratio => <option key={ratio}>{ratio}</option>)}</select></label>}
       {motion && <label>{text("平台预设", "Platform preset")}<select disabled={busy} value="" onChange={event => { if (event.target.value !== "") patch({ ratio: VIDEO_TEMPLATES[Number(event.target.value)][1] }); }}><option value="">{text("选择画幅预设", "Choose an aspect preset")}</option>{VIDEO_TEMPLATES.map(([name, ratio], index) => <option key={index} value={index}>{name} · {ratio}</option>)}</select></label>}
       <button type="button" className="cr-creation-secondary" disabled={!userId || busy} onClick={openWorkspace}>{text("打开视频工作台", "Open video workspace")}</button>
     </>}
@@ -103,7 +91,8 @@ export default function VideoLauncher({ mode, userId, zh, visible = true, initia
     {project.recovery && <div className="cr-creation-note" role="status">{text("发现未保存的视频草稿", "An unsaved video draft is available")} <button type="button" disabled={busy} onClick={project.recover}>{text("恢复", "Restore")}</button> <button type="button" disabled={busy} onClick={project.discardRecovery}>{text("忽略", "Dismiss")}</button></div>}
     {!motion && <VideoMediaHint offer={offer} zh={zh} />}
     {project.uploadProgress && <p className="cr-creation-note" role="status">{project.uploadProgress}</p>}
-    {!userId ? <p className="cr-creation-note">{text("登录后开始视频创作", "Sign in to create videos")}</p> : capsError ? <div className="cr-creation-error" role="alert">{text("视频能力加载失败", "Could not load video availability")}<button type="button" onClick={() => { setCapsError(false); setAttempt(value => value + 1); }}>{text("重试", "Retry")}</button></div> : !caps ? <p className="cr-creation-note" role="status">{text("正在加载视频能力…", "Loading video availability…")}</p> : !offer?.available && <p className="cr-creation-note">{modelError || text("生成服务未就绪，可在参数中打开工作台编辑素材。", "Generation is unavailable. Open the workspace from Settings to edit media.")}</p>}
+    {!userId ? <p className="cr-creation-note">{text("登录后开始视频创作", "Sign in to create videos")}</p> : capsError ? <div className="cr-creation-error" role="alert">{text("视频能力加载失败", "Could not load video availability")}<button type="button" onClick={retryCapabilities}>{text("重试", "Retry")}</button></div> : !caps ? <p className="cr-creation-note" role="status">{text("正在加载视频能力…", "Loading video availability…")}</p> : !offer?.available && <p className="cr-creation-note">{modelError || videoMessage(offer?.reason, zh)}</p>}
+    <VideoSubmissionRecovery project={project} zh={zh} onRecovered={job => { if (isVisible.current) router.push(`/video?document=${job.documentId}`); }} />
     {project.error && <p role="alert" className="cr-creation-error">{text("操作未完成：", "Operation failed: ")}{project.error}</p>}
   </CreationComposer>;
 }

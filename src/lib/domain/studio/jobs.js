@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { motionAssetIds } from "../../video/schema.js";
+import { motionAssetIds, videoDocumentSchema } from "../../video/schema.js";
 import { assertMotionMedia } from "./motion.js";
 import { assertCreationAccess, getCreationEnv } from "../../creation/access.js";
 import { prisma } from "../../prisma.js";
@@ -15,19 +15,51 @@ import { imageSizeChoice, imageSizeError } from "../../studio/image-size.js";
 import { imageCreditCost, billingResolution } from "../../studio/image-pricing.js";
 import { upscaleInputError } from "../../studio/upscale.js";
 import { GUIDED_EDIT_TOOLS, editOutputSize, editTargetSize } from "../../studio/edit-geometry.js";
-import { nextImageSource } from "../../creation/contracts/runs.js";
+import { nextImageSource, imageRunStepInputs } from "../../creation/contracts/runs.js";
 import { POSTER_IMAGE_TOOL, posterImageStepSchema } from "../../creation/contracts/poster-image.js";
 import { lockRun } from "../creation/runs.js";
 import { appendRunEvent, enqueueRun } from "../creation/events.js";
+import { imageEditStrategy } from "../../studio/edit-strategy.js";
 import { videoInputError, videoModelOptions } from "../../video/model-protocols.js";
 import { assertVideoMedia } from "./video-media.js";
 import { videoReferenceUrl } from "./video-reference.js";
 import { gptBestBody } from "./gptbest-video.js";
+import { assertVideoSource, sourceProviderNames } from "./video-source.js";
+import { selectVideoVariant } from "../../video/variants.js";
+import { videoShotSchema } from "../../creation/contracts/video-runs.js";
 
 export async function submitStudioJob(userId, input, key, db = prisma, deps = {}) {
   const data = jobSchema.parse(input);
   if (["motion-plan", "motion-render", "video"].includes(data.tool)) assertCreationAccess(await getCreationEnv(userId, { db }), { kind: data.tool === "video" ? "video" : "motion", runs: true });
   return submitAdmittedJob(userId, data, key, db, deps);
+}
+
+export async function submitCreationVideoStep(userId, runId, stepId, sequence, db = prisma) {
+  assertCreationAccess(await getCreationEnv(userId, { db }), { kind: "video", runs: true });
+  return db.$transaction(async tx => {
+    const run = await lockRun(tx, userId, runId), step = run.steps.find(item => item.id === stepId);
+    if (run.kind !== "video" || step?.tool !== "video" || run.eventSequence !== sequence || run.cancelRequestedAt || !["queued", "running"].includes(run.status)) throw new AppError("CREATION_STEP_CHANGED", 409);
+    if (step.jobId) {
+      const old = await tx.tryOn.findFirst({ where: { id: step.jobId, userId } });
+      if (!old || old.snapshot?.creationStepId !== step.id) throw new AppError("CREATION_STEP_CHANGED", 409);
+      return presentJob(old);
+    }
+    if (step.status !== "ready" || step.dependsOn.some(id => run.steps.find(item => item.id === id)?.status !== "succeeded")) throw new AppError("CREATION_DEPENDENCY_PENDING", 409);
+    if (!await tx.studioDocument.findFirst({ where: { id: run.documentId, userId, kind: "motion", deletedAt: null }, select: { id: true } })) throw new AppError("DOCUMENT_NOT_FOUND", 404);
+    const shot = videoShotSchema.parse(step.params), childId = `shot-${step.id}-${step.attempt}`;
+    const media = shot.params.media || [], first = media.find(item => item.type === "image");
+    const video = videoDocumentSchema.parse({ mode: "video", media, prompt: shot.params.prompt, provider: shot.provider, ratio: shot.params.ratio || "16:9", duration: shot.params.duration, videoVariant: shot.params.videoVariant, videoFields: shot.params.videoFields,
+      sceneOrigin: { documentId: run.documentId, sceneId: shot.sceneId, assetId: step.result?.sourceAssetId || null, ...(step.result?.sourceType ? { sourceType: step.result.sourceType } : {}) } });
+    await tx.studioDocument.create({ data: { id: childId, userId, createKey: childId, name: step.explanation.slice(0, 100) || "视频镜头", kind: "video", content: { schemaVersion: 1, layers: [], messages: [], jobs: [], appliedJobs: [], video } } });
+    const childReferences = [...new Set([...media.map(item => item.id), video.sceneOrigin.assetId].filter(Boolean))];
+    if (childReferences.length) await tx.assetReference.createMany({ data: childReferences.map(assetId => ({ assetId, entityId: childId, kind: "studio" })), skipDuplicates: true });
+    const data = jobSchema.parse({ origin: "chat", tool: "video", provider: shot.provider, documentId: childId, documentVersion: 1, expectedCost: step.expectedCost, ...(first ? { assetId: first.id } : {}), params: shot.params });
+    const output = await submitAdmittedJob(userId, data, `creation-video-${step.id}-${step.attempt}`, tx, { transaction: tx, videoRunStep: { run, step } });
+    await tx.creationStepAttempt.create({ data: { stepId: step.id, number: step.attempt, jobId: output.id, cost: output.cost } });
+    await tx.creationStep.update({ where: { id: step.id }, data: { jobId: output.id, status: "queued", errorCode: null, result: { ...step.result, documentId: childId, sceneId: shot.sceneId } } });
+    await appendRunEvent(tx, run.id, "step.queued", { stepId: step.id, jobId: output.id, cost: output.cost }, { status: "running", errorCode: null, committedCredits: { increment: output.cost }, nextCheckAt: new Date(Date.now() + 30000) });
+    return output;
+  }, { maxWait: 10000, timeout: 30000 });
 }
 
 // The public studio schema continues to require a real owned canvas document.
@@ -65,13 +97,27 @@ export async function submitCreationPosterImageStep(userId, runId, stepId, seque
 
 async function submitAdmittedJob(userId, data, key, db, deps, posterContext = null) {
   if (!/^[a-zA-Z0-9_-]{16,128}$/.test(key || "")) throw new AppError("IDEMPOTENCY_KEY_REQUIRED");
-  const config = deps.config || await studioConfig(db, data.provider, data.tool === "video" ? "video" : "image", data.tool, { skipPreview: Boolean(data.maskId) });
+  const requestId = createHash("sha256").update(`studio:${userId}:${key}`).digest("hex");
+  const digest = digestJson({ ...data, documentVersion: undefined, expectedCost: undefined });
+  // Recover an admitted task even if its channel was disabled or changed since.
+  // The locked lookup below still resolves concurrent first submissions.
+  const replay = await (deps.transaction || db).tryOn.findUnique({ where: { requestId } });
+  if (replay) {
+    if (replay.userId !== userId || replay.snapshot?.digest !== digest) throw new AppError("IDEMPOTENCY_CONFLICT", 409);
+    return presentJob(replay);
+  }
+  let config = deps.config || await studioConfig(db, data.provider, data.tool === "video" ? "video" : "image", data.tool, { skipPreview: Boolean(data.maskId) });
+  if (deps.videoRunStep && (config.videoProvider || null) !== (data.provider || null)) throw new AppError("PROVIDER_CONFIGURATION_CHANGED", 409);
+  if (data.tool === "video") {
+    const selection = selectVideoVariant(config.videoOptions || videoModelOptions(config.videoKind), data.params.videoVariant);
+    if (selection.error) throw new AppError(selection.error, 422);
+    if (selection.variant) config = { ...config, videoOptions: selection.options, videoCreditCost: selection.variant.creditCost };
+  }
   if (data.tool === "inpaint" && config.imageKind === "dashscope" && data.referenceAssetIds?.length > 1) throw new AppError("TOO_MANY_EDIT_REFERENCES", 422);
   const caps = deps.capabilities || await capabilities(db, config);
-  const requestId = createHash("sha256").update(`studio:${userId}:${key}`).digest("hex");
+  const sourceProviders = data.tool === "video" && config.videoOptions?.fields?.some(field => ["sourceTaskId", "video_id"].includes(field.key)) ? await sourceProviderNames(config, db) : [];
   // A replay may follow an unrelated document save; the immutable source and
   // actual operation still must match. Document version is an admission check.
-  const digest = digestJson({ ...data, documentVersion: undefined, expectedCost: undefined });
   const submit = async tx => {
     const user = await lockUser(tx, userId);
     const old = await tx.tryOn.findUnique({ where: { requestId } });
@@ -84,7 +130,7 @@ async function submitAdmittedJob(userId, data, key, db, deps, posterContext = nu
       if (!heartbeat || +heartbeat.updatedAt <= Date.now() - 90000) throw new AppError("WORKER_UNAVAILABLE", 503);
     }
     const tool = caps.tools.find(t => t.id === data.tool);
-    const cost = imageCreditCost(tool, data.params.size, 0);
+    const cost = data.tool === "video" && data.params.videoVariant ? config.videoCreditCost : imageCreditCost(tool, data.params.size, 0);
     // Preview availability only gates choosing an object. Once a valid owned
     // mask exists, an outage of the preview service must not block image editing.
     if (!tool?.available && !(tool?.reason === "SEGMENTATION_NOT_CONFIGURED" && data.maskId)) throw new AppError(tool?.reason || "TOOL_UNAVAILABLE", 503);
@@ -113,17 +159,16 @@ async function submitAdmittedJob(userId, data, key, db, deps, posterContext = nu
     if (data.tool === "video" && ["zzshu", "gptbest"].includes(config.videoKind) && (data.assetId || data.params.media?.length)) videoReferenceUrl(userId, data.assetId || data.params.media[0].id);
     if (data.tool === "video" && config.videoKind === "gptbest") gptBestBody(config, { ...data.params, validateOnly: true,
       references: (data.params.media || (data.assetId ? [{ id: data.assetId, type: "image" }] : [])).map(item => ({ ...item, url: "https://reference.invalid/input" })) });
-    if (data.tool === "video" && config.videoKind === "gptbest") {
-      const sourceTaskId = data.params.videoFields?.sourceTaskId || config.videoOptions.parameters?.sourceTaskId;
-      if (sourceTaskId && !await tx.generationAttempt.findFirst({ where: { requestId: sourceTaskId, output: { userId, status: "succeeded", snapshot: { path: ["videoProvider"], equals: config.videoProvider } } }, select: { id: true } })) throw new AppError("VIDEO_SOURCE_NOT_FOUND", 404);
-      const videoId = data.params.videoFields?.video_id || config.videoOptions.parameters?.video_id;
-      if (videoId && !await tx.tryOn.findFirst({ where: { userId, status: "succeeded", snapshot: { path: ["videoProvider"], equals: config.videoProvider }, resultData: { path: ["providerVideoId"], equals: videoId } }, select: { id: true } })) throw new AppError("VIDEO_SOURCE_NOT_FOUND", 404);
-    }
+    if (data.tool === "video" && config.videoKind === "gptbest") await assertVideoSource(userId, config, data.params.videoFields, tx, sourceProviders);
     // Only the server scheduler can supply this context. Verify it against the
     // persisted run; request JSON cannot opt out of canvas admission checks.
     let creation;
     if (posterContext) {
       const { run, step } = posterContext;
+      if (run.committedCredits + cost > run.maxCredits) throw new AppError("CREATION_BUDGET_EXCEEDED", 409);
+      creation = { creationRunId: run.id, creationStepId: step.id, creationAttempt: step.attempt };
+    } else if (deps.videoRunStep) {
+      const { run, step } = deps.videoRunStep;
       if (run.committedCredits + cost > run.maxCredits) throw new AppError("CREATION_BUDGET_EXCEEDED", 409);
       creation = { creationRunId: run.id, creationStepId: step.id, creationAttempt: step.attempt };
     } else if (deps.creationStepId) {
@@ -134,7 +179,8 @@ async function submitAdmittedJob(userId, data, key, db, deps, posterContext = nu
       const previousJob = previous?.jobId ? await tx.tryOn.findUnique({ where: { id: previous.jobId } }) : null;
       if (step.position && (previous?.status !== "succeeded" || previousJob?.status !== "succeeded")) throw new AppError("CREATION_DEPENDENCY_PENDING", 409);
       const source = nextImageSource(run, previous, previousJob);
-      if (step.tool !== data.tool || digestJson(step.params) !== digestJson(data.params) || step.expectedCost !== cost || (run.input.provider || undefined) !== data.provider || data.assetId !== (source?.assetId || undefined) || data.targetId !== (source?.targetId || undefined)) throw new AppError("CREATION_STEP_CHANGED", 409);
+      const expected = imageRunStepInputs(run, step);
+      if (step.tool !== data.tool || digestJson(expected.params) !== digestJson(data.params) || digestJson(expected.referenceAssetIds || []) !== digestJson(data.referenceAssetIds || []) || step.expectedCost !== cost || (run.input.provider || undefined) !== data.provider || data.assetId !== (source?.assetId || undefined) || data.targetId !== (source?.targetId || undefined)) throw new AppError("CREATION_STEP_CHANGED", 409);
       if (run.committedCredits + cost > run.maxCredits) throw new AppError("CREATION_BUDGET_EXCEEDED", 409);
       creation = { creationRunId: run.id, creationStepId: step.id, creationAttempt: step.attempt };
     } else if (document.version !== data.documentVersion) throw new AppError("DOCUMENT_VERSION_CONFLICT", 409);
@@ -176,6 +222,7 @@ async function submitAdmittedJob(userId, data, key, db, deps, posterContext = nu
       const sizeError = targetSize ? editOutputSize(config, data.params.size, targetSize).error : imageSizeError(config, data.params.size, inputAsset);
       if (sizeError) throw new AppError(sizeError, 422);
     }
+    if ((data.params.preserveOutside || data.params.feather) && (!GUIDED_EDIT_TOOLS.includes(data.tool) || imageEditStrategy(config) !== "native-mask")) throw new AppError("EDIT_STRATEGY_UNSUPPORTED", 422);
     if (data.params.selectionMode === "region" && ![data.params.moveSource, data.params.moveTarget].every(r => regionInside(r, inputAsset.width, inputAsset.height))) throw new AppError("MOVE_OUT_OF_BOUNDS", 422);
     if (data.maskId) {
       const mask = await ownedAsset(userId, data.maskId, tx);
@@ -191,10 +238,10 @@ async function submitAdmittedJob(userId, data, key, db, deps, posterContext = nu
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended('queue-admission', 0))::text`;
     if (await tx.tryOn.count({ where: { status: { in: ACTIVE } } }) >= LIMITS.queue) throw new AppError("QUEUE_FULL", 503);
     if (await tx.tryOn.count({ where: { userId, status: { in: ACTIVE } } }) >= LIMITS.activePerUser) throw new AppError("USER_QUEUE_FULL", 429);
-    if (data.tool === "video") creation = { ...creation, videoProvider: config.videoProvider || null, videoBaseURL: config.videoURL || null, videoKind: config.videoKind || "volcengine", videoOptions: config.videoOptions || videoModelOptions(config.videoKind) };
+    if (data.tool === "video") creation = { ...creation, ...(document?.content.video?.canvasOrigin ? { canvasOrigin: document.content.video.canvasOrigin } : {}), videoProvider: config.videoProvider || null, videoBaseURL: config.videoURL || null, videoKind: config.videoKind || "volcengine", videoOptions: config.videoOptions || videoModelOptions(config.videoKind) };
     const channel = data.tool === "video" ? { name: config.videoProvider, kind: config.videoKind, model: config.videoModel, baseURL: config.videoURL } : ["split", "ocr", "upscale"].includes(data.tool) ? config[`${data.tool}Channel`] : getTool(data.tool).dependency === "vision" ? { name: config.plannerProvider, kind: config.plannerKind, model: config.chatModel, baseURL: config.visionBaseURL } : null;
     const output = await tx.tryOn.create({ data: { id: randomUUID(), userId, requestId, personImage: "", clothesImage: inputAsset ? `/api/assets/${inputAsset.id}` : "", prompt: data.params.prompt, provider: data.tool === "video" ? "ark" : channel?.name || config.imageProvider || "studio", creditCost: cost, billingType: "credits",
-      snapshot: { kind: "studio", ...data, ...creation, provider: channel?.name || config.imageProvider, providerKind: channel?.kind || config.imageKind || "openai", providerBaseURL: (channel ? channel.baseURL : config.baseURL) || null, digest, checksum: inputAsset?.checksum || null, price: cost, priceVersion: "studio-base-plus-resolution-v3", pricing: { mode: tool.resolutionSurcharges ? "base-plus-resolution" : "fixed", basePrice: tool.cost, resolutionSurcharge: cost - tool.cost, resolution: billingResolution(tool, data.params.size), requestedResolution: imageSizeChoice(data.params.size).resolution, unitPrice: cost }, imageModel: channel?.model || config.imageModel, chatModel: config.chatModel || null, videoModel: config.videoModel || null } } });
+      snapshot: { kind: "studio", ...data, ...creation, ...(GUIDED_EDIT_TOOLS.includes(data.tool) ? { imageEditStrategy: imageEditStrategy(config) } : {}), provider: channel?.name || config.imageProvider, providerKind: channel?.kind || config.imageKind || "openai", providerBaseURL: (channel ? channel.baseURL : config.baseURL) || null, digest, checksum: inputAsset?.checksum || null, price: cost, priceVersion: data.tool === "video" ? "studio-video-variant-v1" : "studio-base-plus-resolution-v3", pricing: data.tool === "video" ? { mode: data.params.videoVariant ? "video-variant" : "fixed", variant: data.params.videoVariant || null, duration: data.params.duration, ratio: data.params.ratio, unitPrice: cost } : { mode: tool.resolutionSurcharges ? "base-plus-resolution" : "fixed", basePrice: tool.cost, resolutionSurcharge: cost - tool.cost, resolution: billingResolution(tool, data.params.size), requestedResolution: imageSizeChoice(data.params.size).resolution, unitPrice: cost }, imageModel: channel?.model || config.imageModel, chatModel: config.chatModel || null, videoModel: config.videoModel || null } } });
     if (cost) {
       const allocations = await reserveCreditLots(tx, user, cost);
       await tx.creditReservation.create({ data: { userId, tryOnId: output.id, channel: "credits", amount: cost, allocations } });
@@ -208,7 +255,8 @@ async function submitAdmittedJob(userId, data, key, db, deps, posterContext = nu
 
 export function presentJob(row) {
   return { id: row.id, status: row.status, tool: row.snapshot.tool, origin: row.snapshot.origin, targetId: row.snapshot.targetId, documentId: row.snapshot.documentId,
-    assetId: row.snapshot.assetId, moveBundle: row.snapshot.moveBundle,
+    assetId: row.snapshot.assetId, moveBundle: row.snapshot.moveBundle, canvasOrigin: row.snapshot.canvasOrigin,
+    inputAssetIds: [...new Set([row.snapshot.assetId, ...(row.snapshot.referenceAssetIds || []), ...(row.snapshot.params?.media || []).map(item => item.id)].filter(Boolean))],
     sectionId: row.snapshot.sectionId, sectionAttempt: row.snapshot.sectionAttempt,
     cost: row.creditCost, errorCode: row.errorCode, resultData: row.resultData, createdAt: row.createTime, cancelRequested: Boolean(row.cancelRequestedAt) };
 }

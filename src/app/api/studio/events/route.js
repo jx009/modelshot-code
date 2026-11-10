@@ -5,6 +5,7 @@ import { presentJob } from "@/lib/domain/studio/jobs";
 import { createJobStream } from "@/lib/domain/studio/job-stream";
 import { ACTIVE } from "@/lib/domain/generation/contracts";
 import { rateLimit } from "@/lib/domain/identity/rate-limit";
+import { jobDocumentFilter } from "@/lib/studio/job-document";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export async function GET(request) {
@@ -16,7 +17,7 @@ export async function GET(request) {
     await rateLimit("studio-events", user.id, 120, 600);
     const stream = createJobStream(async () => {
       if (!await prisma.studioDocument.findFirst({ where: whereDocument, select: { id: true } })) throw new Error("DOCUMENT_NOT_FOUND");
-      const where = { userId: user.id, AND: [{ snapshot: { path: ["kind"], equals: "studio" } }, { snapshot: { path: ["documentId"], equals: documentId } }] };
+      const where = { userId: user.id, AND: [{ snapshot: { path: ["kind"], equals: "studio" } }, jobDocumentFilter(documentId)] };
       const [recent, active] = await Promise.all([
         prisma.tryOn.findMany({ where, orderBy: [{ createTime: "desc" }, { id: "desc" }], take: 100 }),
         prisma.tryOn.findMany({ where: { ...where, status: { in: ACTIVE } }, orderBy: [{ createTime: "desc" }, { id: "desc" }], take: 100 }),

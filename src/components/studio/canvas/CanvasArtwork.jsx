@@ -10,18 +10,19 @@ const Picture = memo(function Picture({ item, editingText, textColor, shouldLoad
   const [preview, setPreview] = useState(null), [original, setOriginal] = useState(null);
   // Text has no assetId: comparing two undefined IDs used to enter the image
   // branch and dereference null, taking the entire Konva root down with it.
-  const image = item.type !== "image" || !shouldLoad ? null : highResolution && original?.assetId === item.assetId ? original?.image : preview?.assetId === item.assetId ? preview?.image : null;
+  const previewAssetId = item.type === "video" ? item.posterAssetId : item.assetId;
+  const image = !previewAssetId || !shouldLoad ? null : item.type === "image" && highResolution && original?.assetId === item.assetId ? original?.image : preview?.assetId === previewAssetId ? preview?.image : null;
   const shape = useRef(null), transformer = useRef(null);
   useEffect(() => {
-    if (item.type !== "image") return;
+    if (!["image", "video"].includes(item.type) || !previewAssetId) return;
     let live = true;
     if (!shouldLoad) return;
     const abort = new AbortController();
-    loadImage(previewUrl(item.assetId, previewSize), { signal: abort.signal })
-      .then(image => { if (live) setPreview({ assetId: item.assetId, image }); })
+    loadImage(previewUrl(previewAssetId, previewSize), { signal: abort.signal })
+      .then(image => { if (live) setPreview({ assetId: previewAssetId, image }); })
       .catch(error => { if (live) onError(error); });
     return () => { live = false; abort.abort(); };
-  }, [item.assetId, item.type, onError, shouldLoad, previewSize]);
+  }, [previewAssetId, item.type, onError, shouldLoad, previewSize]);
   // Browsing uses bounded previews. Load the original only after the selected
   // image stays zoomed in long enough to need more than 1280 display pixels.
   useEffect(() => {
@@ -35,13 +36,13 @@ const Picture = memo(function Picture({ item, editingText, textColor, shouldLoad
     }, 700);
     return () => { live = false; clearTimeout(timer); abort.abort(); };
   }, [item.assetId, item.type, shouldLoad, highResolution, preview?.assetId, original?.assetId]);
-  const rendered = useMemo(() => image ? adjustedImage(image, adjustmentPreview ?? item.adjustments, 1600) : null, [image, adjustmentPreview, item.adjustments]);
+  const rendered = useMemo(() => item.type === "image" && image ? adjustedImage(image, adjustmentPreview ?? item.adjustments, 1600) : image, [image, adjustmentPreview, item.adjustments, item.type]);
   useEffect(() => { if (selected && transformer.current && shape.current) { transformer.current.nodes([shape.current]); transformer.current.getLayer().batchDraw(); } }, [selected, interactive, editingText]);
   const props = { ref: shape, id: item.id, x: item.x, y: item.y, width: item.width, height: item.height, rotation: item.rotation || 0, opacity: item.opacity ?? 1, draggable: interactive,
     onClick: event => event?.evt?.shiftKey ? onSelect(item.id, true) : onSelect(item.id), onTap: () => onSelect(item.id), onDblClick: () => onPreview(item, image), onDblTap: () => onPreview(item, image), onDragEnd: e => { if (!multiSelected) onChange(item.id, { x: e.target.x(), y: e.target.y() }); },
     onTransformEnd: () => { if (multiSelected) return; const node = shape.current; const width = Math.max(16, node.width() * node.scaleX()), height = Math.max(16, node.height() * node.scaleY()); node.scaleX(1); node.scaleY(1); onChange(item.id, { x: node.x(), y: node.y(), width, height, rotation: node.rotation() }); } };
   return <>
-    {item.type === "image" ? <CanvasImage {...props} image={previewImage || rendered} /> : item.type === "text" ? <Text {...props} visible={!editingText} text={item.text || ""} wrap="char" lineHeight={TEXT_LINE_HEIGHT} fontSize={item.fontSize || 36} fill={item.fill || textColor} fontFamily="Arial, sans-serif" /> : <Group {...props}><Rect width={item.width} height={item.height} fill={accent} opacity={0.13} cornerRadius={12} /><Text text="▶  VIDEO" width={item.width} align="center" y={item.height / 2 - 10} fill={accent} fontSize={22} /></Group>}
+    {item.type === "image" ? <CanvasImage {...props} image={previewImage || rendered} /> : item.type === "text" ? <Text {...props} visible={!editingText} text={item.text || ""} wrap="char" lineHeight={TEXT_LINE_HEIGHT} fontSize={item.fontSize || 36} fill={item.fill || textColor} fontFamily="Arial, sans-serif" /> : <Group {...props}>{image ? <CanvasImage image={image} width={item.width} height={item.height} /> : <Rect width={item.width} height={item.height} fill={accent} opacity={0.13} cornerRadius={12} />}<Rect y={item.height - 36} width={item.width} height={36} fill="#000" opacity={.6} /><Text text={`▶  ${item.duration ? `${item.duration.toFixed(1)}s` : "VIDEO"}`} width={item.width} align="center" y={item.height - 26} fill="#fff" fontSize={16} /></Group>}
     {selected && interactive && !editingText && !multiSelected && <Transformer ref={transformer} flipEnabled={false} borderStroke={accent} anchorStroke={accent} anchorFill="#fff" anchorSize={9} anchorCornerRadius={4} padding={3} boundBoxFunc={(old, next) => next.width < 16 || next.height < 16 || next.width > 8192 || next.height > 8192 ? old : next} />}
   </>;
 });

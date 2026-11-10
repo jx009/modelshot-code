@@ -11,5 +11,5 @@ export function projectTitle(name, content = {}) {
 }
 
 export function documentContent(draft) {
-  return { schemaVersion: 1, layers: draft.layers, messages: draft.messages, jobs: draft.jobs, appliedJobs: draft.appliedJobs || [], plan: draft.plan || null, ...(draft.composer ? { composer: draft.composer } : {}), ...(draft.commerce ? { commerce: draft.commerce } : {}), ...(draft.video ? { video: draft.video } : {}) };
+  return { schemaVersion: 1, ...(draft.taskPositions ? { taskPositions: draft.taskPositions } : {}), layers: draft.layers, messages: draft.messages, jobs: draft.jobs, appliedJobs: draft.appliedJobs || [], plan: draft.plan || null, ...(draft.composer ? { composer: draft.composer } : {}), ...(draft.commerce ? { commerce: draft.commerce } : {}), ...(draft.video ? { video: draft.video } : {}) };
 }

@@ -4,6 +4,7 @@ import { imageCreditCost } from "./image-pricing.js";
 import { commerceSchema } from "../commerce/schema.js";
 import { TOOLS, getTool } from "./tool-catalog.js";
 import { ADJUSTMENT_KEYS } from "./adjustments.js";
+import { IMAGE_REFERENCE_ROLES } from "./image-references.js";
 import { motionSchema, videoDocumentSchema, videoMediaSchema, videoRatios, videoDurationSchema } from "../video/schema.js";
 
 export { TOOLS, getTool } from "./tool-catalog.js";
@@ -13,6 +14,7 @@ const edgePadding = z.number().int().min(0).max(1024);
 const boundsSchema = z.object({ left: z.number().int().min(0).max(8192), top: z.number().int().min(0).max(8192), width: positive, height: positive }).strict();
 export const adjustmentsSchema = z.object(Object.fromEntries(ADJUSTMENT_KEYS.map(key => [key, z.number().min(-100).max(100).optional()]))).strict();
 export const paramsSchema = z.object({
+  referenceRoles: z.array(z.enum(IMAGE_REFERENCE_ROLES)).max(3).optional(),
   prompt: z.string().trim().max(4000).default(""),
   size: z.enum(IMAGE_SIZES).default("1024x1024"),
   scale: z.union([z.literal(2), z.literal(4)]).default(2),
@@ -30,8 +32,11 @@ export const paramsSchema = z.object({
   moveTarget: boundsSchema.extend({ rotation: z.number().min(-360).max(360).default(0) }).optional(),
   selectionMode: z.enum(["mask", "object", "region"]).default("mask"),
   editPadding: z.number().min(0.05).max(0.5).default(0.25),
+  preserveOutside: z.boolean().optional(),
+  feather: z.number().int().min(0).max(32).optional(),
   duration: videoDurationSchema.default(5),
   ratio: z.enum(videoRatios).optional(),
+  videoVariant: id.optional(),
   motion: motionSchema.optional(),
   media: z.array(videoMediaSchema).max(50).optional(),
   videoFields: z.record(z.string().regex(/^[a-zA-Z][a-zA-Z0-9_]{0,63}$/), z.string().max(1000)).refine(value => Object.keys(value).length <= 12).optional(),
@@ -42,6 +47,7 @@ export const paramsSchema = z.object({
 }).strict();
 export const jobSchema = z.object({ origin: z.enum(["chat", "canvas"]).optional(), expectedCost: z.number().int().min(0).max(200000).optional(), tool: z.enum(TOOLS.map(tool => tool.id)), provider: id.optional(), documentId: id, documentVersion: z.number().int().positive(), targetId: id.optional(), assetId: id.optional(), maskId: id.optional(), moveBundle: z.object({ objectAssetId: id, holeAssetId: id, bounds: boundsSchema }).strict().optional(), referenceAssetIds: z.array(id).max(2).optional(), sectionId: id.optional(), sectionAttempt: z.number().int().min(0).max(50).optional(), params: paramsSchema.prefault({}) }).strict().superRefine((data, ctx) => {
   const tool = getTool(data.tool);
+  if (data.params.referenceRoles && (tool.dependency !== "image" || data.params.referenceRoles.length !== (data.assetId ? 1 : 0) + (data.referenceAssetIds?.length || 0))) ctx.addIssue({ code: "custom", message: "IMAGE_REFERENCE_ROLES_INVALID" });
   if (tool.clientOnly) ctx.addIssue({ code: "custom", message: "LOCAL_TOOL_ONLY" });
   if (data.tool === "text-edit" && !data.params.newText) ctx.addIssue({ code: "custom", message: "REPLACEMENT_TEXT_REQUIRED" });
   if (data.tool === "translate" && !data.params.language) ctx.addIssue({ code: "custom", message: "LANGUAGE_REQUIRED" });
@@ -58,6 +64,7 @@ export const jobSchema = z.object({ origin: z.enum(["chat", "canvas"]).optional(
   if (data.tool === "motion-render" && !data.params.motion) ctx.addIssue({ code: "custom", message: "MOTION_REQUIRED" });
   if (!["motion-plan", "motion-render"].includes(data.tool) && data.params.motion || !["video", "motion-plan", "motion-render"].includes(data.tool) && data.params.media) ctx.addIssue({ code: "custom", message: "INVALID_MOTION_TOOL" });
   if (data.tool !== "video" && data.params.videoFields) ctx.addIssue({ code: "custom", message: "VIDEO_FIELDS_INVALID" });
+  if (data.tool !== "video" && data.params.videoVariant) ctx.addIssue({ code: "custom", message: "VIDEO_VARIANT_UNSUPPORTED" });
 });
 
 const layer = z.object({
@@ -66,6 +73,9 @@ const layer = z.object({
   rotation: z.number().finite().min(-360).max(360).default(0), visible: z.boolean().default(true), opacity: z.number().min(0).max(1).default(1),
   pixelWidth: positive.optional(), pixelHeight: positive.optional(), text: z.string().max(8000).optional(), fontSize: z.number().min(8).max(512).optional(), fill: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(), sourceJobId: id.optional(),
   textKind: z.enum(["prompt"]).optional(), ocrJobId: id.optional(),
+  videoDocumentId: id.optional(),
+  sourceLayerIds: z.array(id).max(50).optional(), sourceAssetIds: z.array(id).max(50).optional(),
+  posterAssetId: id.optional(), duration: z.number().finite().min(0).max(1800).optional(),
   groupId: id.optional(), layerRole: z.enum(["background", "object", "decomposed"]).optional(), repairJobId: id.optional(),
   selectionGroup: id.optional(), locked: z.boolean().optional(), adjustments: adjustmentsSchema.optional(),
 }).strict();
@@ -73,11 +83,12 @@ export const contentSchema = z.object({
   schemaVersion: z.literal(1), layers: z.array(layer).max(1000),
   commerce: commerceSchema.optional(),
   video: videoDocumentSchema.optional(),
-  composer: z.object({ size: z.enum(IMAGE_SIZES).optional(), text: z.string().max(4000).default(""), fixedPrompt: z.string().max(2000).default(""), referenceIds: z.array(id).max(3).default([]), outputCount: z.number().int().min(1).max(4).default(1) }).strict().optional(),
+  composer: z.object({ size: z.enum(IMAGE_SIZES).optional(), text: z.string().max(4000).default(""), fixedPrompt: z.string().max(2000).default(""), referenceIds: z.array(id).max(3).default([]), referenceRoles: z.record(id, z.enum(IMAGE_REFERENCE_ROLES)).refine(value => Object.keys(value).length <= 3).optional(), outputCount: z.number().int().min(1).max(4).default(1) }).strict().optional(),
   messages: z.array(z.object({ id, role: z.enum(["user", "assistant"]), text: z.string().max(8000), assetId: id.optional() }).strict()).max(20000),
   jobs: z.array(id).max(100),
   appliedJobs: z.array(id).max(20000).default([]),
-  plan: z.object({ id, serverRunId: id.optional(), summary: z.string().max(1000), steps: z.array(z.object({ tool: z.enum(TOOLS.map(t => t.id)), params: paramsSchema, explanation: z.string().max(500) }).strict()).min(1).max(4), credits: z.number().int().nonnegative(), attempt: z.number().int().min(0).max(100).default(0), index: z.number().int().min(0).max(4), targetId: id.nullable(), activeJob: id.nullable(), status: z.enum(["ready", "running", "paused", "complete"]) }).strict().nullable().optional(),
+  taskPositions: z.record(id, z.object({ x: z.number().finite().min(-100000).max(100000), y: z.number().finite().min(-100000).max(100000) }).strict()).refine(value => Object.keys(value).length <= 1000).optional(),
+  plan: z.object({ id, provider: id.nullable().optional(), expectedCosts: z.array(z.number().int().min(0).max(200000)).max(4).optional(), referenceAssetIds: z.array(id).max(2).optional(), referenceRoles: z.array(z.enum(IMAGE_REFERENCE_ROLES)).max(3).optional(), serverRunId: id.optional(), summary: z.string().max(1000), steps: z.array(z.object({ tool: z.enum(TOOLS.map(t => t.id)), params: paramsSchema, explanation: z.string().max(500) }).strict()).min(1).max(4), credits: z.number().int().nonnegative(), attempt: z.number().int().min(0).max(100).default(0), index: z.number().int().min(0).max(4), targetId: id.nullable(), activeJob: id.nullable(), status: z.enum(["ready", "running", "paused", "complete"]) }).strict().nullable().optional(),
 }).strict().superRefine((content, ctx) => {
   if (content.video && content.commerce) ctx.addIssue({ code: "custom", message: "DOCUMENT_KIND_CONFLICT" });
   if (new Set(content.layers.map(l => l.id)).size !== content.layers.length) ctx.addIssue({ code: "custom", message: "DUPLICATE_LAYER" });

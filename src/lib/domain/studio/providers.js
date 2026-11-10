@@ -1,5 +1,6 @@
 import OpenAI, { toFile } from "openai";
 import sharp from "sharp";
+import { imageEditStrategy } from "../../studio/edit-strategy.js";
 import { imageSizeError, resolveImageSize } from "../../studio/image-size.js";
 import { imageBillingResolutions, imageCreditCost } from "../../studio/image-pricing.js";
 import { POSTER_IMAGE_SIZES } from "../../creation/poster-image-choice.js";
@@ -110,13 +111,13 @@ export async function capabilities(db = prisma, config, channelName, { imageOnly
     routingSnapshot(db), getResolutionSurcharges(db), externalRequest,
   ]);
   const c = config || resolveStudioConfig(rows, settings, channelName, "image", null, { imageOnly });
-  const imageModels = rows.filter(row => channelScope(row) === "public" && channelCapability(row) === "image").filter(row => { const parsed = JSON.parse(row.config || "{}"); return Boolean(parsed.apiKeyEnc || row.kind === "openai" && (process.env.OPENAI_API_KEY || process.env.STUDIO_API_KEY)); }).map(row => ({ id: row.name, label: row.displayName, creditCost: row.creditCost ?? 18, resolutionSurcharges: surcharges, maxReferenceImages: supportsImageTask(JSON.parse(row.config || "{}"), "edit") ? 3 : 0 }));
+  const imageModels = rows.filter(row => channelScope(row) === "public" && channelCapability(row) === "image").filter(row => { const parsed = JSON.parse(row.config || "{}"); return Boolean(parsed.apiKeyEnc || row.kind === "openai" && (process.env.OPENAI_API_KEY || process.env.STUDIO_API_KEY)); }).map(row => ({ id: row.name, label: row.displayName, creditCost: row.creditCost ?? 18, resolutionSurcharges: surcharges, maxReferenceImages: supportsImageTask({ ...JSON.parse(row.config || "{}"), imageKind: row.kind }, "edit") ? 3 : 0 }));
   if (imageOnly) for (const model of imageModels) {
     const selected = resolveStudioConfig(rows, settings, model.id, "image", "generate", { pinned: true, skipPreview: true, imageOnly: true });
     model.prices = selected.toolEnabled && supportsImageTask(selected, "generate") ? Object.fromEntries(POSTER_IMAGE_SIZES.filter(size => !imageSizeError(selected, size)).map(size => [size, imageCreditCost({ id: "generate", cost: model.creditCost, resolutionSurcharges: surcharges }, size, 0)])) : {};
   }
   const videoModels = rows.filter(row => channelScope(row) === "public" && channelCapability(row) === "video" && VIDEO_KINDS.includes(row.kind)).filter(row => { const parsed = JSON.parse(row.config || "{}"); return Boolean(parsed.apiKeyEnc && parsed.model && (parsed.baseURL || VIDEO_PROTOCOLS[row.kind].baseURL)); }).map(row => ({ id: row.name, label: row.displayName, cost: row.creditCost, ...publicVideoOptions(videoModelOptions(row.kind, JSON.parse(row.config || "{}"))) }));
-  return { imageModel: c.imageDisplayName, imageProvider: c.toolId ? c.requestedProvider : c.imageProvider, imageModels, videoModels, videoProvider: c.videoProvider, planningCost: c.plannerCreditCost, planningAvailable: Boolean(c.visionApiKey && c.chatModel),
+  return { imageModel: c.imageDisplayName, imageProvider: c.toolId ? c.requestedProvider : c.imageProvider, imageModels, videoModels, videoDefaults: publicVideoOptions(c.videoOptions), videoProvider: c.videoProvider, planningCost: c.plannerCreditCost, planningAvailable: Boolean(c.visionApiKey && c.chatModel),
     tools: TOOLS.filter(tool => !imageOnly || ["generate", "edit"].includes(tool.id)).map(tool => {
       const setting = settings.find(row => row.toolId === tool.id), enabled = setting?.isEnabled !== false;
       let chosen, error;
@@ -128,7 +129,7 @@ export async function capabilities(db = prisma, config, channelName, { imageOnly
       const prices = tool.dependency === "image" ? surcharges : null;
       const cost = tool.dependency === "image" ? chosen.imageCreditCost ?? 18 : tool.dependency === "vision" ? c.plannerCreditCost : tool.dependency === "video" ? chosen.videoCreditCost ?? setting?.creditCost ?? tool.cost : setting?.creditCost ?? tool.cost;
       const dependencyReady = !error && ready[tool.dependency], previewReady = !tool.preview || tool.previewOptional || ready[tool.preview];
-      return { ...tool, cost, resolutionSurcharges: prices, billingResolutions: imageBillingResolutions(tool.id, chosen), enabled, ...(tool.id === "inpaint" ? { maxUserReferences: chosen.imageKind === "dashscope" ? 1 : 2 } : {}), ...(tool.id === "upscale" ? { supportedScales: [2] } : {}), ...(tool.preview ? { objectSelectionAvailable: Boolean(enabled && ready[tool.preview]) } : {}), ...(tool.id === "split" ? { layerCountMode: chosen.splitChannel?.kind === "volc-visual" ? "auto" : "custom" } : {}), available: Boolean(enabled && dependencyReady && previewReady), reason: !enabled ? "TOOL_DISABLED" : !dependencyReady ? error || "SERVICE_NOT_CONFIGURED" : !previewReady ? "SEGMENTATION_NOT_CONFIGURED" : null };
+      return { ...tool, cost, resolutionSurcharges: prices, billingResolutions: imageBillingResolutions(tool.id, chosen), enabled, ...(["inpaint", "expand"].includes(tool.id) ? { editStrategy: imageEditStrategy(chosen) } : {}), ...(tool.id === "inpaint" ? { maxUserReferences: chosen.imageKind === "dashscope" ? 1 : 2 } : {}), ...(tool.id === "upscale" ? { supportedScales: [2] } : {}), ...(tool.preview ? { objectSelectionAvailable: Boolean(enabled && ready[tool.preview]) } : {}), ...(tool.id === "split" ? { layerCountMode: chosen.splitChannel?.kind === "volc-visual" ? "auto" : "custom" } : {}), available: Boolean(enabled && dependencyReady && previewReady), reason: !enabled ? "TOOL_DISABLED" : !dependencyReady ? error || "SERVICE_NOT_CONFIGURED" : !previewReady ? "SEGMENTATION_NOT_CONFIGURED" : null };
     }) };
 }
 

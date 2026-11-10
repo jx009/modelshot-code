@@ -1,12 +1,15 @@
 """CI-only smoke coverage: actual MP4 encoding, streams, and trim validation."""
 import json
+import base64
+from io import BytesIO
 from pathlib import Path
 import subprocess
 import tempfile
 import unittest
 
 from fastapi import HTTPException
-from motion import render, inspect_media
+from PIL import Image
+from motion import render, inspect_media, inspect_video_poster
 
 
 class MotionExportTest(unittest.TestCase):
@@ -23,6 +26,11 @@ class MotionExportTest(unittest.TestCase):
             self.assertEqual((info["type"], info["width"], info["height"]), ("video", 1280, 720))
             self.assertAlmostEqual(info["duration"], 3, delta=.2)
             self.assertTrue(info["hasAudio"])
+            poster = inspect_video_poster(output)
+            self.assertAlmostEqual(poster["duration"], info["duration"], delta=.1)
+            with Image.open(BytesIO(base64.b64decode(poster["poster"]))) as image:
+                self.assertLessEqual(max(image.size), 640)
+                self.assertEqual(image.format, "JPEG")
             streams = json.loads(subprocess.run(["ffprobe", "-v", "error", "-show_streams", "-of", "json", str(output)], capture_output=True, check=True).stdout)["streams"]
             self.assertTrue(any(stream["codec_name"] == "h264" for stream in streams))
             self.assertTrue(any(stream["codec_name"] == "aac" for stream in streams))
@@ -39,6 +47,19 @@ class MotionExportTest(unittest.TestCase):
             path.write_text("This is not a video", encoding="utf-8")
             with self.assertRaises(HTTPException): inspect_media(path)
             with self.assertRaises(HTTPException): render({"ratio": "16:9", "scenes": []}, {}, directory)
+
+    def test_plain_media_keeps_its_brightness_without_caption_shade(self):
+        with tempfile.TemporaryDirectory() as folder:
+            directory = Path(folder)
+            source = directory / "red.png"
+            Image.new("RGB", (80, 60), "red").save(source)
+            scene = dict(id="clip", name="Clip", duration=1, title="", subtitle="", assetId="image",
+                         animation="none", fontSize=64, color="#ffffff", background="#111827", trimStart=0, volume=0)
+            output = directory / "plain.mp4"
+            output.write_bytes(render({"ratio": "16:9", "scenes": [scene]}, {"image": (source, {"type": "image"})}, directory))
+            poster = inspect_video_poster(output)
+            with Image.open(BytesIO(base64.b64decode(poster["poster"]))).convert("RGB") as image:
+                self.assertGreater(image.getpixel((image.width // 2, image.height // 2))[0], 230)
 
 
 if __name__ == "__main__":

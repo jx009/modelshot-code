@@ -9,6 +9,8 @@ import { api } from "@/lib/client-api";
 import { VIDEO_KINDS, VIDEO_PROTOCOLS, VIDEO_DURATIONS, videoModelOptions } from "@/lib/video/model-protocols";
 import { GPTBEST_VIDEO_APIS, gptBestApi, validVideoParameters } from "@/lib/video/gptbest-catalog";
 
+import { videoVariantsSchema, videoFieldChoicesSchema } from "@/lib/video/variants";
+
 const providerError = error => ["PROVIDER_BASE_URL_INVALID", "PROVIDER_PROXY_NOT_ALLOWED"].includes(error?.message)
   ? "模型接口地址格式不正确：请填写完整的 http:// 或 https:// 地址，可包含端口和路径，不要附带用户名、密码、查询参数或 #。"
   : error?.message;
@@ -17,7 +19,7 @@ const emptyChannel = { scope: "public", kind: "openai", studioCapability: "image
 const PURPOSE_LABELS = { image: "图像编辑", segment: "物体分割", split: "图层拆分", ocr: "OCR 文字识别", upscale: "图片超分" };
 const providerCategory = provider => channelCapability(provider, provider.config) === "video" ? "video" : channelScope(provider, provider.config);
 const videoSettings = (kind, options) => ({ videoDurations: options.durations, videoInputMode: options.inputMode,
-  ...(kind === "gptbest" ? { videoApi: options.api, videoParameters: options.parameters } : {}),
+  ...(kind === "gptbest" ? { videoApi: options.api, videoParameters: options.parameters, videoVariants: options.variants || [], videoFieldChoices: options.fieldChoices || {} } : {}),
   ...(kind === "zzshu" ? { videoReferenceMode: options.referenceMode || "reference_images" } : {}) });
 function dedicatedPreset(purpose) {
   const { label, ...settings } = CHANNEL_PRESETS.find(p => p.studioCapability === purpose);
@@ -78,7 +80,7 @@ export default function AdminProviders() {
 
   const create = async event => {
     event.preventDefault();
-    if (channel.kind === "gptbest" && !validVideoParameters(channel.videoParameters || {})) { toast.error("附加参数必须是有效的 JSON 对象，不能包含密钥。"); return; }
+    if (channel.kind === "gptbest" && (!validVideoParameters(channel.videoParameters || {}) || !videoVariantsSchema.safeParse(channel.videoVariants || []).success || !videoFieldChoicesSchema.safeParse(channel.videoFieldChoices || {}).success)) { toast.error("附加参数必须是有效的 JSON 对象，不能包含密钥。"); return; }
     const approval = await reasonPrompt.ask();
     if (!approval) return;
     setSavingId("new");
@@ -150,7 +152,7 @@ function Field({ label, children }) {
 function VideoOptions({ kind, value, onChange }) {
   const durations = kind === "openai" ? VIDEO_PROTOCOLS.openai.durations : VIDEO_DURATIONS;
   return <div className="space-y-3">
-    {kind === "gptbest" && <><Field label="GPT-Best 视频接口"><select value={value.api} onChange={event => onChange({ ...value, api: event.target.value, durations: gptBestApi(event.target.value).durations || [5, 10], parameters: {} })}>{GPTBEST_VIDEO_APIS.map(api => <option key={api.id} value={api.id}>{api.label}</option>)}</select></Field><VideoParameterEditor key={value.api} value={value.parameters} onChange={parameters => onChange({ ...value, parameters })} /><p className="text-xs text-secondary-text">Base URL 填账号实际调用域名，不要填 Apifox 文档地址；路径由所选接口决定。分辨率、音效、模板等附加配置按该模型文档填写。文生 / 图生能力与允许时长请逐个模型设置。</p></>}
+    {kind === "gptbest" && <><Field label="GPT-Best 视频接口"><select value={value.api} onChange={event => onChange({ ...value, api: event.target.value, durations: gptBestApi(event.target.value).durations || [5, 10], parameters: {}, variants: [], fieldChoices: {} })}>{GPTBEST_VIDEO_APIS.map(api => <option key={api.id} value={api.id}>{api.label}</option>)}</select></Field><VideoParameterEditor key={value.api} value={value.parameters} onChange={parameters => onChange({ ...value, parameters })} /><VideoParameterEditor key={`${value.api}-variants`} label="已核实规格与积分（JSON 数组）" value={value.variants || []} fallback={[]} validate={value => videoVariantsSchema.safeParse(value).success} onChange={variants => onChange({ ...value, variants })} /><VideoParameterEditor key={`${value.api}-presets`} label="模板选项（字段名 → label/value 数组）" value={value.fieldChoices || {}} validate={value => videoFieldChoicesSchema.safeParse(value).success} onChange={fieldChoices => onChange({ ...value, fieldChoices })} /><p className="text-xs text-secondary-text">Base URL 填账号实际调用域名，不要填 Apifox 文档地址；路径由所选接口决定。分辨率、音效、模板等附加配置按该模型文档填写。文生 / 图生能力与允许时长请逐个模型设置。</p></>}
     <Field label="视频输入能力"><select value={value.inputMode} onChange={event => onChange({ ...value, inputMode: event.target.value })}><option value="text">文生视频 · 不接受参考图</option><option value="image">图生视频 · 必须提供图片</option><option value="both">文生 / 图生均支持</option></select></Field>
     {kind === "zzshu" && <><Field label="图片用途（按模型选择）"><select value={value.referenceMode} onChange={event => onChange({ ...value, referenceMode: event.target.value })}><option value="reference_images">参考图 · 参考 / 30图版模型</option><option value="first_frame">首帧 · 首尾帧模型</option></select></Field><p className="text-xs text-secondary-text">模型 ID 原样填写“可用渠道”中的名称。分辨率由模型名决定；默认 5 秒，其他时长请按模型说明勾选。支持文生、多图和视频 / 音频参考；首帧模式最多两张，按首帧、尾帧顺序传入。素材通过一小时有效的临时链接提供。</p></>}
     <fieldset className="flex flex-wrap items-center gap-3 text-xs text-secondary-text"><legend>允许时长（按供应商模型文档勾选）</legend>{durations.map(duration => <label key={duration}><input type="checkbox" checked={value.durations.includes(duration)} disabled={value.durations.length === 1 && value.durations.includes(duration)} onChange={event => onChange({ ...value, durations: event.target.checked ? [...value.durations, duration].sort((first, second) => first - second) : value.durations.filter(item => item !== duration) })} /> {duration} 秒</label>)}</fieldset>
@@ -158,14 +160,14 @@ function VideoOptions({ kind, value, onChange }) {
   </div>;
 }
 
-function VideoParameterEditor({ value, onChange }) {
-  const [draft, setDraft] = useState(() => typeof value === "string" ? value : JSON.stringify(value || {}, null, 2));
+function VideoParameterEditor({ value, onChange, label = "模型附加参数（JSON，可选）", fallback = {}, validate = validVideoParameters }) {
+  const [draft, setDraft] = useState(() => typeof value === "string" ? value : JSON.stringify(value || fallback, null, 2));
   const [invalid, setInvalid] = useState(false);
-  return <><Field label="模型附加参数（JSON，可选）"><textarea rows={5} value={draft} onChange={event => {
+  return <><Field label={label}><textarea rows={5} value={draft} onChange={event => {
     const text = event.target.value; setDraft(text);
-    try { const parsed = JSON.parse(text || "{}"); const valid = validVideoParameters(parsed); setInvalid(!valid); onChange(valid ? parsed : text); }
+    try { const parsed = JSON.parse(text || JSON.stringify(fallback)); const valid = validate(parsed); setInvalid(!valid); onChange(valid ? parsed : text); }
     catch { setInvalid(true); onChange(text); }
-  }} /></Field>{invalid && <p role="alert" className="text-xs text-red-500">请输入 JSON 对象，不要包含 API Key、认证头或密钥。</p>}</>;
+  }} /></Field>{invalid && <p role="alert" className="text-xs text-red-500">请输入符合本项结构的 JSON，不要包含 API Key、认证头或密钥。</p>}</>;
 }
 
 function ProviderCard({ provider: p, saving, testingId, testResult, onPatch, onTest }) {
@@ -183,7 +185,7 @@ function ProviderCard({ provider: p, saving, testingId, testResult, onPatch, onT
   const [creditCost, setCreditCost] = useState(p.creditCost);
   const [costPerImage, setCost] = useState(p.costPerImage);
   const testMode = scope === "language" ? "planner" : "image", imageTest = testResult[`${p.id}:${testMode}`];
-  const save = () => { if (videoKind === "gptbest" && !validVideoParameters(videoOptions?.parameters || {})) { toast.error("模型附加参数无效，请检查 JSON。"); return; } onPatch(p.id, { displayName: displayName.trim(), creditCost: Number(creditCost), costPerImage: Number(costPerImage), ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}), ...(accessKeyId.trim() ? { accessKeyId: accessKeyId.trim() } : {}), ...(secretAccessKey.trim() ? { secretAccessKey: secretAccessKey.trim() } : {}), baseURL, model, scope: selectedScope, studioCapability: selectedCapability, ...(selectedCapability === "video" && videoOptions ? { kind: videoKind, ...videoSettings(videoKind, videoOptions) } : {}), ...(selectedScope === "language" ? { isPlanner: true } : p.isPlanner ? { isPlanner: false } : {}) }, "模型配置已保存"); setApiKey(""); setAccessKeyId(""); setSecretAccessKey(""); };
+  const save = () => { if (videoKind === "gptbest" && (!validVideoParameters(videoOptions?.parameters || {}) || !videoVariantsSchema.safeParse(videoOptions?.variants || []).success || !videoFieldChoicesSchema.safeParse(videoOptions?.fieldChoices || {}).success)) { toast.error("模型附加参数无效，请检查 JSON。"); return; } onPatch(p.id, { displayName: displayName.trim(), creditCost: Number(creditCost), costPerImage: Number(costPerImage), ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}), ...(accessKeyId.trim() ? { accessKeyId: accessKeyId.trim() } : {}), ...(secretAccessKey.trim() ? { secretAccessKey: secretAccessKey.trim() } : {}), baseURL, model, scope: selectedScope, studioCapability: selectedCapability, ...(selectedCapability === "video" && videoOptions ? { kind: videoKind, ...videoSettings(videoKind, videoOptions) } : {}), ...(selectedScope === "language" ? { isPlanner: true } : p.isPlanner ? { isPlanner: false } : {}) }, "模型配置已保存"); setApiKey(""); setAccessKeyId(""); setSecretAccessKey(""); };
 
   return <div className={`rounded-[16px] border p-5 space-y-4 ${(p.config.studioDefault || p.isDefault) ? "border-primary/50 bg-primary-muted/20" : "border-divider bg-bg-card surface-lit"}`}>
     <div className="flex items-center justify-between gap-3 flex-wrap">

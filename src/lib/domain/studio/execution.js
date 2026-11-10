@@ -22,8 +22,11 @@ import { UPSCALE_MAX_NORMALIZED_BYTES } from "../../studio/upscale.js";
 import { runGuidedEdit } from "./guided-edit.js";
 import { GUIDED_EDIT_TOOLS } from "../../studio/edit-geometry.js";
 import { IMAGE_REQUEST_TIMEOUT_MS } from "../../ai/image-request.js";
+import { imageReferencePrompt } from "../../studio/image-references.js";
+import { inspectVideoResult } from "./video-result-media.js";
 
 export async function runImageTool(config, snapshot, image, mask, signal, adapters = {}, references = [], queue = {}) {
+  if (snapshot.params.referenceRoles?.length) snapshot = { ...snapshot, params: { ...snapshot.params, prompt: imageReferencePrompt(snapshot.params.prompt, snapshot.params.referenceRoles) } };
   const generate = adapters.generate || generateImage;
   const service = adapters.service || toolService;
   const { tool, params } = snapshot;
@@ -139,7 +142,11 @@ export async function executeStudio(id, { db = prisma, store = objectStorage(), 
       await store.put(objectKey, bytes, "video/mp4");
       const checksum = createHash("sha256").update(bytes).digest("hex");
       const asset = await db.asset.upsert({ where: { id: assetId }, create: { id: assetId, userId: output.userId, objectKey, kind: "original", contentType: "video/mp4", width: 0, height: 0, bytes: bytes.length, checksum }, update: {} });
-      result = { assets: [assetSummary(asset)], providerTaskId: remote.requestId || attempt.requestId, ...(remote.providerVideoId ? { providerVideoId: remote.providerVideoId } : {}) };
+      let media;
+      // A poster failure must never discard a successfully generated, paid
+      // video. It can be retried from the stored asset without a model call.
+      try { media = await inspectVideoResult(output.userId, assetId, { db, store, bytes, config, signal: controller.signal }); } catch { /* Retry media inspection from the result UI. */ }
+      result = { assets: [{ ...assetSummary(asset), ...(media ? { width: media.width, height: media.height, duration: media.duration, posterAssetId: media.posterAssetId } : {}) }], ...(media ? { media } : { mediaPending: true }), providerTaskId: remote.requestId || attempt.requestId, ...(remote.providerVideoId ? { providerVideoId: remote.providerVideoId } : {}) };
     } else {
       const modelStarted = performance.now();
       let requestReport;

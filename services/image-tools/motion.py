@@ -1,5 +1,6 @@
 """Bounded motion rendering. Only validated local uploads; no URLs or shell."""
 import json
+import base64
 import math
 from pathlib import Path
 import re
@@ -44,6 +45,19 @@ def number(value, low, high):
     if isinstance(value, bool) or not isinstance(value, (float, int)) or not math.isfinite(value) or not low <= value <= high:
         raise HTTPException(422, "Invalid motion number")
     return value
+
+
+def inspect_video_poster(path):
+    info = inspect_media(path)
+    if info["type"] != "video":
+        raise HTTPException(415, "Video required")
+    # One frame, one decoder thread, no network protocols or unbounded output.
+    poster = run(["ffmpeg", "-v", "error", "-threads", "1", "-protocol_whitelist", "file,pipe", "-i", str(path),
+                  "-frames:v", "1", "-vf", "scale=640:640:force_original_aspect_ratio=decrease", "-threads", "1",
+                  "-f", "image2pipe", "-vcodec", "mjpeg", "-q:v", "4", "pipe:1"], 20).stdout
+    if not poster or len(poster) > 1024 * 1024:
+        raise HTTPException(422, "Invalid video poster")
+    return {**info, "poster": base64.b64encode(poster).decode("ascii")}
 
 def color(value):
     if not isinstance(value, str) or not re.fullmatch(r"#[0-9a-fA-F]{6}", value):
@@ -97,7 +111,7 @@ def render(composition, media, directory):
         elif scene.get("assetId"): raise HTTPException(422, "Invalid scene media")
         else: args += ["-f", "lavfi", "-i", f"color=c={color(scene.get('background', '#111827'))}:s={width}x{height}:r=24"]
         args += ["-loop", "1", "-framerate", "24", "-i", str(text_path), "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo"]
-        shade = ",drawbox=x=0:y=0:w=iw:h=ih:color=black@0.333:t=fill" if asset else ""
+        shade = ",drawbox=x=0:y=0:w=iw:h=ih:color=black@0.333:t=fill" if asset and (scene.get("title", "").strip() or scene.get("subtitle", "").strip()) else ""
         base = f"[0:v]scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},setsar=1,fps=24,setpts=PTS-STARTPTS{shade}[bg];"
         animation = scene.get("animation", "rise")
         if animation not in {"none", "fade", "rise", "zoom"}: raise HTTPException(422, "Invalid animation")

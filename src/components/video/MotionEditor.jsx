@@ -4,7 +4,7 @@ import { ArrowLeft, ArrowRight, Copy, Plus, Trash2 } from "lucide-react";
 import { requestKey } from "@/lib/client-api";
 import { emptyScene, moveScene, timelineDuration } from "@/lib/video/timeline";
 
-export default function MotionEditor({ composition, media, selected, onSelect, onChange, onTime, zh, disabled }) {
+export default function MotionEditor({ composition, media, selected, onSelect, onChange, onTime, onRedo, zh, disabled }) {
   const drag = useRef(null), scene = composition.scenes.find(item => item.id === selected) || composition.scenes[0];
   const patch = values => onChange({ ...composition, scenes: composition.scenes.map(item => item.id === scene.id ? { ...item, ...values } : item) });
   const select = item => { onSelect(item.id); let time = 0; for (const row of composition.scenes) { if (row.id === item.id) break; time += row.duration; } onTime(time + Math.min(.7, item.duration / 2)); };
@@ -17,6 +17,7 @@ export default function MotionEditor({ composition, media, selected, onSelect, o
       <div><button aria-label="前移场景" disabled={disabled || index === 0} onClick={() => move(index, index - 1)}><ArrowLeft size={12} /></button><button aria-label="后移场景" disabled={disabled || index === composition.scenes.length - 1} onClick={() => move(index, index + 1)}><ArrowRight size={12} /></button></div>
     </div>)}<button className="vm-add-scene" type="button" disabled={disabled || composition.scenes.length >= 40 || timelineDuration(composition) + 3 > 180} onClick={() => add(false)}><Plus size={16} />{zh ? "添加场景" : "Add scene"}</button></div>
     <fieldset className="vm-inspector" disabled={disabled}>
+      {asset?.type === "video" && onRedo && <div><button type="button" onClick={() => onRedo(scene)}>{zh ? "重做当前镜头" : "Regenerate this shot"}</button><small>{zh ? "打开原生成参数；确认生成后另存新片段，比较后再替换。" : "Open the original settings, generate a new clip, then compare and replace."}</small></div>}
       <label>{zh ? "标题" : "Title"}<textarea maxLength={160} value={scene.title} onChange={event => patch({ title: event.target.value })} /></label>
       <label>{zh ? "副标题" : "Subtitle"}<textarea maxLength={320} value={scene.subtitle} onChange={event => patch({ subtitle: event.target.value })} /></label>
       <label>{zh ? "时长（秒）" : "Duration (s)"}<input type="number" min={1} max={30} step={.5} value={scene.duration} onChange={event => { const value = Number(event.target.value); if (value >= 1 && value <= 30 && timelineDuration(composition) - scene.duration + value <= 180) patch({ duration: value }); }} /></label>

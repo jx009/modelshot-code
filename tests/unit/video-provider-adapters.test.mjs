@@ -170,10 +170,10 @@ it("validates model restrictions before contacting a provider", async () => {
   expect(validChannel("openai", { studioCapability: "video", model: "custom", baseURL: "https://third-party.example/v1", videoDurations: [5] })).toBe(false);
 });
 
-it("switches to supported parameters without silently discarding reference images", () => {
+it("preserves all draft inputs when switching models for explicit compatibility review", () => {
   const caps = { videoModels: [{ id: "custom", cost: 20, available: true, ...videoModelOptions("openai") }], tools: [{ id: "video", available: true }] };
   const video = { duration: 5, ratio: "1:1", media: [{ id: "reference", type: "image" }] };
-  expect(videoModelChange(caps, "custom", video)).toEqual({ provider: "custom", duration: 4, ratio: "16:9" });
+  expect(videoModelChange(caps, "custom", video)).toEqual({ provider: "custom" });
   expect(videoModelOffer(caps, "custom", video)).toMatchObject({ available: false, reason: "VIDEO_DURATION_UNSUPPORTED" });
   expect(video.media).toHaveLength(1);
 });

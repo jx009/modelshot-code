@@ -22,7 +22,7 @@ jobs:
 
   local-acceptance:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 40
     env:
       NEXT_TELEMETRY_DISABLED: "1"
       DATABASE_URL: postgresql://modelshot:local-modelshot-only@127.0.0.1:55432/modelshot_test
@@ -49,7 +49,35 @@ jobs:
       # even when an external image registry prevents integration setup.
       - run: npm run check:static
       - run: npm run test:unit
-      - run: npm run infra:up
+      # The historical official MinIO image is no longer publicly pullable.
+      # Build the exact source release for isolated CI instead of changing the
+      # application's storage protocol or depending on an unverified mirror.
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: "1.24.2"
+          cache: false
+      - name: Build the pinned MinIO test server
+        env:
+          GOMAXPROCS: "2"
+          CGO_ENABLED: "0"
+        run: |
+          git init "$RUNNER_TEMP/minio-source"
+          git -C "$RUNNER_TEMP/minio-source" remote add origin https://github.com/minio/minio.git
+          git -C "$RUNNER_TEMP/minio-source" fetch --depth=1 origin 0d7408fc9969caf07de6a8c3a84f9fbb10a6739e
+          git -C "$RUNNER_TEMP/minio-source" checkout --detach FETCH_HEAD
+          cd "$RUNNER_TEMP/minio-source"
+          go build -p 2 -mod=readonly -trimpath -o "$RUNNER_TEMP/minio" .
+      - name: Start isolated test services
+        run: |
+          docker compose up -d --wait postgres redis mail
+          MINIO_ROOT_USER=modelshot-local MINIO_ROOT_PASSWORD=local-modelshot-storage-only nohup "$RUNNER_TEMP/minio" server "$RUNNER_TEMP/minio-data" --address 127.0.0.1:59000 --console-address 127.0.0.1:59001 > "$RUNNER_TEMP/minio.log" 2>&1 &
+          echo "$!" > "$RUNNER_TEMP/minio.pid"
+          for attempt in $(seq 1 30); do
+            if curl --silent --fail http://127.0.0.1:59000/minio/health/live; then exit 0; fi
+            sleep 2
+          done
+          cat "$RUNNER_TEMP/minio.log"
+          exit 1
       - run: npx playwright install --with-deps chromium
       - run: npm run test:integration
       - run: npm run build
@@ -71,4 +99,6 @@ jobs:
             playwright-report/
             test-results/
       - if: always()
-        run: docker compose down
+        run: |
+          docker compose down
+          if [ -f "$RUNNER_TEMP/minio.pid" ]; then kill "$(cat "$RUNNER_TEMP/minio.pid")" 2>/dev/null || true; fi

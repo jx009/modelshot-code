@@ -45,9 +45,15 @@ jobs:
       - run: python -m unittest discover -s tests/deployment -p "test_*.py"
       - run: node --test tests/deployment/*.test.mjs
       - run: npx prisma generate
+      # These checks do not need container services. Keep their results visible
+      # even when an external image registry prevents integration setup.
+      - run: npm run check:static
+      - run: npm run test:unit
       - run: npm run infra:up
       - run: npx playwright install --with-deps chromium
-      - run: npm run test:acceptance
+      - run: npm run test:integration
+      - run: npm run build
+      - run: npm run test:e2e
       - run: npm run test:recovery
       - run: npm run test:capacity
       - name: Dependency audit report

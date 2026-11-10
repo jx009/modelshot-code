@@ -9,7 +9,7 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); window.history.replaceState(
 
 it.each(["ocr", "upscale"])("creates an independently configured %s channel through the admin form", async purpose => {
   window.history.replaceState({}, "", `/?category=tool&purpose=${purpose}`);
-  const fetch = vi.fn(async (_url, init) => ({ ok: true, json: async () => init ? { ok: true } : [] }));
+  const fetch = vi.fn(async (_url, init) => ({ ok: true, json: async () => init?.method && init.method !== "GET" ? { ok: true } : [] }));
   vi.stubGlobal("fetch", fetch);
   render(<AdminProviders />);
   const selector = await screen.findByLabelText("用途");
@@ -34,7 +34,7 @@ it.each(["ocr", "upscale"])("creates an independently configured %s channel thro
 it("can change an existing Ark channel's purpose to OCR without setting it as planner", async () => {
   window.history.replaceState({}, "", "/?category=language");
   const provider = { id: "existing", name: "ark", kind: "volcengine", displayName: "Existing visual model", isPlanner: true, isActive: true, creditCost: 1, costPerImage: 0, priority: 1, config: { scope: "language", studioCapability: "language", model: "ep-existing", hasKey: true, keyMasked: "***" } };
-  const fetch = vi.fn(async (_url, init) => ({ ok: true, json: async () => init ? { ok: true } : [provider] }));
+  const fetch = vi.fn(async (_url, init) => ({ ok: true, json: async () => init?.method && init.method !== "GET" ? { ok: true } : [provider] }));
   vi.stubGlobal("fetch", fetch);
   render(<AdminProviders />);
   fireEvent.change(await screen.findByLabelText("用途"), { target: { value: "ocr" } });
@@ -47,7 +47,7 @@ it("can change an existing Ark channel's purpose to OCR without setting it as pl
 
 it("switches OCR to OpenAI compatible and saves the custom gateway without changing its purpose", async () => {
   window.history.replaceState({}, "", "/?category=tool&purpose=ocr");
-  const fetch = vi.fn(async (_url, init) => ({ ok: true, json: async () => init ? { ok: true } : [] }));
+  const fetch = vi.fn(async (_url, init) => ({ ok: true, json: async () => init?.method && init.method !== "GET" ? { ok: true } : [] }));
   vi.stubGlobal("fetch", fetch);
   render(<AdminProviders />);
   fireEvent.change(await screen.findByLabelText("协议类型"), { target: { value: "openai" } });

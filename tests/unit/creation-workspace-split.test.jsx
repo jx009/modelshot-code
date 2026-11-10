@@ -27,19 +27,21 @@ it("supports keyboard limits, reset and per-user preference restoration", () => 
   expect(handle.getAttribute("aria-valuenow")).toBe("410");
   fireEvent.keyDown(handle, { key: "ArrowRight", shiftKey: true });
   expect(handle.getAttribute("aria-valuenow")).toBe("450");
-  fireEvent.keyDown(handle, { key: "End" }); expect(handle.getAttribute("aria-valuenow")).toBe("480");
+  fireEvent.keyDown(handle, { key: "End" }); expect(handle.getAttribute("aria-valuenow")).toBe("672");
   fireEvent.keyDown(handle, { key: "Home" }); expect(handle.getAttribute("aria-valuenow")).toBe("300");
-  fireEvent.doubleClick(handle); expect(sessionStorage.getItem("creation-chat-width:u")).toBe("360");
+  fireEvent.doubleClick(handle); expect(sessionStorage.getItem("creation-chat-width:u")).toBeNull();
+  expect(handle.getAttribute("aria-valuenow")).toBe("406");
   sessionStorage.setItem("creation-chat-width:u", "450"); first.unmount(); view(vi.fn(), "other");
-  expect(screen.getByRole("separator").getAttribute("aria-valuenow")).toBe("360");
+  expect(screen.getByRole("separator").getAttribute("aria-valuenow")).toBe("406");
 });
 
 it("coalesces drag frames without rerendering the editor and commits only on release", () => {
+  sessionStorage.setItem("creation-chat-width:u", "360");
   const count = vi.fn(); view(count);
   const handle = screen.getByRole("separator"), root = handle.parentElement;
   handle.setPointerCapture = id => captures.add(id); handle.hasPointerCapture = id => captures.has(id); handle.releasePointerCapture = id => captures.delete(id);
   pointer(handle, "pointerdown", 360); pointer(handle, "pointermove", 410); pointer(handle, "pointermove", 440);
-  expect(frames.size).toBe(1); expect(sessionStorage.getItem("creation-chat-width:u")).toBeNull();
+  expect(frames.size).toBe(1); expect(sessionStorage.getItem("creation-chat-width:u")).toBe("360");
   tick(); expect(root.style.getPropertyValue("--cw-chat-width")).toBe("440px");
   pointer(handle, "pointerup", 450);
   expect(sessionStorage.getItem("creation-chat-width:u")).toBe("450"); expect(count).toHaveBeenCalledOnce();
@@ -51,7 +53,7 @@ it("restores the starting width on Escape and cancels pending work on unmount", 
   handle.setPointerCapture = id => captures.add(id); handle.hasPointerCapture = id => captures.has(id); handle.releasePointerCapture = id => captures.delete(id);
   pointer(handle, "pointerdown", 360); pointer(handle, "pointermove", 430); tick();
   fireEvent.keyDown(handle, { key: "Escape" });
-  expect(handle.getAttribute("aria-valuenow")).toBe("360"); expect(sessionStorage.getItem("creation-chat-width:u")).toBeNull();
+  expect(handle.getAttribute("aria-valuenow")).toBe("406"); expect(sessionStorage.getItem("creation-chat-width:u")).toBeNull();
   pointer(handle, "pointerdown", 360); pointer(handle, "pointermove", 420);
   rendered.unmount(); expect(frames.size).toBe(0); expect(observer.disconnect).toHaveBeenCalled();
 });
@@ -61,7 +63,7 @@ it("clamps the panel when its available container becomes narrower", () => {
   fireEvent.keyDown(handle, { key: "End" });
   HTMLElement.prototype.getBoundingClientRect.mockReturnValue({ width: 760 });
   act(() => observer.notify());
-  expect(handle.getAttribute("aria-valuemax")).toBe("400"); expect(handle.getAttribute("aria-valuenow")).toBe("400");
+  expect(handle.getAttribute("aria-valuemax")).toBe("365"); expect(handle.getAttribute("aria-valuenow")).toBe("365");
   HTMLElement.prototype.getBoundingClientRect.mockReturnValue({ width: 1400 });
-  act(() => observer.notify()); expect(handle.getAttribute("aria-valuenow")).toBe("480");
+  act(() => observer.notify()); expect(handle.getAttribute("aria-valuenow")).toBe("672");
 });

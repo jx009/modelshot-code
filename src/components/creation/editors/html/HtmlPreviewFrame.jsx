@@ -8,6 +8,7 @@ import { patchHtmlPreview } from "@/lib/creation/html/patch-preview";
 export default function HtmlPreviewFrame({ html, revision = 0, frameRef, onUpdate, onBeforeUpdate, ...props }) {
   const [initial] = useState(html);
   const latest = useRef({ html, revision, onUpdate, onBeforeUpdate }), loaded = useRef(false), applied = useRef(initial), appliedRevision = useRef(revision);
+  const loadedDocument = useRef(null), initialRevision = useRef(revision);
   const synchronize = useCallback(() => {
     const doc = frameRef.current?.contentDocument;
     if (!loaded.current || !doc) return;
@@ -25,5 +26,11 @@ export default function HtmlPreviewFrame({ html, revision = 0, frameRef, onUpdat
     synchronize();
   }, [html, revision, onUpdate, onBeforeUpdate, synchronize]);
   return <iframe {...props} ref={frameRef} sandbox="allow-same-origin" referrerPolicy="no-referrer" srcDoc={initial}
-    onLoad={() => { loaded.current = true; applied.current = initial; synchronize(); }} />;
+    onLoad={() => {
+      const doc = frameRef.current?.contentDocument;
+      if (loadedDocument.current !== doc) {
+        loadedDocument.current = doc; applied.current = initial; appliedRevision.current = initialRevision.current;
+      }
+      loaded.current = true; synchronize();
+    }} />;
 }

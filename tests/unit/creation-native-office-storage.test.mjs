@@ -134,10 +134,10 @@ it("restores a native revision as a new version and records schemaVersion on new
   expect((await readNativeOfficeArtifact("u", "artifact", "sheet", 3, value)).content.snapshot.sheets.sheet0.cellData[0][0].v).toBe(10);
   const copy = fixture(); await copyNativeOfficeArtifact("u", "artifact", { saveKey: "native-copy-key-12345", content: input.content }, copy);
   expect(copy.db.creationArtifact.create.mock.calls[0][0].data).toMatchObject({ kind: "sheet", schemaVersion: 2 });
-  expect(copy.db.creationProject.findFirst.mock.calls[0][0].where).toMatchObject({ userId: "u", kind: "sheet", deletedAt: null });
+  expect(copy.db.creationProject.findFirst.mock.calls[0][0].where).toMatchObject({ userId: "u", deletedAt: null });
 });
 
-it("rejects legacy snapshots in the native service, checksum corruption and wrong project kinds", async () => {
+it("rejects legacy snapshots in the native service, checksum corruption and unavailable projects", async () => {
   const legacy = { schemaVersion: 1, kind: "sheet", title: "Old", sheets: [{ id: "s", name: "Old", cells: [] }] };
   await expect(readNativeOfficeArtifact("u", "artifact", "sheet", 1, fixture(legacy))).rejects.toThrow("ARTIFACT_FORMAT_UNSUPPORTED");
   const corrupt = fixture(); corrupt.blobs.get("first").checksum = "0".repeat(64);

@@ -14,7 +14,7 @@ vi.mock("../../src/lib/domain/identity/admin-operation", () => ({ auditedOperati
 import { GET, PATCH } from "../../src/app/api/admin/creation-access/route.js";
 import { GET as getLauncher, PATCH as patchLauncher } from "../../src/app/api/admin/creation-launcher-visibility/route.js";
 import { CREATION_ACCESS_FLAGS } from "../../src/lib/creation/access-flags.js";
-import { CREATION_LAUNCHER_ITEMS, DEFAULT_CREATION_LAUNCHER_VISIBILITY } from "../../src/lib/creation/launcher-items.js";
+import { CREATION_LAUNCHER_ITEMS, DEFAULT_CREATION_LAUNCHER_VISIBILITY } from "../../src/lib/creation/launcher-visibility.js";
 
 const config = Object.fromEntries(CREATION_ACCESS_FLAGS.map(({ key }) => [key, true]));
 const request = body => new Request("https://example.test/api/admin/creation-access", { method: "PATCH", headers: {

@@ -51,7 +51,7 @@ it.each([true, false])("persists the independent direct upload switch (%s) while
   expect(result.audit.directUploadEnabled).toBe(directUploadEnabled);
 });
 it("blocks a bucket switch when originals exist but permits credential rotation", async () => {
-  mocks.audit.mockImplementation(async (_id, _key, _action, _input, mutate) => { await mutate({ asset: { count: mocks.count } }); return { ok: true }; });
+  mocks.audit.mockImplementation(async (_id, _key, _action, _input, mutate) => { await mutate({ asset: { count: mocks.count }, assetUpload: { count: async () => 0 } }); return { ok: true }; });
   expect((await PATCH(request("PATCH", { bucket: "different-1250000000" }))).status).toBe(409);
   expect(mocks.write).not.toHaveBeenCalled();
   expect((await PATCH(request("PATCH", { secretKey: "rotated-secret" }))).status).toBe(200);

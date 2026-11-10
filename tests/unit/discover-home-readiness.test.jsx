@@ -98,7 +98,7 @@ test.each(["海报设计", "演示文稿", "文档", "表格", "网页"])("opens
   // next/dynamic is stubbed above: no optional chunk can resolve in this test.
   const composer = screen.getByRole("textbox", { name: "创作需求" });
   expect(composer.disabled).toBe(false);
-  expect(screen.getByRole("button", { name: "添加素材" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "添加参考图片" })).toBeTruthy();
   fireEvent.change(composer, { target: { value: "切换后继续编辑" } });
   fireEvent.click(screen.getByRole("button", { name: "图片创作" }));
   expect(screen.getByRole("textbox", { name: "描述你的创意" })).toBeTruthy();

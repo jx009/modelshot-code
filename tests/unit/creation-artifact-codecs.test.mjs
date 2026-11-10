@@ -85,7 +85,9 @@ it("rejects stale saves before upload and prevents AI lock changes before readin
   await expect(modifyDocumentArtifact("u", "artifact", { ...request, baseRevision: 1, operations: [{ op: "setDocumentLock", sectionId: "section", blockId: "p", locked: false }] }, { ...value, sourceRunId: "run" })).rejects.toThrow("AI_CANNOT_CHANGE_LOCK");
   expect(value.db.creationArtifact.findFirst).not.toHaveBeenCalled();
   const web = ports(site);
-  await expect(modifyWebArtifact("u", "artifact", { baseRevision: 1, saveKey: request.saveKey, operations: [{ op: "setFile", fileId: "html", path: "index.html", kind: "js", content: "alert(1)" }] }, { ...web, sourceRunId: "run" })).rejects.toThrow("WEB_AGENT_JS_EDIT_DISABLED");
+  await expect(modifyWebArtifact("u", "artifact", { baseRevision: 1, saveKey: request.saveKey, operations: [{ op: "setFile", fileId: "html", path: "index.html", kind: "js", content: "alert(1)" }] }, { ...web, sourceRunId: "run" })).rejects.toThrow("WEB_FILE_KIND_CHANGED");
+  expect(web.store.put).not.toHaveBeenCalled();
+  web.db.creationArtifact.findFirst.mockClear();
   await expect(modifyWebArtifact("u", "artifact", { baseRevision: 1, saveKey: request.saveKey, operations: [{ op: "renameFile", fileId: "html", path: "index.html", nextPath: "other.html" }] }, { ...web, sourceRunId: "run" })).rejects.toThrow("LANGUAGE_EDIT_OUTSIDE_SCOPE");
   expect(web.db.creationArtifact.findFirst).not.toHaveBeenCalled();
 });
@@ -130,9 +132,9 @@ it("does not finalize a new blob or create a revision when the CAS loses after u
   expect(value.db.artifactRevision.create).not.toHaveBeenCalled();
 });
 
-it("only creates documents in document projects and checks that restriction before staging content", async () => {
+it("checks project ownership before staging documents in a mixed-format project", async () => {
   const value = ports(document); value.db.creationProject.findFirst.mockResolvedValue(null);
   await expect(createDocumentArtifact("u", "project", document, "create-test-key-123456", value)).rejects.toThrow("CREATION_PROJECT_NOT_FOUND");
-  expect(value.db.creationProject.findFirst.mock.calls[0][0].where).toEqual({ id: "project", userId: "u", deletedAt: null, kind: "document" });
+  expect(value.db.creationProject.findFirst.mock.calls[0][0].where).toEqual({ id: "project", userId: "u", deletedAt: null });
   expect(value.store.put).not.toHaveBeenCalled();
 });

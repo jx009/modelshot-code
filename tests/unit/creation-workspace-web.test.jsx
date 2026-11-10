@@ -150,7 +150,7 @@ it("shows website page count without image dimensions and submits the web-specif
   await screen.findByText("Select web file");
   expect(screen.queryByLabelText("Page dimensions")).toBeNull();
   expect(screen.queryByLabelText("Page count")).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "Materials and options" }));
+  fireEvent.click(screen.getByRole("button", { name: "Creation settings" }));
   expect(screen.getByLabelText("Page count").value).toBe("1");
   fireEvent.change(screen.getByLabelText("Page count"), { target: { value: "3" } });
   fireEvent.change(screen.getByLabelText("Creation request"), { target: { value: "Create a coffee website" } });
@@ -185,7 +185,7 @@ it("keeps poster dimensions and layout selection on their existing request path"
   render(<CreationWorkspace userId="u" projectId="p" zh={false} />);
   await screen.findByText("Select poster file");
   expect(screen.queryByLabelText("Page dimensions")).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "Materials and options" }));
+  fireEvent.click(screen.getByRole("button", { name: "Creation settings" }));
   expect(screen.getByLabelText("Page dimensions")).toBeTruthy();
   fireEvent.click(screen.getByText("Select poster file"));
   fireEvent.change(screen.getByLabelText("Creation request"), { target: { value: "Change headline" } });
@@ -200,7 +200,7 @@ it("submits document section parameters and a validated block selection", async 
   render(<CreationWorkspace userId="u" projectId="p" zh={false} />);
   await screen.findByText("Select document file");
   expect(screen.queryByLabelText("Page dimensions")).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "Materials and options" }));
+  fireEvent.click(screen.getByRole("button", { name: "Creation settings" }));
   fireEvent.change(screen.getByLabelText("Section count"), { target: { value: "8" } });
   fireEvent.click(screen.getByText("Select document file"));
   fireEvent.change(screen.getByLabelText("Creation request"), { target: { value: "Revise summary" } });
@@ -216,7 +216,7 @@ it("submits sheet generation parameters and a validated cell selection", async (
   render(<CreationWorkspace userId="u" projectId="p" zh={false} />);
   await screen.findByText("Select sheet file");
   expect(screen.queryByLabelText("Page dimensions")).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "Materials and options" }));
+  fireEvent.click(screen.getByRole("button", { name: "Creation settings" }));
   fireEvent.change(screen.getByLabelText("Sheet count"), { target: { value: "3" } });
   fireEvent.change(screen.getByLabelText("Target rows"), { target: { value: "40" } });
   fireEvent.click(screen.getByText("Select sheet file"));

@@ -60,7 +60,8 @@ it("rejects other owners, expired intents, changed configuration and oversized o
   f.store.head.mockResolvedValueOnce({ etag: '"version-1"', "content-length": String(1000000000) });
   await expect(completeDirectUpload("owner", f.plan.uploadId, { ...f, config })).rejects.toMatchObject({ code: "UPLOAD_SIZE_MISMATCH" });
   expect(f.store.get).not.toHaveBeenCalled();
-  f.store.get.mockResolvedValue(Buffer.from("corrupt"));
+  // Keep the byte count valid so this assertion reaches checksum validation.
+  f.store.get.mockResolvedValue(Buffer.alloc(f.input.bytes, 0));
   await expect(completeDirectUpload("owner", f.plan.uploadId, { ...f, config })).rejects.toMatchObject({ code: "UPLOAD_CHECKSUM_MISMATCH" });
   f.intent().expiresAt = new Date(0);
   await expect(completeDirectUpload("owner", f.plan.uploadId, { ...f, config })).rejects.toMatchObject({ code: "UPLOAD_EXPIRED" });

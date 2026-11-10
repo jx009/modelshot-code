@@ -58,4 +58,8 @@ it("removes transient editor styles before patching and rebinds only after the n
   expect(onBeforeUpdate.mock.invocationCallOrder[0]).toBeLessThan(onUpdate.mock.invocationCallOrder[0]);
   expect(frameRef.current.contentDocument.body.textContent).toBe("Updated");
   expect(frameRef.current.contentDocument.querySelector("p").style.outline).toBe("");
+  // A repeated load signal for the same document must not replay the edit.
+  fireEvent.load(frameRef.current);
+  expect(onBeforeUpdate).toHaveBeenCalledOnce();
+  expect(frameRef.current.contentDocument.body.textContent).toBe("Updated");
 });

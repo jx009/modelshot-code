@@ -9,7 +9,7 @@ export default function WorkspaceSplit({ userId, zh, children }) {
   useEffect(() => {
     const element = root.current, handle = separator.current, key = `creation-chat-width:${userId}`;
     let width = DEFAULT, preferredWidth = DEFAULT, customized = false, drag = null, frame = null, pendingWidth = null;
-    const max = () => Math.max(MIN, Math.min(MAX, element.getBoundingClientRect().width * 0.48));
+    const max = () => Math.max(MIN, Math.min(MAX, Math.round(element.getBoundingClientRect().width * 0.48)));
     const responsiveWidth = () => Math.max(MIN, Math.min(MAX, element.getBoundingClientRect().width * 0.29));
     function apply(value) {
       width = Math.round(Math.min(max(), Math.max(MIN, value)));

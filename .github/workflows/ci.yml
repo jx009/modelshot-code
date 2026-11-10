@@ -49,18 +49,6 @@ jobs:
       # even when an external image registry prevents integration setup.
       - run: npm run check:static
       - run: npm run test:unit
-        id: unit
-      - name: Compare upgrade failures with the original baseline
-        if: ${{ failure() && steps.unit.outcome == 'failure' && github.ref_name == 'codex/jimeng-image-video-upgrade' }}
-        continue-on-error: true
-        run: |
-          git fetch --depth=1 origin 4b64f3b3cfde1d2da9365aa6ccb898eea519d3ce
-          baseline_dir="$RUNNER_TEMP/modelshot-original-baseline"
-          mkdir -p "$baseline_dir"
-          git archive 4b64f3b3cfde1d2da9365aa6ccb898eea519d3ce | tar -x -C "$baseline_dir"
-          ln -s "$GITHUB_WORKSPACE/node_modules" "$baseline_dir/node_modules"
-          cd "$baseline_dir"
-          npm run test:unit -- tests/unit/admin-creation-access.test.mjs tests/unit/admin-ocr-upscale.test.jsx tests/unit/admin-storage-route.test.mjs tests/unit/creation-artifact-codecs.test.mjs tests/unit/creation-native-office-storage.test.mjs tests/unit/creation-workspace-split.test.jsx tests/unit/creation-workspace-web.test.jsx tests/unit/direct-upload.test.mjs tests/unit/discover-home-readiness.test.jsx tests/unit/studio-cloud.test.mjs tests/unit/studio-pixels.test.mjs tests/unit/video-provider-adapters.test.mjs tests/unit/video-workspace-layout.test.jsx
       - run: npm run infra:up
       - run: npx playwright install --with-deps chromium
       - run: npm run test:integration

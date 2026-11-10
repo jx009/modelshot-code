@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import DiscoverHome from "../../src/components/discover/DiscoverHome.jsx";
 import CreativePages, { CreativePageContent } from "../../src/components/discover/CreativePages.jsx";
@@ -81,7 +81,9 @@ test("shows only individually enabled creation buttons", async () => {
   expect(await screen.findByRole("button", { name: "演示文稿" })).toBeTruthy();
   expect(screen.getByRole("button", { name: "图片创作" })).toBeTruthy();
   expect(screen.getByRole("button", { name: "海报设计" })).toBeTruthy();
-  for (const name of ["视频制作", "视频生成", "文档", "表格", "网页"]) expect(screen.queryByRole("button", { name })).toBeNull();
+  await waitFor(() => {
+    for (const name of ["视频制作", "视频生成", "文档", "表格", "网页"]) expect(screen.queryByRole("button", { name })).toBeNull();
+  });
   expect(document.querySelector(".cr-creation-types").className).toContain("cr-creation-types");
 });
 

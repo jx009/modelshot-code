@@ -167,7 +167,7 @@ function VideoParameterEditor({ value, onChange, label = "模型附加参数（J
     const text = event.target.value; setDraft(text);
     try { const parsed = JSON.parse(text || JSON.stringify(fallback)); const valid = validate(parsed); setInvalid(!valid); onChange(valid ? parsed : text); }
     catch { setInvalid(true); onChange(text); }
-  }} /></Field>{invalid && <p role="alert" className="text-xs text-red-500">请输入符合本项结构的 JSON，不要包含 API Key、认证头或密钥。</p>}</>;
+  }} /></Field>{invalid && <p role="alert" className="text-xs text-danger">请输入符合本项结构的 JSON，不要包含 API Key、认证头或密钥。</p>}</>;
 }
 
 function ProviderCard({ provider: p, saving, testingId, testResult, onPatch, onTest }) {

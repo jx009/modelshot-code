@@ -78,9 +78,11 @@ jobs:
           done
           cat "$RUNNER_TEMP/minio.log"
           exit 1
-      - run: npx playwright install --with-deps chromium
       - run: npm run test:integration
       - run: npm run build
+      - name: Install acceptance browser
+        timeout-minutes: 10
+        run: npx playwright install --with-deps chromium
       - name: Image and video browser acceptance
         run: npm run test:ui -- tests/ui/jimeng-image-video.spec.mjs --workers=1
       - name: Upload image and video browser evidence

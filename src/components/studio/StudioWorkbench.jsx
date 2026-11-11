@@ -125,6 +125,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
       PRICE_CHANGED: t("积分价格已更新，请查看最新费用后重新提交；本次未新增扣费。", "Pricing changed. Review the updated cost and submit again; no new charge was made."),
       INSUFFICIENT_CREDITS: t("可用积分不足，请补充积分后重试。", "Not enough available credits."),
       UNAUTHORIZED: t("请先登录，素材和作品会保存到你的账户。", "Sign in to save assets and projects."),
+      CREATION_NOT_ENABLED: t("当前账号暂未开放视频创作，请联系管理员开通。", "Video creation is not enabled for this account. Contact an administrator."),
       IMAGE_SIZE_UNSUPPORTED: t("当前模型不支持所选比例或分辨率，请更换模型或尺寸。", "This model does not support the selected dimensions. Change the model or size."),
       IMAGE_PROMPT_INVALID: t("MiniMax 生图需要非空提示词，且最多 1500 字符，请精简后重试。", "MiniMax requires a non-empty prompt of at most 1,500 characters. Shorten it and retry."),
       IMAGE_RESOLUTION_UNSUPPORTED: t("当前模型不支持此分辨率，请选择 2K 或 4K。", "This model requires a larger resolution. Choose 2K or 4K."),

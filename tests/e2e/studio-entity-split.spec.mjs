@@ -53,6 +53,7 @@ test("one EntitySegment channel can be saved for splitting and produces aligned,
     expect(caps.tools.find(t => t.id === "split")).toMatchObject({ available: true, layerCountMode: "auto" });
     expect(JSON.stringify(caps)).not.toMatch(/fixture-entity|accessKey|secretAccess/);
     await page.goto("/en/studio-v2");
+    await expect(page.getByRole("button", { name: "Upload from computer", exact: true })).toBeEnabled();
     const source = await sharp({ create: { width: 320, height: 480, channels: 4, background: "#879d8f" } })
       .composite([{ input: await sharp({ create: { width: 80, height: 120, channels: 4, background: "red" } }).png().toBuffer(), left: 80, top: 120 }]).png().toBuffer();
     await page.getByLabel("Upload image files").setInputFiles({ name: "entity-source.png", mimeType: "image/png", buffer: source });
@@ -61,7 +62,7 @@ test("one EntitySegment channel can be saved for splitting and produces aligned,
     await expect(page.getByText(/Detect objects and separate them/)).toBeVisible();
     await expect(page.getByLabel("Layers", { exact: true })).toHaveCount(0);
     const submitted = page.waitForResponse(r => r.url().endsWith("/api/studio/jobs") && r.request().method() === "POST");
-    await page.getByRole("button", { name: "Apply 20 credits", exact: true }).click({ force: true });
+    await page.getByRole("button", { name: "Apply 20 credits", exact: true }).click();
     const jobResponse = await submitted;
     expect(jobResponse.status()).toBe(202);
     const job = await jobResponse.json();

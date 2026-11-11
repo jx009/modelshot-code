@@ -58,11 +58,18 @@ async function capture(page, info, name) {
   try {
     await cdp.send("DOM.enable"); await cdp.send("CSS.enable");
     const { nodes } = await cdp.send("DOM.getFlattenedDocument", { depth: -1 });
-    const samples = [];
-    for (const node of nodes.filter(node => node.nodeType === 3 && /[\u3400-\u9fff]/u.test(node.nodeValue)).slice(0, 12)) {
+    const samples = [], parents = new Set();
+    for (const node of nodes.filter(node => node.nodeType === 3 && /[\u3400-\u9fff]/u.test(node.nodeValue))) {
+      if (parents.has(node.parentId)) continue;
+      parents.add(node.parentId);
+      const { fonts } = await cdp.send("CSS.getPlatformFontsForNode", { nodeId: node.parentId });
+      // Activity keeps inactive pages in the DOM. Only rendered text can tell
+      // us which font supplied its glyphs; hidden nodes return an empty list.
+      if (!fonts.length) continue;
       const { computedStyle } = await cdp.send("CSS.getComputedStyleForNode", { nodeId: node.parentId });
-      samples.push({ text: node.nodeValue, ...await cdp.send("CSS.getPlatformFontsForNode", { nodeId: node.parentId }),
+      samples.push({ text: node.nodeValue, fonts,
         style: computedStyle.filter(({ name }) => ["font-family", "font-size", "font-weight"].includes(name)) });
+      if (samples.length === 12) break;
     }
     const path = info.outputPath(`${name}-fonts.json`);
     await writeFile(path, JSON.stringify(samples, null, 2));

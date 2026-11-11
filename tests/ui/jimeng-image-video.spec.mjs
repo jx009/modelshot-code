@@ -131,6 +131,34 @@ test("homepage keeps independent image, video and motion drafts", async ({ page 
   expect(state.submissions).toHaveLength(0); expect(state.errors).toEqual([]);
 });
 
+test("guest image prompt survives login while signed-in drafts stay account scoped", async ({ page }) => {
+  const state = await setup(page);
+  let user = null;
+  await page.route("**/api/auth/session", route => route.fulfill({ json: user ? { user, expires: "2099-01-01" } : null }));
+  await page.route("**/api/auth/providers", route => route.fulfill({ json: { email: { id: "email", type: "credentials" } } }));
+  await page.route("**/api/auth/callback/email", route => {
+    user = { id: "upgrade-user", name: "Creator", email: "creator@example.invalid", credits: 100 };
+    return route.fulfill({ json: { url: "http://127.0.0.1:3101/zh" } });
+  });
+  await page.goto("/zh");
+  const prompt = page.getByLabel("描述你的创意", { exact: true });
+  await expect(prompt).toBeEnabled();
+  await prompt.fill("登录后继续制作这张产品海报");
+  await page.locator(".cr-top-cta").click();
+  const dialog = page.getByRole("dialog", { name: "登录来塔绘梦" });
+  await dialog.getByLabel("邮箱", { exact: true }).fill("creator@example.invalid");
+  await dialog.getByLabel("密码", { exact: true }).fill("Fixture-password-123");
+  await dialog.getByRole("button", { name: "登录", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(prompt).toHaveValue("登录后继续制作这张产品海报");
+  await prompt.fill("账号 A 的私有草稿");
+  user = { ...user, id: "second-account", name: "Second creator" };
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  await expect(prompt).toHaveValue("");
+  expect(state.submissions).toHaveLength(0);
+  expect(state.errors).toEqual([]);
+});
+
 test("canvas image opens the shared video controls in a linked child document", async ({ page }, info) => {
   await page.setViewportSize({ width: 1705, height: 1000 }); const state = await setup(page);
   await page.goto("/zh/studio-v2?document=canvas-doc");

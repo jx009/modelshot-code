@@ -12,6 +12,7 @@ import NavigationContent from "@/components/ui/NavigationContent";
 import CreativeShell from "./CreativeShell";
 import DiscoverHome from "./DiscoverHome";
 import InspirationDetailImage from "./InspirationDetailImage";
+import { HomeGuestPromptContext } from "./home-guest-prompt";
 
 const loadInspirationDetail = () => import("./InspirationDetail");
 const InspirationDetail = lazy(loadInspirationDetail);
@@ -135,5 +136,12 @@ function RetainedPages({ children }) {
 
 export function CreativePageContent({ children }) {
   const { data: session } = useSession(), locale = useLocale();
-  return <NavigationContent section="creative"><RetainedPages key={`${locale}:${session?.user?.id || "guest"}`}>{children}</RetainedPages></NavigationContent>;
+  const userId = session?.user?.id || null;
+  const [draft, setDraft] = useState(() => ({ userId, guestPrompt: "", loginPrompt: "" }));
+  // Adjust before mounting the new account tree, so only a guest-to-account
+  // transition can inherit text. Logout and account switches erase the handoff.
+  if (draft.userId !== userId) setDraft({ userId, guestPrompt: "", loginPrompt: !draft.userId && userId ? draft.guestPrompt : "" });
+  const remember = useCallback(text => setDraft(current => current.userId ? current : { ...current, guestPrompt: text }), []);
+  const handoff = useMemo(() => ({ text: draft.loginPrompt, remember }), [draft.loginPrompt, remember]);
+  return <HomeGuestPromptContext.Provider value={handoff}><NavigationContent section="creative"><RetainedPages key={`${locale}:${userId || "guest"}`}>{children}</RetainedPages></NavigationContent></HomeGuestPromptContext.Provider>;
 }

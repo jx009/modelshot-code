@@ -81,6 +81,16 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run test:integration
       - run: npm run build
+      - name: Image and video browser acceptance
+        run: npm run test:ui -- tests/ui/jimeng-image-video.spec.mjs --workers=1
+      - name: Upload image and video browser evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ always() }}
+        with:
+          name: jimeng-browser-evidence
+          retention-days: 7
+          if-no-files-found: ignore
+          path: test-results-ui/
       - run: npm run test:e2e
       - run: npm run test:recovery
       - run: npm run test:capacity

@@ -112,6 +112,18 @@ jobs:
           fc-match 'Noto Sans CJK SC'
           fc-match sans-serif:lang=zh-cn
       - run: npm run test:e2e
+      # Publish the small, structured result before large screenshots/traces.
+      # A slow evidence upload must not hide the completed test outcomes.
+      - name: Upload browser result summary
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ always() }}
+        with:
+          name: browser-result-summary
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            test-results/e2e-results.json
+            test-results/**/error-context.md
       - name: Dependency audit report
         if: always()
         run: npm run check:dependencies

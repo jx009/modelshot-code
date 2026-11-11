@@ -1,0 +1,320 @@
+[
+  {
+    "text": "待保存",
+    "fonts": [
+      {
+        "familyName": "Noto Sans CJK SC",
+        "postScriptName": "NotoSansCJKsc-Regular",
+        "isCustomFont": false,
+        "glyphCount": 3
+      }
+    ],
+    "style": [
+      {
+        "name": "font-family",
+        "value": "geist, \"geist Fallback\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans CJK SC\", system-ui, sans-serif"
+      },
+      {
+        "name": "font-size",
+        "value": "10px"
+      },
+      {
+        "name": "font-weight",
+        "value": "400"
+      }
+    ]
+  },
+  {
+    "text": "描述画面，并按所选模型添加参考素材生成视频。",
+    "fonts": [
+      {
+        "familyName": "Noto Sans CJK SC",
+        "postScriptName": "NotoSansCJKsc-Regular",
+        "isCustomFont": false,
+        "glyphCount": 22
+      }
+    ],
+    "style": [
+      {
+        "name": "font-family",
+        "value": "geist, \"geist Fallback\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans CJK SC\", system-ui, sans-serif"
+      },
+      {
+        "name": "font-size",
+        "value": "12px"
+      },
+      {
+        "name": "font-weight",
+        "value": "400"
+      }
+    ]
+  },
+  {
+    "text": "首帧",
+    "fonts": [
+      {
+        "familyName": "Noto Sans CJK SC",
+        "postScriptName": "NotoSansCJKsc-Bold",
+        "isCustomFont": false,
+        "glyphCount": 2
+      },
+      {
+        "familyName": "Geist",
+        "postScriptName": "Geist-Regular",
+        "isCustomFont": true,
+        "glyphCount": 2
+      }
+    ],
+    "style": [
+      {
+        "name": "font-family",
+        "value": "geist, \"geist Fallback\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans CJK SC\", system-ui, sans-serif"
+      },
+      {
+        "name": "font-size",
+        "value": "11px"
+      },
+      {
+        "name": "font-weight",
+        "value": "700"
+      }
+    ]
+  },
+  {
+    "text": "结束图片",
+    "fonts": [
+      {
+        "familyName": "Noto Sans CJK SC",
+        "postScriptName": "NotoSansCJKsc-Regular",
+        "isCustomFont": false,
+        "glyphCount": 4
+      }
+    ],
+    "style": [
+      {
+        "name": "font-family",
+        "value": "geist, \"geist Fallback\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans CJK SC\", system-ui, sans-serif"
+      },
+      {
+        "name": "font-size",
+        "value": "11px"
+      },
+      {
+        "name": "font-weight",
+        "value": "400"
+      }
+    ]
+  },
+  {
+    "text": "尾帧",
+    "fonts": [
+      {
+        "familyName": "Noto Sans CJK SC",
+        "postScriptName": "NotoSansCJKsc-Bold",
+        "isCustomFont": false,
+        "glyphCount": 2
+      },
+      {
+        "familyName": "Geist",
+        "postScriptName": "Geist-Regular",
+        "isCustomFont": true,
+        "glyphCount": 2
+      }
+    ],
+    "style": [
+      {
+        "name": "font-family",
+        "value": "geist, \"geist Fallback\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans CJK SC\", system-ui, sans-serif"
+      },
+      {
+        "name": "font-size",
+        "value": "11px"
+      },
+      {
+        "name": "font-weight",
+        "value": "700"
+      }
+    ]
+  },
+  {
+    "text": "开场图片",
+    "fonts": [
+      {
+        "familyName": "Noto Sans CJK SC",
+        "postScriptName": "NotoSansCJKsc-Regular",
+        "isCustomFont": false,
+        "glyphCount": 4
+      }
+    ],
+    "style": [
+      {
+        "name": "font-family",
+        "value": "geist, \"geist Fallback\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans CJK SC\", system-ui, sans-serif"
+      },
+      {
+        "name": "font-size",
+        "value": "11px"
+      },
+      {
+        "name": "font-weight",
+        "value": "400"
+      }
+    ]
+  },
+  {
+    "text": "首帧决定开场，尾帧决定结束画面；箭头可交换画面。",
+    "fonts": [
+      {
+        "familyName": "Noto Sans CJK SC",
+        "postScriptName": "NotoSansCJKsc-Regular",
+        "isCustomFont": false,
+        "glyphCount": 24
+      }
+    ],
+    "style": [
+      {
+        "name": "font-family",
+        "value": "geist, \"geist Fallback\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans CJK SC\", system-ui, sans-serif"
+      },
+      {
+        "name": "font-size",
+        "value": "11px"
+      },
+      {
+        "name": "font-weight",
+        "value": "400"
+      }
+    ]
+  },
+  {
+    "text": "视频模型",
+    "fonts": [
+      {
+        "familyName": "Noto Sans CJK SC",
+        "postScriptName": "NotoSansCJKsc-Regular",
+        "isCustomFont": false,
+        "glyphCount": 4
+      }
+    ],
+    "style": [
+      {
+        "name": "font-family",
+        "value": "geist, \"geist Fallback\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans CJK SC\", system-ui, sans-serif"
+      },
+      {
+        "name": "font-size",
+        "value": "12px"
+      },
+      {
+        "name": "font-weight",
+        "value": "400"
+      }
+    ]
+  },
+  {
+    "text": "清晰度与声音",
+    "fonts": [
+      {
+        "familyName": "Noto Sans CJK SC",
+        "postScriptName": "NotoSansCJKsc-Regular",
+        "isCustomFont": false,
+        "glyphCount": 6
+      }
+    ],
+    "style": [
+      {
+        "name": "font-family",
+        "value": "geist, \"geist Fallback\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans CJK SC\", system-ui, sans-serif"
+      },
+      {
+        "name": "font-size",
+        "value": "12px"
+      },
+      {
+        "name": "font-weight",
+        "value": "400"
+      }
+    ]
+  },
+  {
+    "text": "画幅",
+    "fonts": [
+      {
+        "familyName": "Noto Sans CJK SC",
+        "postScriptName": "NotoSansCJKsc-Regular",
+        "isCustomFont": false,
+        "glyphCount": 2
+      }
+    ],
+    "style": [
+      {
+        "name": "font-family",
+        "value": "geist, \"geist Fallback\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans CJK SC\", system-ui, sans-serif"
+      },
+      {
+        "name": "font-size",
+        "value": "12px"
+      },
+      {
+        "name": "font-weight",
+        "value": "400"
+      }
+    ]
+  },
+  {
+    "text": "时长",
+    "fonts": [
+      {
+        "familyName": "Noto Sans CJK SC",
+        "postScriptName": "NotoSansCJKsc-Regular",
+        "isCustomFont": false,
+        "glyphCount": 2
+      }
+    ],
+    "style": [
+      {
+        "name": "font-family",
+        "value": "geist, \"geist Fallback\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans CJK SC\", system-ui, sans-serif"
+      },
+      {
+        "name": "font-size",
+        "value": "12px"
+      },
+      {
+        "name": "font-weight",
+        "value": "400"
+      }
+    ]
+  },
+  {
+    "text": "参考素材上限：2 张图片、0 段视频、0 段音频。音频每段至少 1.8 秒，合计最多 30 秒。",
+    "fonts": [
+      {
+        "familyName": "Noto Sans CJK SC",
+        "postScriptName": "NotoSansCJKsc-Regular",
+        "isCustomFont": false,
+        "glyphCount": 33
+      },
+      {
+        "familyName": "Geist",
+        "postScriptName": "Geist-Regular",
+        "isCustomFont": true,
+        "glyphCount": 15
+      }
+    ],
+    "style": [
+      {
+        "name": "font-family",
+        "value": "geist, \"geist Fallback\", \"PingFang SC\", \"Microsoft YaHei\", \"Noto Sans CJK SC\", system-ui, sans-serif"
+      },
+      {
+        "name": "font-size",
+        "value": "10px"
+      },
+      {
+        "name": "font-weight",
+        "value": "400"
+      }
+    ]
+  }
+]

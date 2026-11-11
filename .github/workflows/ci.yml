@@ -108,16 +108,6 @@ jobs:
           fc-cache -f
           fc-match 'Noto Sans CJK SC'
           fc-match sans-serif:lang=zh-cn
-      - name: Image and video browser acceptance
-        run: npm run test:ui -- tests/ui/jimeng-image-video.spec.mjs --workers=1
-      - name: Upload image and video browser evidence
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: ${{ always() }}
-        with:
-          name: jimeng-browser-evidence
-          retention-days: 7
-          if-no-files-found: ignore
-          path: test-results-ui/
       - run: npm run test:e2e
       - name: Dependency audit report
         if: always()
@@ -137,3 +127,41 @@ jobs:
         run: |
           docker compose down
           if [ -f "$RUNNER_TEMP/minio.pid" ]; then kill "$(cat "$RUNNER_TEMP/minio.pid")" 2>/dev/null || true; fi
+
+  image-video-browser:
+    needs: local-acceptance
+    # Preserve the independent UI result even when a full-site check fails.
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      DATABASE_URL: postgresql://modelshot:local-modelshot-only@127.0.0.1:55432/modelshot_test
+      DIRECT_URL: postgresql://modelshot:local-modelshot-only@127.0.0.1:55432/modelshot_test
+      NEXTAUTH_URL: http://127.0.0.1:3101
+      NEXTAUTH_SECRET: isolated-ci-session-secret-not-for-deployment
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Install browser and CJK fonts
+        run: |
+          printf '%s\n' 'https://mirrors.edge.kernel.org/ubuntu' | sudo tee /etc/apt/apt-mirrors.txt > /dev/null
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends fonts-noto-cjk
+          npx playwright install --with-deps chromium
+          fc-cache -f
+      - name: Image and video browser acceptance
+        run: npm run test:ui -- tests/ui/jimeng-image-video.spec.mjs --workers=1
+      - name: Upload image and video browser evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ always() }}
+        with:
+          name: jimeng-browser-evidence
+          retention-days: 7
+          if-no-files-found: ignore
+          path: test-results-ui/

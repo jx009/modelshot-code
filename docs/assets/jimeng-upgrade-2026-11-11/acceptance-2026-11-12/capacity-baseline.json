@@ -1,0 +1,20 @@
+{
+  "at": "2026-11-11T18:11:59.112Z",
+  "cpu": "Intel(R) Xeon(R) 6973P-C",
+  "logicalCores": 2,
+  "memoryGiB": 8,
+  "node": "v22.23.2",
+  "concurrency": 20,
+  "duplicateSubmission": {
+    "batches": 1,
+    "p50Ms": 321.51906299999996,
+    "p95Ms": 369.61893299999997,
+    "maxMs": 374.759452
+  },
+  "uniqueSubmissions": {
+    "count": 20,
+    "elapsedMs": 423.29655
+  },
+  "elapsedMs": 1126.2692809999999,
+  "scope": "Local PostgreSQL submission services; supplier throughput excluded"
+}

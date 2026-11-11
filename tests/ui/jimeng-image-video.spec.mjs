@@ -195,6 +195,27 @@ test("canvas image opens the shared video controls in a linked child document", 
   expect(state.errors).toEqual([]);
 });
 
+test("login callback opens the asset library without a second navigation", async ({ page }) => {
+  const state = await setup(page);
+  let signedIn = false;
+  await page.route("**/api/auth/session", route => route.fulfill({ json: signedIn ? { user: { id: "library-user", name: "Creator", credits: 100 }, expires: "2099-01-01" } : null }));
+  await page.route("**/api/auth/providers", route => route.fulfill({ json: { email: { id: "email", type: "credentials" } } }));
+  await page.route("**/api/auth/callback/email", route => {
+    signedIn = true;
+    return route.fulfill({ json: { url: "http://127.0.0.1:3101/zh/assets" } });
+  });
+  await page.route("**/api/library/categories", route => route.fulfill({ json: [] }));
+  await page.goto("/zh?auth=login&callbackUrl=%2Fzh%2Fassets");
+  const dialog = page.getByRole("dialog", { name: "登录来塔绘梦" });
+  await dialog.getByLabel("邮箱", { exact: true }).fill("creator@example.invalid");
+  await dialog.getByLabel("密码", { exact: true }).fill("Fixture-password-123");
+  await dialog.getByRole("button", { name: "登录", exact: true }).click();
+  await expect(page).toHaveURL(/\/zh\/assets$/);
+  await expect(page.getByRole("heading", { name: "我的素材", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "上传素材", exact: true })).toBeEnabled();
+  expect(state.errors).toEqual([]);
+});
+
 test("motion workspace supports a new editable composition", async ({ page }, info) => {
   await page.setViewportSize({ width: 1593, height: 819 }); const state = await setup(page, "motion");
   await page.goto("/zh/video?document=video-doc");

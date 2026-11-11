@@ -86,6 +86,20 @@ jobs:
           exit 1
       - run: npm run test:integration
       - run: npm run build
+      # These checks do not need a browser. Keep their evidence even when a
+      # later UI regression fails, while retaining every acceptance gate.
+      - run: npm run test:recovery
+      - run: npm run test:capacity
+      - name: Upload recovery and capacity evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ always() }}
+        with:
+          name: recovery-capacity-evidence
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            test-results/recovery-drill.json
+            test-results/capacity-baseline.json
       - name: Install acceptance browser
         timeout-minutes: 10
         run: |
@@ -104,8 +118,6 @@ jobs:
           if-no-files-found: ignore
           path: test-results-ui/
       - run: npm run test:e2e
-      - run: npm run test:recovery
-      - run: npm run test:capacity
       - name: Dependency audit report
         if: always()
         run: npm run check:dependencies

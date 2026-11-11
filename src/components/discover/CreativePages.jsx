@@ -46,6 +46,9 @@ export default function CreativePages({ children }) {
   const [entry, setEntry] = useState(0);
   const [details, setDetails] = useState({});
   const [visited, setVisited] = useState(() => retained.has(path) ? [path] : []);
+  // Auth callbacks and other Next router transitions bypass visit(). Register
+  // their destination too, or a retained page can have a URL but no visible body.
+  if (retained.has(path) && !visited.includes(path)) setVisited([...visited, path]);
   const supports = useCallback((href, targetLocale) => {
     if (typeof href !== "string" || !href.startsWith("/") || href.startsWith("//") || targetLocale && targetLocale !== locale) return false;
     const url = new URL(href, "https://navigation.local");

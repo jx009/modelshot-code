@@ -14,7 +14,6 @@ test("paint selection survives pan; shape crop and six export formats produce re
   try {
     await db.user.create({ data: { email, passwordHash: await bcrypt.hash(E2E_PASSWORD, 10), credits: 100, emailVerified: new Date() } });
     await page.goto("/en/login?callbackUrl=/en/studio-v2");
-    await page.getByRole("button", { name: "Email", exact: true }).click();
     await page.getByLabel("Email", { exact: true }).fill(email); await page.getByLabel("Password", { exact: true }).fill(E2E_PASSWORD);
     await page.getByRole("button", { name: "Sign in", exact: true }).click();
     await expect(page.locator(".ms-stage canvas").first()).toBeAttached();

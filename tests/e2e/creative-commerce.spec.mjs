@@ -36,7 +36,6 @@ test("commerce uses cloud planning, billed durable jobs, targeted revisions and 
     await db.modelProvider.create({ data: { name: plannerName, displayName: "Commerce language fixture", kind: "openai", isActive: true, isPlanner: true, creditCost: 2, costPerImage: 0, config: JSON.stringify({ scope: "language", studioCapability: "language", model: "fixture-language", baseURL: `http://127.0.0.1:${process.env.TEST_PROVIDER_PORT || 3199}/cloud`, apiKeyEnc: encryptSecret("fixture-key") }) } });
     const user = await db.user.create({ data: { email, passwordHash: await bcrypt.hash(E2E_PASSWORD, 10), credits: 300, emailVerified: new Date() } });
     await page.goto("/en/login?callbackUrl=/en/commerce");
-    await page.getByRole("button", { name: "Email", exact: true }).click();
     await page.getByLabel("Email", { exact: true }).fill(email);
     await page.getByLabel("Password", { exact: true }).fill(E2E_PASSWORD);
     await page.getByRole("button", { name: "Sign in", exact: true }).click();

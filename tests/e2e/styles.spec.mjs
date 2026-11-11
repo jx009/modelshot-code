@@ -11,7 +11,6 @@ for (const theme of ["light", "dark"]) {
   test(`${theme} styles survive direct loads and client navigation`, async ({ page }, info) => {
     await page.addInitScript(value => localStorage.setItem("theme", value), theme);
     await page.goto("/en/login?callbackUrl=/en");
-    await page.getByRole("button", { name: "Email", exact: true }).click();
     await page.getByLabel("Email", { exact: true }).fill(E2E_USERS[0].email);
     await page.getByLabel("Password", { exact: true }).fill(E2E_PASSWORD);
     await page.getByRole("button", { name: "Sign in", exact: true }).click();

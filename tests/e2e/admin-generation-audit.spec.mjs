@@ -33,7 +33,6 @@ test("root promotes a user and audits full prompts, source images, OCR and multi
       resultData: { text: "自然光护肤系列\n净含量 120 ml", assets: images.slice(1).map(image => ({ id: image.id, contentType: "image/png" })) } } });
     expect((await page.request.get(`/api/admin/tryons/${failed.id}`)).status()).toBe(401);
     await page.goto("/en/login?callbackUrl=/en/admin/users");
-    await page.getByRole("button", { name: "Email", exact: true }).click();
     await page.getByLabel("Email", { exact: true }).fill(email);
     await page.getByLabel("Password", { exact: true }).fill(E2E_PASSWORD);
     await page.getByRole("button", { name: "Sign in", exact: true }).click();

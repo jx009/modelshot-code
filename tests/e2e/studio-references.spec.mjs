@@ -13,7 +13,6 @@ test("home uploads, project references, fixed prompt and multi-output retry keep
   try {
     const user = await db.user.create({ data: { email, passwordHash: await bcrypt.hash(E2E_PASSWORD, 10), credits: 200, emailVerified: new Date() } });
     await page.goto("/en/login?callbackUrl=/en");
-    await page.getByRole("button", { name: "Email", exact: true }).click();
     await page.getByLabel("Email", { exact: true }).fill(email); await page.getByLabel("Password", { exact: true }).fill(E2E_PASSWORD);
     await page.getByRole("button", { name: "Sign in", exact: true }).click();
     await expect(page.getByLabel("Describe your idea")).toBeVisible();
@@ -21,12 +20,12 @@ test("home uploads, project references, fixed prompt and multi-output retry keep
     await page.getByRole("tab", { name: /Commerce Agent/ }).click();
     await page.getByLabel("Product name", { exact: true }).fill("Handmade desk");
     await page.getByLabel("Brand", { exact: true }).fill("Workshop");
-    await page.getByRole("tab", { name: "Quick", exact: true }).click();
+    await page.getByRole("tab", { name: "AI creation", exact: true }).click();
     await expect(page.getByLabel("Describe your idea")).toHaveValue("Two images, preserve the cat");
     await page.getByRole("tab", { name: /Commerce Agent/ }).click();
     await expect(page.getByLabel("Product name", { exact: true })).toHaveValue("Handmade desk");
     await expect(page.getByLabel("Brand", { exact: true })).toHaveValue("Workshop");
-    await page.getByRole("tab", { name: "Chat", exact: true }).click();
+    await page.getByRole("tab", { name: "AI creation", exact: true }).click();
     await page.screenshot({ path: info.outputPath("creation-home.png"), fullPage: true, animations: "disabled" });
     const image = await sharp({ create: { width: 200, height: 240, channels: 3, background: "#d49e80" } }).png().toBuffer();
     await page.getByLabel("Upload reference images").setInputFiles([{ name: "cat.png", mimeType: "image/png", buffer: image }, { name: "style.png", mimeType: "image/png", buffer: image }]);

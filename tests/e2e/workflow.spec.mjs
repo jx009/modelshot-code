@@ -9,7 +9,6 @@ import { E2E_PASSWORD } from "../support/e2e-users.mjs";
 
 async function login(page, email) {
   await page.goto("/en/login?callbackUrl=/en/studio-v2");
-  await page.getByRole("button", { name: "Email", exact: true }).click();
   await page.getByLabel("Email", { exact: true }).fill(email);
   await page.getByLabel("Password", { exact: true }).fill(E2E_PASSWORD);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();

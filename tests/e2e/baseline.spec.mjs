@@ -8,7 +8,6 @@ import { getTestEnvironment } from "../support/environment.mjs";
 
 async function signIn(page, email, destination = "/en/studio-v2") {
   await page.goto(`/en/login?callbackUrl=${encodeURIComponent(destination)}`);
-  await page.getByRole("button", { name: "Email", exact: true }).click();
   await page.getByLabel("Email", { exact: true }).fill(email);
   await page.getByLabel("Password", { exact: true }).fill(E2E_PASSWORD);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();

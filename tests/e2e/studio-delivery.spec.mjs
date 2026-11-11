@@ -17,11 +17,10 @@ test("one send generates directly; failed preview preserves input and retries wi
   try {
     await db.user.create({ data: { email, passwordHash: await bcrypt.hash(E2E_PASSWORD, 10), credits: 100, emailVerified: new Date() } });
     await page.goto("/en/login?callbackUrl=" + encodeURIComponent("/en/studio-v2?mode=chat&prompt=A%20cat"));
-    await page.getByRole("button", { name: "Email", exact: true }).click();
     await page.getByLabel("Email", { exact: true }).fill(email);
     await page.getByLabel("Password", { exact: true }).fill(E2E_PASSWORD);
     await page.getByRole("button", { name: "Sign in", exact: true }).click();
-    await expect(page.getByRole("tab", { name: "Chat" })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByLabel("Creative prompt")).toHaveValue("A cat");
     const submitted = page.waitForResponse(r => r.url().endsWith("/api/studio/jobs") && r.request().method() === "POST");
     await page.getByRole("button", { name: "Generate · 18 credits", exact: true }).click();
     const generated = await (await submitted).json();

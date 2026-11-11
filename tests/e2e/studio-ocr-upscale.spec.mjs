@@ -16,7 +16,6 @@ for (const ocrKind of ["volcengine", "openai"]) test(`admin saves ${ocrKind} OCR
   try {
     await db.user.create({ data: { email, passwordHash: await bcrypt.hash(E2E_PASSWORD, 10), role: "root", credits: 100, emailVerified: new Date() } });
     await page.goto("/en/login?callbackUrl=/en/admin/providers");
-    await page.getByRole("button", { name: "Email", exact: true }).click();
     await page.getByLabel("Email", { exact: true }).fill(email);
     await page.getByLabel("Password", { exact: true }).fill(E2E_PASSWORD);
     await page.getByRole("button", { name: "Sign in", exact: true }).click();

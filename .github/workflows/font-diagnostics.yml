@@ -7,7 +7,13 @@ permissions:
 jobs:
   fonts:
     runs-on: ubuntu-24.04
-    timeout-minutes: 8
+    timeout-minutes: 12
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      DATABASE_URL: postgresql://modelshot:local-modelshot-only@127.0.0.1:55432/modelshot_test
+      DIRECT_URL: postgresql://modelshot:local-modelshot-only@127.0.0.1:55432/modelshot_test
+      NEXTAUTH_URL: http://127.0.0.1:3101
+      NEXTAUTH_SECRET: isolated-ci-session-secret-not-for-deployment
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
@@ -15,6 +21,7 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      - run: npm run build
       - name: Install browser and fonts
         run: |
           printf '%s\n' 'https://mirrors.edge.kernel.org/ubuntu' | sudo tee /etc/apt/apt-mirrors.txt > /dev/null
@@ -22,21 +29,11 @@ jobs:
           sudo apt-get install -y --no-install-recommends fonts-noto-cjk
           npx playwright install --with-deps chromium
           fc-cache -f
-      - name: Trace disabled comparison
-        continue-on-error: true
-        env:
-          JIMENG_FONT_PROBE: "1"
-        run: npm run test:ui -- tests/ui/jimeng-image-video.spec.mjs --grep 'browser provides' --workers=1 --trace=off --output=font-off
-      - name: Trace enabled comparison
-        continue-on-error: true
-        env:
-          JIMENG_FONT_PROBE: "1"
-        run: npm run test:ui -- tests/ui/jimeng-image-video.spec.mjs --grep 'browser provides' --workers=1 --trace=on --output=font-on
+      - name: Isolated production browser acceptance
+        run: npm run test:ui -- tests/ui/jimeng-image-video.spec.mjs --workers=1
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
-          name: font-runner-comparison
-          path: |
-            font-off/
-            font-on/
+          name: isolated-browser-evidence
+          path: test-results-ui/
           retention-days: 7

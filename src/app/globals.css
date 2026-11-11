@@ -231,7 +231,7 @@ textarea::placeholder {
 /* ══════════ 第二层 · 语义 token（Tailwind 工具类，业务代码唯一合法入口）══════════ */
 @theme inline {
   /* ── 字体 ── */
-  --font-sans: var(--font-geist), system-ui, sans-serif;
+  --font-sans: var(--font-geist), "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", system-ui, sans-serif;
   --font-display: var(--font-instrument-serif), "Noto Serif SC", "Songti SC", Georgia, serif;
   --font-mono: ui-monospace, "SF Mono", monospace;
 

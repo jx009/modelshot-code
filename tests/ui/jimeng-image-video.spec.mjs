@@ -11,7 +11,7 @@ const content = () => ({ schemaVersion: 1, layers: [], messages: [], jobs: [], a
   mode: "video", prompt: "镜头缓慢推进，保持商品细节", provider: "frames", duration: 5, ratio: "16:9", videoVariant: "hd", composition: null,
   media: [{ id: "first", type: "image", name: "开场图片", role: "first_frame" }, { id: "last", type: "image", name: "结束图片", role: "last_frame" }],
 } });
-async function setup(page, mode = "video") {
+async function setup(page, mode = "video", sessionGate = Promise.resolve()) {
   const picture = await readFile(new URL("../../public/studio/scene-03.webp", import.meta.url));
   const doc = { id: "video-doc", name: "商品视频", version: 1, content: content() };
   if (mode === "motion") { doc.content.video.mode = mode; doc.content.video.media = []; }
@@ -20,7 +20,10 @@ async function setup(page, mode = "video") {
   await page.route("**/api/**", async route => {
     const request = route.request(), url = new URL(request.url()), path = url.pathname;
     const reply = json => route.fulfill({ json });
-    if (path === "/api/auth/session") return reply({ user: { id: "upgrade-user", name: "Creator", credits: 100 }, expires: "2099-01-01" });
+    if (path === "/api/auth/session") {
+      await sessionGate;
+      return reply({ user: { id: "upgrade-user", name: "Creator", credits: 100 }, expires: "2099-01-01" });
+    }
     if (path === "/api/auth/csrf") return reply({ csrfToken: "fixture" });
     if (path === "/api/video/capabilities") return reply(caps);
     if (path === "/api/creation/capabilities") return reply({ video: true, motion: true, launcherVisibility: { image: true, video: true, motion: true } });
@@ -51,6 +54,13 @@ async function setup(page, mode = "video") {
 }
 async function capture(page, info, name) {
   await page.evaluate(() => document.fonts.ready);
+  const cdp = await page.context().newCDPSession(page);
+  try {
+    await cdp.send("DOM.enable"); await cdp.send("CSS.enable");
+    const { root } = await cdp.send("DOM.getDocument");
+    const { nodeId } = await cdp.send("DOM.querySelector", { nodeId: root.nodeId, selector: ".cr-header-title, .vm-empty h2, .ms-tool-panel h3, h1" });
+    if (nodeId) await info.attach(`${name}-fonts`, { body: JSON.stringify(await cdp.send("CSS.getPlatformFontsForNode", { nodeId })), contentType: "application/json" });
+  } finally { await cdp.detach(); }
   await page.screenshot({ path: info.outputPath(`${name}.png`), fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
 }
@@ -84,8 +94,13 @@ for (const [width, height] of [[1593, 819], [1705, 1000], [390, 844]]) {
 }
 
 test("homepage keeps independent image, video and motion drafts", async ({ page }, info) => {
-  await page.setViewportSize({ width: 1593, height: 819 }); const state = await setup(page);
+  await page.setViewportSize({ width: 1593, height: 819 });
+  let releaseSession;
+  const state = await setup(page, "video", new Promise(resolve => { releaseSession = resolve; }));
   await page.goto("/zh");
+  await expect(page.getByLabel("描述你的创意", { exact: true })).toBeDisabled();
+  releaseSession();
+  await expect(page.getByLabel("描述你的创意", { exact: true })).toBeEnabled();
   await page.getByLabel("描述你的创意", { exact: true }).fill("图片创意保留");
   await page.getByRole("button", { name: "视频生成", exact: true }).click();
   await page.getByLabel("视频创意", { exact: true }).fill("视频创意保留");

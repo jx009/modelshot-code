@@ -28,7 +28,7 @@ test("root promotes a user and audits full prompts, source images, OCR and multi
     const prompt = "为护肤品制作柔和自然光下的产品静物摄影，保留包装文字，米白背景。".repeat(24);
     const failed = await db.tryOn.create({ data: { userId: user.id, requestId: randomUUID(), personImage: "", clothesImage: `/api/assets/${images[0].id}`, prompt: `${prompt}\n任务执行补充：保持瓶身比例。`, status: "failed", errorCode: "INVALID_IMAGE_SIZE", provider: "fixture-channel",
       snapshot: { kind: "studio", tool: "edit", assetId: images[0].id, referenceAssetIds: [images[1].id], params: { prompt, size: "1024x1536" }, imageModel: "fixture-image" } } });
-    const ocr = await db.tryOn.create({ data: { userId: user.id, requestId: randomUUID(), personImage: "", clothesImage: `/api/assets/${images[0].id}`, prompt: "读取瓶身上的所有文字", status: "succeeded", provider: "fixture-ocr",
+    const ocr = await db.tryOn.create({ data: { userId: user.id, requestId: randomUUID(), personImage: "", clothesImage: `/api/assets/${images[0].id}`, prompt: "读取瓶身上的所有文字", status: "succeeded", qaStatus: "skipped", exportStatus: "skipped", provider: "fixture-ocr",
       snapshot: { kind: "studio", tool: "ocr", assetId: images[0].id, imageModel: "dedicated-ocr" },
       resultData: { text: "自然光护肤系列\n净含量 120 ml", assets: images.slice(1).map(image => ({ id: image.id, contentType: "image/png" })) } } });
     expect((await page.request.get(`/api/admin/tryons/${failed.id}`)).status()).toBe(401);

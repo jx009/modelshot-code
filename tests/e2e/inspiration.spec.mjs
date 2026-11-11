@@ -23,7 +23,7 @@ test("curates generated inspiration, publishes a site output and reuses its full
     const admin = await db.user.create({ data: { email: `inspiration-${randomUUID()}@modelshot.test`, name: "灵感策展管理员", role: "root", passwordHash: await bcrypt.hash(E2E_PASSWORD, 10), emailVerified: new Date() } }); ids.push(admin.id);
     const creator = await db.user.create({ data: { email: `creator-${randomUUID()}@modelshot.test`, name: "灵感测试创作者" } }); ids.push(creator.id);
     const asset = await createImage(creator.id, await readFile(`public${inspirationImage(DEFAULT_ITEMS.find(i => i.id === "tea-ceremony"))}`), {}, db, { put: async (Key, Body, ContentType) => { keys.push(Key); await s3.send(new PutObjectCommand({ Bucket: "modelshot-e2e", Key, Body, ContentType })); } });
-    const job = await db.tryOn.create({ data: { userId: creator.id, requestId: randomUUID(), personImage: "", clothesImage: "", prompt, status: "succeeded", deliveryAssetId: asset.id, provider: "fixture", snapshot: { kind: "studio", tool: "generate", imageModel: "test-model", params: { prompt } } } });
+    const job = await db.tryOn.create({ data: { userId: creator.id, requestId: randomUUID(), personImage: "", clothesImage: "", prompt, status: "succeeded", qaStatus: "skipped", exportStatus: "skipped", deliveryAssetId: asset.id, provider: "fixture", snapshot: { kind: "studio", tool: "generate", imageModel: "test-model", params: { prompt } } } });
     expect((await request.get("/api/admin/inspiration")).status()).toBe(401);
     expect((await request.get("/api/inspiration/not-published/image")).status()).toBe(404);
     await page.goto("/zh/explore");

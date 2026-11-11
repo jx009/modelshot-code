@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 
 // Browser behavior and layout evidence only: no supplier requests or charges.
 const variants = [{ id: "hd", label: "高清", resolution: "720p", audio: false, creditCost: 20, durations: [5, 10], ratios: ["16:9", "9:16"] }];
@@ -57,9 +57,16 @@ async function capture(page, info, name) {
   const cdp = await page.context().newCDPSession(page);
   try {
     await cdp.send("DOM.enable"); await cdp.send("CSS.enable");
-    const { root } = await cdp.send("DOM.getDocument");
-    const { nodeId } = await cdp.send("DOM.querySelector", { nodeId: root.nodeId, selector: ".cr-header-title, .vm-empty h2, .ms-tool-panel h3, h1" });
-    if (nodeId) await info.attach(`${name}-fonts`, { body: JSON.stringify(await cdp.send("CSS.getPlatformFontsForNode", { nodeId })), contentType: "application/json" });
+    const { nodes } = await cdp.send("DOM.getFlattenedDocument", { depth: -1 });
+    const samples = [];
+    for (const node of nodes.filter(node => node.nodeType === 3 && /[\u3400-\u9fff]/u.test(node.nodeValue)).slice(0, 12)) {
+      const { computedStyle } = await cdp.send("CSS.getComputedStyleForNode", { nodeId: node.parentId });
+      samples.push({ text: node.nodeValue, ...await cdp.send("CSS.getPlatformFontsForNode", { nodeId: node.parentId }),
+        style: computedStyle.filter(({ name }) => ["font-family", "font-size", "font-weight"].includes(name)) });
+    }
+    const path = info.outputPath(`${name}-fonts.json`);
+    await writeFile(path, JSON.stringify(samples, null, 2));
+    await info.attach(`${name}-fonts`, { path, contentType: "application/json" });
   } finally { await cdp.detach(); }
   await page.screenshot({ path: info.outputPath(`${name}.png`), fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);

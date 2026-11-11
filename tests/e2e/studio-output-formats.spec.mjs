@@ -24,6 +24,7 @@ test("paint selection survives pan; shape crop and six export formats produce re
     // Every tool shares the measured safe viewport, including tools with a
     // short card. Closing returns to the same pre-edit camera.
     await page.getByRole("button", { name: "Fit canvas", exact: true }).click();
+    await expect(page.locator(".ms-stage")).toHaveAttribute("data-camera-moving", "false");
     const originalCamera = await page.locator(".ms-stage").getAttribute("data-camera");
     for (const name of ["AI upscale", "AI erase", "Split layers", "Remove background", "Recognize text", "Reverse prompt"]) {
       const button = await imageTool(page, name);

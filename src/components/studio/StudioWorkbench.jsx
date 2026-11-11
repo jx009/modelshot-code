@@ -912,7 +912,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
         <StudioZoomControls store={canvasViewStore} canvas={canvas} zh={zh} previewEnabled={selected?.type === "image"} onPreview={() => { if (selected?.type === "image") setImagePreview(selected.assetId); }} />
       </main>
     </div>
-    <button className="ms-mobile-toggle" onClick={() => setMobileChat(!mobileChat)}>{mobileChat ? <Layers3 size={17} /> : <PanelLeftOpen size={17} />}{mobileChat ? t("画布", "Canvas") : t("对话", "Chat")}</button>
+    <button className="ms-mobile-toggle" onClick={() => { setChatCollapsed(false); setMobileChat(!mobileChat); }}>{mobileChat ? <Layers3 size={17} /> : <PanelLeftOpen size={17} />}{mobileChat ? t("画布", "Canvas") : t("对话", "Chat")}</button>
     <input className="ms-file-input" ref={fileInput} type="file" accept="image/png,image/jpeg,image/webp" multiple aria-label={t("上传图片文件", "Upload image files")} onChange={e => upload(e.target.files, uploadDestination.current)} />
     {notice && <div className="ms-notice" role="alert"><span>{notice}</span><button className="ms-icon" title={t("关闭提示", "Dismiss")} onClick={() => setNotice(null)}><X size={16} /></button></div>}
     {exportOpen && <DeferredTool label={t("导出作品", "Export artwork")} onClose={() => setExportOpen(false)}><StudioExportDialog zh={zh} selected={selected && selected.type !== "video"} onClose={() => setExportOpen(false)} onExport={options => canvas.current.exportImage({ ...options, name: draft.name })} /></DeferredTool>}

@@ -18,7 +18,7 @@ export default defineConfig({
     screenshot: "only-on-failure",
     trace: "retain-on-failure",
   },
-  webServer: {
+  webServer: process.env.JIMENG_FONT_PROBE ? undefined : {
     command: "node node_modules/next/dist/bin/next start -p 3101",
     url: "http://127.0.0.1:3101/zh",
     reuseExistingServer: false,

@@ -12,8 +12,15 @@ const content = () => ({ schemaVersion: 1, layers: [], messages: [], jobs: [], a
   media: [{ id: "first", type: "image", name: "开场图片", role: "first_frame" }, { id: "last", type: "image", name: "结束图片", role: "last_frame" }],
 } });
 
-test("browser provides real Chinese glyphs independently of application fonts", async ({ page }, info) => {
+test("browser provides real Chinese glyphs independently of application fonts", async ({ page, browser }, info) => {
   await page.setContent('<html lang="zh"><body><p id="cjk" style="font: 24px &quot;Noto Sans CJK SC&quot;, sans-serif">中文字体对照</p><p style="font: 24px sans-serif">中文字体对照</p></body></html>');
+  const probe = await page.context().newCDPSession(page);
+  await probe.send("DOM.enable"); await probe.send("CSS.enable");
+  const { root: probeRoot } = await probe.send("DOM.getDocument");
+  const { nodeId: probeId } = await probe.send("DOM.querySelector", { nodeId: probeRoot.nodeId, selector: "#cjk" });
+  const initialFonts = await probe.send("CSS.getPlatformFontsForNode", { nodeId: probeId });
+  await info.attach("initial-fonts", { body: JSON.stringify({ version: browser.version(), remote: Boolean(process.env.PW_TEST_CONNECT_WS_ENDPOINT), initialFonts }), contentType: "application/json" });
+  await probe.detach();
   await capture(page, info, "system-chinese-fonts");
   if (process.platform === "linux" && process.env.CI) {
     const cdp = await page.context().newCDPSession(page);

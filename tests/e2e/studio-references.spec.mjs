@@ -15,6 +15,8 @@ test("home uploads, project references, fixed prompt and multi-output retry keep
     await page.goto("/en/login?callbackUrl=/en");
     await page.getByLabel("Email", { exact: true }).fill(email); await page.getByLabel("Password", { exact: true }).fill(E2E_PASSWORD);
     await page.getByRole("button", { name: "Sign in", exact: true }).click();
+    await expect(page.getByRole("dialog", { name: "Sign in to 来塔绘梦", exact: true })).toHaveCount(0);
+    await expect(page).toHaveURL(/\/en$/);
     await expect(page.getByLabel("Describe your idea")).toBeVisible();
     await page.getByLabel("Describe your idea").fill("Two images, preserve the cat");
     await page.getByRole("tab", { name: /Commerce Agent/ }).click();

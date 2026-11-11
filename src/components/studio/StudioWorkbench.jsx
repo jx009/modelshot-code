@@ -314,14 +314,14 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
     if (resultLoads.current.has(job.id)) return resultLoads.current.get(job.id);
     const task = (async () => {
     setResultStates(s => ({ ...s, [job.id]: "loading" }));
-    // Kick off a background preload so the canvas image cache is warm, but
-    // don't await it — the result must be applied immediately so navigation
-    // and other UI interactions are never blocked by an in-flight download.
-    Promise.all(
+    // Confirm previews before applying the result. This async load does not
+    // block editing/navigation, and failure keeps the original plus a retry
+    // action without submitting another billed generation.
+    await Promise.all(
       (job.resultData?.assets || [])
         .filter(asset => asset.contentType?.startsWith("image/"))
         .map(asset => loadImage(previewUrl(asset.id), { signal: life.current?.signal }))
-    ).catch(() => {});  // silently ignore; canvas handles missing-image state
+    );
     const current = draftRef.current;
     if (!jobBelongsToDocument(job, current.id) || life.current?.signal.aborted || current.appliedJobs?.includes(job.id)) { resultLoads.current.delete(job.id); return; }
     // Opening a commerce project must not wait for its background save. Recover

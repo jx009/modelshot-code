@@ -72,13 +72,13 @@ test("workspace controls fit six viewport widths in both languages", async ({ pa
   for (const theme of ["dark", "light"]) for (const locale of ["en", "zh"]) for (const width of widths) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto(`/${locale}/studio-v2`);
-    await expect(page.getByLabel(locale === "en" ? "Creative prompt" : "创作描述", { exact: true })).toBeEnabled();
+    await expect(page.getByRole("textbox", { name: locale === "en" ? "Creative prompt" : "创作描述", exact: true })).toBeEnabled();
     await page.evaluate(value => { localStorage.setItem("theme", value); }, theme);
     await page.reload();
     await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
     await expect(page.locator(".ms-composer-hint")).toBeVisible();
     await expect(page.getByRole("button", { name: locale === "en" ? "Show canvas" : "展开画布", exact: true })).toBeVisible();
-    await expect(page.getByLabel(locale === "en" ? "Creative prompt" : "创作描述", { exact: true })).toBeVisible();
+    await expect(page.getByRole("textbox", { name: locale === "en" ? "Creative prompt" : "创作描述", exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
     await page.screenshot({ path: info.outputPath(`${theme}-${locale}-${width}.png`) });
   }

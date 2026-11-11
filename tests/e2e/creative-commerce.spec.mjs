@@ -70,7 +70,7 @@ test("commerce uses cloud planning, billed durable jobs, targeted revisions and 
     const updated = await db.studioDocument.findUnique({ where: { id: doc.id } });
     expect(updated.content.commerce.sections[1].attempt).toBe(1);
     expect(updated.content.commerce.sections[1].revisionAssetId).toBeTruthy();
-    await page.getByRole("button", { name: "Open canvas", exact: true }).click();
+    await page.getByRole("link", { name: "Open canvas", exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`studio-v2\\?document=${doc.id}`));
     const saved = await db.studioDocument.findUnique({ where: { id: doc.id } });
     expect(saved.content.layers.filter(l => l.type === "image")).toHaveLength(5);

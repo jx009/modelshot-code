@@ -108,7 +108,7 @@ test("curates generated inspiration, publishes a site output and reuses its full
     await expect(page.getByText("灵感库已保存，创作首页的灵感区会读取最新内容。", { exact: true })).toBeVisible();
     await page.screenshot({ path: info.outputPath("inspiration-admin.png"), fullPage: true });
     const publicData = await (await request.get("/api/inspiration")).json();
-    expect(publicData.items).toHaveLength(41);
+    expect(publicData.items).toHaveLength(DEFAULT_ITEMS.length + 1);
     expect(publicData.layout).toMatchObject({ mode: "masonry", columns: 5 });
     expect(publicData.items.slice(1, 3).map(i => i.id)).toEqual([DEFAULT_ITEMS[1].id, DEFAULT_ITEMS[0].id]);
     const custom = publicData.items[0];

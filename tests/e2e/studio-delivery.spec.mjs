@@ -52,7 +52,8 @@ test("one send generates directly; failed preview preserves input and retries wi
     const blockPreview = async route => {
       if (rejectPreview && !route.request().url().includes(first.assetId)) await route.abort(); else await route.continue();
     };
-    await page.route(/\/api\/assets\/.*_studio_0\?preview=1280$/, blockPreview);
+    // Block both automatic delivery and its proxy fallback for this result.
+    await page.route(url => url.pathname.startsWith("/api/assets/") && url.searchParams.get("preview") === "1280", blockPreview);
     const editing = page.waitForResponse(r => r.url().endsWith("/api/studio/jobs") && r.request().method() === "POST");
     await page.getByRole("button", { name: "Apply edit 18 credits", exact: true }).click();
     const editJob = await (await editing).json();
@@ -62,7 +63,7 @@ test("one send generates directly; failed preview preserves input and retries wi
     expect(maskPixels[0]).toBe(0);
 
     await expect(page.getByRole("button", { name: "Upload image", exact: true })).toBeEnabled();
-    await expect(page.locator(".ms-task-status")).toContainText("original kept");
+    await expect(page.locator(".ms-task-status")).toContainText("original kept", { timeout: 45000 });
     await expect(page.locator(".ms-task-status").getByRole("button", { name: "Retry loading" })).toBeVisible({ timeout: 45000 });
     expect((await draft()).layers.find(layer => layer.id === first.id).visible).toBe(true);
     expect((await draft()).appliedJobs).not.toContain(editJob.id);

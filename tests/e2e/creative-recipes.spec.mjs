@@ -15,7 +15,7 @@ test("case imports owned references once, jobs stream safely, and scene editing 
     await page.goto("/en/login?callbackUrl=/en/explore/quiet-living");
     await page.getByLabel("Email",{exact:true}).fill(email); await page.getByLabel("Password",{exact:true}).fill(E2E_PASSWORD);
     await page.getByRole("button",{name:"Sign in",exact:true}).click();
-    await expect(page.getByRole("button",{name:"Use recipe in canvas",exact:true})).toBeVisible();
+    await expect(page.getByRole("button",{name:"Create with this",exact:true})).toBeVisible();
     const key=randomUUID(), data={caseId:"quiet-living",locale:"en",createKey:key};
     const first=await page.request.post("/api/studio/cases",{data}); expect(first.ok(),await first.text()).toBe(true);
     const imported=await first.json();

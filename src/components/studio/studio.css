@@ -155,7 +155,8 @@
 .ms-canvas-label { left:14px; top:58px; }
 .ms-canvas-space:has(.ms-chat-restore) .ms-canvas-import { left:54px; }
 @media(max-width:760px) {
-  .ms-canvas-import,.ms-canvas-space:has(.ms-chat-restore) .ms-canvas-import { top:56px; left:14px; max-width:calc(100% - 130px); flex-wrap:wrap; }
+  .ms-canvas-import,.ms-canvas-space:has(.ms-chat-restore) .ms-canvas-import { top:56px; left:14px; right:14px; max-width:none; flex-wrap:nowrap; overflow-x:auto; }
+  .ms-canvas-import .ms-button { flex-shrink:0; }
   .ms-canvas-import .ms-button { padding:6px 8px; font-size:11px; }
   .ms-canvas-label { display:none; }
 }

@@ -5,10 +5,11 @@
 .mp-search input { width:0; padding:0; background:transparent; border:0; outline:0; color:var(--primary-text); transition:width 150ms ease-out; }
 .mp-search:hover input,.mp-search:focus-within input,.mp-search:has(input:not(:placeholder-shown)) input { width:170px; }
 .mp-search button,.mp-card-menu button { display:flex; align-items:center; justify-content:center; background:none; border:0; color:inherit; }
-.mp-filters { display:flex; gap:8px; margin-bottom:24px; }
+.mp-filters { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:24px; }
 .mp-filters button { border:0; border-radius:9px; background:transparent; color:var(--secondary-text); padding:7px 12px; font-size:12px; transition:background 150ms; }
 .mp-filters button[aria-pressed=true] { background:var(--bg-elevated); color:var(--primary-text); }
 .mp-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:28px 22px; }
+.mp-card { min-width:0; }
 .mp-new { aspect-ratio:16/9; border-radius:18px; background:#111; border:1px solid var(--divider); display:flex; align-items:center; justify-content:center; flex-direction:column; gap:10px; color:white; text-decoration:none; }
 .mp-new>span { width:48px; height:48px; border-radius:50%; display:grid; place-items:center; background:var(--bg-elevated); color:var(--primary-text); transition:transform 150ms; }
 .mp-new:hover>span { transform:scale(1.08); }

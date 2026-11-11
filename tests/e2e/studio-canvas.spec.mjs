@@ -153,7 +153,10 @@ test("canvas upload, crop through durable worker, layers, export and cloud resto
     expect(resultLayer.x).toBeGreaterThan(completed.layers[0].x + completed.layers[0].width);
     expect(resultLayer).toMatchObject({ pixelWidth: 400, pixelHeight: 500 });
     await expectOriginalDownload(page, resultLayer.assetId);
-    expect(completed.messages.find(m => m.id === moveJob.id).assetId).toBe(resultLayer.assetId);
+    // Canvas tool results remain on the canvas; only chat-origin jobs append
+    // assistant messages. The result still retains its durable task identity.
+    expect(moveJob.origin).toBe("canvas");
+    expect(completed.appliedJobs).toContain(moveJob.id);
     await page.screenshot({ path: info.outputPath("move-complete-image.png"), fullPage: true });
     await page.getByRole("button", { name: "Undo", exact: true }).click();
     await expect(page.locator(".ms-canvas-label")).toContainText("1 layers");

@@ -57,6 +57,7 @@ test("project title, autosave, task popover, history and rename survive navigati
     await expect.poll(async () => (await readStudioDraft(page))?.layers.length).toBe(2);
     await page.goto("/en/projects");
     await expect(page.getByRole("heading", { name: "My projects", exact: true })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
     await expect(page.locator(".mp-card")).toHaveCount(1);
     await expect(page.locator(".mp-cover img")).toHaveAttribute("src", /preview=640/);
     await expect.poll(() => page.locator(".mp-cover img").evaluateAll(images => images.every(image => image.complete && image.naturalWidth > 0))).toBe(true);
@@ -72,6 +73,9 @@ test("project title, autosave, task popover, history and rename survive navigati
     await page.goto("/en/projects");
     await page.getByRole("button", { name: /Project menu:/ }).click();
     await page.getByRole("button", { name: "Delete", exact: true }).click();
+    const deleteDialog = await page.getByRole("dialog", { name: "Delete project" }).boundingBox();
+    expect(deleteDialog.x).toBeGreaterThanOrEqual(0);
+    expect(deleteDialog.x + deleteDialog.width).toBeLessThanOrEqual(page.viewportSize().width);
     await page.getByRole("dialog", { name: "Delete project" }).getByRole("button", { name: "Delete", exact: true }).click();
     await expect(page.locator(".mp-card")).toHaveCount(0);
     await page.getByRole("button", { name: "Deleted", exact: true }).click();

@@ -50,7 +50,9 @@
 .vm-design-review>div button:first-child { background:var(--vm-accent); color:var(--vm-panel); }
 
 .vm-workspace .vm-chat-scroll { padding:12px 14px; }
-.vm-workspace .vm-composer { margin:6px 10px 10px; padding:8px 10px; max-height:40%; overflow:auto; box-shadow:none; }
+.vm-workspace .vm-composer { margin:6px 10px 10px; padding:8px 10px; max-height:70%; overflow:auto; overscroll-behavior:contain; box-shadow:none; }
+.vm-workspace .vg-reference-actions button { flex:1; min-width:0; padding:4px; }
+.vm-workspace .vg-reference-actions button:last-child { margin-left:0; }
 .vm-workspace .vm-composer>textarea { min-height:56px; }
 .vm-workspace .vm-output { border:0; border-radius:0; }
 .vm-workspace .vm-output-body { position:relative; }

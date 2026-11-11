@@ -88,7 +88,9 @@ jobs:
       - run: npm run build
       - name: Install acceptance browser
         timeout-minutes: 10
-        run: npx playwright install --with-deps chromium
+        run: |
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends fonts-noto-cjk
+          npx playwright install --with-deps chromium
       - name: Image and video browser acceptance
         run: npm run test:ui -- tests/ui/jimeng-image-video.spec.mjs --workers=1
       - name: Upload image and video browser evidence

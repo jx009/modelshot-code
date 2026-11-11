@@ -50,6 +50,7 @@ async function setup(page, mode = "video") {
   return state;
 }
 async function capture(page, info, name) {
+  await page.evaluate(() => document.fonts.ready);
   await page.screenshot({ path: info.outputPath(`${name}.png`), fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
 }
@@ -63,8 +64,8 @@ for (const [width, height] of [[1593, 819], [1705, 1000], [390, 844]]) {
     await page.getByRole("button", { name: "前移 结束图片", exact: true }).click();
     await expect(page.locator(".vg-reference").first()).toContainText("结束图片");
     await expect(page.locator(".vg-reference").first()).toContainText("首帧");
-    await page.getByLabel("画幅", { exact: true }).selectOption("9:16");
-    await page.getByLabel("时长", { exact: true }).selectOption("10");
+    await page.getByRole("combobox", { name: "画幅", exact: true }).selectOption("9:16");
+    await page.getByRole("combobox", { name: "时长", exact: true }).selectOption("10");
     await capture(page, info, "references-and-settings");
     await page.getByRole("button", { name: "开始生成", exact: true }).click();
     await expect(page.locator(".vm-job")).toContainText("等待开始");

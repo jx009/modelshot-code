@@ -168,7 +168,11 @@ test("guest image prompt survives login while signed-in drafts stay account scop
   await expect(prompt).toHaveValue("登录后继续制作这张产品海报");
   await prompt.fill("账号 A 的私有草稿");
   user = { ...user, id: "second-account", name: "Second creator" };
-  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  // The app deliberately disables focus refetch. Its online handler calls
+  // useSession().update(), so wait for the new identity before checking drafts.
+  const refreshed = page.waitForResponse(response => new URL(response.url()).pathname === "/api/auth/session");
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  expect((await (await refreshed).json()).user.id).toBe("second-account");
   await expect(prompt).toHaveValue("");
   expect(state.submissions).toHaveLength(0);
   expect(state.errors).toEqual([]);

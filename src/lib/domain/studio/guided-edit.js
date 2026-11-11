@@ -23,9 +23,10 @@ async function nativeEdit(config, snapshot, original, mask, signal, generate, re
   const frame = Math.abs(outputWidth / outputHeight - target.width / target.height) > .001
     ? await editFrame(prepared.image, providerMask, output.dimensions) : null;
   const prompt = `${tool === "expand" ? "Extend the scene naturally into the transparent border. Preserve the original subject, proportions, lighting and perspective." : "Edit only the transparent masked region, maintaining scene continuity."}\n${params.prompt || "Reconstruct the selected region naturally."}`;
-  const edit = { tool, inputMode: "native-mask", maskSent: true, preserveOutside: Boolean(params.preserveOutside), feather: params.feather || 0, targetWidth: target.width, targetHeight: target.height, providerSize: output.dimensions };
+  const instruction = prompt + (frame ? "\nKeep the outer gray padding unchanged; edit only the image inside it." : "");
+  const edit = { tool, originalPrompt: params.prompt, instruction, inputMode: "native-mask", maskSent: true, preserveOutside: Boolean(params.preserveOutside), feather: params.feather || 0, targetWidth: target.width, targetHeight: target.height, providerSize: output.dimensions };
   await onPrepared?.(edit);
-  let result = await generate(config, { image: frame?.image || prepared.image, mask: frame?.mask || providerMask, references, prompt: prompt + (frame ? "\nKeep the outer gray padding unchanged; edit only the image inside it." : ""), size: output.choice, sizeSource: target, signal });
+  let result = await generate(config, { image: frame?.image || prepared.image, mask: frame?.mask || providerMask, references, prompt: instruction, size: output.choice, sizeSource: target, signal });
   if (frame) result = await restoreEditFrame(result, frame);
   const actual = await sharp(result).metadata();
   if (!actual.width || !actual.height || Math.abs((actual.width / actual.height) / (target.width / target.height) - 1) > .025) throw new AppError("EDIT_GEOMETRY_MISMATCH", 422);

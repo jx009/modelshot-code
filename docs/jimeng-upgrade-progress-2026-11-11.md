@@ -107,3 +107,4 @@
 - `bc5467e` 修正上述集成夹具，限定文件 ESLint 通过。[该轮 CI](https://github.com/jx009/modelshot-code/actions/runs/43045811763) 的静态和单元通过，但 Chromium 系统依赖安装因 Ubuntu 软件源 DNS 解析失败终止，尚不能据此评价修正后的集成测试。
 - `8be8749` 增加 `tests/ui/jimeng-image-video.spec.mjs`：三个视口下的首尾帧交换、参数提交、等待期间新草稿及失败保留；首页图片／视频／制作草稿切换；画布关联视频面板；新建动效工程。使用真实浏览器、模拟接口；成功执行后上传 `jimeng-browser-evidence` 截图／失败 trace，保留七天。用例已通过限定 ESLint，浏览器结果仍待 CI，不证明真实模型或完整视觉对齐。
 - `d00a913` 将集成测试和构建放在浏览器安装之前，安装设置十分钟上限，全部验收门槛保留。后续将 CI runner 固定为 Ubuntu 24.04，避免 `ubuntu-latest` 已切换至 26.04 后的环境漂移；是否解决软件源下载问题以新运行结果为准。
+- [d00a913 的 CI](https://github.com/jx009/modelshot-code/actions/runs/43048757740) 完成后：单元 1699 通过、4 跳过；集成 169 通过、2 失败，原有 17 项失败已收敛。原生蒙版结果未记录原提示词，已补齐 `originalPrompt` 及实际发送的 `instruction`，与兼容引导编辑结果保持同样可追溯性；视频恢复夹具补齐有效 worker 心跳。修正限定 ESLint 通过，集成结果待下一轮 CI。该轮媒体作业超时取消，不能沿用更早的通过结果代表该提交全套通过。

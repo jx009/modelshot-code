@@ -360,6 +360,7 @@ describe("studio documents and task ledger", () => {
   it("persists a video task ID then resumes polling after a worker restart", async () => {
     const { user, input } = await setup();
     await f.db.user.update({ where: { id: user.id }, data: { role: "root" } });
+    await f.db.serviceHeartbeat.upsert({ where: { id: "worker" }, create: { id: "worker" }, update: { updatedAt: new Date() } });
     const job = await submitStudioJob(user.id, { ...input, tool: "video", params: { prompt: "Slow orbit", duration: 5 } }, randomUUID(), f.db, deps);
     const calls = [];
     const adapters = { video: async (_c, args) => { calls.push(args.requestId); return args.requestId ? { state: "succeeded", url: "https://example.test/video.mp4" } : { state: "pending", requestId: "remote-123" }; }, downloadVideo: async () => Buffer.from("0000ftypisom0000000000") };

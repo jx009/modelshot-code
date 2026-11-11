@@ -21,7 +21,6 @@ const instrumentSerif = localFont({
   ],
   variable: "--font-instrument-serif",
   display: "swap",
-  declarations: [{ prop: "unicode-range", value: "U+0000-024F,U+0300-052F,U+1E00-1FFF,U+2000-206F,U+20A0-22FF,U+25A0-27BF,U+FB00-FB06" }],
 });
 
 /* 正文字体：高可读无衬线（本地化） */
@@ -32,9 +31,6 @@ const geist = localFont({
   ],
   variable: "--font-geist",
   display: "swap",
-  // These local files contain Latin glyphs. Explicit coverage keeps Chinese
-  // text on the system CJK font rather than a missing glyph in this face.
-  declarations: [{ prop: "unicode-range", value: "U+0000-024F,U+0300-052F,U+1E00-1FFF,U+2000-206F,U+20A0-22FF,U+25A0-27BF,U+FB00-FB06" }],
 });
 
 export function generateStaticParams() {

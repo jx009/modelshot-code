@@ -105,6 +105,7 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y --no-install-recommends fonts-noto-cjk
           npx playwright install --with-deps chromium
+          fc-cache -f
           fc-match 'Noto Sans CJK SC'
           fc-match sans-serif:lang=zh-cn
       - name: Image and video browser acceptance

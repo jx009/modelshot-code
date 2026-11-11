@@ -11,9 +11,9 @@ export default defineConfig({
   forbidOnly: Boolean(process.env.CI),
   reporter: "list",
   use: {
-    // Match the desktop browser; the standalone headless shell on Linux can
-    // miss installed CJK fonts even when fontconfig resolves them correctly.
+    // Use the Chinese desktop browser environment verified by the font probe.
     channel: "chromium",
+    locale: "zh-CN",
     baseURL: "http://127.0.0.1:3101",
     screenshot: "only-on-failure",
     trace: "retain-on-failure",

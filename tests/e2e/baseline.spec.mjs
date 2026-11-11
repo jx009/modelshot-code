@@ -23,8 +23,12 @@ for (const locale of ["en", "zh"]) {
     expect(response.status()).toBe(200);
     await expect(page.locator("h1")).toContainText(locale === "en" ? "Imagine it. Make it real." : "想象一下，然后实现它。");
     await expect(page.locator("html")).toHaveAttribute("lang", locale);
-    // Language names in the navigation remain in their native language.
-    if (locale === "en") expect(await page.locator(".ms-studio").innerText()).not.toMatch(/\p{Script=Han}/u);
+    // The product's proper name is intentionally unchanged in both locales.
+    if (locale === "en") expect(await page.locator(".ms-studio").evaluate(root => {
+      const copy = root.cloneNode(true);
+      copy.querySelectorAll(".ms-brand").forEach(brand => brand.remove());
+      return copy.textContent;
+    })).not.toMatch(/\p{Script=Han}/u);
     expect(errors).toEqual([]);
   });
 }
@@ -51,13 +55,22 @@ test("a normal account cannot access admin data", async ({ page }) => {
 
 test("admin filtering and refresh use the actual protected API", async ({ page }) => {
   await signIn(page, E2E_USERS[1].email, "/en/admin/orders");
-  await expect(page.getByText("暂无订单", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "订单管理", exact: true })).toBeVisible();
+  const matchesResponse = async response => {
+    expect(response.status()).toBe(200);
+    const data = await response.json();
+    expect(data.orders.every(order => order.status === "paid")).toBe(true);
+    await expect(page.locator("tbody tr")).toHaveCount(data.orders.length);
+    if (!data.orders.length) await expect(page.getByText("暂无订单", { exact: true })).toBeVisible();
+    for (const order of data.orders) await expect(page.locator("tbody tr").filter({ hasText: order.id.slice(-8) })).toContainText("paid");
+    return data;
+  };
   const pending = page.waitForResponse(response => response.url().includes("/api/admin/orders?") && new URL(response.url()).searchParams.get("status") === "paid");
   await page.locator("select").first().selectOption("paid");
-  expect((await pending).status()).toBe(200);
-  await expect(page.getByText("暂无订单", { exact: true })).toBeVisible();
+  const filtered = await matchesResponse(await pending);
+  const refreshed = page.waitForResponse(response => response.url().includes("/api/admin/orders?") && new URL(response.url()).searchParams.get("status") === "paid");
   await page.getByRole("button", { name: "刷新", exact: true }).click();
-  await expect(page.getByText("暂无订单", { exact: true })).toBeVisible();
+  expect((await matchesResponse(await refreshed)).orders.map(order => order.id)).toEqual(filtered.orders.map(order => order.id));
 });
 
 test("root can create multiple model channels with public aliases and a planning model", async ({ page }, testInfo) => {

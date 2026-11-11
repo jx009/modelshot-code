@@ -13,7 +13,6 @@ test("case imports owned references once, jobs stream safely, and scene editing 
     const user=await db.user.create({data:{email,passwordHash:await bcrypt.hash(E2E_PASSWORD,10),credits:100,emailVerified:new Date()}});
     expect((await page.request.get("/api/studio/events?documentId=private")).status()).toBe(401);
     await page.goto("/en/login?callbackUrl=/en/explore/quiet-living");
-    await page.getByRole("button",{name:"Email",exact:true}).click();
     await page.getByLabel("Email",{exact:true}).fill(email); await page.getByLabel("Password",{exact:true}).fill(E2E_PASSWORD);
     await page.getByRole("button",{name:"Sign in",exact:true}).click();
     await expect(page.getByRole("button",{name:"Use recipe in canvas",exact:true})).toBeVisible();

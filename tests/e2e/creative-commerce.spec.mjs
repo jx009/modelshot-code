@@ -45,7 +45,7 @@ test("commerce uses cloud planning, billed durable jobs, targeted revisions and 
     await expect(page.locator(".ca-uploads img")).toHaveCount(1);
     await page.getByLabel("Upload style reference", { exact: true }).setInputFiles("public/inspiration/skincare.webp");
     await expect(page.locator(".ca-uploads img")).toHaveCount(2);
-    await page.getByLabel("Image count", { exact: true }).selectOption("3");
+    await page.getByRole("combobox", { name: "Image count", exact: true }).selectOption("3");
     const planned = page.waitForResponse(r => r.url().endsWith("/api/commerce/plan"));
     await page.getByRole("button", { name: "Plan my collection", exact: true }).click();
     const planningResponse = await planned, { document: doc } = await planningResponse.json();

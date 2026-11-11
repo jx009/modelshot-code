@@ -1,3 +1,4 @@
+import { creativeLink } from "../support/creative-navigation.mjs";
 import { test, expect } from "@playwright/test";
 import { E2E_PASSWORD, E2E_USERS } from "../support/e2e-users.mjs";
 
@@ -19,10 +20,10 @@ for (const theme of ["light", "dark"]) {
     await page.getByLabel("Describe your idea").focus();
     await expect(page.getByLabel("Describe your idea")).toHaveCSS("outline-style", "none");
     await expect(page.locator(".cr-logo")).toHaveCSS("text-decoration-line", "none");
-    await expect(page.locator(".cr-case-art").first()).not.toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    await expect(page.locator(".ig-cover").first()).not.toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
     await page.screenshot({ path: info.outputPath(`home-${theme}.png`), fullPage: true });
-    for (const [name, path] of [["Explore", "/en/explore"], ["My projects", "/en/projects"], ["Assets", "/en/assets"]]) {
-      await page.getByRole("navigation", { name: "Creative navigation" }).getByRole("link", { name, exact: true }).click();
+    for (const [name, path] of [["My projects", "/en/projects"], ["Assets", "/en/assets"], ["Create", "/en"]]) {
+      await (await creativeLink(page, name)).click();
       await expect(page).toHaveURL(new RegExp(`${path}$`));
       await expectTheme(page, theme);
       await page.screenshot({ path: info.outputPath(`${name}-${theme}.png`), fullPage: true });
@@ -65,12 +66,12 @@ test("slow navigation reports progress and repeated clicks share one request", a
     await route.continue();
   });
   await page.goto("/en");
-  const link = page.getByRole("navigation", { name: "Creative navigation" }).getByRole("link", { name: "My projects", exact: true });
+  const link = await creativeLink(page, "My projects");
   expect(count).toBe(0);
   try {
     await link.click();
     await expect(page.getByRole("status").filter({ hasText: "Opening" })).toBeVisible();
-    await link.click(); await link.click();
+    await (await creativeLink(page, "My projects")).click(); await (await creativeLink(page, "My projects")).click();
     // Next may fetch a route tree and its dynamic payload; duplicate clicks must not repeat either request.
     await expect.poll(() => count).toBe(requests.size);
     expect(count).toBeLessThanOrEqual(2);
@@ -80,12 +81,20 @@ test("slow navigation reports progress and repeated clicks share one request", a
 });
 
 test("a persistently unavailable stylesheet offers recovery without a reload loop", async ({ page }) => {
-  let requests = 0;
-  await page.route("**/_next/static/**/*.css*", route => { requests++; return route.abort(); });
+  const retries = new Map();
+  let documents = 0;
+  page.on("request", request => { if (request.isNavigationRequest() && request.frame() === page.mainFrame()) documents++; });
+  await page.route("**/_next/static/**/*.css*", route => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.has("style-retry")) retries.set(url.pathname, (retries.get(url.pathname) || 0) + 1);
+    return route.abort();
+  });
   await page.goto("/zh");
   await expect(page.getByRole("alert").filter({ hasText: "页面样式加载失败" })).toBeVisible();
   await expect(page.getByRole("button", { name: "刷新页面", exact: true })).toBeVisible();
   await page.getByLabel("描述你的创意").fill("未保存的输入");
   await expect(page.getByLabel("描述你的创意")).toHaveValue("未保存的输入");
-  expect(requests).toBeLessThan(30);
+  expect(retries.size).toBeGreaterThan(0);
+  await expect.poll(() => [...retries.values()].every(count => count === 2)).toBe(true);
+  expect(documents).toBe(1);
 });

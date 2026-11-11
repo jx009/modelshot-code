@@ -56,7 +56,7 @@ test("curates generated inspiration, publishes a site output and reuses its full
       await page.setViewportSize(viewport);
       for (const id of ["noir-portrait", "glass-orbit", "midnight-train"]) {
         await page.goto(`/zh/explore/${id}`);
-        const image = page.locator(".ig-full-image > img");
+        const image = page.locator('.ig-detail-picture img:not([aria-hidden="true"])');
         await expect.poll(() => image.evaluate(img => img.complete && img.naturalWidth > 0)).toBe(true);
         const layout = await image.evaluate(img => {
           const rect = img.getBoundingClientRect();

@@ -1,3 +1,4 @@
+import { creativeLink } from "../support/creative-navigation.mjs";
 import { test, expect } from "@playwright/test";
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -51,7 +52,7 @@ test("project title, autosave, task popover, history and rename survive navigati
     expect(await db.studioDocument.count({ where: { userId: user.id } })).toBe(1);
     expect((await db.studioDocument.findUnique({ where: { id } })).name).toBe("A cat on a windowsill FIXTURE_DELAY");
     await page.goto("/en/projects");
-    await page.getByRole("navigation", { name: "Creative navigation" }).getByRole("link", { name: "Canvas", exact: true }).click();
+    await (await creativeLink(page, "Canvas")).click();
     await expect(page).toHaveURL(new RegExp(`document=${id}`));
     await expect.poll(async () => (await readStudioDraft(page))?.layers.length).toBe(2);
     await page.goto("/en/projects");
@@ -80,14 +81,14 @@ test("project title, autosave, task popover, history and rename survive navigati
     await expect(page.getByRole("link", { name: "Window cat project", exact: true })).toBeVisible();
     await page.getByRole("button", { name: email, exact: true }).click();
     await page.getByRole("menuitem", { name: "Usage history", exact: true }).click();
-    const records = page.getByRole("dialog", { name: "Account records", exact: true });
-    await expect(records.getByText("Currently available credits: 64", { exact: false })).toBeVisible();
+    const records = page.getByRole("dialog", { name: "Credit history", exact: true });
+    await expect(records.locator(".ma-balance strong")).toHaveText("64");
     await expect(records.locator("tbody tr")).toHaveCount(2);
+    await expect(records.locator(".ma-change")).toHaveText(["-18credits", "-18credits"]);
     await records.getByRole("button", { name: "Purchases", exact: true }).click();
-    await expect(records.getByText("No records yet", { exact: true })).toBeVisible();
-    await records.getByRole("button", { name: "Help", exact: true }).click();
-    await expect(records.getByRole("heading", { name: "Move objects and edit areas", exact: true })).toBeVisible();
-    await page.screenshot({ path: info.outputPath("account-help.png"), fullPage: true, animations: "disabled" });
+    await expect(records.getByText("No purchases yet", { exact: true })).toBeVisible();
+    await expect(records.getByRole("button", { name: "Buy credits", exact: true })).toBeEnabled();
+    await page.screenshot({ path: info.outputPath("account-purchases.png"), fullPage: true, animations: "disabled" });
     await page.keyboard.press("Escape");
     await expect(records).toHaveCount(0);
     await expect(page.getByRole("button", { name: email, exact: true })).toBeFocused();

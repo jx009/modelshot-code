@@ -1,3 +1,4 @@
+import { creativeLink } from "../support/creative-navigation.mjs";
 import { test, expect } from "@playwright/test";
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -41,7 +42,7 @@ test("real session persists on refresh and navigation; revoked sessions stay on 
     expect(cookie.expires - Date.now() / 1000).toBeGreaterThan(29 * 86400);
     await page.reload();
     await expect(page.locator(".cr-recharge-trigger")).toHaveText("321");
-    await page.getByRole("navigation", { name: "Creative navigation" }).getByRole("link", { name: "Explore", exact: true }).click();
+    await (await creativeLink(page, "My projects")).click();
     await expect(page.locator(".cr-recharge-trigger")).toHaveText("321");
     await db.user.update({ where: { id: user.id }, data: { sessionVersion: { increment: 1 } } });
     expect(await (await page.request.get("/api/auth/session")).json()).toBeNull();

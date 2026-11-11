@@ -12,7 +12,7 @@ async function login(page, email) {
   await page.getByLabel("Email", { exact: true }).fill(email);
   await page.getByLabel("Password", { exact: true }).fill(E2E_PASSWORD);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await expect(page).toHaveURL(/\/en\/studio-v2$/);
+  await expect(page).toHaveURL(url => url.pathname === "/en/studio-v2");
   await expect.poll(async () => (await (await page.request.get("/api/auth/session")).json()).user?.email).toBe(email);
 }
 
@@ -77,7 +77,7 @@ test("workspace controls fit six viewport widths in both languages", async ({ pa
     await page.reload();
     await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
     await expect(page.locator(".ms-composer-hint")).toBeVisible();
-    await expect(page.getByRole("tab", { name: locale === "en" ? "Chat" : "对话", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: locale === "en" ? "Show canvas" : "展开画布", exact: true })).toBeVisible();
     await expect(page.getByLabel(locale === "en" ? "Creative prompt" : "创作描述", { exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
     await page.screenshot({ path: info.outputPath(`${theme}-${locale}-${width}.png`) });
@@ -169,7 +169,7 @@ test("privileged updates revoke the affected browser session and persist an audi
     expect(response.ok(), await response.text()).toBeTruthy();
     expect((await adminPage.request.patch("/api/admin/users", { headers: { "Idempotency-Key": key }, data })).ok()).toBeTruthy();
     expect((await page.request.get("/api/account")).status()).toBe(401);
-    expect((await (await page.request.get("/api/auth/session")).json()).user).toBeNull();
+    expect(await (await page.request.get("/api/auth/session")).json()).toBeNull();
     expect(await db.adminAuditLog.count({ where: { targetUserId: user.id } })).toBe(1);
   } finally { await context.close(); await db.$disconnect(); }
 });

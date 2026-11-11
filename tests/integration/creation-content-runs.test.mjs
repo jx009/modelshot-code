@@ -28,6 +28,10 @@ const page = (id = "page", title = "Opening") => ({ id, title, width: 1080, heig
   { id: "date", type: "text", name: "Date", text: "10 月 24 日", x: 80, y: 120, width: 900, height: 80, style: { fontSize: 48 } },
 ] });
 const poster = () => ({ schemaVersion: 1, kind: "poster", title: "Coffee opening", theme, pages: [page()] });
+const htmlPage = (id = "page", title = "Opening") => ({ id, title, width: 1080, height: 1440,
+  html: '<!DOCTYPE html><html><head></head><body><p data-node-id="date">10 月 24 日</p></body></html>',
+});
+const generatedPoster = () => ({ schemaVersion: 3, format: "html-poster", kind: "poster", title: "Coffee opening", theme, pages: [htmlPage()] });
 const options = () => ({ db: fixture.db, store, env, configFor });
 const advance = (id, extra = {}) => advanceRun(id, { db: fixture.db, store, languageConfigFor: configFor, ...extra });
 const execute = (id, invoke) => executeCreationLanguage(id, { db: fixture.db, store, configFor, invoke });
@@ -110,7 +114,7 @@ it("resumes a failed publication from the same paid result without a new model r
   const { user, create } = await setup(), run = await create();
   await advance(run.id);
   const started = await readRun(user.id, run.id, fixture.db), jobId = started.steps[0].jobId;
-  const invoke = vi.fn(async () => poster()); await execute(jobId, invoke);
+  const invoke = vi.fn(async () => generatedPoster()); await execute(jobId, invoke);
   await advance(run.id, { store: { ...store, put: async () => { throw new AppError("ARTIFACT_UPLOAD_EXPIRED", 409); } } });
   const paused = await readRun(user.id, run.id, fixture.db);
   expect(paused.status).toBe("awaiting_input");
@@ -128,7 +132,7 @@ it("expands the outline once, generates pages serially and assembles one editabl
   const { user, create } = await setup("slides"), run = await create();
   const invoke = vi.fn(async ({ input }) => input.purpose === "slides.outline"
     ? { title: "Coffee business", theme, pages: [{ id: "p1", title: "Opening", brief: "Introduce the shop", notes: "First speaker notes" }, { id: "p2", title: "Offer", brief: "Explain the offer" }] }
-    : page(input.pageId, input.title));
+    : htmlPage(input.pageId, input.title));
   for (let index = 0; index < 12; index++) {
     await advance(run.id);
     const state = await readRun(user.id, run.id, fixture.db);
@@ -190,7 +194,7 @@ it("confirms edited/reordered pages once, preserves approved notes, and replays 
   await expect(confirmOutline(user.id, run.id, { ...edited, outline: { ...edited.outline, title: "Other tab" } }, options())).rejects.toThrow("CREATION_OUTLINE_ALREADY_CONFIRMED");
   const accepted = await readOutlineReview(user.id, run.id, options());
   expect(accepted.outline).toEqual(edited.outline); expect(accepted.confirmed).toBe(true); expect(accepted.canConfirm).toBe(false);
-  const invoke = vi.fn(async (_config, { input }) => ({ ...page(input.pageId, input.title), notes: "Model notes must not overwrite approved notes" }));
+  const invoke = vi.fn(async (_config, { input }) => ({ ...htmlPage(input.pageId, input.title), notes: "Model notes must not overwrite approved notes" }));
   for (let i = 0; i < 10; i++) {
     await advance(run.id);
     const state = await readRun(user.id, run.id, fixture.db);
@@ -233,7 +237,7 @@ it("does not schedule page generation if cancellation wins during approved-outli
 it("does not expose an artifact when cancellation wins during its upload", async () => {
   const { user, project, create } = await setup(), run = await create();
   await advance(run.id);
-  await execute((await readRun(user.id, run.id, fixture.db)).steps[0].jobId, async () => poster());
+  await execute((await readRun(user.id, run.id, fixture.db)).steps[0].jobId, async () => generatedPoster());
   await advance(run.id, { store: { ...store, put: async (key, bytes) => {
     await store.put(key, bytes); await cancelRun(user.id, run.id, fixture.db);
   } } });

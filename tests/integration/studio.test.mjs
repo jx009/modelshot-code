@@ -130,13 +130,14 @@ describe("studio documents and task ledger", () => {
     expect((await f.db.tryOn.findUnique({ where: { id: free.id } })).status).toBe("succeeded");
     expect((await usageSummary(user.id, f.db)).credits).toBe(78);
   });
-  it("delivers complete guided edit results with one image call, no language calls, and unchanged prices", async () => {
+  it.each(["native-mask", "reference-guide"])("delivers complete %s edit results with one image call, no language calls, and unchanged prices", async strategy => {
+    const editConfig = strategy === "reference-guide" ? { ...config, baseURL: "https://gateway.example.test/v1" } : config;
     for (const tool of ["inpaint", "expand"]) {
       const { user, input } = await setup();
       const padding = expansionPadding(user.asset.width, user.asset.height, "16:9");
       const selection = await createImage(user.id, await sharp({ create: { width: user.asset.width, height: user.asset.height, channels: 4, background: "white" } }).png().toBuffer(), {}, f.db, f.store);
       const request = { ...input, tool, ...(tool === "inpaint" ? { maskId: selection.id } : {}), params: { prompt: "Remove the flowerpot", size: "1024x1024", padding } };
-      const job = await submitStudioJob(user.id, request, randomUUID(), f.db, deps);
+      const job = await submitStudioJob(user.id, request, randomUUID(), f.db, { ...deps, config: editConfig });
       expect(job.cost).toBe(18);
       let imageCalls = 0, languageCalls = 0;
       const adapters = {
@@ -144,13 +145,14 @@ describe("studio documents and task ledger", () => {
         generate: async (_config, args) => {
           imageCalls++;
           expect(args.references).toHaveLength(0);
-          expect(args.mask).toBeUndefined();
+          if (strategy === "native-mask") expect(Buffer.isBuffer(args.mask)).toBe(true);
+          else expect(args.mask).toBeUndefined();
           const { width, height } = args.sizeSource;
           return sharp({ create: { width, height, channels: 4, background: "blue" } }).png().toBuffer();
         },
       };
-      await executeStudio(job.id, { db: f.db, store: f.store, config, adapters });
-      await executeStudio(job.id, { db: f.db, store: f.store, config, adapters });
+      await executeStudio(job.id, { db: f.db, store: f.store, config: editConfig, adapters });
+      await executeStudio(job.id, { db: f.db, store: f.store, config: editConfig, adapters });
       const row = await f.db.tryOn.findUnique({ where: { id: job.id } });
       expect(row.status, row.errorCode).toBe("succeeded");
       expect(row.resultData.assets[0]).toMatchObject(editTargetSize(tool, user.asset, padding));
@@ -357,6 +359,7 @@ describe("studio documents and task ledger", () => {
   });
   it("persists a video task ID then resumes polling after a worker restart", async () => {
     const { user, input } = await setup();
+    await f.db.user.update({ where: { id: user.id }, data: { role: "root" } });
     const job = await submitStudioJob(user.id, { ...input, tool: "video", params: { prompt: "Slow orbit", duration: 5 } }, randomUUID(), f.db, deps);
     const calls = [];
     const adapters = { video: async (_c, args) => { calls.push(args.requestId); return args.requestId ? { state: "succeeded", url: "https://example.test/video.mp4" } : { state: "pending", requestId: "remote-123" }; }, downloadVideo: async () => Buffer.from("0000ftypisom0000000000") };

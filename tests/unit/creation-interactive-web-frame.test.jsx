@@ -9,7 +9,10 @@ beforeEach(() => mocks.api.mockReset().mockResolvedValue({ url: "https://preview
 afterEach(cleanup);
 it("sends one document after a bound handshake, preserves the frame on resize and rejects stale navigation", async () => {
   const navigate = vi.fn(), props = { srcDoc: "<h1>One</h1>", paths: ["about.html"], onNavigate: navigate, width: 1440, zh: false };
-  const view = render(<InteractiveWebFrame {...props} />);
+  let view;
+  // Flush the runtime lookup and the iframe's message-listener effect before
+  // simulating its handshake; finding a DOM node alone does not flush effects.
+  await act(async () => { view = render(<InteractiveWebFrame {...props} />); });
   const frame = await screen.findByTitle("Interactive website preview"), token = new URL(frame.src).hash.slice(1);
   expect(frame.getAttribute("sandbox")).toBe("allow-scripts"); expect(frame.hasAttribute("srcdoc")).toBe(false);
   const post = vi.spyOn(frame.contentWindow, "postMessage").mockImplementation(() => {});

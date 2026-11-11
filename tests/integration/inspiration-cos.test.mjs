@@ -13,7 +13,8 @@ const objects = new Map();
 const target = { assertPrivateBucket: vi.fn(), put: vi.fn(async (key, bytes) => objects.set(key, bytes)), signedUrl: vi.fn(async key => `https://fixture.cos.ap-hongkong.myqcloud.com/${key}?signature=fixture`) };
 let f, original, custom, gallery;
 async function publish(items) {
-  await f.db.systemConfig.upsert({ where: { key }, create: { key, value: JSON.stringify({ items, layout: DEFAULT_LAYOUT }) }, update: { value: JSON.stringify({ items, layout: DEFAULT_LAYOUT }) } });
+  const value = JSON.stringify({ items, layout: DEFAULT_LAYOUT, catalogVersion: 4 });
+  await f.db.systemConfig.upsert({ where: { key }, create: { key, value }, update: { value } });
   gallery = await publicInspirationGallery(f.db);
 }
 beforeAll(async () => {

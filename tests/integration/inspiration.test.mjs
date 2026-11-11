@@ -32,7 +32,8 @@ it("serves the complete generated defaults only when no gallery is configured", 
   const gallery = await publicInspirationGallery(f.db);
   expect(gallery.items).toHaveLength(DEFAULT_ITEMS.length);
   for (const item of gallery.items) {
-    expect(item.prompt.length).toBeGreaterThan(200);
+    expect(item.prompt).toBe(DEFAULT_ITEMS.find(row => row.id === item.id).prompt);
+    expect(item.prompt.trim().length).toBeGreaterThan(0);
     expect(item.prompt.length).toBeLessThanOrEqual(4000);
     const image = await readInspirationImage(item, f.db, f.store);
     expect(image.contentType).toBe("image/webp");

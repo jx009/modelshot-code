@@ -11,7 +11,9 @@ import { createDocumentArtifact, modifyDocumentArtifact } from "../../src/lib/do
 
 let fixture;
 const users = [], blobs = new Map();
-const store = { put: async (key, bytes) => blobs.set(key, Buffer.from(bytes)), get: async key => Buffer.from(blobs.get(key)), delete: async key => blobs.delete(key) };
+const store = { put: async (key, bytes) => blobs.set(key, Buffer.from(bytes)), get: async key => Buffer.from(blobs.get(key)), delete: async key => blobs.delete(key),
+  stream: async key => new Blob([blobs.get(key)]).stream(),
+};
 const output = name => Buffer.concat([Buffer.from([0x50, 0x4b, 0x03, 0x04]), Buffer.from(name)]);
 const options = () => ({ db: fixture.db, store, env: { CREATION_PPTX_EXPORT_ENABLED: "true" } });
 const request = { revision: 1, format: "pptx" };

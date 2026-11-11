@@ -1,3 +1,4 @@
+import { imageTool } from "../support/studio-tools.mjs";
 import { test, expect } from "@playwright/test";
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -19,14 +20,14 @@ test("paint selection survives pan; shape crop and six export formats produce re
     await expect(page.locator(".ms-stage canvas").first()).toBeAttached();
     const bytes = await sharp({ create: { width: 240, height: 240, channels: 4, background: "#c89d87" } }).png().toBuffer();
     await page.getByLabel("Upload image files").setInputFiles({ name: "cat.png", mimeType: "image/png", buffer: bytes });
-    await expect(page.locator(".ms-image-menu")).toBeVisible();
+    await expect(page.getByRole("group", { name: "Image tools", exact: true })).toBeVisible();
     // Every tool shares the measured safe viewport, including tools with a
     // short card. Closing returns to the same pre-edit camera.
     await page.getByRole("button", { name: "Fit canvas", exact: true }).click();
     const originalCamera = await page.locator(".ms-stage").getAttribute("data-camera");
-    for (const name of [/AI upscale/, /AI erase/, /Split layers/, /Remove background/, /Recognize text/, /Reverse prompt/, /Generate video/]) {
-      const button = page.getByRole("button", { name });
-      if (!await button.isEnabled()) continue;
+    for (const name of ["AI upscale", "AI erase", "Split layers", "Remove background", "Recognize text", "Reverse prompt"]) {
+      const button = await imageTool(page, name);
+      if (!await button.isEnabled()) { await page.keyboard.press("Escape"); continue; }
       await button.click();
       await waitForToolViewport(page);
       await page.getByRole("button", { name: "Close tool", exact: true }).click();
@@ -34,7 +35,12 @@ test("paint selection survives pan; shape crop and six export formats produce re
       const restored = JSON.parse(await page.locator(".ms-stage").getAttribute("data-camera"));
       for (const key of ["x", "y", "scale"]) expect(restored[key]).toBeCloseTo(JSON.parse(originalCamera)[key], 5);
     }
-    await page.getByRole("button", { name: /Local edit/ }).click();
+    await (await imageTool(page, "Generate video")).click();
+    await expect(page.getByRole("region", { name: "Generate video", exact: true })).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "Video prompt", exact: true })).toBeEnabled();
+    await page.getByRole("button", { name: "Close video panel", exact: true }).click();
+    await expect(page.getByRole("region", { name: "Generate video", exact: true })).toHaveCount(0);
+    await (await imageTool(page, "Local edit")).click();
     await page.getByLabel("Local edit instruction", { exact: true }).fill("Make it blue");
     await expect(page.getByRole("button", { name: /Apply edit/ })).toBeDisabled();
     await waitForToolViewport(page);
@@ -50,7 +56,7 @@ test("paint selection survives pan; shape crop and six export formats produce re
     await page.getByRole("button", { name: "Clear", exact: true }).click();
     await expect(page.getByRole("button", { name: /Apply edit/ })).toBeDisabled();
     await page.getByRole("button", { name: "Close tool", exact: true }).click();
-    await page.getByRole("button", { name: /Crop image/ }).click();
+    await (await imageTool(page, "Crop image")).click();
     await page.getByRole("button", { name: "Ellipse", exact: true }).click();
     await waitForToolViewport(page);
     await page.screenshot({ path: info.outputPath("ellipse-crop-preview.png"), fullPage: true, animations: "disabled" });
@@ -86,7 +92,7 @@ test("paint selection survives pan; shape crop and six export formats produce re
       if (format === "psd") expect(data.toString("ascii", 0, 4)).toBe("8BPS");
       else { const meta = await sharp(data).metadata(); expect(meta.width).toBeGreaterThan(240); expect(meta.height).toBe(240); if (format !== "jpeg") expect(meta.hasAlpha).toBe(true); }
     }
-    await page.getByRole("button", { name: /Crop image/ }).click();
+    await (await imageTool(page, "Crop image")).click();
     await page.getByRole("button", { name: "Grid", exact: true }).click();
     await waitForToolViewport(page);
     const gridStage = await page.locator(".ms-stage").boundingBox(), frame = JSON.parse(await page.locator(".ms-stage").getAttribute("data-selection-frame"));

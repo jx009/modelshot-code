@@ -1,3 +1,4 @@
+import { imageTool } from "../support/studio-tools.mjs";
 import { readStudioDraft } from "../support/studio-draft.mjs";
 import { test, expect } from "@playwright/test";
 import { PrismaClient } from "@prisma/client";
@@ -11,6 +12,7 @@ import { E2E_PASSWORD } from "../support/e2e-users.mjs";
 test("admin owns tool models, has no page scrollbar, and decomposition remains editable", async ({ page }, info) => {
   const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: getTestEnvironment().databaseUrl }) });
   const email = `cloud-${info.project.name}-${Date.now()}@modelshot.test`, providerIds = [];
+  const previousMove = await db.studioToolConfig.findUnique({ where: { toolId: "move" } });
   const errors = []; page.on("pageerror", error => errors.push(error.message));
   try {
     await db.user.create({ data: { email, passwordHash: await bcrypt.hash(E2E_PASSWORD, 10), role: "root", credits: 100, emailVerified: new Date() } });
@@ -21,7 +23,7 @@ test("admin owns tool models, has no page scrollbar, and decomposition remains e
     await expect(page.getByRole("heading", { name: "模型配置", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "新增模型", exact: true }).click();
     await expect(page.getByLabel("配置预设")).toBeVisible();
-    await page.getByLabel("配置预设").selectOption("2");
+    await page.getByLabel("配置预设").selectOption({ label: "火山方舟 · Seedream" });
     await expect(page.getByLabel("协议类型")).toHaveValue("volcengine");
     await expect(page.getByLabel("Base URL", { exact: true }).first()).toHaveValue("https://ark.cn-beijing.volces.com/api/v3");
     const channels = [];
@@ -81,8 +83,8 @@ test("admin owns tool models, has no page scrollbar, and decomposition remains e
     await expect(page.getByRole("button", { name: /^Image model/ })).toContainText("Fixture Ark Edit");
     const source = await sharp({ create: { width: 320, height: 480, channels: 3, background: "#879d8f" } }).png().toBuffer();
     await page.getByLabel("Upload image files").setInputFiles({ name: "cloud-source.png", mimeType: "image/png", buffer: source });
-    await expect(page.locator(".ms-image-menu")).toBeVisible();
-    await page.getByRole("button", { name: /Split layers/ }).click();
+    await expect(page.getByRole("group", { name: "Image tools", exact: true })).toBeVisible();
+    await (await imageTool(page, "Split layers")).click();
     await expect(page.getByLabel("Layer model", { exact: true })).toHaveCount(0);
     await expect(page.getByLabel("Segmentation model", { exact: true })).toHaveCount(0);
     const submitted = page.waitForResponse(r => r.url().endsWith("/api/studio/jobs") && r.request().method() === "POST");
@@ -127,7 +129,8 @@ test("admin owns tool models, has no page scrollbar, and decomposition remains e
     expect((await (await page.request.get("/api/usage")).json()).credits).toBe(74);
     expect(errors).toEqual([]);
   } finally {
-    await db.studioToolConfig.deleteMany({ where: { toolId: "move" } });
+    if (previousMove) await db.studioToolConfig.upsert({ where: { toolId: "move" }, create: previousMove, update: { routing: previousMove.routing, creditCost: previousMove.creditCost, isEnabled: previousMove.isEnabled } });
+    else await db.studioToolConfig.deleteMany({ where: { toolId: "move" } });
     await db.modelProvider.deleteMany({ where: { id: { in: providerIds } } });
     await db.$disconnect();
   }

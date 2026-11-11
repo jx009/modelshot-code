@@ -1,3 +1,4 @@
+import { imageTool } from "../support/studio-tools.mjs";
 import { test, expect } from "@playwright/test";
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -55,8 +56,8 @@ test("one EntitySegment channel can be saved for splitting and produces aligned,
     const source = await sharp({ create: { width: 320, height: 480, channels: 4, background: "#879d8f" } })
       .composite([{ input: await sharp({ create: { width: 80, height: 120, channels: 4, background: "red" } }).png().toBuffer(), left: 80, top: 120 }]).png().toBuffer();
     await page.getByLabel("Upload image files").setInputFiles({ name: "entity-source.png", mimeType: "image/png", buffer: source });
-    await expect(page.locator(".ms-image-menu")).toBeVisible();
-    await page.getByRole("button", { name: /Split layers/ }).click();
+    await expect(page.getByRole("group", { name: "Image tools", exact: true })).toBeVisible();
+    await (await imageTool(page, "Split layers")).click();
     await expect(page.getByText(/Detect objects and separate them/)).toBeVisible();
     await expect(page.getByLabel("Layers", { exact: true })).toHaveCount(0);
     const submitted = page.waitForResponse(r => r.url().endsWith("/api/studio/jobs") && r.request().method() === "POST");

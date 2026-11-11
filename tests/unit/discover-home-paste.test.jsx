@@ -67,8 +67,11 @@ it("reports upload failures and a full reference list instead of silently ignori
   render(<DiscoverHome />);
   paste(document.body, [image()]);
   await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("50 MB"));
-  paste(document.body, [image(), image(), image()]);
+  await act(async () => { paste(document.body, [image(), image(), image()]); });
   await waitFor(() => expect(screen.getByLabelText("移除参考图3")).toBeTruthy());
+  // A thumbnail is published before the complete upload batch settles.
+  // Exercise the full-list branch only after the upload lock is released.
+  await waitFor(() => expect(screen.getByLabelText("移除参考图3").disabled).toBe(false));
   paste(document.body, [image()]);
   expect(screen.getByRole("alert").textContent).toContain("最多添加 3 张");
   expect(mocks.upload).toHaveBeenCalledTimes(4);

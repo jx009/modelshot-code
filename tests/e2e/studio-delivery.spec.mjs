@@ -1,3 +1,4 @@
+import { imageTool, expectOriginalDownload } from "../support/studio-tools.mjs";
 import { readStudioDraft } from "../support/studio-draft.mjs";
 import { test, expect } from "@playwright/test";
 import { PrismaClient } from "@prisma/client";
@@ -6,6 +7,7 @@ import bcrypt from "bcryptjs";
 import sharp from "sharp";
 import { getTestEnvironment } from "../support/environment.mjs";
 import { E2E_PASSWORD } from "../support/e2e-users.mjs";
+import { waitForToolViewport } from "../support/studio-viewport.mjs";
 
 test("one send generates directly; failed preview preserves input and retries without another charge", async ({ page }, info) => {
   const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: getTestEnvironment().databaseUrl }) });
@@ -28,13 +30,14 @@ test("one send generates directly; failed preview preserves input and retries wi
     expect(posted).toHaveLength(1); expect(posted[0].tool).toBe("generate"); expect(plans).toEqual([]);
     await expect(page.locator(".ms-plan")).toHaveCount(0);
     const first = (await draft()).layers.find(layer => layer.visible);
-    await expect(page.getByRole("link", { name: "Download", exact: true })).toHaveAttribute("href", `/api/assets/${first.assetId}`);
+    await expectOriginalDownload(page, first.assetId);
     const preview = await page.request.get(`/api/assets/${first.assetId}?preview=320`);
     expect(preview.headers()["content-type"]).toBe("image/webp");
     expect(await sharp(await preview.body()).metadata()).toMatchObject({ width: 320, height: 320 });
 
     // The freehand outline selects its interior without a segmentation request.
-    await page.getByRole("button", { name: /Local edit/ }).click();
+    await (await imageTool(page, "Local edit")).click();
+    await waitForToolViewport(page);
     await expect(page.getByRole("button", { name: "Detect object", exact: true })).toHaveCount(0);
     const box = await page.locator(".ms-stage").boundingBox();
     const frame = JSON.parse(await page.locator(".ms-stage").getAttribute("data-selection-frame"));
@@ -70,7 +73,7 @@ test("one send generates directly; failed preview preserves input and retries wi
     expect((await draft()).layers.filter(layer => layer.visible)).toHaveLength(2);
     expect(edited.x).toBeGreaterThan(first.x + first.width);
     expect(edited.assetId).not.toBe(first.assetId);
-    await expect(page.getByRole("link", { name: "Download", exact: true })).toHaveAttribute("href", `/api/assets/${edited.assetId}`);
+    await expectOriginalDownload(page, edited.assetId);
     expect(posted).toHaveLength(2); expect(plans).toEqual([]);
     expect((await (await page.request.get("/api/usage")).json()).credits).toBe(64);
     await expect(page.locator(".ms-notice")).toHaveCount(0);
@@ -80,7 +83,7 @@ test("one send generates directly; failed preview preserves input and retries wi
     await page.locator(".ms-project-trigger").click();
     await page.locator(".ms-project-list button").first().click();
     await expect.poll(async () => (await draft()).appliedJobs.includes(editJob.id)).toBe(true);
-    await expect(page.getByRole("link", { name: "Download", exact: true })).toHaveAttribute("href", `/api/assets/${edited.assetId}`);
+    await expectOriginalDownload(page, edited.assetId);
     await page.getByRole("button", { name: "Undo", exact: true }).click();
     expect((await draft()).layers.find(layer => layer.id === first.id).visible).toBe(true);
     await page.reload();

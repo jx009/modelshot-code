@@ -1,3 +1,4 @@
+import { imageTool, expectOriginalDownload } from "../support/studio-tools.mjs";
 import { readStudioDraft } from "../support/studio-draft.mjs";
 import { waitForToolViewport } from "../support/studio-viewport.mjs";
 import { test, expect } from "@playwright/test";
@@ -30,7 +31,7 @@ test("canvas upload, crop through durable worker, layers, export and cloud resto
     await page.screenshot({ path: info.outputPath("canvas-empty.png"), fullPage: true });
     const image = await sharp({ create: { width: 400, height: 500, channels: 3, background: "#879d8f" } }).composite([{ input: await sharp({ create: { width: 140, height: 200, channels: 3, background: "#e9d0b3" } }).png().toBuffer(), left: 130, top: 150 }]).png().toBuffer();
     await page.getByLabel("Upload image files").setInputFiles({ name: "product.png", mimeType: "image/png", buffer: image });
-    await expect(page.locator(".ms-image-menu")).toBeVisible();
+    await expect(page.getByRole("group", { name: "Image tools", exact: true })).toBeVisible();
     await expect(page.locator(".ms-stage canvas").first()).toBeVisible();
     await page.screenshot({ path: info.outputPath("canvas-selected.png"), fullPage: true });
     if (info.project.name === "desktop") {
@@ -56,7 +57,7 @@ test("canvas upload, crop through durable worker, layers, export and cloud resto
     await page.mouse.up();
     await expect(page.locator(".ms-edge-readout")).not.toContainText("R 256");
     await page.getByRole("button", { name: "Close tool", exact: true }).click();
-    await page.getByRole("button", { name: /Local edit/ }).click();
+    await (await imageTool(page, "Local edit")).click();
     await expect(page.locator(".ms-stage")).toHaveAttribute("data-mode", "mask");
     await waitForToolViewport(page);
     await expect(page.getByRole("button", { name: "Detect object", exact: true })).toHaveCount(0);
@@ -74,7 +75,7 @@ test("canvas upload, crop through durable worker, layers, export and cloud resto
     await expect(page.locator(".ms-stage")).toHaveAttribute("data-panning", "true");
     await expect(page.getByRole("button", { name: /Apply edit/ })).toBeEnabled();
     await page.getByRole("button", { name: "Close tool", exact: true }).click();
-    await page.getByRole("button", { name: /Move object/ }).click();
+    await (await imageTool(page, "Move object")).click();
     await waitForToolViewport(page);
     const stage = await page.locator(".ms-stage").boundingBox();
     const selectionFrame = JSON.parse(await page.locator(".ms-stage").getAttribute("data-selection-frame"));
@@ -151,7 +152,7 @@ test("canvas upload, crop through durable worker, layers, export and cloud resto
     expect(resultLayer.visible).toBe(true);
     expect(resultLayer.x).toBeGreaterThan(completed.layers[0].x + completed.layers[0].width);
     expect(resultLayer).toMatchObject({ pixelWidth: 400, pixelHeight: 500 });
-    await expect(page.getByRole("link", { name: "Download", exact: true })).toHaveAttribute("href", `/api/assets/${resultLayer.assetId}`);
+    await expectOriginalDownload(page, resultLayer.assetId);
     expect(completed.messages.find(m => m.id === moveJob.id).assetId).toBe(resultLayer.assetId);
     await page.screenshot({ path: info.outputPath("move-complete-image.png"), fullPage: true });
     await page.getByRole("button", { name: "Undo", exact: true }).click();
@@ -160,21 +161,22 @@ test("canvas upload, crop through durable worker, layers, export and cloud resto
     await page.getByRole("button", { name: "Layers", exact: true }).click();
     await page.locator(".ms-layer-select").first().click();
     await page.getByRole("button", { name: "Layers", exact: true }).click();
-    await expect(page.locator(".ms-image-menu")).toBeVisible();
+    await expect(page.getByRole("group", { name: "Image tools", exact: true })).toBeVisible();
     const previewStage = await page.locator(".ms-stage").boundingBox();
     const previewFrame = JSON.parse(await page.locator(".ms-stage").getAttribute("data-selection-frame"));
     await page.mouse.dblclick(previewStage.x + previewFrame.left + previewFrame.width * 0.1, previewStage.y + previewFrame.top + previewFrame.height * 0.5);
     await expect(page.getByRole("dialog", { name: "Image preview" })).toBeVisible();
-    await expect(page.locator(".ms-preview-history button")).toHaveCount(1);
+    await expect(page.getByRole("dialog", { name: "Image preview" }).getByRole("link", { name: "Download image", exact: true })).toHaveAttribute("href", `/api/assets/${completed.layers[0].assetId}?delivery=auto&download=1`);
     await page.screenshot({ path: info.outputPath("image-preview.png"), fullPage: true });
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog", { name: "Image preview" })).not.toBeVisible();
-    await page.getByRole("button", { name: /Crop image/ }).click();
+    await (await imageTool(page, "Crop image")).click();
+    await waitForToolViewport(page);
     const cropStage = await page.locator(".ms-stage").boundingBox();
-    const cropScale = Math.min(1.5, (cropStage.width - 110) / 400, (cropStage.height - 180) / 500);
+    const cropFrame = JSON.parse(await page.locator(".ms-stage").getAttribute("data-selection-frame"));
     const cropTopLeft = {
-      x: cropStage.x + (cropStage.width - 400 * cropScale) / 2,
-      y: cropStage.y + (cropStage.height - 500 * cropScale) / 2,
+      x: cropStage.x + cropFrame.left,
+      y: cropStage.y + cropFrame.top,
     };
     await page.mouse.move(cropTopLeft.x, cropTopLeft.y);
     await page.mouse.down();
@@ -192,7 +194,13 @@ test("canvas upload, crop through durable worker, layers, export and cloud resto
     await expect(page.locator(".ms-layer")).toHaveCount(2);
     await page.getByRole("button", { name: "Layers", exact: true }).click();
     await page.getByRole("button", { name: "Add text", exact: true }).click();
-    await page.getByLabel("Layer text").fill("NEW COLLECTION");
+    await page.getByRole("button", { name: "Fit canvas", exact: true }).click();
+    await expect(page.locator(".ms-stage")).toHaveAttribute("data-camera-moving", "false");
+    const textStage = await page.locator(".ms-stage").boundingBox();
+    const textFrame = JSON.parse(await page.locator(".ms-stage").getAttribute("data-selection-frame"));
+    await page.mouse.dblclick(textStage.x + textFrame.left + textFrame.width / 2, textStage.y + textFrame.top + textFrame.height / 2);
+    await page.getByLabel("Canvas text", { exact: true }).fill("NEW COLLECTION");
+    await page.getByLabel("Canvas text", { exact: true }).press("Control+Enter");
     await page.getByRole("button", { name: "Select", exact: true }).click();
     const download = page.waitForEvent("download");
     await page.getByRole("button", { name: "Export", exact: true }).click();
@@ -213,7 +221,6 @@ test("canvas upload, crop through durable worker, layers, export and cloud resto
     await expect(page.locator(".ms-canvas-label")).toContainText("3 layers");
     await page.screenshot({ path: info.outputPath("canvas-restored.png"), fullPage: true });
     if (info.project.name === "mobile") await page.locator(".ms-mobile-toggle").click();
-    await page.getByRole("tab", { name: "Quick generation", exact: true }).click();
     await page.getByLabel("Creative prompt").fill("A minimal product still life");
     const generated = page.waitForResponse(r => r.url().endsWith("/api/studio/jobs") && r.request().method() === "POST");
     await page.getByRole("button", { name: "Generate · 18 credits", exact: true }).click();

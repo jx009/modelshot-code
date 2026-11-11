@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   motion-media:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -21,7 +21,7 @@ jobs:
       - run: python -m unittest discover -s services/image-tools -p test_motion.py
 
   local-acceptance:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
       NEXT_TELEMETRY_DISABLED: "1"

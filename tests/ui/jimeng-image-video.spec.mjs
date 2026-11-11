@@ -11,6 +11,21 @@ const content = () => ({ schemaVersion: 1, layers: [], messages: [], jobs: [], a
   mode: "video", prompt: "镜头缓慢推进，保持商品细节", provider: "frames", duration: 5, ratio: "16:9", videoVariant: "hd", composition: null,
   media: [{ id: "first", type: "image", name: "开场图片", role: "first_frame" }, { id: "last", type: "image", name: "结束图片", role: "last_frame" }],
 } });
+
+test("browser provides real Chinese glyphs independently of application fonts", async ({ page }, info) => {
+  await page.setContent('<html lang="zh"><body><p id="cjk" style="font: 24px &quot;Noto Sans CJK SC&quot;, sans-serif">中文字体对照</p><p style="font: 24px sans-serif">中文字体对照</p></body></html>');
+  await capture(page, info, "system-chinese-fonts");
+  if (process.platform === "linux" && process.env.CI) {
+    const cdp = await page.context().newCDPSession(page);
+    try {
+      await cdp.send("DOM.enable"); await cdp.send("CSS.enable");
+      const { root } = await cdp.send("DOM.getDocument");
+      const { nodeId } = await cdp.send("DOM.querySelector", { nodeId: root.nodeId, selector: "#cjk" });
+      const { fonts } = await cdp.send("CSS.getPlatformFontsForNode", { nodeId });
+      expect(fonts.some(font => font.familyName === "Noto Sans CJK SC" && font.glyphCount >= 6)).toBe(true);
+    } finally { await cdp.detach(); }
+  }
+});
 async function setup(page, mode = "video", sessionGate = Promise.resolve()) {
   const picture = await readFile(new URL("../../public/studio/scene-03.webp", import.meta.url));
   const doc = { id: "video-doc", name: "商品视频", version: 1, content: content() };

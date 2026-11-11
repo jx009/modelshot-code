@@ -2,15 +2,38 @@ import http from "node:http";
 import { spawn } from "node:child_process";
 import sharp from "sharp";
 import { randomUUID } from "node:crypto";
+import { startVideoRuntime } from "./video-runtime.mjs";
 
 // Only the isolated test database points to this loopback supplier.
 const png = await sharp({ create: { width: 320, height: 480, channels: 3, background: "#42a79b" } }).png().toBuffer();
 const layerRequests = new Map();
+const videoRuntime = await startVideoRuntime();
+const videoRequests = new Map();
 const supplier = http.createServer(async (req, res) => {
   const chunks = [];
   for await (const chunk of req) chunks.push(chunk);
   const payload = Buffer.concat(chunks), body = payload.toString();
   const dataURL = bytes => `data:image/png;base64,${bytes.toString("base64")}`;
+  if (req.url.startsWith("/motion/")) {
+    try {
+      const response = await fetch(`${videoRuntime.baseURL}${req.url}`, { method: req.method, headers: { "Content-Type": req.headers["content-type"], Authorization: req.headers.authorization }, body: payload, signal: AbortSignal.timeout(90000) });
+      const result = Buffer.from(await response.arrayBuffer());
+      res.writeHead(response.status, { "Content-Type": response.headers.get("content-type") || "application/json" });
+      res.end(result);
+    } catch { res.writeHead(502); res.end("Media fixture service unavailable"); }
+    return;
+  }
+  if (req.url === "/video-fixture/videos" && req.method === "POST") {
+    const input = await new Response(payload, { headers: { "content-type": req.headers["content-type"] } }).formData();
+    const id = randomUUID(); videoRequests.set(id, { prompt: input.get("prompt"), hasImage: input.has("input_reference") });
+    res.writeHead(200, { "Content-Type": "application/json" }); res.end(JSON.stringify({ id, status: "queued" })); return;
+  }
+  if (req.url.startsWith("/video-fixture/videos/") && req.method === "GET") {
+    const id = req.url.split("/")[3];
+    if (!videoRequests.has(id)) { res.writeHead(404); res.end("{}"); return; }
+    if (req.url.endsWith("/content")) { res.writeHead(200, { "Content-Type": "video/mp4", "Content-Length": videoRuntime.bytes.length }); res.end(videoRuntime.bytes); return; }
+    res.writeHead(200, { "Content-Type": "application/json" }); res.end(JSON.stringify({ id, status: "completed" })); return;
+  }
   if (req.url === "/cloud?Action=CVProcess&Version=2022-08-31") {
     const input = JSON.parse(body);
     if (input.req_key !== "lens_vida_nnsr") { res.writeHead(422); res.end("{}"); return; }
@@ -76,7 +99,7 @@ const supplier = http.createServer(async (req, res) => {
   if (req.url === "/health") { res.end("ok"); return; }
   if (req.method === "GET" && req.url === "/capabilities") {
     res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ version: 1, tools: ["segment"] })); return;
+    res.end(JSON.stringify({ version: 1, tools: ["segment", "motion-render"] })); return;
   }
   if (req.method === "POST" && req.url === "/tools/segment") {
     const form = await new Response(payload, { headers: { "content-type": req.headers["content-type"] || "" } }).formData();
@@ -117,7 +140,7 @@ await new Promise(resolve => supplier.listen(Number(process.env.TEST_PROVIDER_PO
 const startWorker = () => spawn(process.execPath, ["src/workers/main.mjs"], { stdio: "inherit", env: process.env });
 let worker = startWorker();
 const web = spawn(process.execPath, ["node_modules/next/dist/bin/next", "start", "--hostname", "127.0.0.1", "--port", process.env.TEST_WEB_PORT || "3100"], { stdio: "inherit", env: process.env });
-function stop() { worker.kill(); web.kill(); supplier.close(); }
+function stop() { worker.kill(); web.kill(); supplier.close(); void videoRuntime.stop(); }
 process.on("SIGINT", stop);
 process.on("SIGTERM", stop);
 web.on("exit", code => { stop(); process.exitCode = code || 0; });

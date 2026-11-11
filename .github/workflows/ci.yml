@@ -26,7 +26,7 @@ jobs:
 
   local-acceptance:
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 50
     env:
       NEXT_TELEMETRY_DISABLED: "1"
       DATABASE_URL: postgresql://modelshot:local-modelshot-only@127.0.0.1:55432/modelshot_test
@@ -105,7 +105,8 @@ jobs:
       - name: Install acceptance browser
         timeout-minutes: 10
         run: |
-          sudo apt-get update && sudo apt-get install -y --no-install-recommends fonts-noto-cjk
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends fonts-noto-cjk ffmpeg
+          python -m pip install -r services/image-tools/requirements.txt
           npx playwright install --with-deps chromium
           fc-cache -f
           fc-match 'Noto Sans CJK SC'

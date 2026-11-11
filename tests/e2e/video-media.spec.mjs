@@ -1,0 +1,116 @@
+import { test, expect } from "@playwright/test";
+import { PrismaClient } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { writeFile } from "node:fs/promises";
+import bcrypt from "bcryptjs";
+import sharp from "sharp";
+import { encryptSecret } from "../../src/lib/crypto.js";
+import { getTestEnvironment } from "../support/environment.mjs";
+import { E2E_PASSWORD } from "../support/e2e-users.mjs";
+import { readStudioDraft } from "../support/studio-draft.mjs";
+import { imageTool } from "../support/studio-tools.mjs";
+
+const execute = promisify(execFile);
+async function frame(path, time) {
+  const { stdout } = await execute("ffmpeg", ["-hide_banner", "-loglevel", "error", "-ss", String(time), "-i", path, "-frames:v", "1", "-vf", "scale=160:90", "-threads", "1", "-f", "image2pipe", "-vcodec", "png", "pipe:1"], { encoding: "buffer", timeout: 20000, maxBuffer: 1024 * 1024 });
+  return sharp(stdout).removeAlpha().raw().toBuffer();
+}
+
+test("canvas video survives reload, plays, and exports the same trimmed composition without another model charge", async ({ page }, info) => {
+  test.setTimeout(180000);
+  const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: getTestEnvironment().databaseUrl }) });
+  const name = `video-media-${info.project.name}-${Date.now()}`, email = `${name}@modelshot.test`;
+  const oldKey = process.env.ENCRYPTION_KEY, errors = [];
+  let provider;
+  page.on("pageerror", error => errors.push(error.message));
+  try {
+    process.env.ENCRYPTION_KEY = "ab".repeat(32);
+    const user = await db.user.create({ data: { email, role: "root", passwordHash: await bcrypt.hash(E2E_PASSWORD, 10), credits: 100, emailVerified: new Date() } });
+    provider = await db.modelProvider.create({ data: { name, displayName: "Video acceptance fixture", kind: "openai", isActive: true, creditCost: 20, costPerImage: 0,
+      config: JSON.stringify({ scope: "public", studioCapability: "video", model: "fixture-video", videoDurations: [4], apiKeyEnc: encryptSecret("isolated-video-fixture-key"), baseURL: `http://127.0.0.1:${process.env.TEST_PROVIDER_PORT || 3199}/video-fixture` }) } });
+    await page.goto("/en/login?callbackUrl=/en/studio-v2");
+    await page.getByLabel("Email", { exact: true }).fill(email);
+    await page.getByLabel("Password", { exact: true }).fill(E2E_PASSWORD);
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
+    await expect(page.getByLabel("Creative prompt", { exact: true })).toBeEnabled();
+    const picture = await sharp({ create: { width: 160, height: 90, channels: 3, background: "#437d92" } }).png().toBuffer();
+    await page.getByLabel("Upload image files").setInputFiles({ name: "video-source.png", mimeType: "image/png", buffer: picture });
+    await (await imageTool(page, "Generate video")).click();
+    const panel = page.getByRole("region", { name: "Generate video", exact: true });
+    await panel.getByRole("combobox", { name: "Video model", exact: true }).selectOption(name);
+    await panel.getByRole("combobox", { name: "Duration", exact: true }).selectOption("4");
+    await panel.getByRole("textbox", { name: "Video prompt", exact: true }).fill("Keep the source and slowly move the camera");
+    const submitted = page.waitForResponse(response => response.url().endsWith("/api/studio/jobs") && response.request().method() === "POST");
+    await panel.getByRole("button", { name: "20 credits", exact: true }).click();
+    const response = await submitted;
+    expect(response.status(), await response.text()).toBe(202);
+    const job = await response.json(), input = response.request().postDataJSON();
+    expect(input).toMatchObject({ provider: name, expectedCost: 20, params: { duration: 4, ratio: "16:9" } });
+    await page.getByRole("button", { name: "Close video panel", exact: true }).click();
+    await page.reload();
+    await expect.poll(async () => (await readStudioDraft(page))?.layers.filter(layer => layer.type === "video").length, { timeout: 60000 }).toBe(1);
+    const canvas = await readStudioDraft(page), original = canvas.layers.find(layer => layer.type === "image"), result = canvas.layers.find(layer => layer.type === "video");
+    expect(original.visible).toBe(true);
+    expect(result).toMatchObject({ sourceJobId: job.id, duration: 4, pixelWidth: 160, pixelHeight: 90 });
+    expect(result.posterAssetId).toBeTruthy();
+    const poster = await page.request.get(`/api/assets/${result.posterAssetId}`);
+    expect(poster.ok()).toBe(true);
+    expect(await sharp(await poster.body()).metadata()).toMatchObject({ width: 640, height: 360 });
+    await page.reload();
+    await expect.poll(async () => (await readStudioDraft(page))?.layers.filter(layer => layer.sourceJobId === job.id).length).toBe(1);
+    if (info.project.name === "mobile") await page.getByRole("button", { name: "Canvas", exact: true }).click();
+    await page.screenshot({ path: info.outputPath("video-back-on-canvas.png"), fullPage: true });
+
+    await page.goto(`/en/video?document=${input.documentId}`);
+    await expect(page.getByRole("combobox", { name: "Video model", exact: true })).toHaveValue(name);
+    await expect(page.getByRole("combobox", { name: "Duration", exact: true })).toHaveValue("4");
+    if (info.project.name === "mobile") await page.getByRole("button", { name: "Toggle conversation and preview", exact: true }).click();
+    const player = page.locator(".vm-video-result video");
+    await expect(player).toBeVisible();
+    await expect.poll(() => player.evaluate(video => ({ width: video.videoWidth, height: video.videoHeight, duration: video.duration }))).toEqual({ width: 160, height: 90, duration: 4 });
+    await player.evaluate(async video => { video.muted = true; await video.play(); });
+    await expect.poll(() => player.evaluate(video => video.currentTime)).toBeGreaterThan(.2);
+    await player.evaluate(video => video.pause());
+    await page.screenshot({ path: info.outputPath("generated-video-playing.png"), fullPage: true });
+    await page.getByRole("button", { name: "Add to composition", exact: true }).click();
+    await page.getByRole("button", { name: "Add clip", exact: true }).click();
+    await page.getByRole("link", { name: "Open composition", exact: true }).click();
+    await page.getByRole("button", { name: "Edit video", exact: true }).click();
+    await page.getByRole("spinbutton", { name: "Duration (s)", exact: true }).fill("2");
+    await page.getByRole("spinbutton", { name: "Trim start (s)", exact: true }).fill("1");
+    const preview = page.locator(".vm-stage video");
+    await expect.poll(() => preview.evaluate(video => video.currentTime)).toBeCloseTo(1.7, 1);
+    await page.screenshot({ path: info.outputPath("trimmed-composition.png"), fullPage: true });
+    const rendering = page.waitForResponse(response => response.url().endsWith("/api/studio/jobs") && response.request().method() === "POST");
+    await page.getByRole("button", { name: "Export MP4", exact: true }).click();
+    const renderResponse = await rendering;
+    expect(renderResponse.status(), await renderResponse.text()).toBe(202);
+    expect(renderResponse.request().postDataJSON()).toMatchObject({ tool: "motion-render", expectedCost: 0, params: { motion: { scenes: [expect.objectContaining({ assetId: result.assetId, duration: 2, trimStart: 1 })] } } });
+    const renderJob = await renderResponse.json();
+    await expect.poll(async () => (await (await page.request.get(`/api/studio/jobs/${renderJob.id}`)).json()).status, { timeout: 60000 }).toBe("succeeded");
+    await expect.poll(() => page.locator(".vm-video-result video").getAttribute("src")).toContain(renderJob.id);
+    const output = await page.request.get(await page.locator(".vm-video-result video").getAttribute("src"));
+    expect(output.headers()["content-type"]).toBe("video/mp4");
+    const outputPath = info.outputPath("trimmed-export.mp4"), sourcePath = info.outputPath("original-generated.mp4");
+    await writeFile(outputPath, await output.body());
+    await writeFile(sourcePath, await (await page.request.get(`/api/assets/${result.assetId}`)).body());
+    const metadata = JSON.parse((await execute("ffprobe", ["-v", "error", "-show_format", "-show_streams", "-of", "json", outputPath], { timeout: 20000 })).stdout);
+    expect(Number(metadata.format.duration)).toBeCloseTo(2, 1);
+    expect(metadata.streams.find(stream => stream.codec_type === "video")).toMatchObject({ width: 1280, height: 720 });
+    const sourceFrame = await frame(sourcePath, 1.5), renderedFrame = await frame(outputPath, .5);
+    expect(renderedFrame.length).toBe(sourceFrame.length);
+    const error = renderedFrame.reduce((sum, value, index) => sum + Math.abs(value - sourceFrame[index]), 0) / renderedFrame.length;
+    expect(error).toBeLessThan(12);
+    expect((await db.user.findUnique({ where: { id: user.id } })).credits).toBe(80);
+    expect(await db.creditTransaction.count({ where: { tryOnId: job.id, type: "consume" } })).toBe(1);
+    expect(await db.tryOn.count({ where: { userId: user.id, snapshot: { path: ["tool"], equals: "video" } } })).toBe(1);
+    expect((await page.request.get(`/api/assets/${original.assetId}`)).ok()).toBe(true);
+    expect(errors).toEqual([]);
+  } finally {
+    if (oldKey === undefined) delete process.env.ENCRYPTION_KEY; else process.env.ENCRYPTION_KEY = oldKey;
+    if (provider) await db.modelProvider.delete({ where: { id: provider.id } });
+    await db.$disconnect();
+  }
+});

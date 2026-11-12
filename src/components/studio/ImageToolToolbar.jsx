@@ -72,7 +72,7 @@ export default function ImageToolToolbar({ selected, size, viewport, capabilitie
     const unavailable = item && !capability?.available && !item.clientOnly && id !== "crop" && id !== "video";
     const label = item ? (zh ? item.zh : item.en) : ({ chat: t("添加到聊天", "Add to chat"), library: t("存入素材库", "Save to library"), download: t("下载原图", "Download image") })[id];
     const Icon = ICONS[id] || WandSparkles;
-    const hint = unavailable ? t("需管理员启用或配置此工具", "An administrator needs to configure or enable this tool") : item ? `${imageCreditCost(capability || item, size, 0)} ${t("积分", "credits")}` : "";
+    const hint = id === "video" ? t("在视频面板查看模型与费用", "Choose a model and review pricing in the video panel") : unavailable ? t("需管理员启用或配置此工具", "An administrator needs to configure or enable this tool") : item ? `${imageCreditCost(capability || item, size, 0)} ${t("积分", "credits")}` : "";
     const content = <><Icon size={17} /><span>{label}</span>{unavailable && <i className="ms-setup-dot" />}{inMenu && id === "adjust" && <small>{t("免费", "Free")}</small>}</>;
     if (id === "download") return <a key={id} role="menuitem" href={downloadUrl(selected.assetId)} download={`${selected.name}.png`} onClick={() => setOpen(null)}>{content}</a>;
     return <button key={id} role={inMenu ? "menuitem" : undefined} aria-label={label} disabled={unavailable} title={`${label}${hint ? ` · ${hint}` : ""}`} onPointerEnter={inMenu ? undefined : () => setOpen(null)} onClick={() => {

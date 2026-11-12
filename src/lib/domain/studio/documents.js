@@ -4,6 +4,7 @@ import { lockUser } from "../billing/ledger.js";
 import { documentSchema } from "../../studio/tools.js";
 import { projectTitle } from "../../studio/project-title.js";
 import { createHash } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import { videoAssetIds } from "../../video/schema.js";
 import { assertCreationAccess, getCreationEnv } from "../../creation/access.js";
 import { assertMotionMedia } from "./motion.js";
@@ -19,9 +20,10 @@ export async function saveDocument(userId, input, db = prisma) {
     const origin = data.content.video?.canvasOrigin;
     const previousVideo = data.id ? (await tx.studioDocument.findFirst({ where: { id: data.id, userId, deletedAt: null }, select: { content: true } }))?.content?.video : undefined;
     const previousOrigin = previousVideo?.canvasOrigin;
-    if (data.id && JSON.stringify(origin) !== JSON.stringify(previousOrigin)) throw new AppError("VIDEO_ORIGIN_CHANGED", 409);
+    // PostgreSQL JSONB can reorder object keys. Compare provenance values, not serialization order.
+    if (data.id && !isDeepStrictEqual(origin, previousOrigin)) throw new AppError("VIDEO_ORIGIN_CHANGED", 409);
     const sceneOrigin = data.content.video?.sceneOrigin;
-    if (data.id && JSON.stringify(sceneOrigin) !== JSON.stringify(previousVideo?.sceneOrigin)) throw new AppError("VIDEO_ORIGIN_CHANGED", 409);
+    if (data.id && !isDeepStrictEqual(sceneOrigin, previousVideo?.sceneOrigin)) throw new AppError("VIDEO_ORIGIN_CHANGED", 409);
     if (!data.id && sceneOrigin) {
       const parent = await tx.studioDocument.findFirst({ where: { id: sceneOrigin.documentId, userId, deletedAt: null, kind: "motion" }, select: { content: true } });
       if (!parent?.content.video?.composition?.scenes.some(scene => scene.id === sceneOrigin.sceneId && scene.assetId === sceneOrigin.assetId)) throw new AppError("MOTION_SCENE_CHANGED", 409);

@@ -199,7 +199,42 @@ test("canvas image opens the shared video controls in a linked child document", 
   await expect(panel.getByLabel("视频模型", { exact: true })).toHaveValue("frames");
   await expect(panel.getByRole("link", { name: "视频工作台", exact: true })).toHaveAttribute("href", /video\?document=video-doc$/);
   await capture(page, info, "canvas-video-controls");
+  for (const [width, height] of [[1593, 819], [1366, 620], [1024, 768], [390, 844]]) {
+    await page.setViewportSize({ width, height });
+    if (width <= 760) await page.getByRole("button", { name: "画布", exact: true }).click();
+    const submit = panel.getByRole("button", { name: "开始生成视频", exact: true });
+    await expect(submit).toBeEnabled();
+    for (const end of [false, true]) {
+      await panel.locator(".vg-canvas-body").evaluate((element, end) => { element.scrollTop = end ? element.scrollHeight : 0; }, end);
+      const bounds = await submit.boundingBox(), zoom = await page.locator(".ms-zoom").boundingBox();
+      expect(bounds.y + bounds.height).toBeLessThanOrEqual(height);
+      expect(bounds.y + bounds.height).toBeLessThanOrEqual(zoom.y);
+      await submit.click({ trial: true });
+    }
+    await capture(page, info, `canvas-video-footer-${width}`);
+  }
+  expect(state.submissions).toHaveLength(0);
   expect(state.errors).toEqual([]);
+});
+
+test("video tool shutdown explains the disabled button and can be refreshed without losing input", async ({ page }) => {
+  const state = await setup(page);
+  let enabled = false;
+  await page.route("**/api/video/capabilities", route => route.fulfill({ json: {
+    ...caps, videoModels: caps.videoModels.map(model => ({ ...model, available: enabled })),
+    tools: caps.tools.map(tool => tool.id === "video" ? { ...tool, available: enabled, reason: enabled ? null : "TOOL_DISABLED" } : tool),
+  } }));
+  await page.goto("/zh/video?document=video-doc");
+  const prompt = page.getByLabel("视频创意", { exact: true });
+  await expect(prompt).toBeEnabled();
+  await prompt.fill("保留这个视频描述");
+  await expect(page.getByText(/视频生成工具已停用/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "开始生成", exact: true })).toBeDisabled();
+  enabled = true;
+  await page.getByRole("button", { name: "刷新状态", exact: true }).click();
+  await expect(page.getByRole("button", { name: "开始生成", exact: true })).toBeEnabled();
+  await expect(prompt).toHaveValue("保留这个视频描述");
+  expect(state.submissions).toHaveLength(0);
 });
 
 test("login callback opens the asset library without a second navigation", async ({ page }) => {

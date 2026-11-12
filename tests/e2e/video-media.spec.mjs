@@ -43,7 +43,7 @@ test("canvas video survives reload, plays, and exports the same trimmed composit
     await panel.getByRole("combobox", { name: "Duration", exact: true }).selectOption("4");
     await panel.getByRole("textbox", { name: "Video prompt", exact: true }).fill("Keep the source and slowly move the camera");
     const submitted = page.waitForResponse(response => response.url().endsWith("/api/studio/jobs") && response.request().method() === "POST");
-    await panel.getByRole("button", { name: "20 credits", exact: true }).click();
+    await panel.getByRole("button", { name: "Generate video now", exact: true }).click();
     const response = await submitted;
     expect(response.status(), await response.text()).toBe(202);
     const job = await response.json(), input = response.request().postDataJSON();

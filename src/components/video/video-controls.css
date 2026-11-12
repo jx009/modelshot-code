@@ -21,11 +21,23 @@
 .vg-parameter-row label { display:grid; gap:4px; flex:1; min-width:0; color:var(--secondary-text); font-size:12px; }
 .vg-parameter-row select { width:100%; min-width:0; border:1px solid var(--divider); border-radius:8px; background:var(--bg-card); color:var(--primary-text); padding:7px 9px; }
 .vg-references button:focus-visible,.vg-parameters select:focus-visible { outline:2px solid var(--primary); outline-offset:2px; }
-.ms-tool-panel.vg-canvas-panel { width:min(390px,calc(100vw - 24px)); max-height:calc(100% - 88px); overflow:auto; }
+.ms-studio .ms-tool-panel.vg-canvas-panel { top:68px; bottom:76px; width:min(390px,calc(100% - 24px)); max-height:none; box-sizing:border-box; display:flex; flex-direction:column; overflow:hidden; z-index:8; }
+.vg-canvas-panel>.ms-panel-title { flex-shrink:0; }
+.vg-canvas-panel>form { display:flex; flex-direction:column; flex:1; min-height:0; }
+.vg-canvas-body { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; scrollbar-width:thin; padding:2px; }
+@media(min-width:761px) and (max-width:1250px) { .ms-studio .ms-tool-panel.vg-canvas-panel { bottom:140px; } }
+@media(max-width:760px) {
+  .ms-studio .ms-tool-panel.vg-canvas-panel { top:102px; bottom:124px; right:12px; }
+  .ms-studio .ms-canvas-space:has(.vg-canvas-panel) .ms-zoom { top:auto; bottom:64px; }
+}
 .vg-canvas-panel .vg-parameters label { display:grid; align-items:stretch; justify-content:normal; gap:4px; margin:0; }
-.vg-canvas-panel .ms-panel-title,.vg-canvas-panel footer { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.vg-canvas-panel .ms-panel-title,.vg-canvas-actions { display:flex; align-items:center; justify-content:space-between; gap:10px; }
 .vg-canvas-panel textarea { display:block; box-sizing:border-box; width:100%; min-height:100px; resize:vertical; padding:10px; margin:12px 0; border:1px solid var(--divider); border-radius:10px; background:var(--bg-page); color:var(--primary-text); }
-.vg-canvas-panel footer { margin-top:14px; }
+.vg-canvas-panel footer { flex-shrink:0; margin-top:10px; padding-top:10px; border-top:1px solid var(--divider); background:var(--bg-elevated); }
+.vg-canvas-panel footer p { margin:0 0 8px; line-height:1.5; }
+.vg-canvas-panel footer p button { border:0; padding:2px 0; background:transparent; color:var(--primary); text-decoration:underline; cursor:pointer; }
+.vg-canvas-actions .ms-primary { flex-shrink:0; white-space:nowrap; }
+.vm-composer>small>button { margin-left:6px; border:0; padding:2px 0; background:transparent; color:var(--primary); text-decoration:underline; cursor:pointer; }
 .vg-canvas-panel footer a { display:inline-flex; align-items:center; gap:5px; font-size:12px; }
 .vg-canvas-panel p { color:var(--secondary-text); font-size:12px; line-height:1.6; overflow-wrap:anywhere; }
 .vg-source-picker { display:grid; gap:5px; }

@@ -7,6 +7,34 @@ let fixture;
 beforeAll(async () => { fixture = await domainFixture(); });
 afterAll(async () => { await fixture?.cleanup(); });
 const content = { schemaVersion: 1, layers: [], jobs: [], messages: [] };
+for (const originKey of ["canvasOrigin", "sceneOrigin"]) {
+  it(`saves ${originKey} after a JSONB round trip while rejecting changed or removed source links`, async () => {
+    const user = await fixture.user();
+    await fixture.db.user.update({ where: { id: user.id }, data: { role: "root" } });
+    const media = [{ id: user.asset.id, type: "image", name: "Source" }];
+    const parentContent = originKey === "canvasOrigin"
+      ? { ...content, layers: [{ id: "source", type: "image", name: "Source", assetId: user.asset.id, x: 0, y: 0, width: 100, height: 100 }] }
+      : { ...content, video: { mode: "motion", media, composition: { version: 1, ratio: "16:9", fps: 24, scenes: [{ id: "source", name: "Source", title: "", duration: 5, assetId: user.asset.id }] } } };
+    const parent = await saveDocument(user.id, { name: "Source project", content: parentContent }, fixture.db);
+    const origin = { documentId: parent.id, [originKey === "canvasOrigin" ? "layerId" : "sceneId"]: "source", assetId: user.asset.id };
+    const child = await saveDocument(user.id, { name: "Linked video", content: { ...content, video: { mode: "video", media, [originKey]: origin } } }, fixture.db);
+    const stored = await fixture.db.studioDocument.findUnique({ where: { id: child.id } });
+    const input = { id: child.id, version: stored.version, saveKey: `origin-save-${originKey}`, name: child.name,
+      content: { ...stored.content, video: { ...stored.content.video, prompt: "Animate the source" } } };
+    const saved = await saveDocument(user.id, input, fixture.db);
+    expect(saved.version).toBe(stored.version + 1);
+    expect(saved.content.video[originKey]).toEqual(origin);
+    expect((await saveDocument(user.id, input, fixture.db)).version).toBe(saved.version);
+    for (const field of Object.keys(origin)) {
+      await expect(saveDocument(user.id, { ...input, version: saved.version, saveKey: undefined,
+        content: { ...saved.content, video: { ...saved.content.video, [originKey]: { ...origin, [field]: "different-source" } } } }, fixture.db)).rejects.toThrow("VIDEO_ORIGIN_CHANGED");
+    }
+    const { [originKey]: removed, ...withoutOrigin } = saved.content.video;
+    expect(removed).toEqual(origin);
+    await expect(saveDocument(user.id, { ...input, version: saved.version, saveKey: undefined,
+      content: { ...saved.content, video: withoutOrigin } }, fixture.db)).rejects.toThrow("VIDEO_ORIGIN_CHANGED");
+  });
+}
 it("acknowledges a lost creation response without creating or updating twice", async () => {
   const user = await fixture.user();
   const input = { createKey: "lost-create", saveKey: "create-receipt", name: "Cat", content };

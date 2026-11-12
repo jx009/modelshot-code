@@ -21,6 +21,7 @@ export default function useVideoProject({ documentId, mode, userId, guardNavigat
   const [recovery, setRecovery] = useState(null);
   const [pendingSubmission, setPendingSubmission] = useState(false);
   const flushOnUnmount = useRef(null);
+  const saveError = useRef("");
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const change = useCallback(transform => {
     const next = typeof transform === "function" ? transform(live.current) : transform;
@@ -72,13 +73,25 @@ export default function useVideoProject({ documentId, mode, userId, guardNavigat
           if (mounted.current) setId(row.id);
           invalidateProjectLists(userId);
         }
-        if (mounted.current) setDirty(false);
+        if (mounted.current) {
+          setDirty(false);
+          const resolvedError = saveError.current;
+          if (resolvedError) setError(current => current === resolvedError ? "" : current);
+        }
+        saveError.current = "";
         try { localStorage.removeItem(storageKey); } catch { /* Recovery cleanup is best effort. */ }
         return { id: idRef.current, version: version.current };
       } catch (failure) {
         // Definitively rejected payloads must not be replayed forever after the
         // user corrects a field. Retain uncertain requests for safe retries.
-        if ([400, 413, 415, 422].includes(failure.status)) pendingSave.current = null;
+        if ([400, 413, 415, 422].includes(failure.status) || failure.status === 409 && ["DOCUMENT_VERSION_CONFLICT", "VIDEO_ORIGIN_CHANGED", "SAVE_KEY_REUSED"].includes(failure.code || failure.message)) {
+          pendingSave.current = null;
+          // Keep the user's draft, but do not restore a definitively rejected
+          // request after reopening. A fresh server version is loaded first;
+          // applying the local draft still requires the user's Restore action.
+          try { localStorage.setItem(storageKey, JSON.stringify({ draft: live.current, id: idRef.current, version: version.current, pendingSave: null, createKey: createKey.current })); } catch { /* The current tab retains the draft. */ }
+        }
+        saveError.current = failure.message;
         if (mounted.current) setError(failure.message); throw failure;
       }
       finally { if (mounted.current) setSaving(false); }

@@ -34,7 +34,7 @@ const messages = {
   MOTION_TRIM_INVALID: ["片段时长或裁剪范围不符合分镜要求。", "The clip duration or trim does not fit the composition."],
   MOTION_RENDER_UNAVAILABLE: ["媒体处理服务暂不可用，原视频已保留。", "Media processing is unavailable. Your original video is preserved."],
   MOTION_RENDER_BUSY: ["媒体处理服务正在忙，请稍后重试。", "Media processing is busy. Try again shortly."],
-  DOCUMENT_VERSION_CONFLICT: ["项目已在另一处更新，请重新打开后继续。", "The project changed elsewhere. Reopen it to continue."],
+  DOCUMENT_VERSION_CONFLICT: ["项目已在另一处更新，当前输入已保留在本机。请重新打开项目，核对云端内容后选择是否恢复草稿。", "The project changed elsewhere. Your input is saved locally. Reopen the project, review the saved version, then choose whether to restore your draft."],
   DOCUMENT_NOT_FOUND: ["项目已删除或不可访问。", "The project was deleted or is unavailable."],
   PRICE_CHANGED: ["价格已更新，请查看新报价后重新提交。", "The price changed. Review the updated quote before submitting."],
   REQUEST_TIMEOUT: ["请求超时，输入已保留，请重试。", "The request timed out. Your input is preserved; retry."],

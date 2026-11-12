@@ -41,7 +41,7 @@ export default function CanvasVideoPanel({ documentId, userId, zh, onClose, onSu
       <VideoParameterFields caps={caps} video={video} offer={offer} onChange={patch} disabled={editingDisabled} zh={zh} />
       <VideoMediaHint offer={offer} zh={zh} />
       <VideoSubmissionRecovery project={project} zh={zh} onRecovered={onSubmitted} />
-      {project.error && <p role="alert">{videoMessage(project.error, zh)}</p>}
+      {project.error && <p role="alert">{videoMessage(project.error, zh)}{project.dirty && <button type="button" disabled={editingDisabled || project.saving} onClick={() => { void project.save().catch(() => {}); }}>{text("重试保存", "Retry save")}</button>}</p>}
       {project.uploadProgress && <p role="status">{project.uploadProgress}</p>}
       {project.recovery && <div role="status"><p>{text("发现尚未同步的草稿。", "An unsaved draft is available.")}</p><button type="button" disabled={editingDisabled} onClick={project.recover}>{text("恢复草稿", "Restore draft")}</button><button type="button" disabled={editingDisabled} onClick={project.discardRecovery}>{text("使用云端版本", "Use cloud version")}</button></div>}
       {project.active && <p role="status">{text("视频正在后台生成，可以继续准备下一版草稿。", "Generation is running. You can prepare your next draft.")}</p>}

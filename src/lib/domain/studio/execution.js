@@ -24,6 +24,9 @@ import { GUIDED_EDIT_TOOLS } from "../../studio/edit-geometry.js";
 import { IMAGE_REQUEST_TIMEOUT_MS } from "../../ai/image-request.js";
 import { imageReferencePrompt } from "../../studio/image-references.js";
 import { inspectVideoResult } from "./video-result-media.js";
+import { synthesizeSpeech } from "./voice.js";
+import { inspectMediaBytes } from "./media-inspect.js";
+import { videoMediaProof } from "./video-media.js";
 
 export async function runImageTool(config, snapshot, image, mask, signal, adapters = {}, references = [], queue = {}) {
   if (snapshot.params.referenceRoles?.length) snapshot = { ...snapshot, params: { ...snapshot.params, prompt: imageReferencePrompt(snapshot.params.prompt, snapshot.params.referenceRoles) } };
@@ -83,13 +86,13 @@ export async function executeStudio(id, { db = prisma, store = objectStorage(), 
       return;
     }
     const dependency = getTool(snapshot.tool)?.dependency;
-    const modelTool = ["image", "vision", "split", "ocr", "upscale"].includes(dependency);
-    const selectedConfig = supplied || (dependency === "local" ? {} : await studioConfig(db, dependency === "video" ? snapshot.videoProvider || undefined : modelTool ? snapshot.provider : undefined, dependency === "video" ? "video" : ["split", "ocr", "upscale"].includes(dependency) ? dependency : dependency === "vision" ? "language" : "image", null, { pinned: modelTool || dependency === "video", skipPreview: true }));
+    const modelTool = ["image", "vision", "split", "ocr", "upscale", "voice"].includes(dependency);
+    const selectedConfig = supplied || (dependency === "local" ? {} : await studioConfig(db, dependency === "video" ? snapshot.videoProvider || undefined : modelTool ? snapshot.provider : undefined, dependency === "video" ? "video" : ["split", "ocr", "upscale", "voice"].includes(dependency) ? dependency : dependency === "vision" ? "language" : "image", null, { pinned: modelTool || dependency === "video", skipPreview: true }));
     const config = { ...selectedConfig, imageModel: snapshot.imageModel, chatModel: snapshot.chatModel, videoModel: snapshot.videoModel, videoOptions: snapshot.videoOptions || selectedConfig.videoOptions };
     if (dependency === "video" && snapshot.videoBaseURL && (snapshot.videoBaseURL !== config.videoURL || snapshot.videoKind !== config.videoKind)) throw new AppError("PROVIDER_CONFIGURATION_CHANGED", 422);
-    const channel = ["split", "ocr", "upscale"].includes(dependency) ? config[`${dependency}Channel`] : dependency === "vision" ? { kind: config.plannerKind, baseURL: config.visionBaseURL } : { kind: config.imageKind || "openai", baseURL: config.baseURL };
+    const channel = ["split", "ocr", "upscale", "voice"].includes(dependency) ? config[`${dependency}Channel`] : dependency === "vision" ? { kind: config.plannerKind, baseURL: config.visionBaseURL } : { kind: config.imageKind || "openai", baseURL: config.baseURL };
     if (modelTool && snapshot.providerKind && (snapshot.providerKind !== channel?.kind || snapshot.providerBaseURL !== (channel?.baseURL || null))) throw new AppError("PROVIDER_CONFIGURATION_CHANGED", 422);
-    if (["split", "ocr", "upscale"].includes(dependency) && channel) config[`${dependency}Channel`] = { ...channel, model: snapshot.imageModel };
+    if (["split", "ocr", "upscale", "voice"].includes(dependency) && channel) config[`${dependency}Channel`] = { ...channel, model: snapshot.imageModel };
     if (reconcile && output.reconcileUntil && output.reconcileUntil <= new Date()) { await finishOutput(id, output.fence, { errorCode: unresolvedError }, db); return; }
     const image = snapshot.assetId ? await readOwnedImage(output.userId, snapshot.assetId, db, store) : null;
     const mask = snapshot.maskId ? await readOwnedImage(output.userId, snapshot.maskId, db, store) : null;
@@ -116,6 +119,15 @@ export async function executeStudio(id, { db = prisma, store = objectStorage(), 
       const ratio = { "16:9": [1280,720], "9:16": [720,1280], "1:1": [720,720], "4:5": [720,900] }[snapshot.params.motion.ratio];
       const asset = await db.asset.upsert({ where: { id: assetId }, create: { id: assetId, userId: output.userId, objectKey, kind: "original", contentType: "video/mp4", width: ratio[0], height: ratio[1], bytes: bytes.length, checksum: createHash("sha256").update(bytes).digest("hex") }, update: {} });
       result = { assets: [assetSummary(asset)] };
+    } else if (snapshot.tool === "tts") {
+      const bytes = await (adapters.synthesizeSpeech || synthesizeSpeech)(config.voiceChannel, { text: snapshot.params.prompt, voice: snapshot.params.voice, signal: controller.signal });
+      const info = await (adapters.inspectMedia || inspectMediaBytes)(bytes, "mp3", { toolsURL: config.toolsURL, toolsKey: config.toolsKey, signal: controller.signal });
+      if (info.type !== "audio") throw new AppError("VOICE_RESULT_INVALID", 502);
+      const assetId = `${id}_studio_voice`, objectKey = `${output.userId}/original/${assetId}.mp3`;
+      await store.put(objectKey, bytes, info.contentType);
+      const asset = await db.asset.upsert({ where: { id: assetId }, create: { id: assetId, userId: output.userId, objectKey, kind: "original", contentType: info.contentType, width: 0, height: 0, bytes: bytes.length, checksum: createHash("sha256").update(bytes).digest("hex") }, update: {} });
+      // 时长随资源签发凭证，写回分镜时直接作为可信的旁白素材。
+      result = { assets: [{ ...assetSummary(asset), duration: info.duration, proof: videoMediaProof(output.userId, assetId, { type: "audio", duration: info.duration }) }] };
     } else if (snapshot.tool === "video") {
       if (reconcile && output.reconcileUntil <= new Date()) { await finishOutput(id, output.fence, { errorCode: "VIDEO_POLL_EXPIRED" }, db); return; }
       const references = [];

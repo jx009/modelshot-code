@@ -14,6 +14,7 @@ import { allowedProviderBaseURL, channelCapability, channelScope, validChannel }
 import sharp from "sharp";
 import { recognizeText } from "../../../../lib/domain/studio/ocr.js";
 import { upscaleVolcImage } from "../../../../lib/domain/studio/upscale.js";
+import { synthesizeSpeech } from "../../../../lib/domain/studio/voice.js";
 import { VIDEO_DURATIONS, videoModelOptions } from "../../../../lib/video/model-protocols.js";
 import { GPTBEST_VIDEO_APIS, validVideoParameters } from "../../../../lib/video/gptbest-catalog.js";
 import { videoVariantsSchema, videoFieldChoicesSchema } from "../../../../lib/video/variants.js";
@@ -27,7 +28,8 @@ function assertVideoSettings(kind, config) {
   if (Object.keys(config.videoFieldChoices || {}).some(key => !keys.includes(key))) throw new AppError("VIDEO_FIELDS_INVALID", 422);
 }
 const visualSecrets = { accessKeyId: z.string().max(4096).optional(), secretAccessKey: z.string().max(4096).optional() };
-const channelFields = { scope: z.enum(["public", "tool", "language"]).optional(), studioCapability: z.enum(["image", "video", "segment", "split", "language", "ocr", "upscale"]).optional(), imageMode: z.enum(["both", "generate", "edit"]).optional(), studioDefault: z.boolean().optional(),
+const channelFields = { scope: z.enum(["public", "tool", "language"]).optional(), studioCapability: z.enum(["image", "video", "segment", "split", "language", "ocr", "upscale", "voice"]).optional(),
+  voiceOptions: z.object({ voices: z.array(z.object({ id: z.string().regex(/^[a-zA-Z0-9_.:-]{1,64}$/), label: z.string().trim().min(1).max(40) }).strict()).min(1).max(30) }).strict().optional(), imageMode: z.enum(["both", "generate", "edit"]).optional(), studioDefault: z.boolean().optional(),
   videoVariants: videoVariantsSchema.optional(), videoFieldChoices: videoFieldChoicesSchema.optional(),
   videoApi: z.enum(GPTBEST_VIDEO_APIS.map(api => api.id)).optional(), videoParameters: z.record(z.string(), z.json()).refine(validVideoParameters).optional(),
   videoInputMode: z.enum(["text", "image", "both"]).optional(), videoReferenceMode: z.enum(["first_frame", "reference_images"]).optional(), videoDurations: z.array(z.union(VIDEO_DURATIONS.map(value => z.literal(value)))).min(1).max(VIDEO_DURATIONS.length).refine(values => new Set(values).size === values.length).optional() };
@@ -57,6 +59,7 @@ function safeConfig(configStr, row) {
     ...(channelCapability(row, cfg) === "video" ? { videoInputMode: videoModelOptions(row.kind, cfg)?.inputMode, videoDurations: videoModelOptions(row.kind, cfg)?.durations,
       ...(row.kind === "gptbest" ? { videoApi: videoModelOptions(row.kind, cfg).api, videoParameters: cfg.videoParameters || {}, videoVariants: cfg.videoVariants || [], videoFieldChoices: cfg.videoFieldChoices || {} } : {}),
       ...(row.kind === "zzshu" ? { videoReferenceMode: videoModelOptions(row.kind, cfg).referenceMode } : {}) } : {}),
+    ...(channelCapability(row, cfg) === "voice" ? { voiceOptions: cfg.voiceOptions || { voices: [] } } : {}),
   };
 }
 
@@ -138,10 +141,12 @@ export async function PATCH(req) {
       for (const field of Object.keys(channelFields)) if (input[field] !== undefined) cfg[field] = input[field];
       if (kind !== "zzshu" || cfg.studioCapability !== "video") delete cfg.videoReferenceMode;
       if (kind !== "gptbest" || cfg.studioCapability !== "video") { delete cfg.videoApi; delete cfg.videoParameters; delete cfg.videoVariants; delete cfg.videoFieldChoices; }
+      if (cfg.studioCapability !== "voice") delete cfg.voiceOptions;
       if (!validChannel(kind, cfg)) throw new AppError("PROVIDER_CAPABILITY_UNSUPPORTED", 422);
       assertVideoSettings(kind, cfg);
       if (kind === "volc-visual" && (!cfg.accessKeyIdEnc || !cfg.secretAccessKeyEnc)) throw new AppError(cfg.studioCapability === "upscale" ? "UPSCALE_NOT_CONFIGURED" : "SEGMENTATION_NOT_CONFIGURED", 422);
       if (cfg.studioCapability === "ocr" && !cfg.apiKeyEnc) throw new AppError("OCR_NOT_CONFIGURED", 422);
+      if (cfg.studioCapability === "voice" && (!cfg.apiKeyEnc || !cfg.baseURL)) throw new AppError("VOICE_NOT_CONFIGURED", 422);
       if (channelScope({ kind }, cfg) !== "public" && channelCapability({ kind }, cfg) === "image") cfg.studioDefault = false;
       if (cfg.studioDefault) {
         const rows = await tx.modelProvider.findMany();
@@ -178,11 +183,12 @@ export async function PUT(req) {
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended('provider-config', 0))::text`;
       const priority = (await tx.modelProvider.aggregate({ _max: { priority: true } }))._max.priority || 0;
       const config = { model: input.model, ...(input.chatModel ? { chatModel: input.chatModel } : {}), ...(input.baseURL ? { baseURL: normalizeBaseURL(input.baseURL) } : {}), ...(input.apiKey.trim() ? { apiKeyEnc: encryptSecret(input.apiKey.trim()) } : {}) };
-      for (const field of ["studioCapability", "imageMode", "scope", "videoInputMode", "videoDurations", "videoReferenceMode", "videoApi", "videoParameters", "videoVariants", "videoFieldChoices"]) if (input[field] !== undefined) config[field] = input[field];
+      for (const field of ["studioCapability", "imageMode", "scope", "videoInputMode", "videoDurations", "videoReferenceMode", "videoApi", "videoParameters", "videoVariants", "videoFieldChoices", "voiceOptions"]) if (input[field] !== undefined) config[field] = input[field];
       if (input.accessKeyId?.trim()) config.accessKeyIdEnc = encryptSecret(input.accessKeyId.trim());
       if (input.secretAccessKey?.trim()) config.secretAccessKeyEnc = encryptSecret(input.secretAccessKey.trim());
       if (input.kind === "volc-visual" && (!config.accessKeyIdEnc || !config.secretAccessKeyEnc)) throw new AppError(config.studioCapability === "upscale" ? "UPSCALE_NOT_CONFIGURED" : "SEGMENTATION_NOT_CONFIGURED", 422);
       if (config.studioCapability === "ocr" && !config.apiKeyEnc) throw new AppError("OCR_NOT_CONFIGURED", 422);
+      if (config.studioCapability === "voice" && (!config.apiKeyEnc || !config.baseURL)) throw new AppError("VOICE_NOT_CONFIGURED", 422);
       if (!validChannel(input.kind, config) || input.studioDefault) throw new AppError("PROVIDER_CAPABILITY_UNSUPPORTED", 422);
       assertVideoSettings(input.kind, config);
       if (input.scope === "language") await tx.modelProvider.updateMany({ data: { isPlanner: false } });
@@ -207,6 +213,12 @@ export async function POST(req) {
     if (channelCapability(provider) === "video") throw new AppError("VIDEO_TEST_USE_WORKSPACE", 422);
 
     const started = Date.now();
+    if (channelCapability(provider) === "voice") {
+      // 真实合成一句很短的旁白，验证地址、密钥、模型与第一个音色。
+      const config = await studioConfig(prisma, provider.name, "voice", null, { pinned: true });
+      const bytes = await synthesizeSpeech(config.voiceChannel, { text: "测试配音。", voice: config.voiceChannel?.voiceOptions?.voices?.[0]?.id, signal: AbortSignal.timeout(60000) });
+      return NextResponse.json({ ok: true, provider: provider.name, mode: "voice", bytes: bytes.length, durationMs: Date.now() - started });
+    }
     if (mode === "planner" || channelCapability(provider) === "language") {
       const config = await studioConfig(prisma, provider.name, "language", null, { pinned: true });
       await vision(config, { instruction: "Return only the word OK.", messages: [{ role: "user", text: "Connection test" }], maxTokens: 8, signal: AbortSignal.timeout(30000) });

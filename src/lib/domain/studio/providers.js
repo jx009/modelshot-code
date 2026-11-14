@@ -11,7 +11,7 @@ import { AppError } from "../../http.js";
 import { editThroughCompatibleGateway } from "../../ai/adapters/openai.js";
 import { downloadProviderImage } from "../../infra/storage/download.js";
 import { TOOLS } from "../../studio/tools.js";
-import { channelCapability, channelScope, toolRouting, supportsImageTask, supportsChannelCapability, segmentChannelReady, splitChannelReady, ocrChannelReady, upscaleChannelReady } from "../../studio/model-channels.js";
+import { channelCapability, channelScope, toolRouting, supportsImageTask, supportsChannelCapability, segmentChannelReady, splitChannelReady, ocrChannelReady, upscaleChannelReady, voiceChannelReady } from "../../studio/model-channels.js";
 import { generateCloudImage } from "./cloud.js";
 import { IMAGE_REQUEST_TIMEOUT_MS, imageFetch } from "../../ai/image-request.js";
 import { VIDEO_KINDS, VIDEO_PROTOCOLS, videoModelOptions } from "../../video/model-protocols.js";
@@ -31,7 +31,7 @@ export function resolveStudioConfig(rows, toolRows = [], channelName, capability
     else if (cap === "segment" && tool?.preview === "segment") {
       if (routing.segmentMode === "dedicated") { name = routing.segmentChannelName; internal = true; if (!name) throw new AppError("SEGMENTATION_NOT_CONFIGURED", 503); }
     } else if (["split", "ocr", "upscale"].includes(cap) && tool?.dependency === cap) { name = routing.channelName; internal = true; }
-    if (!name && capability === cap && (!tool || tool.dependency === cap && ["image", "video"].includes(cap))) name = channelName;
+    if (!name && capability === cap && (!tool || tool.dependency === cap && ["image", "video", "voice"].includes(cap))) name = channelName;
     const eligible = ["image", "video"].includes(cap) && !internal ? candidates.filter(row => channelScope(row) === "public") : candidates;
     if (name) {
       const selected = eligible.find(row => row.name === name);
@@ -52,7 +52,7 @@ export function resolveStudioConfig(rows, toolRows = [], channelName, capability
     if (!candidate) return null;
     const parsed = JSON.parse(candidate.config || "{}");
     return { name: candidate.name, kind: candidate.kind, model: parsed.model, baseURL: parsed.baseURL, apiKey: secret(candidate, parsed),
-      ...(candidate.kind === "volc-visual" ? { accessKeyId: parsed.accessKeyIdEnc ? decryptSecret(parsed.accessKeyIdEnc) : undefined, secretAccessKey: parsed.secretAccessKeyEnc ? decryptSecret(parsed.secretAccessKeyEnc) : undefined } : {}), creditCost: candidate.creditCost, displayName: candidate.displayName };
+      ...(candidate.kind === "volc-visual" ? { accessKeyId: parsed.accessKeyIdEnc ? decryptSecret(parsed.accessKeyIdEnc) : undefined, secretAccessKey: parsed.secretAccessKeyEnc ? decryptSecret(parsed.secretAccessKeyEnc) : undefined } : {}), ...(parsed.voiceOptions ? { voiceOptions: parsed.voiceOptions } : {}), creditCost: candidate.creditCost, displayName: candidate.displayName };
   };
   let segmentChannel = null;
   if (!skipPreview && !imageOnly) {
@@ -79,7 +79,7 @@ export function resolveStudioConfig(rows, toolRows = [], channelName, capability
     videoURL: videoConfig.baseURL || (!videoChannel ? process.env.ARK_BASE_URL : null) || VIDEO_PROTOCOLS[videoChannel?.kind || "volcengine"]?.baseURL,
     videoOptions: videoModelOptions(videoChannel?.kind || "volcengine", videoConfig),
     toolsURL: process.env.STUDIO_TOOLS_URL, toolsKey: process.env.STUDIO_TOOLS_KEY,
-    segmentChannel, splitChannel: imageOnly ? null : external("split"), ocrChannel: imageOnly ? null : external("ocr"), upscaleChannel: imageOnly ? null : external("upscale"),
+    segmentChannel, splitChannel: imageOnly ? null : external("split"), ocrChannel: imageOnly ? null : external("ocr"), upscaleChannel: imageOnly ? null : external("upscale"), voiceChannel: imageOnly ? null : external("voice"),
   };
 }
 
@@ -117,7 +117,11 @@ export async function capabilities(db = prisma, config, channelName, { imageOnly
     model.prices = selected.toolEnabled && supportsImageTask(selected, "generate") ? Object.fromEntries(POSTER_IMAGE_SIZES.filter(size => !imageSizeError(selected, size)).map(size => [size, imageCreditCost({ id: "generate", cost: model.creditCost, resolutionSurcharges: surcharges }, size, 0)])) : {};
   }
   const videoModels = rows.filter(row => channelScope(row) === "public" && channelCapability(row) === "video" && VIDEO_KINDS.includes(row.kind)).filter(row => { const parsed = JSON.parse(row.config || "{}"); return Boolean(parsed.apiKeyEnc && parsed.model && (parsed.baseURL || VIDEO_PROTOCOLS[row.kind].baseURL)); }).map(row => ({ id: row.name, label: row.displayName, cost: row.creditCost, ...publicVideoOptions(videoModelOptions(row.kind, JSON.parse(row.config || "{}"))) }));
-  return { imageModel: c.imageDisplayName, imageProvider: c.toolId ? c.requestedProvider : c.imageProvider, imageModels, videoModels, videoDefaults: publicVideoOptions(c.videoOptions), videoProvider: c.videoProvider, planningCost: c.plannerCreditCost, planningAvailable: Boolean(c.visionApiKey && c.chatModel),
+  // 旁白配音模型：只公开名称、价格与音色，凭据与接口地址留在服务端。
+  const voiceModels = imageOnly ? [] : rows.filter(row => channelCapability(row) === "voice").map(row => ({ row, parsed: JSON.parse(row.config || "{}") }))
+    .filter(({ row, parsed }) => voiceChannelReady({ kind: row.kind, apiKey: parsed.apiKeyEnc, model: parsed.model, baseURL: parsed.baseURL, voiceOptions: parsed.voiceOptions }))
+    .map(({ row, parsed }) => ({ id: row.name, label: row.displayName, cost: row.creditCost, voices: parsed.voiceOptions.voices }));
+  return { imageModel: c.imageDisplayName, imageProvider: c.toolId ? c.requestedProvider : c.imageProvider, imageModels, videoModels, voiceModels, videoDefaults: publicVideoOptions(c.videoOptions), videoProvider: c.videoProvider, planningCost: c.plannerCreditCost, planningAvailable: Boolean(c.visionApiKey && c.chatModel),
     tools: TOOLS.filter(tool => !imageOnly || ["generate", "edit"].includes(tool.id)).map(tool => {
       const setting = settings.find(row => row.toolId === tool.id), enabled = setting?.isEnabled !== false;
       let chosen, error;
@@ -125,9 +129,9 @@ export async function capabilities(db = prisma, config, channelName, { imageOnly
         // Explicit configurations are also used by isolated provider diagnostics.
         if (!("requestedProvider" in c) && !setting?.routing) chosen = { ...chosen, ...c }; }
       catch (e) { error = e.code; chosen = {}; }
-      const ready = { local: true, motion: external.includes("motion-render"), image: Boolean(chosen.apiKey) && supportsImageTask(chosen, tool.id === "generate" ? "generate" : "edit"), vision: Boolean(chosen.visionApiKey && chosen.chatModel), video: Boolean(chosen.videoKey && chosen.videoModel && chosen.videoURL), segment: segmentChannelReady(chosen.segmentChannel), split: splitChannelReady(chosen.splitChannel), "remove-bg": external.includes("remove-bg"), upscale: upscaleChannelReady(chosen.upscaleChannel), ocr: ocrChannelReady(chosen.ocrChannel) };
+      const ready = { local: true, motion: external.includes("motion-render"), image: Boolean(chosen.apiKey) && supportsImageTask(chosen, tool.id === "generate" ? "generate" : "edit"), vision: Boolean(chosen.visionApiKey && chosen.chatModel), video: Boolean(chosen.videoKey && chosen.videoModel && chosen.videoURL), segment: segmentChannelReady(chosen.segmentChannel), split: splitChannelReady(chosen.splitChannel), "remove-bg": external.includes("remove-bg"), upscale: upscaleChannelReady(chosen.upscaleChannel), ocr: ocrChannelReady(chosen.ocrChannel), voice: voiceChannelReady(chosen.voiceChannel) };
       const prices = tool.dependency === "image" ? surcharges : null;
-      const cost = tool.dependency === "image" ? chosen.imageCreditCost ?? 18 : tool.dependency === "vision" ? c.plannerCreditCost : tool.dependency === "video" ? chosen.videoCreditCost ?? setting?.creditCost ?? tool.cost : setting?.creditCost ?? tool.cost;
+      const cost = tool.dependency === "image" ? chosen.imageCreditCost ?? 18 : tool.dependency === "vision" ? c.plannerCreditCost : tool.dependency === "video" ? chosen.videoCreditCost ?? setting?.creditCost ?? tool.cost : tool.dependency === "voice" ? chosen.voiceChannel?.creditCost ?? setting?.creditCost ?? tool.cost : setting?.creditCost ?? tool.cost;
       const dependencyReady = !error && ready[tool.dependency], previewReady = !tool.preview || tool.previewOptional || ready[tool.preview];
       return { ...tool, cost, resolutionSurcharges: prices, billingResolutions: imageBillingResolutions(tool.id, chosen), enabled, ...(["inpaint", "expand"].includes(tool.id) ? { editStrategy: imageEditStrategy(chosen) } : {}), ...(tool.id === "inpaint" ? { maxUserReferences: chosen.imageKind === "dashscope" ? 1 : 2 } : {}), ...(tool.id === "upscale" ? { supportedScales: [2] } : {}), ...(tool.preview ? { objectSelectionAvailable: Boolean(enabled && ready[tool.preview]) } : {}), ...(tool.id === "split" ? { layerCountMode: chosen.splitChannel?.kind === "volc-visual" ? "auto" : "custom" } : {}), available: Boolean(enabled && dependencyReady && previewReady), reason: !enabled ? "TOOL_DISABLED" : !dependencyReady ? error || "SERVICE_NOT_CONFIGURED" : !previewReady ? "SEGMENTATION_NOT_CONFIGURED" : null };
     }) };

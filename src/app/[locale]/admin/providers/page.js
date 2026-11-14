@@ -17,7 +17,7 @@ const providerError = error => ["PROVIDER_BASE_URL_INVALID", "PROVIDER_PROXY_NOT
 
 const emptyChannel = { scope: "public", kind: "openai", studioCapability: "image", imageMode: "both", displayName: "", model: "", apiKey: "", accessKeyId: "", secretAccessKey: "", baseURL: "", creditCost: 18, costPerImage: 0.08 };
 const PURPOSE_LABELS = { image: "图像编辑", segment: "物体分割", split: "图层拆分", ocr: "OCR 文字识别", upscale: "图片超分" };
-const providerCategory = provider => channelCapability(provider, provider.config) === "video" ? "video" : channelScope(provider, provider.config);
+const providerCategory = provider => ["video", "voice"].includes(channelCapability(provider, provider.config)) ? channelCapability(provider, provider.config) : channelScope(provider, provider.config);
 const videoSettings = (kind, options) => ({ videoDurations: options.durations, videoInputMode: options.inputMode,
   ...(kind === "gptbest" ? { videoApi: options.api, videoParameters: options.parameters, videoVariants: options.variants || [], videoFieldChoices: options.fieldChoices || {} } : {}),
   ...(kind === "zzshu" ? { videoReferenceMode: options.referenceMode || "reference_images" } : {}) });
@@ -57,7 +57,7 @@ export default function AdminProviders() {
     mounted.current = true;
     const timer = setTimeout(() => {
       const requested = new URLSearchParams(window.location.search).get("category");
-      if (["public", "language", "tool"].includes(requested)) setCategory(requested);
+      if (["public", "video", "voice", "language", "tool"].includes(requested)) setCategory(requested);
       load();
       const purpose = new URLSearchParams(window.location.search).get("purpose");
       if (["ocr", "upscale"].includes(purpose)) { setCategory("tool"); setChannel(dedicatedPreset(purpose)); setAdding(true); }
@@ -112,16 +112,16 @@ export default function AdminProviders() {
     {reasonPrompt.dialog}
     <div className="flex items-start justify-between gap-4 flex-wrap">
       <div><h1 className="text-base font-medium text-primary-text">模型配置</h1><p className="text-xs text-secondary-text mt-1 leading-relaxed max-w-4xl">生图模型供用户选择；后台大语言模型用于自动调用、反推提示词等场景。工具专用模型仅在后台绑定，不进入用户模型列表。测试会产生上游费用。</p></div>
-      <button className="h-9 px-4 rounded-[10px] bg-primary text-primary-btn-text text-xs font-medium inline-flex items-center gap-1.5" onClick={() => { setChannel(category === "video" ? dedicatedPreset("video") : { ...emptyChannel, scope: category, studioCapability: category === "language" ? "language" : "image", creditCost: category === "language" ? 1 : 18 }); setAdding(true); }}><Plus size={14} />新增模型</button>
+      <button className="h-9 px-4 rounded-[10px] bg-primary text-primary-btn-text text-xs font-medium inline-flex items-center gap-1.5" onClick={() => { setChannel(["video", "voice"].includes(category) ? dedicatedPreset(category) : { ...emptyChannel, scope: category, studioCapability: category === "language" ? "language" : "image", creditCost: category === "language" ? 1 : 18 }); setAdding(true); }}><Plus size={14} />新增模型</button>
     </div>
 
-    <div className="flex flex-wrap gap-2" role="tablist" aria-label="模型分类">{[["public", "生图模型"], ["video", "视频模型"], ["language", "后台大语言模型"], ["tool", "工具专用模型"]].map(([id, label]) => <button key={id} role="tab" aria-selected={category === id} className={`px-4 py-2 rounded-[10px] text-sm border ${category === id ? "border-primary text-primary bg-primary-muted" : "border-divider text-secondary-text"}`} onClick={() => { setCategory(id); setAdding(false); }}>{label}</button>)}</div>
-    <p className="text-xs text-secondary-text">{category === "video" ? "支持 GPT-Best 视频接口、吱吱鼠 Videos JSON、第三方 OpenAI Videos、方舟 / Seedance、百炼 / 万相兼容协议。按供应商文档选择协议，填写自定义 Base URL、API Key 和实际模型名；同一家供应商可配置多个模型。仅 Chat Completions 兼容不代表视频接口兼容。" : category === "public" ? "图片工作台、海报配图与演示文稿配图共用这里的生图模型。" : category === "language" ? "后台通用大语言模型负责规划和反推提示词。OCR 在工具专用模型中独立配置，不会替换这里的通用模型。" : "按用途独立配置图像编辑、物体分割、图层拆分、OCR 和超分；再进入“工具配置”选择对应模型与单次积分。OCR 支持火山方舟或 OpenAI 兼容接口，超分使用火山 AK/SK。"}</p>
+    <div className="flex flex-wrap gap-2" role="tablist" aria-label="模型分类">{[["public", "生图模型"], ["video", "视频模型"], ["voice", "语音模型"], ["language", "后台大语言模型"], ["tool", "工具专用模型"]].map(([id, label]) => <button key={id} role="tab" aria-selected={category === id} className={`px-4 py-2 rounded-[10px] text-sm border ${category === id ? "border-primary text-primary bg-primary-muted" : "border-divider text-secondary-text"}`} onClick={() => { setCategory(id); setAdding(false); }}>{label}</button>)}</div>
+    <p className="text-xs text-secondary-text">{category === "voice" ? "分镜成片的旁白配音使用这里的语音模型，接口为 OpenAI 兼容 /v1/audio/speech（GPT-Best 等聚合服务同样适用）。填写 API 前缀、密钥、实际模型名，并列出允许用户选择的音色；每段旁白按“每次模型请求积分”计费。" : category === "video" ? "支持 GPT-Best 视频接口、吱吱鼠 Videos JSON、第三方 OpenAI Videos、方舟 / Seedance、百炼 / 万相兼容协议。按供应商文档选择协议，填写自定义 Base URL、API Key 和实际模型名；同一家供应商可配置多个模型。仅 Chat Completions 兼容不代表视频接口兼容。" : category === "public" ? "图片工作台、海报配图与演示文稿配图共用这里的生图模型。" : category === "language" ? "后台通用大语言模型负责规划和反推提示词。OCR 在工具专用模型中独立配置，不会替换这里的通用模型。" : "按用途独立配置图像编辑、物体分割、图层拆分、OCR 和超分；再进入“工具配置”选择对应模型与单次积分。OCR 支持火山方舟或 OpenAI 兼容接口，超分使用火山 AK/SK。"}</p>
     {category === "tool" && <div className="flex flex-wrap gap-2">{["ocr", "upscale"].map(purpose => <button key={purpose} type="button" className="h-9 px-4 rounded-[10px] border border-divider text-primary-text text-xs inline-flex items-center gap-1.5" onClick={() => { setChannel(dedicatedPreset(purpose)); setAdding(true); }}><Plus size={14} />新增{PURPOSE_LABELS[purpose]}配置</button>)}</div>}
     {adding && <form onSubmit={create} className="rounded-[16px] border border-primary/50 bg-primary-muted/20 p-5 space-y-4">
       <div className="flex items-center justify-between"><div><h2 className="text-sm font-medium text-primary-text">新增模型</h2><p className="text-xs text-secondary-text mt-1">凭据、地址和实际模型名只在服务端使用。</p></div><button type="button" className="text-secondary-text" onClick={() => setAdding(false)}><X size={16} /></button></div>
-      {category !== "language" && <Field label="配置预设"><select defaultValue="" onChange={e => { const preset = CHANNEL_PRESETS[Number(e.target.value)]; if (preset) { const { label, ...settings } = preset; setChannel({ ...emptyChannel, ...settings, scope: category === "video" ? "public" : category, displayName: label }); } }}><option value="" disabled>选择供应商</option>{CHANNEL_PRESETS.map((preset, index) => (category !== "tool" || preset.kind !== "minimax") && (category === "video" ? preset.studioCapability === "video" : preset.studioCapability !== "video" && (category === "tool" || preset.studioCapability === "image" && preset.imageMode !== "edit")) && <option key={preset.label} value={index}>{preset.label}</option>)}</select></Field>}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      {!["language", "voice"].includes(category) && <Field label="配置预设"><select defaultValue="" onChange={e => { const preset = CHANNEL_PRESETS[Number(e.target.value)]; if (preset) { const { label, ...settings } = preset; setChannel({ ...emptyChannel, ...settings, scope: category === "video" ? "public" : category, displayName: label }); } }}><option value="" disabled>选择供应商</option>{CHANNEL_PRESETS.map((preset, index) => (category !== "tool" || preset.kind !== "minimax") && (category === "video" ? preset.studioCapability === "video" : preset.studioCapability !== "video" && (category === "tool" || preset.studioCapability === "image" && preset.imageMode !== "edit")) && <option key={preset.label} value={index}>{preset.label}</option>)}</select></Field>}
+      {category === "voice" ? <VoiceChannelFields channel={channel} setChannel={setChannel} /> : <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {category === "tool" && <Field label="用途"><select value={channel.studioCapability} onChange={e => {
           const purpose = e.target.value;
           if (["ocr", "upscale"].includes(purpose)) setChannel(dedicatedPreset(purpose));
@@ -134,7 +134,7 @@ export default function AdminProviders() {
         {channel.kind === "volc-visual" ? <><Field label="Access Key ID (AK)"><input required type="password" autoComplete="off" value={channel.accessKeyId} onChange={e => setChannel(value => ({ ...value, accessKeyId: e.target.value }))} /></Field><Field label="Secret Access Key (SK)"><input required type="password" autoComplete="off" value={channel.secretAccessKey} onChange={e => setChannel(value => ({ ...value, secretAccessKey: e.target.value }))} /></Field></> : <Field label="API Key"><input required type="password" value={channel.apiKey} maxLength={4096} onChange={e => setChannel(value => ({ ...value, apiKey: e.target.value }))} placeholder="sk-…" /></Field>}
         <Field label="Base URL"><input type="url" value={channel.baseURL} maxLength={500} onChange={e => setChannel(value => ({ ...value, baseURL: e.target.value }))} placeholder="支持 HTTP / HTTPS，留空使用官方地址" /></Field>
         <Field label="每次模型请求积分"><input disabled={["ocr", "upscale"].includes(channel.studioCapability)} type="number" min="0" max="100000" step="1" value={channel.creditCost} onChange={e => setChannel(value => ({ ...value, creditCost: e.target.value }))} /></Field>
-      </div>
+      </div>}
       {channel.kind === "minimax" && <MiniMaxNotice />}
       {["ocr", "upscale"].includes(channel.studioCapability) && <p className="text-xs text-secondary-text">{channel.studioCapability === "ocr" ? "支持火山方舟和 OpenAI 兼容 Chat Completions 接口。填写支持图片输入、JSON 输出的模型；兼容服务的 Base URL 填写 API 前缀（通常以 /v1 结尾）。此配置只用于 OCR。" : "原生 2× 超分 · CVProcess · cn-north-1。需开通图片超分权限，AK/SK 与方舟 API Key 不通用。"} 用户积分请在“工具配置”中设置。</p>}
       <button disabled={savingId === "new"} className="h-9 px-4 rounded-[10px] bg-primary text-primary-btn-text text-xs font-medium inline-flex items-center gap-1.5">{savingId === "new" && <LoaderCircle size={12} className="animate-spin" />}保存新模型</button>
@@ -183,9 +183,10 @@ function ProviderCard({ provider: p, saving, testingId, testResult, onPatch, onT
   const [videoKind, setVideoKind] = useState(p.kind);
   const [videoOptions, setVideoOptions] = useState(() => videoModelOptions(p.kind, p.config));
   const [creditCost, setCreditCost] = useState(p.creditCost);
+  const [voices, setVoices] = useState(p.config.voiceOptions?.voices || []);
   const [costPerImage, setCost] = useState(p.costPerImage);
   const testMode = scope === "language" ? "planner" : "image", imageTest = testResult[`${p.id}:${testMode}`];
-  const save = () => { if (videoKind === "gptbest" && (!validVideoParameters(videoOptions?.parameters || {}) || !videoVariantsSchema.safeParse(videoOptions?.variants || []).success || !videoFieldChoicesSchema.safeParse(videoOptions?.fieldChoices || {}).success)) { toast.error("模型附加参数无效，请检查 JSON。"); return; } onPatch(p.id, { displayName: displayName.trim(), creditCost: Number(creditCost), costPerImage: Number(costPerImage), ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}), ...(accessKeyId.trim() ? { accessKeyId: accessKeyId.trim() } : {}), ...(secretAccessKey.trim() ? { secretAccessKey: secretAccessKey.trim() } : {}), baseURL, model, scope: selectedScope, studioCapability: selectedCapability, ...(selectedCapability === "video" && videoOptions ? { kind: videoKind, ...videoSettings(videoKind, videoOptions) } : {}), ...(selectedScope === "language" ? { isPlanner: true } : p.isPlanner ? { isPlanner: false } : {}) }, "模型配置已保存"); setApiKey(""); setAccessKeyId(""); setSecretAccessKey(""); };
+  const save = () => { if (videoKind === "gptbest" && (!validVideoParameters(videoOptions?.parameters || {}) || !videoVariantsSchema.safeParse(videoOptions?.variants || []).success || !videoFieldChoicesSchema.safeParse(videoOptions?.fieldChoices || {}).success)) { toast.error("模型附加参数无效，请检查 JSON。"); return; } onPatch(p.id, { displayName: displayName.trim(), creditCost: Number(creditCost), costPerImage: Number(costPerImage), ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}), ...(accessKeyId.trim() ? { accessKeyId: accessKeyId.trim() } : {}), ...(secretAccessKey.trim() ? { secretAccessKey: secretAccessKey.trim() } : {}), baseURL, model, scope: selectedScope, studioCapability: selectedCapability, ...(selectedCapability === "video" && videoOptions ? { kind: videoKind, ...videoSettings(videoKind, videoOptions) } : {}), ...(selectedCapability === "voice" ? { voiceOptions: { voices } } : {}), ...(selectedScope === "language" ? { isPlanner: true } : p.isPlanner ? { isPlanner: false } : {}) }, "模型配置已保存"); setApiKey(""); setAccessKeyId(""); setSecretAccessKey(""); };
 
   return <div className={`rounded-[16px] border p-5 space-y-4 ${(p.config.studioDefault || p.isDefault) ? "border-primary/50 bg-primary-muted/20" : "border-divider bg-bg-card surface-lit"}`}>
     <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -195,23 +196,51 @@ function ProviderCard({ provider: p, saving, testingId, testResult, onPatch, onT
     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
       <Field label="显示名称（模型映射名）"><input value={displayName} maxLength={100} onChange={e => setDisplayName(e.target.value)} placeholder="用户看到的名称" /></Field>
       <Field label={selectedCapability === "upscale" ? "超分算法（固定）" : selectedCapability === "ocr" ? "OCR 视觉模型 ID / Endpoint ID" : "模型名 / 火山 Endpoint ID"}><input readOnly={p.kind === "volc-visual"} value={model} maxLength={128} onChange={e => setModel(e.target.value)} placeholder={selectedCapability === "video" ? "供应商提供的实际视频模型 ID" : selectedCapability === "ocr" ? "支持读图的模型名或 Endpoint ID" : "例如：gpt-image-2"} /></Field>
-      <Field label="用途"><select value={["image", "language"].includes(selectedCapability) ? selectedScope : selectedCapability} onChange={e => {
+      {selectedCapability === "voice" ? <Field label="用途"><select value="voice" disabled><option value="voice">旁白配音 · 语音模型</option></select></Field> : <Field label="用途"><select value={["image", "language"].includes(selectedCapability) ? selectedScope : selectedCapability} onChange={e => {
         const purpose = e.target.value;
         setSelectedScope(purpose === "video" ? "public" : ["public", "language"].includes(purpose) ? purpose : "tool");
         setSelectedCapability(["public", "tool"].includes(purpose) ? "image" : purpose);
         if (purpose === "video" && !videoOptions) setVideoOptions(videoModelOptions(p.kind));
         if (p.kind === "volc-visual") setModel(purpose === "upscale" ? "lens_vida_nnsr" : "entity_seg");
-      }}>{VIDEO_KINDS.includes(p.kind) && <option value="video">视频生成 · 用户可选</option>}{p.kind === "minimax" && <option value="public">生图模型 · 用户可选</option>}{!["volc-visual", "fal", "minimax", "zzshu", "gptbest"].includes(p.kind) && <><option value="public">生图模型 · 用户可选</option><option value="language">后台通用大语言模型</option><option value="tool">图像编辑 · 工具专用</option></>}{["openai", "volcengine"].includes(p.kind) && <option value="ocr">OCR 文字识别 · 独立模型</option>}{["volc-visual", "fal"].includes(p.kind) && <option value="segment">物体分割</option>}{p.kind === "fal" && <option value="split">图层拆分</option>}{p.kind === "volc-visual" && <option value="upscale">图片超分 · 火山 2×</option>}</select></Field>
+      }}>{VIDEO_KINDS.includes(p.kind) && <option value="video">视频生成 · 用户可选</option>}{p.kind === "minimax" && <option value="public">生图模型 · 用户可选</option>}{!["volc-visual", "fal", "minimax", "zzshu", "gptbest"].includes(p.kind) && <><option value="public">生图模型 · 用户可选</option><option value="language">后台通用大语言模型</option><option value="tool">图像编辑 · 工具专用</option></>}{["openai", "volcengine"].includes(p.kind) && <option value="ocr">OCR 文字识别 · 独立模型</option>}{["volc-visual", "fal"].includes(p.kind) && <option value="segment">物体分割</option>}{p.kind === "fal" && <option value="split">图层拆分</option>}{p.kind === "volc-visual" && <option value="upscale">图片超分 · 火山 2×</option>}</select></Field>}
       {p.kind === "volc-visual" ? <><Field label={`Access Key ID (AK)${p.config.hasAccessKey ? " · 已配置" : ""}`}><input type="password" autoComplete="off" value={accessKeyId} onChange={e => setAccessKeyId(e.target.value)} placeholder={p.config.hasAccessKey ? "留空不变更" : "填写 AK"} /></Field><Field label={`Secret Access Key (SK)${p.config.hasSecretKey ? " · 已配置" : ""}`}><input type="password" autoComplete="off" value={secretAccessKey} onChange={e => setSecretAccessKey(e.target.value)} placeholder={p.config.hasSecretKey ? "留空不变更" : "填写 SK"} /></Field></> : <Field label={<>API Key {p.config.hasKey && <span className="text-success">（{p.config.keyMasked}）</span>}</>}><input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder={p.config.hasKey ? "留空不变更" : "sk-…"} /></Field>}
       <Field label="Base URL（对应协议地址）"><input type="url" value={baseURL} onChange={e => setBaseURL(e.target.value)} placeholder="支持 HTTP / HTTPS，留空使用官方地址" /></Field>
       <Field label="每次模型请求积分"><input disabled={["ocr", "upscale"].includes(selectedCapability)} type="number" min="0" max="100000" step="1" value={creditCost} onChange={e => setCreditCost(e.target.value)} /></Field>
       {scope !== "language" && <Field label="预估成本（美元/次）"><input type="number" min="0" step="0.001" value={costPerImage} onChange={e => setCost(e.target.value)} /></Field>}
     </div>
     {selectedCapability === "video" && videoOptions && <><Field label="视频接口协议"><select value={videoKind} onChange={event => { const kind = event.target.value; setVideoKind(kind); setVideoOptions(videoModelOptions(kind)); }}>{VIDEO_KINDS.map(kind => <option key={kind} value={kind}>{VIDEO_PROTOCOLS[kind].label}</option>)}</select></Field><VideoOptions kind={videoKind} value={videoOptions} onChange={setVideoOptions} /></>}
+    {selectedCapability === "voice" && <VoiceListEditor value={voices} onChange={setVoices} />}
     {p.kind === "minimax" && <MiniMaxNotice />}
     {["ocr", "upscale"].includes(selectedCapability) && <p className="text-xs text-secondary-text">{selectedCapability === "ocr" ? "OCR 独立调用此视觉大模型；不会改变后台通用大模型。识别后返回文字与估算位置。" : "火山图片超分 · 原生 2× · 输入最大 5 MB，宽 50–2128、高 50–4064 像素。"} 用户扣费以“工具配置”的单次积分为准。</p>}
     <div className="flex items-center gap-3 flex-wrap"><button onClick={save} disabled={saving || !displayName.trim() || !model.trim()} className="h-9 px-4 rounded-[10px] bg-primary text-primary-btn-text text-xs font-medium inline-flex items-center gap-1.5">{saving && <LoaderCircle size={12} className="animate-spin" />}保存配置</button>{selectedCapability !== "video" && <TestButton label="测试功能（产生上游费用）" busy={testingId === `${p.id}:${testMode}`} disabled={!p.isActive} result={imageTest} onClick={() => onTest(p.id, testMode)} />}</div>
   </div>;
+}
+
+const VOICE_LINE = /^([a-zA-Z0-9_.:-]{1,64})\s+(.{1,40})$/, LINE_BREAK = String.fromCharCode(10);
+function parseVoiceLines(text) {
+  const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  const voices = lines.map(line => VOICE_LINE.exec(line)).map(match => match && { id: match[1], label: match[2].trim() });
+  return voices.every(Boolean) && voices.length >= 1 && voices.length <= 30 && new Set(voices.map(voice => voice.id)).size === voices.length ? voices : null;
+}
+
+// 音色列表：每行“音色 ID + 空格 + 显示名称”，例如 alloy 温和女声。
+function VoiceListEditor({ value, onChange }) {
+  const [draft, setDraft] = useState(() => value.map(voice => `${voice.id} ${voice.label}`).join(LINE_BREAK));
+  const invalid = !parseVoiceLines(draft);
+  return <><Field label="可选音色（每行：音色 ID 空格 显示名称，最多 30 个）"><textarea rows={4} value={draft} onChange={event => {
+    setDraft(event.target.value); const parsed = parseVoiceLines(event.target.value); if (parsed) onChange(parsed);
+  }} placeholder={`alloy 温和女声${LINE_BREAK}echo 沉稳男声`} /></Field>{invalid && <p role="alert" className="text-xs text-danger">请按“音色 ID 显示名称”逐行填写，ID 只能包含字母、数字和 _ . : -，且不能重复。</p>}</>;
+}
+
+function VoiceChannelFields({ channel, setChannel }) {
+  return <div className="space-y-3"><div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+    <Field label="接口协议"><select value={channel.kind} onChange={event => setChannel(value => ({ ...value, kind: event.target.value }))}><option value="openai">OpenAI 兼容 · /v1/audio/speech</option><option value="gptbest">GPT-Best · /v1/audio/speech</option></select></Field>
+    <Field label="显示名称"><input required value={channel.displayName} maxLength={100} onChange={event => setChannel(value => ({ ...value, displayName: event.target.value }))} placeholder="例如：标准旁白配音" /></Field>
+    <Field label="语音模型名"><input required value={channel.model} maxLength={128} onChange={event => setChannel(value => ({ ...value, model: event.target.value }))} placeholder="供应商提供的 TTS 模型 ID" /></Field>
+    <Field label="API Key"><input required type="password" value={channel.apiKey} maxLength={4096} onChange={event => setChannel(value => ({ ...value, apiKey: event.target.value }))} placeholder="sk-…" /></Field>
+    <Field label="Base URL（API 前缀）"><input required type="url" value={channel.baseURL} maxLength={500} onChange={event => setChannel(value => ({ ...value, baseURL: event.target.value }))} placeholder="例如 https://api.example.com/v1" /></Field>
+    <Field label="每段旁白积分"><input type="number" min="0" max="100000" step="1" value={channel.creditCost} onChange={event => setChannel(value => ({ ...value, creditCost: event.target.value }))} /></Field>
+  </div><VoiceListEditor value={channel.voiceOptions?.voices || []} onChange={voices => setChannel(value => ({ ...value, voiceOptions: { voices } }))} /></div>;
 }
 
 function MiniMaxNotice() { return <p className="text-xs text-secondary-text">MiniMax 当前接入 image-01 文生图；不支持参考图或图像编辑。宽高各为 512–2048 像素、8 的倍数，提示词最多 1500 字符；不支持 4K。</p>; }

@@ -3,7 +3,9 @@ import { VIDEO_KINDS, VIDEO_PROTOCOLS, VIDEO_DURATIONS } from "../video/model-pr
 import { gptBestApi, validVideoParameters } from "../video/gptbest-catalog.js";
 
 export const STUDIO_KINDS = ["openai", "dashscope", "volcengine", "minimax", "volc-visual", "fal", "zzshu", "gptbest"];
-export const CHANNEL_CAPABILITIES = ["image", "video", "segment", "split", "language", "ocr", "upscale"];
+export const CHANNEL_CAPABILITIES = ["image", "video", "segment", "split", "language", "ocr", "upscale", "voice"];
+// 语音合成（TTS）：OpenAI 兼容 /v1/audio/speech。路径由代码决定，模型与音色由管理员配置。
+export const VOICE_KINDS = ["openai", "gptbest"];
 export const CHANNEL_PRESETS = [
   { label: "火山方舟 · 视频生成", kind: "volcengine", studioCapability: "video", scope: "public", model: "", baseURL: "https://ark.cn-beijing.volces.com/api/v3", creditCost: 30 },
   { label: "第三方 · OpenAI Videos 兼容", kind: "openai", studioCapability: "video", scope: "public", model: "", baseURL: "", videoInputMode: "both", videoDurations: [4, 8, 12], creditCost: 30 },
@@ -22,6 +24,8 @@ export const CHANNEL_PRESETS = [
   { label: "火山方舟 · OCR 文字识别", kind: "volcengine", studioCapability: "ocr", scope: "tool", model: "", baseURL: "https://ark.cn-beijing.volces.com/api/v3", creditCost: 1 },
   { label: "火山智能视觉 · 图片超分 2×", kind: "volc-visual", studioCapability: "upscale", scope: "tool", model: "lens_vida_nnsr", baseURL: "https://visual.volcengineapi.com", creditCost: 4 },
   { label: "OpenAI 兼容 · OCR 文字识别", kind: "openai", studioCapability: "ocr", scope: "tool", model: "", baseURL: "https://api.openai.com/v1", creditCost: 1 },
+  { label: "OpenAI 兼容 · 语音合成（旁白配音）", kind: "openai", studioCapability: "voice", scope: "tool", model: "", baseURL: "", voiceOptions: { voices: [{ id: "alloy", label: "默认音色" }] }, creditCost: 2 },
+  { label: "GPT-Best · 语音合成（旁白配音）", kind: "gptbest", studioCapability: "voice", scope: "tool", model: "", baseURL: "", voiceOptions: { voices: [{ id: "alloy", label: "默认音色" }] }, creditCost: 2 },
 ];
 
 function inferFalCapability(config = {}) {
@@ -53,7 +57,7 @@ export function supportsImageTask(config, task) {
 }
 
 export function channelScope(row, config = JSON.parse(row.config || "{}")) {
-  if ((row.kind || row.name) === "volc-visual" || ["ocr", "upscale"].includes(channelCapability(row, config))) return "tool";
+  if ((row.kind || row.name) === "volc-visual" || ["ocr", "upscale", "voice"].includes(channelCapability(row, config))) return "tool";
   if (channelCapability(row, config) === "language") return "language";
   return config.scope || (channelCapability(row, config) === "video" || channelCapability(row, config) === "image" && supportsImageTask(config, "generate") ? "public" : "tool");
 }
@@ -74,6 +78,7 @@ export function validChannel(kind, config) {
   if (!STUDIO_KINDS.includes(kind)) return !config.studioCapability;
   const capability = channelCapability({ kind }, config);
   if (!CHANNEL_CAPABILITIES.includes(capability)) return false;
+  if (capability === "voice") return VOICE_KINDS.includes(kind) && config.scope === "tool" && Boolean(config.model?.trim()) && validVoiceOptions(config.voiceOptions);
   if (["zzshu", "gptbest"].includes(kind) && capability !== "video") return false;
   if (kind === "minimax") return capability === "image" && config.scope === "public" && config.imageMode === "generate" && config.model === "image-01";
   if (kind === "volc-visual") return config.scope === "tool" && (capability === "segment" && config.model === "entity_seg" || capability === "upscale" && config.model === "lens_vida_nnsr");
@@ -88,6 +93,18 @@ export function validChannel(kind, config) {
       && new Set(config.videoDurations).size === config.videoDurations.length && config.videoDurations.every(value => (kind === "openai" ? VIDEO_PROTOCOLS.openai.durations : VIDEO_DURATIONS).includes(value)));
   if (capability === "ocr") return ["openai", "volcengine"].includes(kind) && config.scope === "tool" && Boolean(config.model?.trim());
   return capability === "image" && ["both", "generate", "edit"].includes(config.imageMode || "both") && (!config.scope || ["public", "tool"].includes(config.scope)) && (config.scope !== "public" || supportsImageTask(config, "generate"));
+}
+
+const VOICE_ID = /^[a-zA-Z0-9_.:-]{1,64}$/;
+export function validVoiceOptions(options) {
+  const voices = options?.voices;
+  return Array.isArray(voices) && voices.length >= 1 && voices.length <= 30
+    && voices.every(voice => VOICE_ID.test(voice?.id || "") && typeof voice.label === "string" && voice.label.trim().length > 0 && voice.label.length <= 40)
+    && new Set(voices.map(voice => voice.id)).size === voices.length;
+}
+
+export function voiceChannelReady(channel) {
+  return Boolean(VOICE_KINDS.includes(channel?.kind) && channel.apiKey && channel.model && channel.baseURL && validVoiceOptions(channel.voiceOptions));
 }
 
 export function segmentChannelReady(channel) {

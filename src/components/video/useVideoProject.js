@@ -8,6 +8,7 @@ import { uploadImage } from "@/lib/upload-image";
 import { registerNavigationGuard } from "@/lib/navigation-guard";
 import { appendVideoReference, referenceRole } from "@/lib/video/references";
 
+export const FRAME_SIZES = { "16:9": "1536x1024", "9:16": "1024x1536", "1:1": "1024x1024", "4:5": "1024x1536" };
 const blank = (mode, provider, initialVideo, initialPrompt) => ({ name: mode === "motion" ? "分镜成片" : "单镜头视频", content: { schemaVersion: 1, layers: [], messages: [], jobs: [], appliedJobs: [], video: { ...(provider ? { provider } : {}), media: [], composition: null, ratio: "16:9", duration: 5, ...initialVideo, mode, prompt: initialPrompt || initialVideo?.prompt || "" } } });
 export default function useVideoProject({ documentId, mode, userId, guardNavigation = false, initialProvider, initialVideo, initialPrompt }) {
   const [draft, setDraft] = useState(() => blank(mode, initialProvider, initialVideo, initialPrompt)), live = useRef(draft);
@@ -144,6 +145,8 @@ export default function useVideoProject({ documentId, mode, userId, guardNavigat
             const content = { ...current.content, video: { ...current.content.video }, layers: [...current.content.layers], messages: [...current.content.messages], appliedJobs: [...current.content.appliedJobs] };
             for (const job of [...ready].reverse()) {
               if (content.appliedJobs.includes(job.id)) continue;
+              // 首帧候选图只在候选条中展示，不进入视频作品列表。
+              if (job.tool === "generate") { content.appliedJobs.push(job.id); continue; }
               if (job.resultData?.motion) { content.video.composition = job.resultData.motion; content.video.ratio = job.resultData.motion.ratio; content.video.confirmed = true; }
               for (const asset of job.resultData?.assets || []) if (!content.layers.some(layer => layer.assetId === asset.id)) content.layers.push({ id: `video-${job.id}`, assetId: asset.id, type: "video", name: `${current.name}.mp4`, x: 0, y: 0, width: asset.width || 1280, height: asset.height || 720, rotation: 0, visible: true, opacity: 1, sourceJobId: job.id, ...(asset.posterAssetId ? { posterAssetId: asset.posterAssetId } : {}), ...(asset.duration ? { duration: asset.duration } : {}) });
               content.messages.push({ id: `result-${job.id}`, role: "assistant", text: job.resultData?.motion ? "分镜已就绪：可以在分镜表里直接修改画面、旁白和时长，确认后点击「生成视频」。也可以继续告诉我想怎么改。" : job.tool === "motion-render" ? "成片已导出，可以播放和下载。" : "视频已完成，可以播放和下载。" });
@@ -171,14 +174,14 @@ export default function useVideoProject({ documentId, mode, userId, guardNavigat
       if (!restore && submission.current?.body && submission.current.fingerprint !== fingerprint) throw new Error("VIDEO_SUBMISSION_UNCONFIRMED");
       if (!submission.current || !restore && submission.current.fingerprint !== fingerprint) {
         submission.current = { key: requestKey(), fingerprint, body: null };
-        if (prompt) change(current => ({ ...current, name: current.content.messages.length ? current.name : promptTitle(prompt), content: { ...current.content, messages: [...current.content.messages, { id: requestKey(), role: "user", text: prompt }] } }));
+        if (prompt && tool !== "generate") change(current => ({ ...current, name: current.content.messages.length ? current.name : promptTitle(prompt), content: { ...current.content, messages: [...current.content.messages, { id: requestKey(), role: "user", text: prompt }] } }));
       }
       const pending = submission.current;
       if (!pending.body) {
         const saved = await save(), video = live.current.content.video;
         const source = video.media.find(item => item.type === "image");
         pending.body = { origin: "chat", tool, ...(tool === "video" && offer.provider ? { provider: offer.provider } : {}), expectedCost: offer.cost, documentId: saved.id, documentVersion: saved.version, ...(tool === "video" && source ? { assetId: source.id } : {}),
-          params: { prompt, ratio: video.ratio, duration: video.duration, media: video.media, ...(tool === "video" && video.videoVariant ? { videoVariant: video.videoVariant } : {}), ...(tool === "video" && video.videoFields ? { videoFields: video.videoFields } : {}), ...(["motion-plan", "motion-render"].includes(tool) && video.composition ? { motion: video.composition } : {}) } };
+          params: tool === "generate" ? { prompt, size: FRAME_SIZES[video.ratio] || "1024x1024" } : { prompt, ratio: video.ratio, duration: video.duration, media: video.media, ...(tool === "video" && video.videoVariant ? { videoVariant: video.videoVariant } : {}), ...(tool === "video" && video.videoFields ? { videoFields: video.videoFields } : {}), ...(["motion-plan", "motion-render"].includes(tool) && video.composition ? { motion: video.composition } : {}) } };
       }
       if (restore && !idRef.current && pending.body.documentId) {
         idRef.current = pending.body.documentId; version.current = pending.body.documentVersion; setId(pending.body.documentId);

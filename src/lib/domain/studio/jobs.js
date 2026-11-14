@@ -194,7 +194,8 @@ async function submitAdmittedJob(userId, data, key, db, deps, posterContext = nu
     }
     const document = posterContext ? null : await tx.studioDocument.findFirst({ where: { id: data.documentId, userId, deletedAt: null } });
     if (!posterContext && !document) throw new AppError("DOCUMENT_NOT_FOUND", 404);
-    if (["motion", "video"].includes(document?.kind) && !["motion-plan", "motion-render", "video"].includes(data.tool)) throw new AppError("INVALID_VIDEO_TOOL", 422);
+    // 单镜头工程允许先生成首帧候选图；其余图像工具仍只属于画布。
+    if (["motion", "video"].includes(document?.kind) && !["motion-plan", "motion-render", "video"].includes(data.tool) && !(document.kind === "video" && data.tool === "generate")) throw new AppError("INVALID_VIDEO_TOOL", 422);
     if (["motion-plan", "motion-render", "video"].includes(data.tool) && await tx.tryOn.count({ where: { userId, status: { in: ACTIVE }, snapshot: { path: ["documentId"], equals: data.documentId } } })) throw new AppError("DOCUMENT_BUSY", 409);
     if (data.tool === "video" && data.params.media) {
       if (document.content.video?.mode !== "video" || digestJson(data.params.media) !== digestJson(document.content.video.media)) throw new AppError("VIDEO_MEDIA_CHANGED", 409);

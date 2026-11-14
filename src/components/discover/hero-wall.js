@@ -46,4 +46,5 @@ export const WALL_COLUMNS = (() => {
   return columns;
 })();
 
-export const sceneImage = file => `/inspiration/generated/${file}.webp`;
+// 装饰位一律用预生成的 480px 缩略图（scripts/build-inspiration-thumbs.mjs）
+export const sceneImage = file => `/inspiration/thumbs/${file}-480.webp`;

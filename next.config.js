@@ -1,6 +1,5 @@
 import createNextIntlPlugin from "next-intl/plugin";
 import { createRequire } from "node:module";
-import { fileURLToPath } from "node:url";
 import { deploymentAssetConfig } from "./src/lib/deployment-assets.mjs";
 
 const withNextIntl = createNextIntlPlugin("./src/i18n/request.js");
@@ -20,7 +19,10 @@ const nextConfig = {
   // c2pa-node 含 napi 原生二进制，不能打包进 ESM chunk，需作为外部依赖
   serverExternalPackages: signingEnabled ? ["c2pa-node"] : [],
 
-  // 优化 chunk 分割，减少首屏加载体积
+  // 自动记忆化组件与 hooks；项目已开启 react-hooks 的编译器规则（refs / purity /
+  // immutability 等）并通过 lint，代码满足编译器前提。
+  reactCompiler: true,
+
   experimental: {
     optimizePackageImports: ["lucide-react"],
     // Reuse recently visited page shells on this browser. User data is still
@@ -30,37 +32,6 @@ const nextConfig = {
 
   turbopack: {
     resolveAlias: signingEnabled ? {} : { "c2pa-node": "./src/lib/c2pa-disabled.js" },
-  },
-
-  webpack(config, { isServer }) {
-    if (!signingEnabled) config.resolve.alias["c2pa-node"] = fileURLToPath(new URL("./src/lib/c2pa-disabled.js", import.meta.url));
-
-    // 客户端优化：标记大型库为异步加载
-    if (!isServer) {
-      config.optimization = config.optimization || {};
-      config.optimization.splitChunks = {
-        ...config.optimization.splitChunks,
-        cacheGroups: {
-          ...config.optimization.splitChunks?.cacheGroups,
-          // 将 Konva 单独打包成独立 chunk
-          konva: {
-            test: /[\\/]node_modules[\\/](konva|react-konva)[\\/]/,
-            name: "konva",
-            chunks: "async",
-            priority: 10,
-          },
-          // 将大型 UI 库单独打包
-          uiLibs: {
-            test: /[\\/]node_modules[\\/]lucide-react[\\/]/,
-            name: "ui-libs",
-            chunks: "async",
-            priority: 9,
-          },
-        },
-      };
-    }
-
-    return config;
   },
 };
 

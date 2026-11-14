@@ -209,7 +209,7 @@ export default function DiscoverHome() {
   <section className="cr-creation-hero lh-hero" ref={hero.ref} onPointerMove={hero.onPointerMove} onPointerLeave={hero.onPointerLeave}>
     <div className="lh-wall" aria-hidden="true">
       {WALL_COLUMNS.map((tiles, column) => <div className="lh-wall-col" key={column} style={{ "--lh-speed": `${[78, 104, 88, 118][column % 4]}s`, "--lh-dir": column % 2 ? "reverse" : "normal" }}>
-        {[...tiles, ...tiles].map((tile, index) => <Image key={`${tile[0]}-${index}`} src={sceneImage(tile[0])} alt="" width={tile[1]} height={tile[2]} unoptimized aria-hidden className="lh-wall-img" />)}
+        {[...tiles, ...tiles].map((tile, index) => <Image key={`${tile[0]}-${index}`} src={sceneImage(tile[0])} alt="" width={tile[1]} height={tile[2]} unoptimized decoding="async" fetchPriority="low" aria-hidden className="lh-wall-img" />)}
       </div>)}
     </div>
     <div className="lh-veil" aria-hidden="true" />

@@ -37,6 +37,10 @@
   ::view-transition-new(root) { animation: none; }
 }
 
+/* 加载图标旋转：视频工作台（vm-spin）与首页创作输入框（ca-spin）共用，不依赖各自页面的样式文件。 */
+.vm-spin, .ca-spin { animation: ui-spin 1s linear infinite; }
+@keyframes ui-spin { to { transform: rotate(360deg); } }
+
 .navigation-retry {
   display:inline-block; margin-top:16px; text-decoration:underline;
 }

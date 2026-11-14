@@ -1,7 +1,8 @@
 "use client";
+import { BrandMark } from "@/components/BrandLogo";
 
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { ArrowUp, FileImage, LoaderCircle, MessageSquare, PanelLeftClose, PanelLeftOpen, Paperclip, TriangleAlert, SlidersHorizontal, RefreshCw, X } from "lucide-react";
+import { ArrowUp, FileImage, LoaderCircle, MessageSquare, PanelLeftClose, PanelLeftOpen, Paperclip, TriangleAlert, SlidersHorizontal, RefreshCw, X, ArrowUpRight } from "lucide-react";
 import { api, requestKey } from "@/lib/client-api";
 import ReferenceAssets, { referenceAssetIds } from "./ReferenceAssets";
 import ReferenceFiles from "./ReferenceFiles";
@@ -35,6 +36,12 @@ function subscribeCompact(onChange) {
   return () => media?.removeEventListener("change", onChange);
 }
 const active = status => ["queued", "running", "cancelling"].includes(status);
+
+const SLIDE_IDEAS = [
+  ["为咖啡新品发布会做一份 10 页 PPT，品牌调性温暖", "A 10-slide launch deck for a new coffee, warm brand tone"],
+  ["季度经营复盘汇报，图表清晰、商务风格", "Quarterly business review, clear charts, corporate style"],
+  ["给小学生讲太阳系的科普课件，活泼有趣", "A playful solar-system lesson for primary school"],
+];
 
 export default function CreationWorkspace({ userId, projectId, initialSessionId, initialFileId, zh }) {
   const text = (cn, en) => zh ? cn : en;
@@ -313,12 +320,13 @@ export default function CreationWorkspace({ userId, projectId, initialSessionId,
 
     <nav className="cw-mobile-tabs" aria-label={text("工作区视图", "Workspace view")}><button aria-pressed={mobileTab === "chat"} onClick={() => setMobileTab("chat")}><MessageSquare size={15} />{text("对话", "Chat")}</button><button aria-pressed={mobileTab === "artwork"} onClick={() => setMobileTab("artwork")}><FileImage size={15} />{text("作品", "Artwork")}</button></nav>
     <WorkspaceSplit userId={userId} zh={zh}>
-      <aside className="cw-chat"><header><div className="cw-chat-heading"><strong title={title}>{title}</strong></div><button aria-label={text("刷新项目", "Refresh project")} onClick={() => void refreshContent().catch(notify)}><RefreshCw size={15} /></button><button className="cw-chat-toggle" aria-expanded={!chatCollapsed} aria-label={text("收起创作对话", "Collapse creation chat")} onClick={() => setChatCollapsed(true)}><PanelLeftClose size={16} /></button></header>
+      <aside className="cw-chat"><header><div className="cw-chat-heading"><strong>{text("创作对话", "Conversation")}</strong></div><button aria-label={text("刷新项目", "Refresh project")} onClick={() => void refreshContent().catch(notify)}><RefreshCw size={15} /></button><button className="cw-chat-toggle" aria-expanded={!chatCollapsed} aria-label={text("收起创作对话", "Collapse creation chat")} onClick={() => setChatCollapsed(true)}><PanelLeftClose size={16} /></button></header>
         <ConversationViewport key={sessionId || projectId} scrollRef={conversation} changeKey={`${messages.items[0]?.id}:${messages.items.at(-1)?.id}:${messages.items.length}:${run?.id}:${run?.eventSequence}:${stepsOpen}`} visibilityKey={`${mobileTab}:${chatCollapsed}`} hasNewer={messages.hasNewer} onLatest={latestMessages} zh={zh}>
           {loading && <p role="status">{text("正在读取项目…", "Loading project…")}</p>}
           {messages.nextCursor && <button disabled={moreBusy} onClick={more}>{text("更早的对话", "Earlier messages")}</button>}
           {messages.items.length >= 100 && <button onClick={latestMessages}>{text("回到最新对话", "Return to latest messages")}</button>}
-          {!loading && !messages.items.length && <div className="cw-chat-welcome"><span>AI</span><h2>{text("从一个想法开始", "Start with an idea")}</h2><p>{text("告诉我创作主题、用途和需要保留的准确文案。", "Describe the topic, purpose and exact copy to include.")}</p></div>}
+          {!loading && !messages.items.length && <div className="cw-chat-welcome ws-welcome"><span className="ws-orb" aria-hidden="true"><BrandMark size={28} /></span><h2>{text("输入主题，一键生成 PPT", "Type a topic, get a deck")}</h2><p>{text("写清主题、受众和页数，AI 先给出大纲供你确认，再逐页生成可编辑的幻灯片。", "Describe the topic, audience and length. Review the outline, then get editable slides page by page.")}</p>
+            <div className="ws-suggestions">{SLIDE_IDEAS.map(([cn, en]) => <button type="button" key={cn} disabled={busy || Boolean(pending)} onClick={() => setPrompt(zh ? cn : en)}><span>{zh ? cn : en}</span><ArrowUpRight size={14} /></button>)}</div></div>}
           {messages.items.map(message => <CreationMessage key={message.id} message={message} completed={message.id === completedMessageId} artifacts={project?.artifacts} projectKind={project?.kind} zh={zh} onWarm={warmCreationEditor} onOpen={(id, kind) => selectFile(id, id === fileId, kind)} onOutline={openOutline} />)}
           {run?.parentRunId && <button onClick={() => { setRunId(run.parentRunId); setRevision(value => value + 1); }}>{text("返回完整创作计划", "Back to workflow")}</button>}
           {run && (run.status !== "succeeded" || stepsOpen) && <div id="creation-task-details"><CreationTaskStatus run={run} expanded={stepsOpen} onToggle={() => setStepsOpen(value => !value)} zh={zh} busy={busy} budget={budget} onBudget={setBudget} onCancel={() => act("cancel")} onResume={() => act("resume")} onChild={id => { setRunId(id); setRevision(value => value + 1); }} onReview={() => openOutline(run.kind === "agent" ? run.steps.find(step => step.status !== "succeeded" && step.result?.childRunId)?.result.childRunId : run.id)} /></div>}
@@ -330,7 +338,7 @@ export default function CreationWorkspace({ userId, projectId, initialSessionId,
         <form className="cw-composer" onSubmit={send}>
           {assetIds.length > 0 && <ReferenceAssets value={assetIds} onChange={setAssetIds} disabled={busy || Boolean(pending) || loading} hidePicker zh={zh} />}
           {reference && <div className="cw-reference-chip"><FileImage size={13} /><span>{reference.label}</span><button type="button" disabled={busy || Boolean(pending)} aria-label={text("取消引用", "Remove reference")} onClick={() => setReference(null)}><X size={13} /></button></div>}
-          <AutoGrowTextarea aria-label={text("创作需求", "Creation request")} value={prompt} maxLength={12000} disabled={busy || Boolean(pending)} onChange={event => setPrompt(event.target.value)} placeholder={text(reference ? "描述要修改的内容…" : "说出你的想法，演示文稿、分析报告、海报长图即刻生成，Enter 发送", reference ? "Describe the changes…" : "Describe what you want to create…")} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing && event.nativeEvent.keyCode !== 229) { event.preventDefault(); if (!event.repeat) event.currentTarget.form.requestSubmit(); } }} />
+          <AutoGrowTextarea aria-label={text("创作需求", "Creation request")} value={prompt} maxLength={12000} disabled={busy || Boolean(pending)} onChange={event => setPrompt(event.target.value)} placeholder={text(reference ? "描述要修改的内容…" : "描述演示主题、受众和页数…", reference ? "Describe the changes…" : "Describe the topic, audience and length…")} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing && event.nativeEvent.keyCode !== 229) { event.preventDefault(); if (!event.repeat) event.currentTarget.form.requestSubmit(); } }} />
           <div className="cw-composer-actions">
             <button type="button" aria-label={text("添加参考文档", "Add reference documents")} title={text("添加参考文档", "Add reference documents")} aria-expanded={attachmentsOpen} onClick={() => setAttachmentsOpen(value => !value)}><Paperclip size={16} />{referenceIds.length > 0 && <small>{referenceIds.length}</small>}</button>
             {project?.kind === "slides" && <OfficeImport key={projectId} compact controllerRef={officeImport} dropTarget={workspaceRoot} projectId={projectId} kind="slides" zh={zh} disabled={busy || Boolean(pending) || loading || Boolean(editingFile)} onSelect={selectFile} onImported={refreshContent} />}

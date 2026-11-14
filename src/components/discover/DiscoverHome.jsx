@@ -30,6 +30,7 @@ import VideoLauncher from "@/components/video/VideoLauncher";
 import dynamic from "next/dynamic";
 import "./home-composer.css";
 import "./home.css";
+import "./home-launchers.css";
 import { sceneImage } from "./hero-wall";
 import HeroWall from "./HeroWall";
 import { HOME_SCENES, HOME_CHIPS } from "./home-scenes";

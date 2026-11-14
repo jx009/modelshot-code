@@ -28,7 +28,7 @@ test("curates generated inspiration, publishes a site output and reuses its full
     expect((await request.get("/api/inspiration/not-published/image")).status()).toBe(404);
     await page.goto("/zh/explore");
     await expect(page).toHaveURL(/\/zh#inspiration$/);
-    await expect(page.getByRole("navigation", { name: "创作导航", exact: true }).getByRole("link", { name: "灵感发现", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("navigation", { name: "主导航", exact: true }).getByRole("link", { name: "灵感发现", exact: true })).toHaveCount(0);
     await expect(page.locator(".ig-card")).toHaveCount(DEFAULT_ITEMS.length);
     await expect(page.locator(".ig-masonry")).toBeVisible();
     await loadGalleryImages(page);

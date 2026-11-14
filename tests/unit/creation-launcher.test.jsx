@@ -85,7 +85,7 @@ it("replays the exact unconfirmed artwork request even when current quotes chang
   await waitFor(() => expect(screen.getByLabelText("Creation request").disabled).toBe(true));
   fireEvent.click(screen.getByText("Settings"));
   expect(screen.getByRole("checkbox", { name: "AI artwork · 4 credits" }).disabled).toBe(true);
-  expect(document.querySelector(".cr-creation-options>span").textContent).toBe("6 credits");
+  expect(document.querySelector(".cr-creation-cost").textContent).toBe("6 credits");
   fireEvent.submit(screen.getByRole("button", { name: "Recover submission" }).closest("form"));
   await waitFor(() => expect(mocks.push).toHaveBeenCalled());
   expect(mocks.api.mock.calls.find(([url]) => url.includes("/messages"))[1]).toMatchObject({ key: "saved-run-key", body });

@@ -1,0 +1,150 @@
+/* ══════════ 首页输入框：视频 / PPT / 电商套图三个标签 ══════════
+   与图片标签统一：胶囊工具按钮、深色参数浮层、带积分的橙色发送按钮。
+   所有规则限定在首屏 .lh-hero 内，不影响这些组件在其他页面的样式。 */
+
+/* 首屏背景固定为深色作品墙。内部组件读取主题变量，在浅色主题下会渲染成白色表单；
+   这里把整块首屏的变量锁定为深色值，所有子组件随之一致。 */
+.cr-shell.ls .lh-hero {
+  color-scheme: dark;
+  --bg-page: #0e0e10; --bg-card: #151517; --bg-card-hover: #1f1f23; --bg-elevated: #1a1a1d;
+  --bg-popover: #1c1c20; --bg-popover-selected: #2a2a2f;
+  --divider: rgba(255, 255, 255, .1); --divider-strong: rgba(255, 255, 255, .18);
+  --primary-text: #f4f2ee; --secondary-text: #b3b1b8; --tertiary-text: #8d8b93;
+  --primary: #FF6A2B; --primary-hover: #FF7F47; --primary-muted: rgba(255, 106, 43, .16); --primary-btn-text: #170804;
+  --glass-bg: rgba(18, 18, 20, .66); --glass-border: rgba(255, 255, 255, .1);
+}
+
+/* ── 视频 / PPT 输入器（CreationComposer） ── */
+.cr-shell.ls .lh-composer .cr-creation-launcher {
+  display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; align-items: center; gap: 6px; padding: 0 2px 4px;
+}
+.cr-shell.ls .lh-hero .lh-composer .cr-creation-launcher > textarea {
+  grid-column: 1 / -1; grid-row: 1; height: 112px; min-height: 0; padding: 18px 10px 8px;
+  font-size: var(--text-md); line-height: 1.65; color: #fff;
+}
+.cr-shell.ls .lh-composer .cr-creation-launcher > textarea::placeholder { color: rgba(255, 255, 255, .38); }
+
+.cr-shell.ls .lh-composer .cr-creation-launcher .cw-reference-assets .cw-add-reference,
+.cr-shell.ls .lh-composer .cr-creation-settings > summary {
+  display: inline-flex; align-items: center; gap: 6px; height: 34px; min-height: 0; padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, .12); border-radius: 999px; background: transparent;
+  color: rgba(255, 255, 255, .7); font-size: var(--text-sm); box-shadow: none;
+  transition: color var(--dur-fast), border-color var(--dur-fast), background var(--dur-fast);
+}
+.cr-shell.ls .lh-composer .cr-creation-launcher .cw-reference-assets .cw-add-reference:hover:not(:disabled),
+.cr-shell.ls .lh-composer .cr-creation-settings > summary:hover,
+.cr-shell.ls .lh-composer .cr-creation-settings[open] > summary {
+  color: #fff; border-color: rgba(255, 255, 255, .3); background: rgba(255, 255, 255, .07);
+}
+
+.cr-shell.ls .lh-composer .cr-creation-settings-panel {
+  bottom: 44px; min-width: 300px; padding: 14px; gap: 12px;
+  border: 1px solid rgba(255, 255, 255, .12); border-radius: 16px;
+  background: rgba(24, 24, 27, .96); backdrop-filter: blur(20px); box-shadow: 0 24px 60px -20px rgba(0, 0, 0, .8);
+  animation: lh-pop var(--dur-base) var(--ease-out-expo) both; transform-origin: bottom left;
+}
+.cr-shell.ls .lh-composer .cr-creation-settings-panel > label { font-size: var(--text-sm); color: rgba(255, 255, 255, .66); }
+.cr-shell.ls .lh-composer .cr-creation-settings-panel .cr-creation-secondary {
+  height: 34px; border: 1px solid rgba(255, 255, 255, .14); border-radius: 10px; background: rgba(255, 255, 255, .06); color: #fff;
+}
+
+/* 表单控件：参数浮层与电商输入器共用 */
+.cr-shell.ls .lh-composer .cr-creation-settings-panel select,
+.cr-shell.ls .lh-composer .cr-creation-settings-panel input[type=number],
+.cr-shell.ls .lh-composer .cr-commerce-launcher select,
+.cr-shell.ls .lh-composer .cr-commerce-launcher input:not([type=file]) {
+  height: 34px; padding: 0 10px; border: 1px solid rgba(255, 255, 255, .12); border-radius: 10px;
+  background: rgba(255, 255, 255, .05); color: #fff; font: inherit; font-size: var(--text-sm); outline: none;
+  transition: border-color var(--dur-fast), background var(--dur-fast);
+}
+.cr-shell.ls .lh-composer .cr-creation-settings-panel select:focus,
+.cr-shell.ls .lh-composer .cr-commerce-launcher select:focus,
+.cr-shell.ls .lh-composer .cr-commerce-launcher input:focus { border-color: var(--primary); background: rgba(255, 255, 255, .08); }
+.cr-shell.ls .lh-composer select option { background: #1c1c20; color: #fff; }
+
+/* ── 统一的发送按钮：积分 + 圆形箭头 ── */
+.cr-shell.ls .lh-composer .cr-creation-options > .cr-send,
+.cr-shell.ls .lh-composer .cr-commerce-launcher .cr-send {
+  grid-column: 4; grid-row: 3; justify-self: end; display: inline-flex; align-items: center; gap: 10px;
+  width: auto; height: 42px; min-width: 0; aspect-ratio: auto; margin: 0 0 0 auto; padding: 0 5px 0 14px;
+  border: 0; border-radius: 999px; background: #FF6A2B; color: #170804;
+  font-size: var(--text-sm); font-weight: 650; font-variant-numeric: tabular-nums;
+  box-shadow: 0 14px 34px -14px rgba(255, 106, 43, 1);
+  transition: transform var(--dur-base) var(--ease-spring), box-shadow var(--dur-base), filter var(--dur-fast);
+}
+.cr-shell.ls .lh-composer .cr-commerce-launcher .cr-send { padding: 0 5px; }
+.cr-shell.ls .lh-composer .cr-creation-options > .cr-send:hover:not(:disabled),
+.cr-shell.ls .lh-composer .cr-commerce-launcher .cr-send:hover:not(:disabled) {
+  transform: translateY(-2px); box-shadow: 0 0 0 6px rgba(255, 106, 43, .16), 0 18px 40px -14px rgba(255, 106, 43, 1);
+}
+.cr-shell.ls .lh-composer .cr-creation-options > .cr-send:disabled,
+.cr-shell.ls .lh-composer .cr-commerce-launcher .cr-send:disabled { filter: saturate(.35) brightness(.7); opacity: 1; }
+.cr-shell.ls .lh-composer .cr-send .cr-creation-cost {
+  display: inline-flex; align-items: center; gap: 4px; color: inherit; font-size: inherit; opacity: .85;
+}
+.cr-shell.ls .lh-composer .cr-send .cr-send-icon,
+.cr-shell.ls .lh-composer .cr-commerce-launcher .cr-send > svg {
+  display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: rgba(0, 0, 0, .16);
+}
+.cr-shell.ls .lh-composer .cr-commerce-launcher .cr-send > svg { padding: 7px; box-sizing: border-box; }
+
+.cr-shell.ls .lh-composer .cr-creation-note,
+.cr-shell.ls .lh-composer .cr-creation-error { padding: 4px 10px 0; color: rgba(255, 255, 255, .55); font-size: var(--text-xs); }
+.cr-shell.ls .lh-composer .cr-creation-error { color: #FFB4AB; }
+
+/* ── 电商套图输入器：需求描述放第一位，素材与商品信息收成两行紧凑工具区 ──
+   第二行：两个上传胶囊 + 产品名 / 品牌；第三行：平台 / 地区 / 语言 + 发送。
+   字段标签视觉隐藏但保留可访问名称，表单仍可按标签定位与填写。 */
+.cr-shell.ls .lh-composer .cr-commerce-launcher {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; padding: 0 6px 4px; border: 0; min-width: 0;
+}
+.cr-shell.ls .lh-composer .cr-commerce-launcher > textarea {
+  order: -1; flex: 0 0 100%; display: block; width: 100%; height: 104px; margin: 0; padding: 18px 6px 4px; border: 0; outline: 0; resize: none;
+  background: transparent; color: #fff; font-size: var(--text-md); line-height: 1.65;
+}
+.cr-shell.ls .lh-composer .cr-commerce-launcher > textarea::placeholder { color: rgba(255, 255, 255, .38); }
+.cr-shell.ls .lh-composer .cr-home-images { flex: none; display: flex; align-items: center; gap: 6px; padding: 0; }
+.cr-shell.ls .lh-composer .cr-home-images > div { position: relative; }
+.cr-shell.ls .lh-composer .cr-home-images > p { display: none; }
+.cr-shell.ls .lh-composer .cr-home-image {
+  position: relative; display: inline-flex; flex-direction: row; align-items: center; gap: 6px;
+  width: auto; height: 34px; padding: 0 12px; overflow: hidden;
+  border: 1px dashed rgba(255, 255, 255, .22); border-radius: 999px; background: transparent;
+  color: rgba(255, 255, 255, .7); font-size: var(--text-sm); white-space: nowrap;
+  transition: border-color var(--dur-fast), background var(--dur-fast), color var(--dur-fast);
+}
+.cr-shell.ls .lh-composer .cr-home-image:hover { border-color: var(--primary); color: #fff; background: rgba(255, 106, 43, .08); }
+.cr-shell.ls .lh-composer .cr-home-image svg { width: 16px; height: 16px; flex: none; }
+/* 已上传：显示为带缩略图的方块，悬停出现移除按钮 */
+.cr-shell.ls .lh-composer .cr-home-image:has(img) { width: 34px; padding: 0; border-style: solid; border-color: rgba(255, 255, 255, .25); border-radius: 10px; }
+.cr-shell.ls .lh-composer .cr-home-image:has(img) span { display: none; }
+.cr-shell.ls .lh-composer .cr-home-remove {
+  position: absolute; top: -6px; right: -6px; z-index: 2; display: grid; place-items: center; width: 18px; height: 18px;
+  border-radius: 50%; background: #000c; color: #fff;
+}
+.cr-shell.ls .lh-composer .cr-home-fields { flex: 1 1 320px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 0; padding: 0; }
+.cr-shell.ls .lh-composer .cr-home-fields.three { flex: 1 1 360px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.cr-shell.ls .lh-composer .cr-home-fields label { display: block; min-width: 0; margin: 0; }
+.cr-shell.ls .lh-composer .cr-field-label {
+  position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+}
+.cr-shell.ls .lh-composer .cr-home-fields input,
+.cr-shell.ls .lh-composer .cr-home-fields select { width: 100%; border-radius: 999px; padding: 0 14px; }
+.cr-shell.ls .lh-composer .cr-home-fields input::placeholder { color: rgba(255, 255, 255, .4); }
+.cr-shell.ls .lh-composer .cr-home-notice {
+  flex: 0 0 100%; margin: 0; padding: 8px 12px; border-radius: 12px; background: rgba(255, 106, 43, .1); color: #ffd2bf; font-size: var(--text-xs);
+}
+.cr-shell.ls .lh-composer .cr-home-notice a,
+.cr-shell.ls .lh-composer .cr-home-notice button { margin-left: 8px; color: inherit; text-decoration: underline; }
+.cr-shell.ls .lh-composer .cr-commerce-launcher .cr-composer-bottom { flex: none; display: flex; align-items: center; gap: 8px; margin: 0 0 0 auto; padding: 0; }
+.cr-shell.ls .lh-composer .cr-model-label { display: none; }
+
+@media (max-width: 600px) {
+  .cr-shell.ls .lh-composer .cr-home-fields,
+  .cr-shell.ls .lh-composer .cr-home-fields.three { flex-basis: 100%; }
+  .cr-shell.ls .lh-composer .cr-creation-settings-panel { min-width: 0; width: calc(100vw - 48px); }
+}
+
+/* 未添加素材时不显示"按顺序提交"说明，素材按钮保持胶囊宽度 */
+.cr-shell.ls .lh-composer .vg-references:not(:has(article, .vg-frame-slot)) .vg-reference-caption { display: none; }
+.cr-shell.ls .lh-composer .cr-creation-launcher .vg-references { justify-self: start; margin: 0; }

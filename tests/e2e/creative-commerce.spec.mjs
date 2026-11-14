@@ -14,7 +14,7 @@ test("inspiration and homepage carry a brief into the agent without fabricating 
   await expect(page.getByRole("button", { name: "开始策划", exact: true })).toBeDisabled();
   await expect(page.locator(".ca-card")).toHaveCount(0);
   await page.goto("/zh");
-  await page.getByRole("tab", { name: /电商套图 Agent/ }).click();
+  await page.getByRole("tab", { name: /电商套图/ }).click();
   await page.getByLabel("产品名称", { exact: true }).fill("黄铜台灯");
   await page.getByLabel("品牌名", { exact: true }).fill("暮光");
   await page.getByLabel("目标平台", { exact: true }).selectOption("shopify");

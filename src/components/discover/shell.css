@@ -119,37 +119,3 @@
     border: 1px solid var(--divider); color: inherit; background: transparent;
   }
 }
-
-/* ── 紧凑工作区（视频 / PPT）的侧栏：只显示图标 ── */
-.cr-shell.ls.cr-shell-creation .cr-sidebar nav a { justify-content: center; }
-.cr-shell.ls.cr-shell-creation .cr-sidebar nav a > .ls-nav-icon {
-  display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px;
-  transition: background var(--dur-fast), color var(--dur-fast);
-}
-.cr-shell.ls.cr-shell-creation .cr-sidebar nav a > span:not(.ls-nav-icon) { display: none; }
-.cr-shell.ls.cr-shell-creation[data-navigation-expanded] .cr-sidebar nav a { justify-content: flex-start; }
-.cr-shell.ls.cr-shell-creation[data-navigation-expanded] .cr-sidebar nav a > span:not(.ls-nav-icon) { display: inline; }
-.cr-shell.ls.cr-shell-creation .cr-sidebar nav a.active { background: transparent; }
-.cr-shell.ls.cr-shell-creation .cr-sidebar nav a.active > .ls-nav-icon { background: var(--primary-muted); color: var(--primary); }
-.cr-shell.ls.cr-shell-creation .cr-sidebar nav a:hover > .ls-nav-icon { background: var(--bg-card-hover); }
-.cr-shell.ls.cr-shell-creation .cr-sidebar-bottom { display: none; }
-@media (max-width: 600px) {
-  /* 窄屏只保留 logo 图形，给积分与登录按钮让出空间 */
-  .cr-shell.ls .ls-wordmark span { display: none; }
-  .cr-shell.ls .cr-topbar-context { gap: 10px; }
-}
-
-/* ── 紧凑工作区（视频 / PPT）桌面端：统一为左侧 56px 图标轨 ──
-   logo、展开按钮与导航只出现在图标轨；顶栏不再重复 logo 与展开按钮。
-   覆盖 workbench.css（隐藏侧栏）与 workspace-density.css（显示侧栏）之间的冲突；
-   选择器双写 .ls 以提高特异性，结果不依赖各页面样式的加载顺序。 */
-@media (min-width: 601px) {
-  .cr-shell.ls.ls.cr-shell-creation .cr-sidebar {
-    display: flex; flex-direction: column; align-items: center; width: 56px; padding: 14px 7px; box-shadow: none; z-index: 40;
-  }
-  .cr-shell.ls.ls.cr-shell-creation .cr-main { margin-left: 56px; }
-  .cr-shell.ls.ls.cr-shell-creation[data-navigation-expanded] .cr-sidebar { width: 208px; padding-inline: 12px; align-items: stretch; }
-  .cr-shell.ls.ls.cr-shell-creation[data-navigation-expanded] .cr-main { margin-left: 208px; }
-  .cr-shell.ls.ls.cr-shell-creation .cr-topbar .cr-creation-navigation,
-  .cr-shell.ls.ls.cr-shell-creation[data-workspace=video] .cr-topbar .cr-creation-navigation { display: none; }
-}

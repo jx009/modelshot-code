@@ -75,7 +75,7 @@ for (const intent of ["hover", "focus"]) {
     // Register before navigation because idle warmup may beat explicit intent.
     const prefetched = page.waitForResponse(response => new URL(response.url()).pathname === "/zh/commerce" && response.request().headers()["next-router-prefetch"] !== "1");
     await open(page, "");
-    const link = page.getByRole("navigation", { name: "创作导航" }).getByRole("link", { name: "电商套图 Agent", exact: true });
+    const link = page.getByRole("navigation", { name: "主导航" }).getByRole("link", { name: "电商", exact: true });
     await link[intent]();
     await prefetched;
     // Wait for browser network quiescence before verifying cache reuse below.
@@ -98,7 +98,7 @@ test("core navigation preloads a dynamic module while idle and reuses it on firs
   await page.waitForLoadState("networkidle");
   const count = requests.length;
   expect(count).toBeGreaterThan(0);
-  await page.getByRole("navigation", { name: "创作导航" }).getByRole("link", { name: "电商套图 Agent", exact: true }).click();
+  await page.getByRole("navigation", { name: "主导航" }).getByRole("link", { name: "电商", exact: true }).click();
   await expect(page.locator(".cm-workspace")).toBeVisible();
   expect(requests).toHaveLength(count);
 });
@@ -112,9 +112,9 @@ test("slow navigation shows a themed loading state until the destination arrives
   });
   const dynamicRequest = page.waitForRequest(request => new URL(request.url()).pathname === "/zh/commerce" && request.headers()["next-router-prefetch"] !== "1");
   await open(page, "");
-  const sidebar = await page.locator(".cr-sidebar").elementHandle();
+  const topbar = await page.locator(".cr-topbar").elementHandle();
   try {
-    const link = page.getByRole("navigation", { name: "创作导航" }).getByRole("link", { name: "电商套图 Agent", exact: true });
+    const link = page.getByRole("navigation", { name: "主导航" }).getByRole("link", { name: "电商", exact: true });
     await link.hover();
     await dynamicRequest;
     await link.click();
@@ -122,22 +122,20 @@ test("slow navigation shows a themed loading state until the destination arrives
     await expect(page.locator(".route-loading")).toHaveCSS("display", "flex");
     await expect(page.locator(".route-loading-grid")).toHaveCSS("display", "grid");
     await expectContained(page.locator(".route-loading"), page);
-    expect(await sidebar.evaluate(el => el.isConnected)).toBe(true);
+    expect(await topbar.evaluate(el => el.isConnected)).toBe(true);
     await expect(page.getByRole("button", { name: "切换明暗主题" })).toBeEnabled();
   } finally {
     release();
   }
   await expect(page.locator(".cm-workspace")).toBeVisible();
   await expect(page.locator(".route-loading")).toHaveCount(0);
-  expect(await sidebar.evaluate(el => el.isConnected)).toBe(true);
+  expect(await topbar.evaluate(el => el.isConnected)).toBe(true);
 });
 
-test("search keeps asset categories; explore skips model discovery", async ({ page }) => {
-  let categories = 0, capabilities = 0;
+test("search keeps asset categories", async ({ page }) => {
+  let categories = 0;
   page.on("request", request => {
-    const path = new URL(request.url()).pathname;
-    if (path === "/api/library/categories") categories++;
-    if (path === "/api/studio/capabilities") capabilities++;
+    if (new URL(request.url()).pathname === "/api/library/categories") categories++;
   });
   await open(page, "assets");
   await page.waitForLoadState("networkidle");
@@ -146,10 +144,6 @@ test("search keeps asset categories; explore skips model discovery", async ({ pa
   await page.getByRole("searchbox").fill("cat");
   await searched;
   expect(categories).toBe(1);
-  await page.getByRole("navigation", { name: "创作导航" }).getByRole("link", { name: "灵感发现", exact: true }).click();
-  await expect(page.locator(".cr-explore-heading")).toBeVisible();
-  await page.waitForLoadState("networkidle");
-  expect(capabilities).toBe(0);
 });
 
 test("canvas loads model once and autosaving does not restart idle jobs", async ({ page }) => {

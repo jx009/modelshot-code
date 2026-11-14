@@ -83,7 +83,6 @@ for (const theme of ["dark", "light"]) for (const width of [1440, 800, 390]) {
     await expect(banner).toBeVisible();
     await expect(topbar.getByRole("button", { name: "最近项目", exact: true })).toBeVisible();
     const mobileNav = 0;
-    if (width <= 600) await expect(page.locator(".cr-sidebar")).toBeHidden();
     const expectedTop = (await banner.boundingBox()).height + mobileNav;
     const heroBefore = await page.locator(".cr-creation-hero").boundingBox();
     const surface = topbar.locator(".cr-topbar-surface");
@@ -151,7 +150,7 @@ for (const width of [1440, 390]) test(`announcement offsets home, projects and c
     await expect(banner).toBeVisible();
     await expect(banner.getByRole("link", { name: "立即查看" })).toHaveAttribute("href", "/zh/explore");
     const rect = await banner.boundingBox();
-    const shell = page.locator(path.includes("studio-v2") ? ".ms-studio" : width <= 600 ? ".cr-topbar" : ".cr-sidebar");
+    const shell = page.locator(path.includes("studio-v2") ? ".ms-studio" : ".cr-topbar");
     await expect(shell).toBeVisible();
     const box = await shell.boundingBox();
     expect(box.y).toBeGreaterThanOrEqual(rect.height - 1);

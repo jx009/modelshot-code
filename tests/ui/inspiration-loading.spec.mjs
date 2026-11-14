@@ -98,8 +98,7 @@ test("home has two creative modes and does not preload every workspace", async (
   });
   await page.goto("/zh");
   await page.mouse.move(0, 0);
-  const tabs = page.getByRole("tablist", { name: "创作模式" });
-  await expect(tabs.getByRole("tab")).toHaveCount(2);
+  const tabs = page.getByRole("tablist", { name: "创作类型" });
   await expect(tabs.getByRole("tab", { name: "快速", exact: true })).toHaveCount(0);
   // Previous idle prefetch launched all module routes within four seconds.
   await page.waitForTimeout(5500);

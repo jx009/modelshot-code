@@ -1,4 +1,5 @@
 "use client";
+import { BrandMark } from "@/components/BrandLogo";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useLocale } from "next-intl";
@@ -8,7 +9,7 @@ import { api, requestKey, terminalStatus } from "@/lib/client-api";
 import { useNavigationRouter } from "@/hooks/useNavigationRouter";
 import Link from "@/components/ui/NavigationLink";
 import GuestGate from "@/components/ui/GuestGate";
-import { ArrowUp, Check, Clapperboard, Download, FileVideo, ImagePlus, LoaderCircle, Upload, X } from "lucide-react";
+import { ArrowUp, Check, Clapperboard, Download, FileVideo, ImagePlus, LoaderCircle, Upload, X, ArrowUpRight } from "lucide-react";
 import useVideoProject from "./useVideoProject";
 import VideoMediaHint, { VIDEO_MEDIA_ACCEPT } from "./VideoMediaHint";
 import VideoSubmissionRecovery from "./VideoSubmissionRecovery";
@@ -69,6 +70,17 @@ const errorCopy = {
   VIDEO_POLL_EXPIRED: "视频模型处理超时，本次任务已结束。",
 };
 const statusLabel = { queued: "等待开始", running: "正在生成", reconciling: "模型处理中", succeeded: "已完成", failed: "执行失败", cancelled: "已取消", partial_success: "部分完成" };
+
+const VIDEO_IDEAS = [
+  ["清晨的海边小镇，镜头缓慢推进，海鸥掠过", "A seaside town at dawn, slow push-in, gulls flying past"],
+  ["运动鞋在雨夜街头溅起水花，慢动作特写", "Sneakers splashing on a rainy street, slow-motion close-up"],
+  ["一杯咖啡升起热气，暖色逆光，微距镜头", "Steam rising from coffee, warm backlight, macro shot"],
+];
+const MOTION_IDEAS = [
+  ["新品咖啡 15 秒宣传短片，节奏明快，结尾出现品牌标语", "A 15s upbeat coffee promo ending with the brand line"],
+  ["把三张商品图做成带字幕的种草视频", "Turn three product shots into a captioned showcase video"],
+  ["城市夜景延时风格的品牌开场动画", "A city-night timelapse style brand intro"],
+];
 
 function Workspace({ documentId, initialMode, userId, zh }) {
   const router = useNavigationRouter();
@@ -158,7 +170,8 @@ function Workspace({ documentId, initialMode, userId, zh }) {
     {project.recovery && <div className="vm-recovery" role="status">{text("发现尚未保存的本机草稿。", "An unsaved local draft is available.")}<button disabled={loading || project.loadFailed} onClick={project.recover}>{text("恢复草稿", "Restore draft")}</button><button onClick={project.discardRecovery}>{text("使用服务器版本", "Use saved version")}</button></div>}
     <WorkspaceSplit userId={userId} zh={zh}>
       {chatOpen && <aside className="vm-chat" aria-label={text("创作对话", "Creation conversation")}><div className="vm-chat-scroll">
-        {!draft.content.messages.length && <p className="vm-chat-hint">{motion ? text("描述创意，添加素材，生成可编辑的视频方案。", "Describe an idea and add media to create an editable video plan.") : text("描述画面，并按所选模型添加参考素材生成视频。", "Describe a scene or add a first-frame image to generate video.")}</p>}
+        {!draft.content.messages.length && <div className="vm-chat-hint ws-welcome"><span className="ws-orb" aria-hidden="true"><BrandMark size={28} /></span><h2>{motion ? text("把创意做成一段视频", "Turn an idea into a video") : text("一句话，生成一段视频", "One sentence, one video")}</h2><p>{motion ? text("描述创意并添加素材，AI 先生成可编辑的分镜方案，确认后导出 MP4。", "Describe the idea and add media. Review an editable plan, then export MP4.") : text("描述主体、动作和镜头，或上传一张图片作为首帧，按所选模型生成视频。", "Describe the subject, action and camera, or upload a first frame.")}</p>
+          <div className="ws-suggestions">{(motion ? MOTION_IDEAS : VIDEO_IDEAS).map(([cn, en]) => <button type="button" key={cn} disabled={disabled} onClick={() => setPrompt(zh ? cn : en)}><span>{zh ? cn : en}</span><ArrowUpRight size={14} /></button>)}</div></div>}
         {draft.content.messages.map(message => <article key={message.id} className={`vm-message is-${message.role}`}><span>{message.role === "user" ? text("你", "You") : "来塔绘梦"}</span><p>{message.text}</p></article>)}
         {jobs.slice(0, 8).map(job => <article className={`vm-job is-${job.status}`} key={job.id} role="status">{!terminalStatus(job.status) ? <LoaderCircle size={15} className="vm-spin" /> : job.status === "succeeded" ? <Check size={15} /> : <X size={15} />}<div><strong>{job.tool === "motion-render" ? text("导出 MP4", "Export MP4") : job.tool === "motion-plan" ? text("制作动效工程", "Compose motion") : text("生成视频", "Generate video")} · {zh ? statusLabel[job.status] || job.status : job.status}</strong>{!terminalStatus(job.status) && <p>{job.cancelRequested ? text("正在取消，请稍候…", "Cancelling…") : text("任务在后台执行，完成后作品会自动显示。", "Running in the background. Results appear automatically.")}</p>}{job.status === "succeeded" && job.resultData?.assets?.[0] && <p><button onClick={() => { setResultId(job.resultData.assets[0].id); setEditing(false); setTab("preview"); }}>{text("查看视频", "View video")}</button><a href={`/api/assets/${job.resultData.assets[0].id}?download=1`} download>{text("下载 MP4", "Download MP4")}</a></p>}{job.status === "succeeded" && job.resultData?.providerTaskId && <details><summary>{text("任务信息", "Task details")}</summary><p>{text("任务 ID", "Task ID")}: <code>{job.resultData.providerTaskId}</code></p>{job.resultData.providerVideoId && <p>{text("视频 ID", "Video ID")}: <code>{job.resultData.providerVideoId}</code></p>}</details>}{job.errorCode && job.status === "failed" && <p>{zh ? errorCopy[job.errorCode] || job.errorCode : job.errorCode}</p>}</div>{!terminalStatus(job.status) && <button disabled={job.cancelRequested} onClick={() => project.cancel(job)}>{text("取消", "Cancel")}</button>}</article>)}<div ref={chatEnd} />
       </div><form className="vm-composer" onSubmit={send}>

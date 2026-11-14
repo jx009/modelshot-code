@@ -115,7 +115,7 @@ for (const theme of ["dark", "light"]) for (const width of [320, 390]) {
     await page.addInitScript(value => localStorage.setItem("theme", value), theme);
     await fixtures(page);
     await page.goto("/zh");
-    await expect(page.locator(".cr-sidebar")).toBeHidden();
+    await expect(page.getByRole("navigation", { name: "主导航" })).toBeHidden();
     const trigger = page.getByRole("button", { name: "打开导航菜单" });
     const drawer = page.getByRole("dialog", { name: "创作导航" });
     await expect(trigger).toHaveAttribute("aria-expanded", "false");
@@ -126,9 +126,9 @@ for (const theme of ["dark", "light"]) for (const width of [320, 390]) {
     await page.screenshot({ path: info.outputPath(`mobile-collapsed-${theme}-${width}.png`), animations: "disabled" });
     await trigger.click();
     await expect(trigger).toHaveAttribute("aria-expanded", "true");
-    await expect(drawer.getByRole("navigation").getByRole("link")).toHaveCount(6);
-    await expect(drawer.getByRole("link", { name: "创作首页" })).toHaveAttribute("aria-current", "page");
-    await expect(drawer.getByRole("link", { name: "自由画布" })).toBeVisible();
+    await expect(drawer.getByRole("navigation").getByRole("link")).toHaveCount(7);
+    await expect(drawer.getByRole("link", { name: "首页" })).toHaveAttribute("aria-current", "page");
+    await expect(drawer.getByRole("link", { name: "图像" })).toBeVisible();
     await page.screenshot({ path: info.outputPath(`mobile-drawer-${theme}-${width}.png`), animations: "disabled" });
     await page.keyboard.press("Escape");
     await expect(drawer).toHaveCount(0);
@@ -137,24 +137,24 @@ for (const theme of ["dark", "light"]) for (const width of [320, 390]) {
     await page.mouse.click(width - 5, 400);
     await expect(drawer).toHaveCount(0);
     await trigger.click();
-    await drawer.getByRole("link", { name: "我的项目" }).click();
+    await drawer.getByRole("link", { name: "作品" }).click();
     await expect(page).toHaveURL(/\/zh\/projects$/);
     await expect(drawer).toHaveCount(0);
     await trigger.click();
-    await expect(drawer.getByRole("link", { name: "我的项目" })).toHaveAttribute("aria-current", "page");
+    await expect(drawer.getByRole("link", { name: "作品" })).toHaveAttribute("aria-current", "page");
     await drawer.getByRole("button", { name: "关闭导航菜单" }).click();
     await expect(trigger).toBeFocused();
   });
 }
 
-test("mobile drawer closes on desktop resize and desktop keeps its sidebar", async ({ page }) => {
+test("mobile drawer closes on desktop resize and desktop shows the top navigation", async ({ page }) => {
   await fixtures(page);
   await page.setViewportSize({ width: 390, height: 820 });
   await page.goto("/zh");
   await page.getByRole("button", { name: "打开导航菜单" }).click();
   await page.setViewportSize({ width: 1440, height: 900 });
   await expect(page.getByRole("dialog", { name: "创作导航" })).toHaveCount(0);
-  await expect(page.locator(".cr-sidebar")).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "主导航" })).toBeVisible();
   await expect(page.getByRole("button", { name: "打开导航菜单" })).toBeHidden();
 });
 

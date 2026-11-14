@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowUp, ChevronDown, LoaderCircle, RefreshCw, SlidersHorizontal } from "lucide-react";
+import CreditIcon from "@/components/ui/CreditIcon";
 import "./creation-launcher.css";
 
 export default function CreationComposer({
@@ -27,9 +28,10 @@ export default function CreationComposer({
         <summary><SlidersHorizontal size={15} /><span>{text("参数", "Settings")}</span><ChevronDown size={12} /></summary>
         <div className="cr-creation-settings-panel">{settings}</div>
       </details>
-      <span className="cr-creation-cost" aria-live="polite">{cost ?? "—"} {text("积分", "credits")}</span>
       <button type="submit" className="cr-send" disabled={submitDisabled || busy} aria-label={submitLabel || text(recovering ? "恢复提交" : "开始创作", recovering ? "Recover submission" : "Start creating")}>
-        {busy ? <LoaderCircle size={18} className="ca-spin" /> : recovering ? <RefreshCw size={18} /> : <ArrowUp size={18} />}
+        {/* 积分显示在发送按钮内，与首页图片模式保持一致 */}
+        <span className="cr-creation-cost" aria-live="polite"><CreditIcon size={13} />{cost ?? "—"}<span className="sr-only"> {text("积分", "credits")}</span></span>
+        <span className="cr-send-icon">{busy ? <LoaderCircle size={18} className="ca-spin" /> : recovering ? <RefreshCw size={18} /> : <ArrowUp size={18} strokeWidth={2.4} />}</span>
       </button>
     </div>
     {children}

@@ -64,7 +64,7 @@ test("transient null session recovers without clearing browser storage", async (
   await expect(page.locator(".cr-recharge-trigger")).toHaveText("500");
   await page.reload();
   await expect(page.locator(".cr-recharge-trigger")).toHaveText("500");
-  await page.getByRole("navigation", { name: "创作导航" }).getByRole("link", { name: "灵感发现", exact: true }).click();
+  await page.getByRole("navigation", { name: "主导航" }).getByRole("link", { name: "作品", exact: true }).click();
   await expect(page.locator(".cr-recharge-trigger")).toHaveText("500");
 });
 

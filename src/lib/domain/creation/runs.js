@@ -30,6 +30,7 @@ export function presentRun(run) {
     cancelRequested: Boolean(run.cancelRequestedAt), createdAt: run.createdAt, updatedAt: run.updatedAt,
     steps: run.steps.map(step => ({ id: step.id, position: step.position, tool: step.tool,
       ...(run.kind === "video" ? { prompt: step.params.params?.prompt, duration: step.params.params?.duration, ratio: step.params.params?.ratio, provider: step.params.provider } : {}),
+      ...(run.kind === "storyboard" ? { sceneId: step.params.sceneId || null } : {}),
       explanation: step.explanation, status: step.status, jobId: step.jobId,
       expectedCost: step.expectedCost, attempt: step.attempt, errorCode: step.errorCode, result: step.result || null })),
   };
@@ -154,8 +155,9 @@ export async function resumeRun(userId, id, input, db = prisma, deps = {}) {
   const accessEnv = deps.env ?? await getCreationEnv(userId, { db });
   if (!creationAdmissionEnabled(accessEnv)) throw new AppError("CREATION_NOT_ENABLED", 503);
   if (current.kind === "video") assertCreationAccess(accessEnv, { kind: "video", runs: true });
+  if (current.kind === "storyboard") assertCreationAccess(accessEnv, { kind: "motion", runs: true });
   await (deps.ensureWorkers || ensureWorkers)(db);
-  const priceRemaining = current.kind === "video" ? (await import("./video-runs.js")).priceVideoShots : priceSteps;
+  const priceRemaining = current.kind === "video" ? (await import("./video-runs.js")).priceVideoShots : current.kind === "storyboard" ? (await import("./storyboard-runs.js")).priceStoryboardSteps : priceSteps;
   const quote = await (deps.priceSteps || priceRemaining)(remaining, current.input.provider || undefined, db);
   return db.$transaction(async tx => {
     await lockUser(tx, userId);

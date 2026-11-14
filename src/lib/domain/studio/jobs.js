@@ -8,7 +8,7 @@ import { AppError } from "../../http.js";
 import { ownedAsset } from "../assets/service.js";
 import { lockUser, reserveCreditLots } from "../billing/ledger.js";
 import { regionInside } from "../../studio/move-geometry.js";
-import { jobSchema, getTool } from "../../studio/tools.js";
+import { jobSchema, getTool, paramsSchema } from "../../studio/tools.js";
 import { capabilities, studioConfig } from "./providers.js";
 import { ACTIVE, LIMITS, digestJson } from "../generation/contracts.js";
 import { commerceReferences } from "../../commerce/project.js";
@@ -22,6 +22,7 @@ import { lockRun } from "../creation/runs.js";
 import { appendRunEvent, enqueueRun } from "../creation/events.js";
 import { imageEditStrategy } from "../../studio/edit-strategy.js";
 import { videoInputError, videoModelOptions } from "../../video/model-protocols.js";
+import { referenceRole, videoReferenceMode } from "../../video/references.js";
 import { assertVideoMedia } from "./video-media.js";
 import { videoReferenceUrl } from "./video-reference.js";
 import { gptBestBody } from "./gptbest-video.js";
@@ -37,9 +38,12 @@ export async function submitStudioJob(userId, input, key, db = prisma, deps = {}
 
 export async function submitCreationVideoStep(userId, runId, stepId, sequence, db = prisma) {
   assertCreationAccess(await getCreationEnv(userId, { db }), { kind: "video", runs: true });
+  // 分镜成片的视频步骤以同一镜头的首帧图作为参考；其引用方式取决于所选视频模型。
+  const planned = await db.creationStep.findUnique({ where: { id: stepId }, select: { params: true, dependsOn: true } });
+  const frameMode = planned?.dependsOn?.length ? await studioConfig(db, planned.params?.provider, "video", "video").then(config => videoReferenceMode(config.videoKind, config.videoOptions)).catch(() => "reference") : "reference";
   return db.$transaction(async tx => {
     const run = await lockRun(tx, userId, runId), step = run.steps.find(item => item.id === stepId);
-    if (run.kind !== "video" || step?.tool !== "video" || run.eventSequence !== sequence || run.cancelRequestedAt || !["queued", "running"].includes(run.status)) throw new AppError("CREATION_STEP_CHANGED", 409);
+    if (!["video", "storyboard"].includes(run.kind) || step?.tool !== "video" || run.eventSequence !== sequence || run.cancelRequestedAt || !["queued", "running"].includes(run.status)) throw new AppError("CREATION_STEP_CHANGED", 409);
     if (step.jobId) {
       const old = await tx.tryOn.findFirst({ where: { id: step.jobId, userId } });
       if (!old || old.snapshot?.creationStepId !== step.id) throw new AppError("CREATION_STEP_CHANGED", 409);
@@ -48,7 +52,17 @@ export async function submitCreationVideoStep(userId, runId, stepId, sequence, d
     if (step.status !== "ready" || step.dependsOn.some(id => run.steps.find(item => item.id === id)?.status !== "succeeded")) throw new AppError("CREATION_DEPENDENCY_PENDING", 409);
     if (!await tx.studioDocument.findFirst({ where: { id: run.documentId, userId, kind: "motion", deletedAt: null }, select: { id: true } })) throw new AppError("DOCUMENT_NOT_FOUND", 404);
     const shot = videoShotSchema.parse(step.params), childId = `shot-${step.id}-${step.attempt}`;
-    const media = shot.params.media || [], first = media.find(item => item.type === "image");
+    let media = shot.params.media || [];
+    if (run.kind === "storyboard" && step.dependsOn.length) {
+      const frameStep = run.steps.find(item => item.id === step.dependsOn[0]);
+      const frameJob = frameStep?.jobId ? await tx.tryOn.findFirst({ where: { id: frameStep.jobId, userId, status: "succeeded" }, select: { resultData: true } }) : null;
+      const frameId = frameJob?.resultData?.assets?.[0]?.id;
+      if (!frameId) throw new AppError("CREATION_SOURCE_MISSING", 409);
+      const frame = { id: frameId, name: "首帧.png", type: "image", duration: 0 };
+      media = [{ ...frame, role: referenceRole(frame, 0, [frame], frameMode) }];
+      shot.params = { ...shot.params, media };
+    }
+    const first = media.find(item => item.type === "image");
     const video = videoDocumentSchema.parse({ mode: "video", media, prompt: shot.params.prompt, provider: shot.provider, ratio: shot.params.ratio || "16:9", duration: shot.params.duration, videoVariant: shot.params.videoVariant, videoFields: shot.params.videoFields,
       sceneOrigin: { documentId: run.documentId, sceneId: shot.sceneId, assetId: step.result?.sourceAssetId || null, ...(step.result?.sourceType ? { sourceType: step.result.sourceType } : {}) } });
     await tx.studioDocument.create({ data: { id: childId, userId, createKey: childId, name: step.explanation.slice(0, 100) || "视频镜头", kind: "video", content: { schemaVersion: 1, layers: [], messages: [], jobs: [], appliedJobs: [], video } } });
@@ -59,6 +73,43 @@ export async function submitCreationVideoStep(userId, runId, stepId, sequence, d
     await tx.creationStepAttempt.create({ data: { stepId: step.id, number: step.attempt, jobId: output.id, cost: output.cost } });
     await tx.creationStep.update({ where: { id: step.id }, data: { jobId: output.id, status: "queued", errorCode: null, result: { ...step.result, documentId: childId, sceneId: shot.sceneId } } });
     await appendRunEvent(tx, run.id, "step.queued", { stepId: step.id, jobId: output.id, cost: output.cost }, { status: "running", errorCode: null, committedCredits: { increment: output.cost }, nextCheckAt: new Date(Date.now() + 30000) });
+    return output;
+  }, { maxWait: 10000, timeout: 30000 });
+}
+
+// 分镜成片中的首帧图、旁白配音与最终导出。首帧和旁白不属于任何画布文档，
+// 与海报配图相同，只能由调度器按已锁定的步骤提交；导出使用分镜工程本身。
+export async function submitStoryboardStep(userId, runId, stepId, sequence, { db = prisma, now = new Date() } = {}) {
+  const planned = await db.creationStep.findUnique({ where: { id: stepId }, select: { tool: true, params: true } });
+  if (planned?.tool === "video") return submitCreationVideoStep(userId, runId, stepId, sequence, db);
+  assertCreationAccess(await getCreationEnv(userId, { db }), { kind: "motion", runs: true });
+  const provider = planned?.params?.provider;
+  const config = planned?.tool === "generate" ? await studioConfig(db, provider, "image", "generate", { pinned: Boolean(provider), skipPreview: true })
+    : planned?.tool === "tts" ? await studioConfig(db, provider, "voice", "tts", { pinned: true }) : undefined;
+  return db.$transaction(async tx => {
+    const run = await lockRun(tx, userId, runId), step = run.steps.find(item => item.id === stepId);
+    if (run.kind !== "storyboard" || !["generate", "tts", "motion-render"].includes(step?.tool)) throw new AppError("CREATION_STEP_CHANGED", 409);
+    if (step.jobId) {
+      const old = await tx.tryOn.findFirst({ where: { id: step.jobId, userId } });
+      if (!old || old.snapshot?.creationStepId !== step.id) throw new AppError("CREATION_STEP_CHANGED", 409);
+      return presentJob(old);
+    }
+    if (run.eventSequence !== sequence || run.cancelRequestedAt || !["queued", "running"].includes(run.status) || step.status !== "ready" || step.dependsOn.some(id => run.steps.find(item => item.id === id)?.status !== "succeeded")) throw new AppError("CREATION_STEP_CHANGED", 409);
+    const worker = await tx.serviceHeartbeat.findUnique({ where: { id: "worker" } });
+    if (!worker || worker.updatedAt <= new Date(+now - 90000)) throw new AppError("CREATION_WORKER_UNAVAILABLE", 503);
+    let output;
+    if (step.tool === "motion-render") {
+      const document = await tx.studioDocument.findFirst({ where: { id: run.documentId, userId, kind: "motion", deletedAt: null } });
+      if (!document?.content.video?.confirmed || document.content.video.shotRunId !== run.id) throw new AppError("MOTION_CONFIRM_REQUIRED", 409);
+      const data = jobSchema.parse({ origin: "chat", tool: "motion-render", documentId: document.id, documentVersion: document.version, expectedCost: step.expectedCost, params: { motion: document.content.video.composition } });
+      output = await submitAdmittedJob(userId, data, `creation-render-${step.id}-${step.attempt}`, tx, { transaction: tx, videoRunStep: { run, step } });
+    } else {
+      const data = { origin: "chat", tool: step.tool, ...(step.params.provider ? { provider: step.params.provider } : {}), params: paramsSchema.parse(step.params.params), expectedCost: step.expectedCost };
+      output = await submitAdmittedJob(userId, data, `creation-${step.tool}-${step.id}-${step.attempt}`, tx, { config, transaction: tx }, { run, step });
+    }
+    await tx.creationStepAttempt.create({ data: { stepId: step.id, number: step.attempt, jobId: output.id, cost: output.cost } });
+    await tx.creationStep.update({ where: { id: step.id }, data: { jobId: output.id, status: "queued", errorCode: null } });
+    await appendRunEvent(tx, run.id, "step.queued", { stepId: step.id, jobId: output.id, cost: output.cost }, { status: "running", errorCode: null, committedCredits: { increment: output.cost }, nextCheckAt: new Date(+now + 30000) });
     return output;
   }, { maxWait: 10000, timeout: 30000 });
 }
@@ -108,7 +159,7 @@ async function submitAdmittedJob(userId, data, key, db, deps, posterContext = nu
     return presentJob(replay);
   }
   let config = deps.config || await studioConfig(db, data.provider, data.tool === "video" ? "video" : data.tool === "tts" ? "voice" : "image", data.tool, { skipPreview: Boolean(data.maskId) });
-  if (deps.videoRunStep && (config.videoProvider || null) !== (data.provider || null)) throw new AppError("PROVIDER_CONFIGURATION_CHANGED", 409);
+  if (deps.videoRunStep && data.tool === "video" && (config.videoProvider || null) !== (data.provider || null)) throw new AppError("PROVIDER_CONFIGURATION_CHANGED", 409);
   if (data.tool === "video") {
     const selection = selectVideoVariant(config.videoOptions || videoModelOptions(config.videoKind), data.params.videoVariant);
     if (selection.error) throw new AppError(selection.error, 422);
@@ -194,7 +245,7 @@ async function submitAdmittedJob(userId, data, key, db, deps, posterContext = nu
       const asset = await ownedAsset(userId, ref, tx);
       if (!["image/png", "image/jpeg", "image/webp"].includes(asset.contentType)) throw new AppError("INVALID_SOURCE");
     }
-    if (getTool(data.tool).workspaceOnly) {
+    if (getTool(data.tool).workspaceOnly && data.tool !== "tts") {
       if (document?.content.video?.mode !== "motion") throw new AppError("INVALID_MOTION_DOCUMENT", 422);
       if (data.tool === "motion-render" && !document.content.video.confirmed) throw new AppError("MOTION_CONFIRM_REQUIRED", 409);
       const media = document.content.video.media;

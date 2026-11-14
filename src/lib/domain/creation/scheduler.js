@@ -4,7 +4,8 @@ import { AppError } from "../../http.js";
 import { RUN_ACTIVE, isRunTerminal, nextImageSource, imageRunStepInputs } from "../../creation/contracts/runs.js";
 import { TERMINAL } from "../generation/contracts.js";
 import { cancelOutput } from "../generation/execution.js";
-import { submitStudioJob, submitCreationPosterImageStep, submitCreationVideoStep } from "../studio/jobs.js";
+import { submitStudioJob, submitCreationPosterImageStep, submitCreationVideoStep, submitStoryboardStep } from "../studio/jobs.js";
+import { applyStoryboardResults } from "./storyboard-runs.js";
 import { POSTER_IMAGE_TOOL } from "../../creation/contracts/poster-image.js";
 import { publishPosterImage } from "./poster-images.js";
 import { studioConfig, capabilities } from "../studio/providers.js";
@@ -18,7 +19,8 @@ import { isSlideGeneration, inFlightStep, nextSlideStep, slideRunProgress } from
 
 const CHECK_INTERVAL = 30_000;
 const BUDGET_ERRORS = ["PRICE_CHANGED", "CREATION_BUDGET_EXCEEDED", "INSUFFICIENT_CREDITS", "CREDITS_FROZEN"];
-const CAPACITY_ERRORS = ["QUEUE_FULL", "USER_QUEUE_FULL", "CREATION_QUEUE_FULL", "EXPORT_QUEUE_FULL", "EXPORT_USER_QUEUE_FULL"];
+// 分镜写回时用户恰好保存了工程、或合成服务正忙：稍后重试即可，不需要用户介入。
+const CAPACITY_ERRORS = ["QUEUE_FULL", "USER_QUEUE_FULL", "CREATION_QUEUE_FULL", "EXPORT_QUEUE_FULL", "EXPORT_USER_QUEUE_FULL", "DOCUMENT_VERSION_CONFLICT", "MOTION_RENDER_BUSY"];
 
 async function snapshot(db, id) {
   return db.creationRun.findUnique({ where: { id }, include: { steps: { orderBy: { position: "asc" } } } });
@@ -52,6 +54,11 @@ export async function advanceRun(id, { db = prisma, store, configFor = studioCon
     }
     if (!initial.cancelRequestedAt && pending && !pending.jobId) {
       if (initial.kind === "video") return await submitCreationVideoStep(initial.userId, id, pending.id, initial.eventSequence, db);
+      if (initial.kind === "storyboard") {
+        // 导出前先把首帧、片段与旁白写回分镜工程，导出步骤再以工程当前内容提交。
+        if (pending.tool === "motion-render") await applyStoryboardResults(initial, { db });
+        return await submitStoryboardStep(initial.userId, id, pending.id, initial.eventSequence, { db, now });
+      }
       if (["poster", "slides"].includes(initial.kind)) {
         if (pending.tool === POSTER_IMAGE_TOOL) return await submitPosterImage(initial.userId, id, pending.id, initial.eventSequence, { db, now });
         const languageConfig = await languageConfigFor(db, initial.input.languageProvider);

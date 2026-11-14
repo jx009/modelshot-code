@@ -56,6 +56,7 @@ export const videoDocumentSchema = z.object({
   videoVariant: id.optional(),
   videoFields: z.record(z.string().regex(/^[a-zA-Z][a-zA-Z0-9_]{0,63}$/), z.string().max(1000)).refine(value => Object.keys(value).length <= 12).optional(),
   mode: z.enum(["video", "motion"]), media: z.array(videoMediaSchema).max(50).default([]),
+  scenario: z.enum(MOTION_SCENARIOS).nullable().default(null),
   composition: motionSchema.nullable().default(null), ratio: z.enum(videoRatios).default("16:9"),
   confirmed: z.boolean().default(false),
   duration: videoDurationSchema.default(5),

@@ -5,7 +5,7 @@ import { commerceSchema } from "../commerce/schema.js";
 import { TOOLS, getTool } from "./tool-catalog.js";
 import { ADJUSTMENT_KEYS } from "./adjustments.js";
 import { IMAGE_REFERENCE_ROLES } from "./image-references.js";
-import { motionSchema, videoDocumentSchema, videoMediaSchema, videoRatios, videoDurationSchema } from "../video/schema.js";
+import { motionSchema, videoDocumentSchema, videoMediaSchema, videoRatios, videoDurationSchema, MOTION_SCENARIOS } from "../video/schema.js";
 
 export { TOOLS, getTool } from "./tool-catalog.js";
 const id = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
@@ -42,6 +42,7 @@ export const paramsSchema = z.object({
   videoFields: z.record(z.string().regex(/^[a-zA-Z][a-zA-Z0-9_]{0,63}$/), z.string().max(1000)).refine(value => Object.keys(value).length <= 12).optional(),
   numLayers: z.number().int().min(2).max(8).default(4),
   voice: z.string().regex(/^[a-zA-Z0-9_.:-]{1,64}$/).optional(),
+  scenario: z.enum(MOTION_SCENARIOS).optional(),
   newText: z.string().trim().max(1000).optional(),
   language: z.enum(["zh", "en", "ja", "ko", "fr", "de", "es", "pt", "ru", "th"]).optional(),
   focusPoints: z.array(z.object({ id, x: z.number().min(0).max(1), y: z.number().min(0).max(1), label: z.string().trim().min(1).max(100) }).strict()).min(1).max(10).optional(),
@@ -65,6 +66,7 @@ export const jobSchema = z.object({ origin: z.enum(["chat", "canvas"]).optional(
   if (data.tool === "motion-render" && !data.params.motion) ctx.addIssue({ code: "custom", message: "MOTION_REQUIRED" });
   if (data.tool === "tts" && (!data.params.prompt || data.params.prompt.length > 400 || !data.params.voice)) ctx.addIssue({ code: "custom", message: "VOICEOVER_TEXT_REQUIRED", path: ["params", "prompt"] });
   if (data.tool !== "tts" && data.params.voice) ctx.addIssue({ code: "custom", message: "INVALID_VOICE_TOOL" });
+  if (data.tool !== "motion-plan" && data.params.scenario) ctx.addIssue({ code: "custom", message: "INVALID_MOTION_TOOL" });
   if (!["motion-plan", "motion-render"].includes(data.tool) && data.params.motion || !["video", "motion-plan", "motion-render"].includes(data.tool) && data.params.media) ctx.addIssue({ code: "custom", message: "INVALID_MOTION_TOOL" });
   if (data.tool !== "video" && data.params.videoFields) ctx.addIssue({ code: "custom", message: "VIDEO_FIELDS_INVALID" });
   if (data.tool !== "video" && data.params.videoVariant) ctx.addIssue({ code: "custom", message: "VIDEO_VARIANT_UNSUPPORTED" });

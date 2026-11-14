@@ -101,7 +101,7 @@ export async function submitStoryboardStep(userId, runId, stepId, sequence, { db
     if (step.tool === "motion-render") {
       const document = await tx.studioDocument.findFirst({ where: { id: run.documentId, userId, kind: "motion", deletedAt: null } });
       if (!document?.content.video?.confirmed || document.content.video.shotRunId !== run.id) throw new AppError("MOTION_CONFIRM_REQUIRED", 409);
-      const data = jobSchema.parse({ origin: "chat", tool: "motion-render", documentId: document.id, documentVersion: document.version, expectedCost: step.expectedCost, params: { motion: document.content.video.composition } });
+      const data = jobSchema.parse({ origin: "chat", tool: "motion-render", documentId: document.id, documentVersion: document.version, expectedCost: step.expectedCost, params: { media: document.content.video.media, motion: document.content.video.composition } });
       output = await submitAdmittedJob(userId, data, `creation-render-${step.id}-${step.attempt}`, tx, { transaction: tx, videoRunStep: { run, step } });
     } else {
       const data = { origin: "chat", tool: step.tool, ...(step.params.provider ? { provider: step.params.provider } : {}), params: paramsSchema.parse(step.params.params), expectedCost: step.expectedCost };

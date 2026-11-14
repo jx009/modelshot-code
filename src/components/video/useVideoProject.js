@@ -8,7 +8,7 @@ import { uploadImage } from "@/lib/upload-image";
 import { registerNavigationGuard } from "@/lib/navigation-guard";
 import { appendVideoReference, referenceRole } from "@/lib/video/references";
 
-const blank = (mode, provider, initialVideo, initialPrompt) => ({ name: mode === "motion" ? "视频制作" : "视频生成", content: { schemaVersion: 1, layers: [], messages: [], jobs: [], appliedJobs: [], video: { ...(provider ? { provider } : {}), media: [], composition: null, ratio: "16:9", duration: 5, ...initialVideo, mode, prompt: initialPrompt || initialVideo?.prompt || "" } } });
+const blank = (mode, provider, initialVideo, initialPrompt) => ({ name: mode === "motion" ? "分镜成片" : "单镜头视频", content: { schemaVersion: 1, layers: [], messages: [], jobs: [], appliedJobs: [], video: { ...(provider ? { provider } : {}), media: [], composition: null, ratio: "16:9", duration: 5, ...initialVideo, mode, prompt: initialPrompt || initialVideo?.prompt || "" } } });
 export default function useVideoProject({ documentId, mode, userId, guardNavigation = false, initialProvider, initialVideo, initialPrompt }) {
   const [draft, setDraft] = useState(() => blank(mode, initialProvider, initialVideo, initialPrompt)), live = useRef(draft);
   const [id, setId] = useState(documentId), idRef = useRef(documentId), version = useRef(null);
@@ -144,9 +144,9 @@ export default function useVideoProject({ documentId, mode, userId, guardNavigat
             const content = { ...current.content, video: { ...current.content.video }, layers: [...current.content.layers], messages: [...current.content.messages], appliedJobs: [...current.content.appliedJobs] };
             for (const job of [...ready].reverse()) {
               if (content.appliedJobs.includes(job.id)) continue;
-              if (job.resultData?.motion) { content.video.composition = job.resultData.motion; content.video.ratio = job.resultData.motion.ratio; content.video.confirmed = false; }
+              if (job.resultData?.motion) { content.video.composition = job.resultData.motion; content.video.ratio = job.resultData.motion.ratio; content.video.confirmed = true; }
               for (const asset of job.resultData?.assets || []) if (!content.layers.some(layer => layer.assetId === asset.id)) content.layers.push({ id: `video-${job.id}`, assetId: asset.id, type: "video", name: `${current.name}.mp4`, x: 0, y: 0, width: asset.width || 1280, height: asset.height || 720, rotation: 0, visible: true, opacity: 1, sourceJobId: job.id, ...(asset.posterAssetId ? { posterAssetId: asset.posterAssetId } : {}), ...(asset.duration ? { duration: asset.duration } : {}) });
-              content.messages.push({ id: `result-${job.id}`, role: "assistant", text: job.resultData?.motion ? "视频设计方案已就绪，请查看分镜、文字与时长。确认后即可本地播放，也可以继续描述修改要求。" : "视频已完成，可以播放和下载。" });
+              content.messages.push({ id: `result-${job.id}`, role: "assistant", text: job.resultData?.motion ? "分镜已就绪：可以在分镜表里直接修改画面、旁白和时长，确认后点击「生成视频」。也可以继续告诉我想怎么改。" : job.tool === "motion-render" ? "成片已导出，可以播放和下载。" : "视频已完成，可以播放和下载。" });
               content.appliedJobs.push(job.id);
             }
             return { ...current, content };
@@ -229,7 +229,16 @@ export default function useVideoProject({ documentId, mode, userId, guardNavigat
     } catch (failure) { setError(failure.message); }
     finally { submitting.current = false; setWorking(false); setUploadProgress(""); }
   }
-  return { id, draft, change, save, jobs, loading, loadFailed, jobsLoading, applying, error, setError, saving, dirty, working, uploadProgress, upload, submit, recovery, pendingSubmission,
+  // 服务端写回分镜结果后同步最新工程；本地有未保存修改时不覆盖。
+  async function refresh() {
+    await serial.current;
+    if (!idRef.current || savedRevision.current !== revision.current || pendingSave.current) return false;
+    const stored = await api(`/api/video/documents/${idRef.current}`);
+    if (savedRevision.current !== revision.current || stored.version === version.current) return false;
+    version.current = stored.version; live.current = { name: stored.name, content: stored.content }; setDraft(live.current);
+    return true;
+  }
+  return { id, draft, change, save, refresh, jobs, loading, loadFailed, jobsLoading, applying, error, setError, saving, dirty, working, uploadProgress, upload, submit, recovery, pendingSubmission,
     recoverSubmission: () => submit(null, "", null, true),
     recover() { if (recovery) { if (!documentId && recovery.id) { idRef.current = recovery.id; version.current = recovery.version; setId(recovery.id); } pendingSave.current = recovery.pendingSave || null; createKey.current = recovery.createKey || pendingSave.current?.body?.createKey || createKey.current; if (pendingSave.current) pendingSave.current = { ...pendingSave.current, sequence: revision.current }; setError(""); change(recovery.draft); setRecovery(null); } },
     discardRecovery() { setRecovery(null); localStorage.removeItem(storageKey); },

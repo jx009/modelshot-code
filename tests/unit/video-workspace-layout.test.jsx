@@ -15,9 +15,9 @@ vi.mock("../../src/components/ui/NavigationLink", () => ({ default: ({ children,
 vi.mock("../../src/lib/client-api", () => ({ api: (...args) => mocks.api(...args), requestKey: () => "test-request-key", terminalStatus: status => ["succeeded", "failed", "cancelled"].includes(status) }));
 vi.mock("../../src/components/video/useVideoProject", () => ({ default: () => mocks.project }));
 vi.mock("../../src/hooks/useNavigationRouter", () => ({ useNavigationRouter: () => ({ push: vi.fn() }) }));
-vi.mock("../../src/components/video/VideoShotPlan", () => ({ default: () => <div aria-label="Shot generation plan" /> }));
+vi.mock("../../src/components/video/StoryboardWorkspace", () => ({ default: ({ view }) => <div aria-label={view === "table" ? "Storyboard table" : "Storyboard preview"} /> }));
+vi.mock("../../src/components/video/useStoryboardRun", () => ({ default: () => ({ run: null, active: false, states: {}, busy: false, error: "" }) }));
 vi.mock("../../src/components/video/MotionPreview", () => ({ default: () => <div aria-label="Motion preview" /> }));
-vi.mock("../../src/components/video/MotionEditor", () => ({ default: () => <div aria-label="Scene editor" /> }));
 
 function Shell({ workspace = true }) {
   return <WorkspaceHeaderProvider><header aria-label="Workspace toolbar"><WorkspaceHeaderSlot name="title" /><WorkspaceHeaderSlot name="actions" /></header>{workspace && <VideoWorkspace />}</WorkspaceHeaderProvider>;
@@ -53,9 +53,12 @@ it("keeps rename, editing, file visibility and export available in one toolbar",
   render(<Shell />);
   fireEvent.change(screen.getByLabelText("Project name"), { target: { value: "Renamed film" } });
   expect(mocks.project.change.mock.calls[0][0](mocks.project.draft).name).toBe("Renamed film");
-  expect(screen.queryByLabelText("Scene editor")).toBeNull();
+  // 分镜工程默认打开分镜表；顶栏按钮在分镜表与预览之间切换。
+  expect(screen.getByLabelText("Storyboard table")).not.toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Finish editing" }));
+  expect(screen.getByLabelText("Storyboard preview")).not.toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Edit video" }));
-  expect(screen.getByLabelText("Scene editor")).not.toBeNull();
+  expect(screen.getByLabelText("Storyboard table")).not.toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Toggle files" }));
   expect(document.querySelector(".vm-files")).not.toBeNull();
   const exportButton = screen.getByRole("button", { name: "Export MP4" });
@@ -84,7 +87,7 @@ it("keeps generated-video download without showing motion editing controls", () 
   render(<Shell />);
   expect(screen.getByRole("link", { name: "Download MP4" }).getAttribute("href")).toBe("/api/assets/asset_1?download=1");
   expect(screen.queryByRole("button", { name: "Edit video" })).toBeNull();
-  expect(screen.queryByLabelText("Scene editor")).toBeNull();
+  expect(screen.queryByLabelText("Storyboard table")).toBeNull();
 });
 
 it("clears portal controls when leaving the video workspace", () => {

@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { motionAssetIds, videoDocumentSchema } from "../../video/schema.js";
 import { assertMotionMedia } from "./motion.js";
+import { assertLibraryAudio } from "./music-library.js";
 import { assertCreationAccess, getCreationEnv } from "../../creation/access.js";
 import { prisma } from "../../prisma.js";
 import { AppError } from "../../http.js";
@@ -198,7 +199,7 @@ async function submitAdmittedJob(userId, data, key, db, deps, posterContext = nu
       if (data.tool === "motion-render" && !document.content.video.confirmed) throw new AppError("MOTION_CONFIRM_REQUIRED", 409);
       const media = document.content.video.media;
       if (digestJson(data.params.media || []) !== digestJson(media)) throw new AppError("MOTION_MEDIA_CHANGED", 409);
-      if (data.params.motion) assertMotionMedia(data.params.motion, media);
+      if (data.params.motion) { assertMotionMedia(data.params.motion, media); await assertLibraryAudio(data.params.motion, tx); }
       for (const item of media) {
         const asset = await ownedAsset(userId, item.id, tx);
         if (!asset.contentType.startsWith(`${item.type}/`)) throw new AppError("MOTION_MEDIA_INVALID", 422);

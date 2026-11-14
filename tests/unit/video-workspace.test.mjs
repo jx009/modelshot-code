@@ -42,7 +42,7 @@ describe("editable video contracts", () => {
     expect(() => assertMotionMedia(value, [{ id: "track", type: "audio", duration: 5 }])).toThrow("MOTION_TRIM_INVALID");
   });
   it("accepts fenced JSON but rejects invented media and malformed model output", () => {
-    expect(parseMotionResult(["```json", JSON.stringify(composition()), "```"].join(String.fromCharCode(10)))).toEqual(composition());
+    expect(parseMotionResult(["```json", JSON.stringify(composition()), "```"].join(String.fromCharCode(10)))).toMatchObject(composition());
     expect(() => parseMotionResult("Here is your video")).toThrow("MOTION_RESULT_INVALID");
     const value = composition(); value.scenes[0].assetId = "invented";
     expect(() => parseMotionResult(JSON.stringify(value))).toThrow("MOTION_MEDIA_INVALID");

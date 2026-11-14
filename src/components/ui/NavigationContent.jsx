@@ -20,6 +20,7 @@ const TITLES = {
   "/admin/providers": ["模型配置", "Providers"],
   "/admin/resolution-pricing": ["分辨率积分", "Resolution pricing"],
   "/admin/studio-tools": ["工具配置", "Studio tools"],
+  "/admin/music": ["曲库管理", "Music library"],
   "/admin/storage": ["云存储与图片加速", "Storage"],
   "/admin/tryons": ["生成审计", "Generation audit"],
   "/admin/inspiration": ["灵感管理", "Inspiration"],

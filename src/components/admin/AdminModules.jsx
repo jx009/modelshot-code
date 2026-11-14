@@ -16,6 +16,7 @@ const modules = {
   "/admin/resolution-pricing": lazy(() => import("../../app/[locale]/admin/resolution-pricing/page.js")),
   "/admin/storage": lazy(() => import("../../app/[locale]/admin/storage/page.js")),
   "/admin/studio-tools": lazy(() => import("../../app/[locale]/admin/studio-tools/page.js")),
+  "/admin/music": lazy(() => import("../../app/[locale]/admin/music/page.js")),
   "/admin/tryons": lazy(() => import("../../app/[locale]/admin/tryons/page.js")),
   "/admin/inspiration": lazy(() => import("../../app/[locale]/admin/inspiration/page.js")),
   "/admin/orders": lazy(() => import("../../app/[locale]/admin/orders/page.js")),

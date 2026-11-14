@@ -299,8 +299,24 @@ model Asset {
   references AssetReference[]
   libraryItems LibraryItem[]
   deliveries AssetDelivery[]
+  musicTrack MusicTrack?
   @@index([userId, createdAt])
   @@index([userId, checksum, contentType, status])
+}
+
+// 分镜成片的平台曲库：管理员上传的可商用背景音乐，所有用户可选用。
+model MusicTrack {
+  id String @id @default(cuid())
+  assetId String @unique
+  name String
+  mood String @default("")
+  duration Float
+  isActive Boolean @default(true)
+  sortOrder Int @default(0)
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  @@index([deletedAt, isActive, sortOrder])
 }
 
 // Permanent private COS derivatives and replicas; originals may live in COS or MinIO.

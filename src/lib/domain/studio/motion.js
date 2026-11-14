@@ -1,4 +1,5 @@
 import { motionSchema, motionAssetIds } from "../../video/schema.js";
+import { assertLibraryAudio } from "./music-library.js";
 import { ownedAsset } from "../assets/service.js";
 import { AppError } from "../../http.js";
 
@@ -23,7 +24,9 @@ export function assertMotionMedia(composition, media) {
     if (!asset || !["image", "video"].includes(asset.type)) throw new AppError("MOTION_MEDIA_INVALID", 422);
     if (asset.type === "video" && asset.duration > 0 && scene.trimStart + scene.duration > asset.duration + .1) throw new AppError("MOTION_TRIM_INVALID", 422);
   }
-  if (composition.audio) {
+  for (const scene of composition.scenes) if (scene.narrationAssetId && byId.get(scene.narrationAssetId)?.type !== "audio") throw new AppError("MOTION_MEDIA_INVALID", 422);
+  // 曲库配乐不在用户素材中，由 assertLibraryAudio 在服务端单独校验。
+  if (composition.audio && !composition.audio.libraryTrackId) {
     const audio = byId.get(composition.audio.assetId);
     if (audio?.type !== "audio") throw new AppError("MOTION_MEDIA_INVALID", 422);
     if (audio.duration > 0 && composition.audio.trimStart >= audio.duration) throw new AppError("MOTION_TRIM_INVALID", 422);
@@ -34,8 +37,11 @@ export async function renderMotion(config, userId, composition, { db, store, sig
   if (!config.toolsURL || !config.toolsKey) throw new AppError("MOTION_RENDER_UNAVAILABLE", 503);
   const form = new FormData(); form.append("composition", JSON.stringify(composition));
   let total = 0;
-  for (const id of motionAssetIds(composition)) {
-    const asset = await ownedAsset(userId, id, db);
+  const library = await assertLibraryAudio(composition, db);
+  const assets = await Promise.all(motionAssetIds(composition).map(id => ownedAsset(userId, id, db)));
+  if (library) assets.push(library.asset);
+  for (const asset of assets) {
+    const id = asset.id;
     total += asset.bytes;
     if (total > 256 * 1024 * 1024) throw new AppError("MOTION_MEDIA_TOO_LARGE", 413);
     form.append("files", new Blob([await store.get(asset.objectKey)], { type: asset.contentType }), id);

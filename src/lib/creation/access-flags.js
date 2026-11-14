@@ -3,8 +3,8 @@ export const CREATION_ACCESS_FLAGS = [
   { key: "workspace", env: "CREATION_WORKSPACE_ENABLED", label: "创作工作台" },
   { key: "runs", env: "CREATION_RUNS_ENABLED", label: "AI 创作任务" },
   { key: "slides", env: "CREATION_SLIDES_ENABLED", label: "演示文稿" },
-  { key: "video", env: "CREATION_VIDEO_ENABLED", label: "视频生成" },
-  { key: "motion", env: "CREATION_MOTION_ENABLED", label: "视频制作" },
+  { key: "video", env: "CREATION_VIDEO_ENABLED", label: "单镜头视频" },
+  { key: "motion", env: "CREATION_MOTION_ENABLED", label: "分镜成片" },
 ];
 
 export const CREATION_CONTENT_KINDS = CREATION_ACCESS_FLAGS.slice(2).map(flag => flag.key);

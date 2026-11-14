@@ -22,7 +22,7 @@ import { usePageVisible } from "@/components/ui/LocalNavigation";
 import { clearImageCapabilities, readImageCapabilities } from "@/lib/studio/image-capabilities-client";
 import { useNavigationRouter as useRouter } from "@/hooks/useNavigationRouter";
 import Link from "@/components/ui/NavigationLink";
-import { ArrowUp, ArrowUpRight, ShoppingBag, ImagePlus, Image as ImageIcon, Presentation, Sparkles, X, Type, LoaderCircle, Clapperboard, Video, ChevronDown } from "lucide-react";
+import { ArrowUp, ArrowUpRight, ShoppingBag, ImagePlus, Image as ImageIcon, Presentation, Sparkles, X, Type, LoaderCircle, Video, ChevronDown } from "lucide-react";
 import ModelPicker from "@/components/ui/ModelPicker";
 import ImageSizePicker from "@/components/ui/ImageSizePicker";
 import CreationLauncher from "./CreationLauncher";
@@ -42,8 +42,7 @@ const InspirationGallery = dynamic(() => import("./InspirationGallery"), {
 
 const HOME_KINDS = [
   ["image", ImageIcon, "图片", "Image"],
-  ["video", Video, "视频生成", "Video"],
-  ["motion", Clapperboard, "视频制作", "Motion"],
+  ["video", Video, "视频", "Video"],
   ["slides", Presentation, "PPT", "Slides"],
 ];
 
@@ -57,7 +56,7 @@ export default function DiscoverHome() {
   const { status, data: session } = useSession(), uploadInput = useRef(null);
   const guestPrompt = useContext(HomeGuestPromptContext);
   const [mode, setMode] = useState("chat"), [prompt, setPrompt] = useState(() => session?.user?.id ? guestPrompt?.text || "" : "");
-  const [creationTypeState, setCreationType] = useState("image");
+  const [creationTypeState, setCreationType] = useState("image"), [videoModeState, setVideoMode] = useState("video");
   const [creationDrafts, setCreationDrafts] = useState({});
   const { items: uploads, start: startUploads, dismiss: dismissUpload } = useUploadFeedback(session?.user?.id || status);
   const composer = useRef(null);
@@ -71,9 +70,13 @@ export default function DiscoverHome() {
   const [creationCaps, setCreationCaps] = useState(null);
   const [models, setModels] = useState([]), [provider, setProvider] = useState(""), [busy, setBusy] = useState(false), [error, setError] = useState("");
   const launcherVisibility = creationCaps?.launcherVisibility;
-  const creationType = launcherVisibility?.[creationTypeState] === false
-    ? HOME_KINDS.map(([kind]) => kind).find(kind => launcherVisibility[kind] !== false) || "image"
+  // “视频”标签合并了单镜头（video）与分镜成片（motion），任一可见即显示。
+  const kindVisible = kind => kind === "video" ? launcherVisibility?.video !== false || launcherVisibility?.motion !== false : launcherVisibility?.[kind] !== false;
+  const creationType = !kindVisible(creationTypeState)
+    ? HOME_KINDS.map(([kind]) => kind).find(kindVisible) || "image"
     : creationTypeState;
+  const videoModes = ["video", "motion"].filter(mode => launcherVisibility?.[mode] !== false && (!creationCaps || creationCaps[mode]));
+  const videoMode = videoModes.includes(videoModeState) ? videoModeState : videoModes[0] || "video";
   useEffect(() => {
     if (!session?.user?.id || !visible) return;
     let active = true;
@@ -206,7 +209,7 @@ export default function DiscoverHome() {
     if (scene.kind === "image") { chooseKind("image"); applyIdea(scene.prompt); return; }
     chooseKind(scene.kind);
   };
-  const kinds = [...HOME_KINDS.filter(([kind]) => creationCaps?.launcherVisibility?.[kind] !== false), ["commerce", ShoppingBag, "电商套图", "Commerce"]];
+  const kinds = [...HOME_KINDS.filter(([kind]) => kindVisible(kind)), ["commerce", ShoppingBag, "电商套图", "Commerce"]];
   return <>
   <section className="cr-creation-hero lh-hero" ref={hero.ref} onPointerMove={hero.onPointerMove} onPointerLeave={hero.onPointerLeave}>
     <HeroWall />
@@ -220,12 +223,12 @@ export default function DiscoverHome() {
       <p className="lh-subtitle">{zh ? "写下一句话，或丢进一张图。剩下的交给 AI。" : "Write a sentence, or drop in an image. The rest is up to AI."}</p>
       <div ref={composer} className="cr-home-composer lh-composer" data-kind={activeKind}>
         <div className="lh-kinds" role="tablist" aria-label={zh ? "创作类型" : "Creation type"}>{kinds.map(([kind, Icon, cn, en]) => {
-          const available = kind === "image" || kind === "commerce" || Boolean(creationCaps?.[kind]);
+          const available = kind === "image" || kind === "commerce" || (kind === "video" ? Boolean(creationCaps?.video || creationCaps?.motion) : Boolean(creationCaps?.[kind]));
           return <button key={kind} role="tab" type="button" aria-selected={activeKind === kind} disabled={busy || !available} title={!available ? (zh ? "创作服务尚未就绪" : "Creation service is not ready") : undefined} onClick={() => chooseKind(kind)}><Icon size={15} />{zh ? cn : en}</button>;
         })}</div>
         <div className="cr-composer-surface lh-surface">
           {commerceOpened && <div hidden={!commerce}><CommerceLauncher initialDescription={prompt} /></div>}
-          {!commerce && ["video", "motion"].includes(creationType) && <VideoLauncher key={`${session?.user?.id}:${creationType}`} mode={creationType} userId={session?.user?.id} zh={zh} visible={visible} initialDraft={creationDrafts[creationType]} onDraft={draft => setCreationDrafts(current => ({ ...current, [creationType]: draft }))} />}
+          {!commerce && creationType === "video" && <VideoLauncher key={`${session?.user?.id}:${videoMode}`} mode={videoMode} modes={videoModes} onMode={setVideoMode} userId={session?.user?.id} zh={zh} visible={visible} initialDraft={creationDrafts[videoMode]} onDraft={draft => setCreationDrafts(current => ({ ...current, [videoMode]: draft }))} />}
           {!commerce && creationType === "slides" && <CreationLauncher key={`${session?.user?.id}:slides`} userId={session?.user?.id} kind="slides" zh={zh} visible={visible} initialDraft={creationDrafts.slides} initialCaps={creationCaps} onDraft={draft => setCreationDrafts(current => ({ ...current, slides: draft }))} attachmentIds={attachments.map(item => item.assetId)} />}
           {!commerce && creationType === "image" && <>
             <UploadFeedback items={uploads} onDismiss={dismissUpload} zh={zh} />

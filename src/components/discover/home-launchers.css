@@ -148,3 +148,15 @@
 /* 未添加素材时不显示"按顺序提交"说明，素材按钮保持胶囊宽度 */
 .cr-shell.ls .lh-composer .vg-references:not(:has(article, .vg-frame-slot)) .vg-reference-caption { display: none; }
 .cr-shell.ls .lh-composer .cr-creation-launcher .vg-references { justify-self: start; margin: 0; }
+
+/* 视频标签：单镜头 / 分镜成片切换与分镜场景卡 */
+.cr-shell.ls .lh-composer .vl-modes { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid rgba(255, 255, 255, .12); border-radius: 999px; background: rgba(255, 255, 255, .04); }
+.cr-shell.ls .lh-composer .vl-modes button { height: 28px; padding: 0 12px; border: 0; border-radius: 999px; background: transparent; color: rgba(255, 255, 255, .62); font-size: var(--text-sm); }
+.cr-shell.ls .lh-composer .vl-modes button[aria-checked="true"] { background: rgba(255, 255, 255, .14); color: #fff; font-weight: 600; }
+.cr-shell.ls .lh-composer .vl-scenarios { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 10px 0; }
+.cr-shell.ls .lh-composer .vl-scenarios button { height: 28px; padding: 0 12px; border: 1px solid rgba(255, 255, 255, .12); border-radius: 999px; background: transparent; color: rgba(255, 255, 255, .62); font-size: var(--text-xs); }
+.cr-shell.ls .lh-composer .vl-scenarios button:hover:not(:disabled) { color: #fff; border-color: rgba(255, 255, 255, .3); }
+.cr-shell.ls .lh-composer .vl-scenarios button[aria-pressed="true"] { border-color: var(--primary); background: var(--primary-muted); color: #fff; }
+/* 参考素材容器是 display: contents：切换器放在工具行的弹性列，场景卡单独占一行 */
+.cr-shell.ls .lh-composer .cr-creation-launcher .vl-modes { grid-column: 3; grid-row: 3; justify-self: start; }
+.cr-shell.ls .lh-composer .cr-creation-launcher .vl-scenarios { grid-column: 1 / -1; grid-row: 4; padding: 2px 2px 0; }

@@ -21,7 +21,7 @@ export const TOOLS = [
   { id: "remove-bg", zh: "一键抠图", en: "Remove background", dependency: "remove-bg", cost: 2, source: true },
   { id: "crop", zh: "图片裁剪", en: "Crop image", dependency: "local", cost: 0, source: true },
   { id: "video", zh: "生成视频", en: "Generate video", dependency: "video", cost: 60, source: false },
-  { id: "motion-plan", zh: "视频制作", en: "Compose video", dependency: "vision", cost: 1, source: false, workspaceOnly: true },
+  { id: "motion-plan", zh: "撰写分镜", en: "Write storyboard", dependency: "vision", cost: 1, source: false, workspaceOnly: true },
   { id: "motion-render", zh: "导出视频", en: "Render video", dependency: "motion", cost: 0, source: false, workspaceOnly: true },
   { id: "tts", zh: "旁白配音", en: "Voiceover", dependency: "voice", cost: 2, source: false, workspaceOnly: true },
 ];

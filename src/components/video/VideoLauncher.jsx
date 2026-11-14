@@ -9,6 +9,7 @@ import useVideoCapabilities from "./useVideoCapabilities";
 import { videoMessage } from "@/lib/video/messages";
 import { clipboardImageFiles } from "@/lib/studio/image-paste";
 import { VIDEO_TEMPLATES } from "@/lib/video/timeline";
+import { MOTION_SCENARIO_PRESETS } from "@/lib/video/scenarios";
 import useVideoProject from "./useVideoProject";
 import VideoMediaHint, { VIDEO_MEDIA_ACCEPT } from "./VideoMediaHint";
 import VideoSubmissionRecovery from "./VideoSubmissionRecovery";
@@ -16,7 +17,8 @@ import VideoReferenceEditor from "./VideoReferenceEditor";
 import VideoParameterFields from "./VideoParameterFields";
 import "@/components/creation/reference-assets.css";
 
-export default function VideoLauncher({ mode, userId, zh, visible = true, initialDraft, onDraft }) {
+// 首页“视频”入口：单镜头直接出片，分镜成片先写分镜再逐镜生成。两种方式共用一个标签页。
+export default function VideoLauncher({ mode, modes = [mode], onMode, userId, zh, visible = true, initialDraft, onDraft }) {
   const project = useVideoProject({ mode, userId, initialProvider: initialDraft?.provider, initialVideo: initialDraft?.video, initialPrompt: initialDraft?.prompt }), router = useNavigationRouter(), input = useRef(null);
   const { data: caps, error: capsError, retry: retryCapabilities } = useVideoCapabilities(Boolean(userId && visible));
   const [opening, setOpening] = useState(false);
@@ -69,14 +71,15 @@ export default function VideoLauncher({ mode, userId, zh, visible = true, initia
   return <CreationComposer
     zh={zh} prompt={prompt} onPromptChange={setPrompt} onSubmit={start}
     promptLabel={text("视频创意", "Video prompt")}
-    placeholder={motion ? text("描述视频创意，可添加图片、视频或音频素材…", "Describe a video idea and add images, clips or audio…") : text("描述主体、场景和镜头，或添加首帧图片…", "Describe the subject, scene and camera, or add a first-frame image…")}
+    placeholder={motion ? text("说说你想做什么视频：主题、卖点、时长和风格，AI 会先写好分镜…", "Describe the video: topic, key points, length and style. AI writes the storyboard first…") : text("描述主体、场景和镜头，或添加首帧图片…", "Describe the subject, scene and camera, or add a first-frame image…")}
     maxLength={4000} disabled={busy} busy={busy} cost={offer?.cost}
     submitDisabled={!userId || submitBusy || !hasPrompt || !offer?.available}
-    submitLabel={motion ? text("生成视频方案", "Generate video plan") : text("生成视频", "Generate video")}
+    submitLabel={motion ? text("撰写分镜", "Write storyboard") : text("生成视频", "Generate video")}
     onDragOver={event => { if (event.dataTransfer.types.includes("Files")) event.preventDefault(); }}
     onDrop={event => { if (event.dataTransfer.files.length) { event.preventDefault(); upload(event.dataTransfer.files); } }}
     onPaste={event => { const files = clipboardImageFiles(event.clipboardData); if (files.length) { event.preventDefault(); upload(files); } }}
     attachments={<div className="cw-reference-assets">
+      {modes.length > 1 && <div className="vl-modes" role="radiogroup" aria-label={text("视频创作方式", "Video mode")}>{modes.map(id => <button type="button" role="radio" key={id} aria-checked={id === mode} disabled={busy} onClick={() => { if (id !== mode) onMode?.(id); }}>{id === "motion" ? text("分镜成片", "Storyboard") : text("单镜头", "Single shot")}</button>)}</div>}
       <VideoReferenceEditor onReplace={(files, id) => project.upload(files, offer, id)} media={video.media} offer={offer} motion={motion} zh={zh} disabled={busy} onChange={media => patch({ media })} onAdd={() => input.current?.click()} lockedIds={[...(video.composition?.scenes || []).map(scene => scene.assetId), video.composition?.audio?.assetId].filter(Boolean)} />
       <button type="button" className="cw-add-reference" disabled={!userId || busy || video.media.length >= mediaLimit} onClick={() => input.current?.click()}><ImagePlus size={16} />{motion ? text("添加素材", "Add media") : text("添加参考素材", "Add references")}</button>
       <input ref={input} hidden aria-label={text("上传视频素材", "Upload video media")} type="file" multiple={motion || Boolean(offer?.mediaLimits)} accept={motion || offer?.mediaLimits?.video || offer?.mediaLimits?.audio ? VIDEO_MEDIA_ACCEPT : "image/png,image/jpeg,image/webp"} onChange={event => { upload(event.target.files); event.target.value = ""; }} />
@@ -88,6 +91,7 @@ export default function VideoLauncher({ mode, userId, zh, visible = true, initia
       <button type="button" className="cr-creation-secondary" disabled={!userId || busy} onClick={openWorkspace}>{text("打开视频工作台", "Open video workspace")}</button>
     </>}
   >
+    {motion && <div className="vl-scenarios" role="group" aria-label={text("场景", "Scenario")}>{Object.entries(MOTION_SCENARIO_PRESETS).map(([id, preset]) => <button type="button" key={id} aria-pressed={video.scenario === id} disabled={busy} title={zh ? preset.hint[0] : preset.hint[1]} onClick={() => patch(video.scenario === id ? { scenario: null } : { scenario: id, ratio: preset.ratio })}>{zh ? preset.zh : preset.en}</button>)}</div>}
     {project.recovery && <div className="cr-creation-note" role="status">{text("发现未保存的视频草稿", "An unsaved video draft is available")} <button type="button" disabled={busy} onClick={project.recover}>{text("恢复", "Restore")}</button> <button type="button" disabled={busy} onClick={project.discardRecovery}>{text("忽略", "Dismiss")}</button></div>}
     {!motion && <VideoMediaHint offer={offer} zh={zh} />}
     {project.uploadProgress && <p className="cr-creation-note" role="status">{project.uploadProgress}</p>}

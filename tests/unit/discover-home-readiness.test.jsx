@@ -82,7 +82,7 @@ test("shows only individually enabled creation tabs", async () => {
   expect(screen.getByRole("tab", { name: "图片" })).toBeTruthy();
   expect(screen.getByRole("tab", { name: "电商套图" })).toBeTruthy();
   await waitFor(() => {
-    for (const name of ["视频制作", "视频生成"]) expect(screen.queryByRole("tab", { name })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "视频" })).toBeNull();
   });
   expect(document.querySelector(".lh-kinds")).toBeTruthy();
 });

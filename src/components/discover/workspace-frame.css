@@ -244,3 +244,13 @@
 .cr-shell.ls.ls.cr-shell-creation .ms-export-dialog .ms-primary { height: 38px; border: 0; border-radius: 999px; background: var(--primary); color: var(--primary-btn-text); font-weight: 650; }
 .cr-shell.ls.ls.cr-shell-creation .ms-optimizer-original { color: var(--tertiary-text); font-size: var(--text-xs); }
 .cr-shell.ls.ls.cr-shell-creation .ms-optimizer-original p { margin-top: 6px; padding: 8px 10px; border-radius: 10px; background: var(--bg-page); color: var(--secondary-text); line-height: 1.6; }
+
+/* 视频工作台欢迎区：创作方式切换与分镜场景卡 */
+.cr-shell.ls.ls.cr-shell-creation .vm-modes { display: inline-flex; gap: 2px; margin: 0 0 14px; padding: 3px; border: 1px solid var(--divider); border-radius: 999px; background: var(--bg-page); }
+.cr-shell.ls.ls.cr-shell-creation .vm-modes a { padding: 6px 14px; border-radius: 999px; color: var(--secondary-text); font-size: var(--text-sm); }
+.cr-shell.ls.ls.cr-shell-creation .vm-modes a[aria-checked="true"] { background: var(--bg-card-hover); color: var(--primary-text); font-weight: 600; }
+.cr-shell.ls.ls.cr-shell-creation .vm-scenarios { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 0 0 12px; }
+.cr-shell.ls.ls.cr-shell-creation .vm-scenarios button { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 9px 10px; border: 1px solid var(--divider); border-radius: 12px; background: var(--bg-elevated); color: var(--primary-text); text-align: left; }
+.cr-shell.ls.ls.cr-shell-creation .vm-scenarios button strong { font-size: var(--text-sm); font-weight: 600; }
+.cr-shell.ls.ls.cr-shell-creation .vm-scenarios button small { color: var(--tertiary-text); font-size: 11px; line-height: 1.4; }
+.cr-shell.ls.ls.cr-shell-creation .vm-scenarios button[aria-pressed="true"] { border-color: var(--primary); background: var(--primary-muted); }

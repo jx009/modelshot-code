@@ -66,7 +66,7 @@ it("changes the platform aspect preset without overwriting the prompt", () => {
 
 it.each([["video", "video", 10], ["motion", "motion-plan", 2]])("keeps the existing %s generation contract", async (mode, tool, cost) => {
   render(<VideoLauncher mode={mode} userId="user_1" zh={false} initialDraft={{ prompt: "A cinematic scene" }} />);
-  const submit = screen.getByRole("button", { name: mode === "video" ? "Generate video" : "Generate video plan" });
+  const submit = screen.getByRole("button", { name: mode === "video" ? "Generate video" : "Write storyboard" });
   await waitFor(() => expect(submit.disabled).toBe(false));
   fireEvent.click(submit);
   await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/video?document=document_1"));

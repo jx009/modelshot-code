@@ -112,7 +112,13 @@ export async function executeStudio(id, { db = prisma, store = objectStorage(), 
         finalInstruction: context, signal: controller.signal });
       result = { motion: parseMotionResult(text, snapshot.params.media || []) };
     } else if (snapshot.tool === "motion-render") {
-      const bytes = await (adapters.renderMotion || renderMotion)(config, output.userId, snapshot.params.motion, { db, store, signal: controller.signal });
+      let bytes;
+      try { bytes = await (adapters.renderMotion || renderMotion)(config, output.userId, snapshot.params.motion, { db, store, signal: controller.signal }); }
+      catch (error) {
+        // 合成服务一次只渲染一个作品；忙碌时重新排队（间隔随次数递增），多次仍忙才判失败。
+        if (error?.code === "MOTION_RENDER_BUSY" && claim.output.fence < 30) { await deferOutput(claim, "MOTION_RENDER_BUSY", true, db); return; }
+        throw error;
+      }
       if (bytes.length < 12 || bytes.toString("ascii", 4, 8) !== "ftyp") throw new AppError("INVALID_VIDEO", 502);
       const assetId = `${id}_motion_video`, objectKey = `${output.userId}/original/${assetId}.mp4`;
       await store.put(objectKey, bytes, "video/mp4");

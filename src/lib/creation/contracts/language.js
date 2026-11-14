@@ -1,6 +1,5 @@
 import { z } from "zod";
 import { slideDesignSchema, slideComposition, slideDeckContextSchema } from "./slide-design.js";
-import { sheetOutlineSchema, sheetPlanSchema, validateSheetChunk } from "./sheet-batch.js";
 import { agentLanguageInputSchema, agentPlanSchema, agentReadResultSchema } from "./agent.js";
 import { dependencyReferencesSchema } from "./dependency-references.js";
 import { validateHtmlLanguageResult } from "../html/language.js";
@@ -8,23 +7,10 @@ import { isHtmlDocument } from "../html/document.js";
 import { layoutId, layoutDocumentSchema, layoutPageSchema, layoutOperationsSchema, layoutAssetIds } from "./layout.js";
 import { applyLayoutOperations } from "../layout-operations.js";
 import { nodeIntersectsPage } from "../layout-geometry.js";
-import { documentLanguageInputSchema, validateDocumentLanguageResult } from "./document-language.js";
-import { sheetId, workbookSchema, sheetOperationSchema, sheetAddressesSchema } from "./sheet.js";
-import { applySheetOperations } from "../sheet-operations.js";
-import { validateSheetSelection } from "../sheet-selection.js";
-import { cellPosition } from "../sheet-formula.js";
-import { webId, webSchema, webOperationsSchema } from "./web.js";
-import { applyWebOperations } from "../web-operations.js";
-import { validateWebSelection } from "../web-selection.js";
-import { validateGeneratedWebReferences } from "../web-generation.js";
-import { nativeSheetTargetSchema, nativeSheetOperationsSchema } from "./native-sheet-edit.js";
-import { applyNativeSheetOperations } from "../native-sheet-edit.js";
-import { nativeDocumentTargetSchema, nativeDocumentOperationsSchema } from "./native-document-edit.js";
-import { applyNativeDocumentOperations } from "../native-document-edit.js";
 
 export const LANGUAGE_MAX_INPUT_BYTES = 256 * 1024;
 export const LANGUAGE_MAX_RESULT_BYTES = 512 * 1024;
-export const LANGUAGE_PURPOSES = ["agent.plan", "agent.read", "poster.generate", "poster.edit", "slides.outline", "slides.page", "slides.edit", "document.outline", "document.section", "document.edit", "document.native.edit", "sheet.outline", "sheet.chunk", "sheet.generate", "sheet.edit", "sheet.native.edit", "web.generate", "web.edit"];
+export const LANGUAGE_PURPOSES = ["agent.plan", "agent.read", "poster.generate", "poster.edit", "slides.outline", "slides.page", "slides.edit"];
 const common = { dependencyRefs: dependencyReferencesSchema.optional(), prompt: z.string().trim().min(1).max(12000), locale: z.enum(["zh", "en"]).default("zh"), assetIds: z.array(layoutId).max(8).default([]), referenceIds: z.array(layoutId).max(8).default([]), sourceFormat: z.literal("html").optional() };
 const size = { width: z.number().int().min(1).max(8192), height: z.number().int().min(1).max(8192) };
 const edit = { ...common, artifactId: layoutId, baseRevision: z.number().int().positive(), pageId: layoutId,
@@ -39,18 +25,7 @@ const layoutLanguageInputSchema = z.discriminatedUnion("purpose", [
   if (input.width && input.width * input.height > 40_000_000) ctx.addIssue({ code: "custom", message: "CANVAS_TOO_LARGE" });
   if (input.visualAssetId && !input.assetIds.includes(input.visualAssetId)) ctx.addIssue({ code: "custom", message: "LANGUAGE_UNKNOWN_ASSET" });
 });
-const sheetLanguageInputSchema = z.discriminatedUnion("purpose", [
-  z.object({ ...common, purpose: z.literal("sheet.outline"), sheetCount: z.number().int().min(1).max(5), targetRows: z.number().int().min(1).max(500) }).strict(),
-  z.object({ ...common, purpose: z.literal("sheet.chunk"), sheetId, sheetName: z.string().min(1).max(31), columns: z.array(z.string().min(1).max(120)).min(1).max(20), brief: z.string().max(2000), plan: sheetPlanSchema.optional(), startRow: z.number().int().min(1).max(500), endRow: z.number().int().min(1).max(500) }).strict().refine(value => value.endRow >= value.startRow && value.endRow - value.startRow < 25 && (!value.plan || value.endRow <= value.plan.rowCount && value.plan.columnFormats.length === value.columns.length), "SHEET_CHUNK_SIZE_INVALID"),
-  z.object({ ...common, purpose: z.literal("sheet.generate"), sheetCount: z.number().int().min(1).max(5).default(1), targetRows: z.number().int().min(1).max(100).default(20) }).strict(),
-  z.object({ ...common, purpose: z.literal("sheet.edit"), artifactId: sheetId, baseRevision: z.number().int().positive(), sheetId, addresses: sheetAddressesSchema }).strict(),
-  nativeSheetTargetSchema.extend({ ...common, purpose: z.literal("sheet.native.edit") }),
-]);
-const webLanguageInputSchema = z.discriminatedUnion("purpose", [
-  z.object({ ...common, purpose: z.literal("web.generate"), pageCount: z.number().int().min(1).max(20).default(1) }).strict(),
-  z.object({ ...common, purpose: z.literal("web.edit"), artifactId: webId, baseRevision: z.number().int().positive(), fileIds: z.array(webId).min(1).max(20), paths: z.array(z.string().min(1).max(240)).min(1).max(20) }).strict(),
-]);
-export const languageInputSchema = z.union([agentLanguageInputSchema, layoutLanguageInputSchema, documentLanguageInputSchema, nativeDocumentTargetSchema.extend({ ...common, purpose: z.literal("document.native.edit") }), sheetLanguageInputSchema, webLanguageInputSchema]);
+export const languageInputSchema = z.union([agentLanguageInputSchema, layoutLanguageInputSchema]);
 export const outlineSchema = z.object({ title: z.string().trim().min(1).max(160), theme: layoutDocumentSchema.shape.theme, design: slideDesignSchema.optional(),
   pages: z.array(z.object({ ...slideComposition, id: layoutId, title: z.string().min(1).max(160), brief: z.string().min(1).max(4000), notes: z.string().max(16000).default("") }).strict()).min(1).max(100),
 }).strict().superRefine((value, ctx) => {
@@ -73,54 +48,6 @@ export function validateLanguageResult(input, raw, source) {
     return plan;
   }
   if (input.purpose !== "slides.outline" && (input.sourceFormat === "html" || isHtmlDocument(source))) return validateHtmlLanguageResult(input, raw, source);
-  if (input.purpose === "document.native.edit") {
-    const result = z.object({ operations: nativeDocumentOperationsSchema }).strict().parse(raw);
-    applyNativeDocumentOperations(source, result.operations, input);
-    return result;
-  }
-  if (input.purpose === "sheet.native.edit") {
-    const result = z.object({ operations: nativeSheetOperationsSchema }).strict().parse(raw);
-    applyNativeSheetOperations(source, result.operations, input);
-    return result;
-  }
-  if (input.purpose.startsWith("document.")) return validateDocumentLanguageResult(input, raw, source);
-  if (input.purpose === "sheet.outline") {
-    const outline = sheetOutlineSchema.parse(raw);
-    if (outline.sheets.length !== input.sheetCount || outline.sheets.some(sheet => sheet.plan && sheet.plan.rowCount > input.targetRows)) fail("LANGUAGE_SHEET_MISMATCH");
-    return outline;
-  }
-  if (input.purpose === "sheet.chunk") {
-    try { return validateSheetChunk(input, raw); } catch { fail("LANGUAGE_SHEET_CHUNK_MISMATCH"); }
-  }
-  if (input.purpose === "sheet.generate") {
-    const result = workbookSchema.parse(raw);
-    if (result.sheets.length !== input.sheetCount || result.sheets.reduce((sum, sheet) => sum + sheet.cells.length, 0) > 500 || result.sheets.some(sheet => sheet.cells.some(cell => { const position = cellPosition(cell.address); return position.row > input.targetRows || position.column > 20; }))) fail("LANGUAGE_SHEET_MISMATCH");
-    return result;
-  }
-  if (input.purpose === "sheet.edit") {
-    const { selected } = validateSheetSelection(input, source);
-    const operations = z.object({ operations: sheetOperationSchema }).strict().parse(raw).operations;
-    for (const op of operations) { if (op.op !== "setCell" && op.op !== "clearCell" && op.op !== "setCellStyle") fail("LANGUAGE_EDIT_OUTSIDE_SCOPE"); if (op.sheetId !== input.sheetId || !selected.has(op.address)) fail("LANGUAGE_EDIT_OUTSIDE_SCOPE"); }
-    workbookSchema.parse(applySheetOperations(source, operations));
-    return { operations };
-  }
-  if (input.purpose === "web.generate") {
-    const result = webSchema.parse(raw);
-    if (result.files.filter(file => file.kind === "html").length !== input.pageCount) fail("LANGUAGE_WEB_MISMATCH");
-    if (result.assetIds.some(id => !input.assetIds.includes(id))) fail("LANGUAGE_UNKNOWN_ASSET");
-    // Previously persisted results did not have a design contract. Preserve
-    // replay of those checkpoints; new designed sites get the reference audit.
-    try { return result.design ? validateGeneratedWebReferences(result) : result; } catch { fail("LANGUAGE_WEB_MISMATCH"); }
-  }
-  if (input.purpose === "web.edit") {
-    const { byId } = validateWebSelection(input, source);
-    const operations = z.object({ operations: webOperationsSchema }).strict().parse(raw).operations;
-    for (const operation of operations) {
-      if (operation.op !== "setFile" || byId.get(operation.fileId)?.path !== operation.path) fail("LANGUAGE_EDIT_OUTSIDE_SCOPE");
-      if (operation.kind !== byId.get(operation.fileId)?.kind) fail("LANGUAGE_EDIT_OUTSIDE_SCOPE");
-    }
-    webSchema.parse(applyWebOperations(source, operations)); return { operations };
-  }
   let result;
   if (input.purpose === "poster.generate") {
     result = layoutDocumentSchema.parse(raw);

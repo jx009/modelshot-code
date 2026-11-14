@@ -52,9 +52,9 @@ export default function AdminPrompts() {
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <div className="flex items-center gap-2.5">
                 <span className="text-sm font-black">{t.name}</span>
-                <span className="text-[9px] font-black uppercase bg-primary/10 text-primary px-2 py-0.5 rounded-full">{t.category}</span>
+                <span className="text-xs font-black uppercase bg-primary/10 text-primary px-2 py-0.5 rounded-full">{t.category}</span>
                 {!t.isActive && (
-                  <span className="text-[9px] font-black uppercase bg-danger/15 text-danger px-2 py-0.5 rounded-full">Disabled</span>
+                  <span className="text-xs font-black uppercase bg-danger/15 text-danger px-2 py-0.5 rounded-full">Disabled</span>
                 )}
               </div>
               <div className="flex items-center gap-2">
@@ -86,7 +86,7 @@ export default function AdminPrompts() {
                   className="w-full bg-bg-page border border-divider rounded-lg px-3 py-2.5 text-xs font-medium leading-relaxed focus:outline-none focus:border-primary transition-colors"
                 />
                 <div className="flex items-center justify-between">
-                  <p className="text-[10px] text-secondary-text">
+                  <p className="text-xs text-secondary-text">
                     Save takes effect immediately · The engine prioritizes this template, if disabled it falls back to the built-in template
                   </p>
                   <button
@@ -98,7 +98,7 @@ export default function AdminPrompts() {
                 </div>
               </div>
             ) : (
-              <p className="text-[11px] text-secondary-text bg-bg-page/50 rounded-lg p-3 leading-relaxed line-clamp-3">
+              <p className="text-xs text-secondary-text bg-bg-page/50 rounded-lg p-3 leading-relaxed line-clamp-3">
                 {t.template}
               </p>
             )}

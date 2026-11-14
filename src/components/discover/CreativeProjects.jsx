@@ -12,10 +12,13 @@ import Modal from "@/components/ui/Modal";
 import { useDebouncedValue } from "@/components/ui/useDebouncedValue";
 import { usePageVisible } from "@/components/ui/LocalNavigation";
 import { projectHref, projectIdentity, isCreationProject } from "@/lib/creation/project-links";
+import GuestGate from "@/components/ui/GuestGate";
+import { useAuth } from "@/components/auth/AuthProvider";
 import "./projects.css";
 
 export default function CreativeProjects() {
   const { status, data: session } = useSession();
+  const auth = useAuth();
   const userId = session?.user?.id;
   return <ProjectLibrary key={userId || status} userId={userId} status={status} />;
 }
@@ -129,10 +132,10 @@ function ProjectLibrary({ userId, status }) {
   }
   return <><section className="mp-library">
     <header className="mp-heading"><h1>{zh ? "我的项目" : "My projects"}</h1><label className="mp-search"><Search size={18} /><input type="search" aria-label={zh ? "搜索项目" : "Search projects"} placeholder={zh ? "搜索项目" : "Search projects"} value={search} onChange={event => setSearch(event.target.value)} />{search && <button aria-label={zh ? "清空搜索" : "Clear search"} onClick={() => setSearch("")}><X size={15} /></button>}</label></header>
-    <div className="mp-filters">{[["all", "全部", "All"], ["canvas", "自由画布", "Canvas"], ["commerce", "电商套图", "Commerce"], ["poster", "海报", "Posters"], ["slides", "演示文稿", "Presentations"], ["motion", "视频制作", "Video production"], ["video", "视频生成", "Video generation"], ["trash", "已删除", "Deleted"]].map(([id, cn, en]) => <button key={id} aria-pressed={filter === id} onClick={() => setFilter(id)}>{zh ? cn : en}</button>)}</div>
+    <div className="mp-filters">{[["all", "全部", "All"], ["canvas", "自由画布", "Canvas"], ["commerce", "电商套图", "Commerce"], ["slides", "PPT", "Slides"], ["motion", "视频制作", "Video production"], ["video", "视频生成", "Video generation"], ["trash", "已删除", "Deleted"]].map(([id, cn, en]) => <button key={id} aria-pressed={filter === id} onClick={() => setFilter(id)}>{zh ? cn : en}</button>)}</div>
     {error && <p role="alert" className="mp-error">{error}</p>}
     {saving && <p role="status">{zh ? "正在同步项目修改…" : "Syncing project changes…"}</p>}
-    {status === "unauthenticated" ? <div className="mp-empty"><FolderOpen size={36} /><p>{zh ? "登录后查看和继续你的项目" : "Sign in to continue your projects"}</p><Link href="/login?callbackUrl=/projects">{zh ? "登录" : "Sign in"}</Link></div> : <>
+    {status === "unauthenticated" ? <GuestGate images={["petal-editorial.17c20ad4930e", "glass-orbit.fcb7cbd2851f", "tea-ceremony.e2220360fc96"]} title={zh ? "你的作品都在这里" : "All your work, in one place"} description={zh ? "登录后查看和继续你的项目，图片、视频和 PPT 会自动保存。" : "Sign in to continue your projects. Images, videos and slides are saved automatically."} action={zh ? "登录" : "Sign in"} onAction={() => auth.open()} /> : <>
       <div className="mp-grid" aria-busy={loading}>
         <Link href="/studio-v2?new=1" className="mp-new"><span><Plus size={28} /></span><strong>{zh ? "新建项目" : "New project"}</strong></Link>
         {rows === null ? Array.from({ length: 5 }, (_, i) => <div className="mp-skeleton" key={i} />) : rows.map(row => <article className="mp-card" key={projectIdentity(row)}>

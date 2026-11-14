@@ -7,6 +7,7 @@ import { useAuth } from "@/components/auth/AuthProvider";
 import { api, requestKey, terminalStatus } from "@/lib/client-api";
 import { useNavigationRouter } from "@/hooks/useNavigationRouter";
 import Link from "@/components/ui/NavigationLink";
+import GuestGate from "@/components/ui/GuestGate";
 import { ArrowUp, Check, Clapperboard, Download, FileVideo, ImagePlus, LoaderCircle, Upload, X } from "lucide-react";
 import useVideoProject from "./useVideoProject";
 import VideoMediaHint, { VIDEO_MEDIA_ACCEPT } from "./VideoMediaHint";
@@ -180,7 +181,9 @@ function Workspace({ documentId, initialMode, userId, zh }) {
 function Page() {
   const query = useSearchParams(), { data: session, status } = useSession(), auth = useAuth(), zh = useLocale() === "zh";
   if (status === "loading") return <div className="vm-empty" role="status">正在打开视频工作台…</div>;
-  if (!session?.user?.id) return <div className="vm-empty"><button onClick={() => auth.open()}>{zh ? "登录后开始视频创作" : "Sign in to create videos"}</button></div>;
+  if (!session?.user?.id) return <GuestGate images={["film-morning-market.4ce00a57e01e", "midnight-train.6fb4b8359f5b", "little-astronaut.9e7403880999"]}
+    title={zh ? "一句话，生成一段视频" : "One sentence, one video"} description={zh ? "描述镜头、动作和氛围，或上传一张图片让它动起来。" : "Describe the shot, motion and mood, or upload an image to animate it."}
+    action={zh ? "登录后开始视频创作" : "Sign in to create videos"} onAction={() => auth.open()} />;
   const id = query.get("document"), mode = query.get("mode") === "motion" ? "motion" : "video";
   if (id && !/^[a-zA-Z0-9_-]{1,128}$/.test(id)) return <div className="vm-empty">项目链接无效</div>;
   return <Workspace key={`${session.user.id}:${id || mode}`} userId={session.user.id} documentId={id} initialMode={mode} zh={zh} />;

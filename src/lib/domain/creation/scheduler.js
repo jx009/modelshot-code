@@ -12,7 +12,7 @@ import { getTool } from "../../studio/tools.js";
 import { lockRun } from "./runs.js";
 import { appendRunEvent, enqueueRun } from "./events.js";
 import { creationLanguageConfig, submitCreationLanguageStep } from "./language-jobs.js";
-import { publishCreationLanguage, assembleCreationSlides, assembleCreationDocument, assembleCreationSheet } from "./publication.js";
+import { publishCreationLanguage, assembleCreationSlides } from "./publication.js";
 import { nextReadyStep, newlyUnblockedSteps, runHasUnfinishedSteps, validateRunDependencyGraph } from "../../creation/run-dependencies.js";
 import { isSlideGeneration, inFlightStep, nextSlideStep, slideRunProgress } from "../../creation/slide-scheduling.js";
 
@@ -29,7 +29,7 @@ async function snapshot(db, id) {
 // transaction that records the first job's identity.
 export async function advanceRun(id, { db = prisma, store, configFor = studioConfig, capabilitiesFor = capabilities, submit = submitStudioJob, cancel = cancelOutput,
   submitPosterImage = submitCreationPosterImageStep, publishImage = publishPosterImage,
-  languageConfigFor = creationLanguageConfig, submitLanguage = submitCreationLanguageStep, publishLanguage = publishCreationLanguage, assembleSlides = assembleCreationSlides, assembleDocument = assembleCreationDocument, assembleSheet = assembleCreationSheet, now = new Date() } = {}) {
+  languageConfigFor = creationLanguageConfig, submitLanguage = submitCreationLanguageStep, publishLanguage = publishCreationLanguage, assembleSlides = assembleCreationSlides, now = new Date() } = {}) {
   const initial = await snapshot(db, id);
   if (!initial || isRunTerminal(initial.status) || !RUN_ACTIVE.includes(initial.status)) return;
   if (!validateRunDependencyGraph(initial.steps)) throw new AppError("CREATION_DEPENDENCY_GRAPH_INVALID", 409);
@@ -43,10 +43,8 @@ export async function advanceRun(id, { db = prisma, store, configFor = studioCon
   let config, caps;
   try {
     if (initial.kind === "agent") return await advanceAgentRun(initial, { db, store });
-    if (!initial.cancelRequestedAt && pending && ["poster", "slides", "document", "sheet", "web"].includes(initial.kind)) {
+    if (!initial.cancelRequestedAt && pending && ["poster", "slides"].includes(initial.kind)) {
       if (pending.tool === "layout.assemble") return await assembleSlides(initial, pending, { db, store });
-      if (pending.tool === "document.assemble") return await assembleDocument(initial, pending, { db, store });
-      if (pending.tool === "sheet.assemble") return await assembleSheet(initial, pending, { db, store });
       if (pending.jobId) {
         const job = await db.tryOn.findFirst({ where: { id: pending.jobId, userId: initial.userId }, select: { status: true } });
         if (job?.status === "succeeded") return await (pending.tool === POSTER_IMAGE_TOOL ? publishImage : publishLanguage)(initial, pending, { db, store });
@@ -54,7 +52,7 @@ export async function advanceRun(id, { db = prisma, store, configFor = studioCon
     }
     if (!initial.cancelRequestedAt && pending && !pending.jobId) {
       if (initial.kind === "video") return await submitCreationVideoStep(initial.userId, id, pending.id, initial.eventSequence, db);
-      if (["poster", "slides", "document", "sheet", "web"].includes(initial.kind)) {
+      if (["poster", "slides"].includes(initial.kind)) {
         if (pending.tool === POSTER_IMAGE_TOOL) return await submitPosterImage(initial.userId, id, pending.id, initial.eventSequence, { db, now });
         const languageConfig = await languageConfigFor(db, initial.input.languageProvider);
         return await submitLanguage(initial.userId, id, pending.id, initial.eventSequence, { db, config: languageConfig, now });

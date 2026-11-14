@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { sheetGenerationCalls } from "./sheet-batch.js";
 import { POSTER_IMAGE_SIZES } from "./poster-image.js";
 import { contentRunSchema } from "./content-runs.js";
 
@@ -9,7 +8,7 @@ export const agentRequestSchema = z.object({
   editRequest: contentRunSchema.optional(),
   maxCredits: z.number().int().min(0).max(200000), assetIds: z.array(id).max(8).default([]), referenceIds: z.array(id).max(8).default([]),
 }).strict();
-const planInput = agentRequestSchema.omit({ kind: true, maxCredits: true }).extend({ purpose: z.literal("agent.plan"), imageSizes: z.array(z.enum(POSTER_IMAGE_SIZES)).max(16).default([]), allowedKinds: z.array(z.enum(["poster", "slides", "document", "sheet", "web"])).min(1).max(5) }).strict();
+const planInput = agentRequestSchema.omit({ kind: true, maxCredits: true }).extend({ purpose: z.literal("agent.plan"), imageSizes: z.array(z.enum(POSTER_IMAGE_SIZES)).max(16).default([]), allowedKinds: z.array(z.enum(["slides"])).min(1).max(1) }).strict();
 export const agentLanguageInputSchema = z.union([planInput, agentRequestSchema.omit({ kind: true, maxCredits: true }).extend({ purpose: z.literal("agent.read") }).strict()]);
 export const agentReadResultSchema = z.object({ summary: z.string().min(1).max(8000) }).strict();
 const base = { id, explanation: z.string().min(1).max(500), dependsOn: z.array(id).max(16).default([]) };
@@ -47,7 +46,7 @@ export const AGENT_PIPELINE_VERSION = 1;
 export const AGENT_SCHEDULER_HEARTBEAT = "creation-agent-worker-v1";
 export const AGENT_LANGUAGE_HEARTBEAT = "creation-agent-language-v1";
 export function agentPlanCalls(request) {
-  return request.target ? 1 : request.kind === "slides" ? request.pageCount + 1 : request.kind === "document" ? request.sectionCount + 1 : request.kind === "sheet" ? sheetGenerationCalls(request.sheetCount, request.targetRows) : 1;
+  return request.target ? 1 : request.kind === "slides" ? request.pageCount + 1 : 1;
 }
 export const agentPlanningGuide = `Plan a bounded creative workflow. Return JSON {title,steps:[...]} with at most 16 steps in topological order. Every step has unique ASCII id, explanation and dependsOn (earlier step IDs). Use only allowedKinds.
 Tools:

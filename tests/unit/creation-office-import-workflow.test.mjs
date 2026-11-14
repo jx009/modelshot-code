@@ -5,11 +5,11 @@ import { OFFICE_IMPORT_VERSION } from "../../src/lib/creation/office/import-poli
 const mock = vi.hoisted(() => ({ create: vi.fn() }));
 vi.mock("../../src/lib/prisma.js", () => ({ prisma: {} }));
 vi.mock("../../src/lib/infra/storage/s3.js", () => ({ objectStorage: () => { throw new Error("No external storage"); } }));
-vi.mock("../../src/lib/domain/creation/native-office-artifacts.js", () => ({ createNativeOfficeArtifact: (...args) => mock.create(...args) }));
+vi.mock("../../src/lib/domain/creation/artifacts.js", () => ({ createLayoutArtifact: (...args) => mock.create(...args) }));
 beforeEach(() => { mock.create.mockReset(); });
 function fixture() {
   const bytes = Buffer.alloc(32); bytes.writeUInt32LE(0x04034b50);
-  const row = { id: "import", userId: "u", projectId: "p", name: "预算.xlsx", format: "xlsx", status: "queued", attempt: 0,
+  const row = { id: "import", userId: "u", projectId: "p", name: "方案.pptx", format: "pptx", status: "queued", attempt: 0,
     nextCheckAt: new Date(0), deadlineAt: new Date(Date.now() + 600000), sourceBlob: { id: "blob", userId: "u", state: "ready", objectKey: "original", bytes: bytes.length, checksum: createHash("sha256").update(bytes).digest("hex") }, project: { deletedAt: null } };
   const matches = where => (!where.status || (where.status.in ? where.status.in.includes(row.status) : where.status === row.status)) && (where.attempt === undefined || where.attempt === row.attempt)
     && (!where.leaseUntil || row.leaseUntil > where.leaseUntil.gt) && (!where.deadlineAt || row.deadlineAt > where.deadlineAt.gt);
@@ -19,12 +19,12 @@ function fixture() {
     creationImport: { findUnique: vi.fn(async ({ where }) => where.projectId_importKey ? null : structuredClone(row)),
       findFirst: vi.fn(async ({ where }) => matches(where) ? structuredClone(row) : null), findMany: vi.fn(async () => [structuredClone(row)]),
       update: vi.fn(async ({ data }) => update(data)), updateMany: vi.fn(async ({ where, data }) => matches(where) ? (update(data), { count: 1 }) : { count: 0 }) },
-    creationProject: { findFirst: vi.fn(async () => ({ id: "p", kind: "sheet" })) },
+    creationProject: { findFirst: vi.fn(async () => ({ id: "p", kind: "slides" })) },
     outboxEvent: { upsert: vi.fn(async () => ({})) },
     serviceHeartbeat: { findUnique: vi.fn(async () => null) }, asset: { upsert: vi.fn() },
   };
   db.$transaction = async fn => fn(db);
-  const content = { snapshot: { id: "office-import", custom: { modelshot: { officeImport: { sourceId: "import", format: "xlsx", warnings: [], protection: {} } } } } };
+  const content = { schemaVersion: 3, format: "html-slides", kind: "slides", title: "方案", pages: [] };
   const parse = vi.fn(async () => ({ content, media: [] })), store = { get: vi.fn(async () => bytes), put: vi.fn() };
   mock.create.mockImplementation(async (...args) => { const { hooks } = args[4]; await hooks.beforeStage(); await hooks.beforeCommit(db); await hooks.afterCommit(db, { artifactId: "artifact" }); return { artifactId: "artifact" }; });
   return { row, bytes, db, parse, store };
@@ -64,7 +64,7 @@ it("limits retries and rotates recovered work without postponing a queued wake",
   expect(f.row.status).toBe("failed"); expect(f.parse).toHaveBeenCalledOnce();
 });
 it("rejects unavailable workers and replays an existing upload before checking availability", async () => {
-  const f = fixture(), file = { name: "预算.xlsx", size: f.bytes.length, arrayBuffer: async () => f.bytes };
+  const f = fixture(), file = { name: "方案.pptx", size: f.bytes.length, arrayBuffer: async () => f.bytes };
   await expect(requestOfficeImport("u", "p", file, "upload-key-123456", { ...f, env: {} })).rejects.toThrow("OFFICE_WORKER_UNAVAILABLE");
   f.db.creationImport.findUnique.mockResolvedValue(f.row);
   expect(await requestOfficeImport("u", "p", file, "upload-key-123456", { ...f, env: {} })).toMatchObject({ id: "import" });
@@ -72,7 +72,7 @@ it("rejects unavailable workers and replays an existing upload before checking a
   await expect(requestOfficeImport("u", "p", file, "upload-key-123456", f)).rejects.toThrow("SAVE_KEY_REUSED");
 });
 
-it("admits PPTX beyond 4 MiB while retaining the smaller document and sheet limits", async () => {
+it("admits PPTX beyond 4 MiB and rejects retired DOCX/XLSX imports", async () => {
   const f = fixture(), bytes = Buffer.alloc(5 * 1024 * 1024);
   bytes.writeUInt32LE(0x04034b50);
   f.db.creationProject.findFirst.mockResolvedValue({ id: "p", kind: "slides" });
@@ -80,7 +80,7 @@ it("admits PPTX beyond 4 MiB while retaining the smaller document and sheet limi
   // Reaching worker admission proves the upload passed the size boundary.
   await expect(requestOfficeImport("u", "p", file, "upload-key-123456", { ...f, env: {} })).rejects.toThrow("OFFICE_WORKER_UNAVAILABLE");
   for (const name of ["document.docx", "sheet.xlsx"]) {
-    await expect(requestOfficeImport("u", "p", { ...file, name }, "upload-key-123456", f)).rejects.toThrow("OFFICE_SOURCE_LIMIT");
+    await expect(requestOfficeImport("u", "p", { ...file, name }, "upload-key-123456", f)).rejects.toThrow("OFFICE_FORMAT_UNSUPPORTED");
   }
   const read = vi.fn();
   await expect(requestOfficeImport("u", "p", { ...file, size: 32 * 1024 * 1024 + 1, arrayBuffer: read }, "upload-key-123456", f)).rejects.toThrow("OFFICE_SOURCE_LIMIT");

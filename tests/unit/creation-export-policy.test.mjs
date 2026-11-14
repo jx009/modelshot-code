@@ -7,15 +7,15 @@ const poster = (width = 2000, height = 4000) => ({ schemaVersion: 1, kind: "post
 it("separates poster formats from PPTX, validates paired retry fields and does not permit extra export knobs", () => {
   expect(exportFormatsForKind("poster")).toEqual(["png", "jpeg", "svg", "pdf"]);
   expect(exportFormatsForKind("slides")).toEqual(["pptx", "pdf"]);
-  expect(exportFormatsForKind("document")).toEqual(["docx", "markdown", "pdf"]);
-  expect(exportFormat("markdown")).toMatchObject({ extension: "markdown.zip", contentType: "application/zip", flag: "CREATION_MARKDOWN_EXPORT_ENABLED" });
-  expect(exportFormat("markdown", 2)).toMatchObject({ version: "univer-document-markdown-1", sourceSchemaVersion: 2, workerKey: "univer-markdown", flag: "CREATION_NATIVE_MARKDOWN_EXPORT_ENABLED" });
-  expect(hasExportSignature(Uint8Array.from([0x50, 0x4b, 3, 4]), "markdown")).toBe(true);
-  expect(exportFormatsForKind("web")).toEqual(["zip"]);
-  expect(exportFormat("zip")).toMatchObject({ extension: "zip", contentType: "application/zip", flag: "CREATION_WEB_EXPORT_ENABLED" });
+  // 已下线类型不再有任何导出格式，旧格式名也不再被接受
+  for (const kind of ["document", "sheet", "web"]) expect(exportFormatsForKind(kind)).toEqual([]);
+  for (const format of ["docx", "markdown", "xlsx", "zip"]) {
+    expect(exportFormat(format)).toBeNull();
+    expect(requestExportSchema.safeParse({ revision: 3, format }).success).toBe(false);
+  }
   expect(exportFormat("jpeg")).toMatchObject({ extension: "jpg", contentType: "image/jpeg" });
   expect(exportFormat("__proto__")).toBeNull();
-  for (const format of ["pptx", "docx", "markdown", "xlsx", "png", "jpeg", "zip", "svg", "pdf"]) expect(requestExportSchema.parse({ revision: 3, format })).toEqual({ revision: 3, format });
+  for (const format of ["pptx", "png", "jpeg", "svg", "pdf"]) expect(requestExportSchema.parse({ revision: 3, format })).toEqual({ revision: 3, format });
   for (const extra of [{ scale: 8 }, { format: "exe" }, { retryAttempt: 2 }, { retryKey: "a-retry-key-123456" }]) expect(requestExportSchema.safeParse({ revision: 3, format: "png", ...extra }).success).toBe(false);
 });
 

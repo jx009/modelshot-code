@@ -104,10 +104,10 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, jobs = [], appli
   const [marquee, setMarquee] = useState(null), [contextMenu, setContextMenu] = useState(null);
   const marqueeStart = useRef(null), marqueeRect = useRef(null);
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
-  const selectionInk = "#30ed19";
+  const selectionInk = "#FF6A2B";
 
   // Use custom hooks for state management
-  const { camera, updateCamera, zoom, fit: fitAll, fitExpansion, animateCamera, getCamera, stopCamera, cameraMoving } = useCanvasState(dimensions, layers);
+  const { camera, updateCamera, previewCamera, zoom, fit: fitAll, fitExpansion, animateCamera, getCamera, stopCamera, cameraMoving } = useCanvasState(dimensions, layers);
   const { strokes, isDrawing, startStroke, addPoint, endStroke, clearAll: clearStrokes } = useDrawingState();
   const {
     crop, movePreview, moveSelection, moveMask, activeMove,
@@ -472,11 +472,16 @@ const StudioCanvas = forwardRef(function StudioCanvas({ layers, jobs = [], appli
       onWheel={e => {
         e.evt.preventDefault();
         const pointer = stage.current.getPointerPosition();
-        const next = Math.max(0.08, Math.min(4, camera.scale * (e.evt.deltaY > 0 ? 0.93 : 1.07)));
-        updateCamera({
-          scale: next,
-          x: pointer.x - (pointer.x - camera.x) / camera.scale * next,
-          y: pointer.y - (pointer.y - camera.y) / camera.scale * next
+        // 连续缩放：鼠标滚轮每格约 7%，触控板小增量也能平滑跟手；按行滚动的设备换算成像素。
+        const delta = e.evt.deltaMode === 1 ? e.evt.deltaY * 33 : e.evt.deltaY;
+        const factor = Math.min(1.33, Math.max(0.75, Math.exp(-delta * 0.0007)));
+        previewCamera(stage.current, current => {
+          const next = Math.max(0.08, Math.min(4, current.scale * factor));
+          return {
+            scale: next,
+            x: pointer.x - (pointer.x - current.x) / current.scale * next,
+            y: pointer.y - (pointer.y - current.y) / current.scale * next,
+          };
         });
       }}
       onMouseDown={handleMouseDown} onTouchStart={handleMouseDown}

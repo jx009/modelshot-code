@@ -7,7 +7,6 @@ import { requestArtifactExport, ownedExport, cancelArtifactExport } from "../../
 import { executeArtifactExport, recoverArtifactExports } from "../../src/lib/domain/creation/export-execution.js";
 import { EXPORTER_VERSION, exportFormat } from "../../src/lib/creation/contracts/exports.js";
 import { AppError } from "../../src/lib/http.js";
-import { createDocumentArtifact, modifyDocumentArtifact } from "../../src/lib/domain/creation/document-artifacts.js";
 
 let fixture;
 const users = [], blobs = new Map();
@@ -58,32 +57,6 @@ it("requires the poster flag and matching raster capability, separates PNG/JPEG 
   expect((await requestArtifactExport(user.id, artifactId, pngRequest, { ...options(), env: {} })).id).toBe(png.id);
   await executeArtifactExport(jpeg.id, { ...options(), render: async () => pngBytes });
   expect(await ownedExport(user.id, jpeg.id, fixture.db)).toMatchObject({ status: "failed", errorCode: "EXPORT_RESULT_INVALID", blobId: null });
-});
-
-it("exports a fixed document revision under document-only admission and retains completed DOCX after admission closes", async () => {
-  const user = await fixture.user(); users.push(user.id);
-  const project = await createProject(user.id, { createKey: randomUUID(), name: "Report", kind: "document" }, fixture.db);
-  const source = { schemaVersion: 1, kind: "document", title: "报告", sections: [{ id: "section", title: "Summary", blocks: [{ id: "body", type: "paragraph", runs: [{ text: "Original document" }] }] }] };
-  const created = await createDocumentArtifact(user.id, project.id, source, randomUUID(), options());
-  const request = { revision: 1, format: "docx" }, enabled = { ...options(), env: { CREATION_DOCX_EXPORT_ENABLED: "true" } };
-  await expect(requestArtifactExport(user.id, created.artifactId, request, options())).rejects.toThrow("EXPORT_NOT_ENABLED");
-  await fixture.db.serviceHeartbeat.upsert({ where: { id: "creation-export-worker" }, create: { id: "creation-export-worker", details: { exporters: { docx: exportFormat("docx").version } } }, update: { updatedAt: new Date(), details: { exporters: { docx: exportFormat("docx").version } } } });
-  const [first, second] = await Promise.all([requestArtifactExport(user.id, created.artifactId, request, enabled), requestArtifactExport(user.id, created.artifactId, request, enabled)]);
-  expect(first.id).toBe(second.id);
-  await modifyDocumentArtifact(user.id, created.artifactId, { baseRevision: 1, saveKey: randomUUID(), operations: [{ op: "replaceDocumentText", sectionId: "section", blockId: "body", leafId: "body", start: 0, end: 17, expectedText: "Original document", text: "New document" }] }, options());
-  const render = vi.fn(async (document, _assets, settings) => {
-    expect(document.kind).toBe("document");
-    expect(document.sections[0].blocks[0].runs[0].text).toBe("Original document");
-    expect(settings.format).toBe("docx"); return output("native document");
-  });
-  await executeArtifactExport(first.id, { ...options(), render });
-  await executeArtifactExport(first.id, { ...options(), render });
-  expect(render).toHaveBeenCalledOnce();
-  const result = await ownedExport(user.id, first.id, fixture.db);
-  expect(result).toMatchObject({ status: "succeeded", format: "docx", revision: { revision: 1 } });
-  const blob = await fixture.db.creationBlob.findUnique({ where: { id: result.blobId } });
-  expect(blob.objectKey).toMatch(/\.docx$/);
-  expect((await requestArtifactExport(user.id, created.artifactId, request, { ...enabled, env: {} })).status).toBe("succeeded");
 });
 
 it("deduplicates concurrent submissions, exports the fixed revision, and replays completed results with admissions off", async () => {

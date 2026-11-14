@@ -43,7 +43,7 @@ export async function createAgentRun(userId, sessionId, input, key, { db = prism
   if (!config.visionApiKey || !config.chatModel) throw new AppError("VISION_NOT_CONFIGURED", 503);
   if (!Number.isSafeInteger(cost) || cost < 0) throw new AppError("INVALID_PRICE", 503);
   if (cost > data.maxCredits) throw new AppError("CREATION_BUDGET_EXCEEDED", 409);
-  const allowedKinds = ["poster", "slides", "document", "sheet", "web"].filter(kind => { try { requireContentCreation(kind, env); return true; } catch { return false; } });
+  const allowedKinds = ["slides"].filter(kind => { try { requireContentCreation(kind, env); return true; } catch { return false; } });
   const imageQuote = await quoteImage(db).catch(() => null);
   const params = languageInputSchema.parse({ ...(data.editRequest ? { editRequest: data.editRequest } : {}), imageSizes: Object.keys(imageQuote?.prices || {}), purpose: "agent.plan", prompt: data.prompt, locale: data.locale, assetIds: data.assetIds, referenceIds: data.referenceIds, allowedKinds });
   return db.$transaction(async tx => {

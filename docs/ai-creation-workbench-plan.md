@@ -1,6 +1,6 @@
 # AI 创作工作台完整实施方案
 
-> 2026-10-25 路线纠正：剩余工作以 [Cheso 对标剩余方案](cheso-alignment-remaining-plan.md) 为准。本文中以对象 JSON 作为新海报/PPT 权威源格式、继续补固定海报模板的决定已被替换：新海报采用 HTML/CSS，PPT 采用逐页完整 HTML；原对象格式只保留历史作品兼容。本文其余目标范围不缩减。
+> 2026-10-25 路线纠正：剩余工作以 [Cheso 对标剩余方案](archive/cheso-alignment-remaining-plan.md) 为准。本文中以对象 JSON 作为新海报/PPT 权威源格式、继续补固定海报模板的决定已被替换：新海报采用 HTML/CSS，PPT 采用逐页完整 HTML；原对象格式只保留历史作品兼容。本文其余目标范围不缩减。
 
 日期：2026-10-24。基线：ModelShot `435963a` 及当前工作区。状态：已开始实施，仍未完成阶段验收。当前源码、验证边界和下一步见 [实施进度](ai-creation-workbench-progress.md)。本文保留完整目标与退出条件，不以已写出的部分替代总体交付范围。
 

@@ -184,7 +184,7 @@ export default function AdminModels() {
                 )}
                 <div className="absolute inset-x-0 bottom-0 bg-bg-page px-2 py-1.5">
                   <div className="text-xs font-medium text-primary-text truncate">{m.name}</div>
-                  <div className="text-[10px] text-secondary-text truncate">{m.nameEn}</div>
+                  <div className="text-xs text-secondary-text truncate">{m.nameEn}</div>
                 </div>
                 {/* Keep actions available to touch and keyboard users. */}
                 <div className="absolute inset-x-0 top-0 p-1.5 flex justify-end gap-1 admin-model-actions">
@@ -200,7 +200,7 @@ export default function AdminModels() {
                   ><Trash2 size={11} /></button>
                 </div>
               </div>
-              <div className="px-2 py-1.5 text-[10px] text-secondary-text flex justify-between">
+              <div className="px-2 py-1.5 text-xs text-secondary-text flex justify-between">
                 <span>{m.gender}/{m.ethnicity}/{m.bodyType}</span>
                 <span>#{m.sortOrder}</span>
               </div>

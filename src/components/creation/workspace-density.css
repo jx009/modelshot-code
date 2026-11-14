@@ -15,7 +15,7 @@
 .cw-chat>header>svg,.cw-chat>header>button { flex-shrink:0; }
 .cw-chat-heading { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
 .cw-chat-heading>strong { font-size:12px; line-height:20px; white-space:nowrap; }
-.cw-chat-heading>span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:10px; line-height:16px; color:var(--secondary-text); }
+.cw-chat-heading>span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; line-height:16px; color:var(--secondary-text); }
 .cw-split-handle { flex-basis:6px; background:var(--bg-page); }
 .cw-messages { padding:12px 14px 32px; }
 .cw-composer { margin:6px 10px 10px; padding:8px 10px; max-height:38%; border-radius:14px; box-shadow:none; }
@@ -24,11 +24,11 @@
 .cw-composer .cw-reference-assets { display:inline-block; vertical-align:top; margin:2px 10px 3px 0; max-width:100%; }
 .cw-composer .cw-reference-files { display:inline-block; vertical-align:top; margin:2px 0 3px; max-width:100%; }
 .cw-composer .cw-reference-help { display:inline-block; margin-left:8px; }
-.cw-reference-help summary { cursor:pointer; font-size:10px; }
+.cw-reference-help summary { cursor:pointer; font-size:12px; }
 .cw-reference-help[open] { display:block; margin:3px 0; }
 .cw-reference-file-list { max-height:72px; overflow:auto; }
 .cw-reference-assets-list { max-height:64px; overflow:auto; }
-.cw-poster-image-choice { display:inline-flex; align-items:center; gap:4px; margin:2px 0 4px; font-size:11px; color:var(--secondary-text); }
+.cw-poster-image-choice { display:inline-flex; align-items:center; gap:4px; margin:2px 0 4px; font-size:12px; color:var(--secondary-text); }
 .cw-work-area { position:relative; }
 .cw-file-tools { position:absolute; top:5px; left:5px; z-index:4; min-height:30px; padding:0; border:0; }
 .cw-file-tools>span { display:none; }
@@ -41,7 +41,7 @@
 .cw-artifact-bar { min-height:40px; padding:4px 10px; gap:6px; }
 .cw-work-area:not(:has(.cw-file-tree)) .cw-artifact-bar { padding-left:42px; }
 .cw-editor-tools { flex-wrap:nowrap; min-height:36px; padding:2px 8px; overflow-x:auto; scrollbar-width:thin; }
-.cw-editor-tools>button { flex-shrink:0; white-space:nowrap; min-height:28px; padding:4px 6px; font-size:11px; }
+.cw-editor-tools>button { flex-shrink:0; white-space:nowrap; min-height:28px; padding:4px 6px; font-size:12px; }
 .cw-editor-tools>.cw-tool-spacer { min-width:4px; }
 .cw-editor-tools>.cw-tool-divider { flex-shrink:0; margin:0 3px; }
 .cw-editor-body { position:relative; }

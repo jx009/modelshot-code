@@ -4,14 +4,12 @@ import { objectStorage } from "../../infra/storage/s3.js";
 import { AppError } from "../../http.js";
 import { lockUser } from "../billing/ledger.js";
 import { importOfficeInProcess } from "./office-process.js";
-import { createNativeOfficeArtifact } from "./native-office-artifacts.js";
 import { createLayoutArtifact } from "./artifacts.js";
-import { officeImportMetadata } from "../../creation/office/identity.js";
 import { officeImportBytes, OFFICE_IMPORT_VERSION } from "../../creation/office/import-policy.js";
 export { OFFICE_IMPORT_BYTES } from "../../creation/office/import-policy.js";
 
 export { OFFICE_IMPORT_VERSION };
-const active = ["queued", "running"], kinds = { docx: "document", xlsx: "sheet", pptx: "slides" };
+const active = ["queued", "running"], kinds = { pptx: "slides" };
 const hash = bytes => createHash("sha256").update(bytes).digest("hex");
 export function presentOfficeImport(row) {
   return { id: row.id, name: row.name, format: row.format, status: row.status, attempt: row.attempt,
@@ -118,7 +116,7 @@ export async function executeOfficeImport(id, { db = prisma, store = objectStora
     const bytes = await store.get(blob.objectKey);
     if (bytes.length !== blob.bytes || hash(bytes) !== blob.checksum) throw new AppError("OFFICE_SOURCE_INVALID", 422);
     bounded.throwIfAborted();
-    const output = await parse(bytes, { format: row.format, title: row.name.replace(/\.(docx|xlsx|pptx)$/i, "").slice(0, 160), unitId: "office-" + id, sourceId: id }, { signal: bounded });
+    const output = await parse(bytes, { format: row.format, title: row.name.replace(/\.pptx$/i, "").slice(0, 160), unitId: "office-" + id, sourceId: id }, { signal: bounded });
     bounded.throwIfAborted();
     for (const item of output.media) {
       const contentType = item.contentType;
@@ -127,10 +125,10 @@ export async function executeOfficeImport(id, { db = prisma, store = objectStora
       await store.put(objectKey, item.data, contentType);
       await db.asset.upsert({ where: { id: item.id }, update: {}, create: { id: item.id, userId: row.userId, objectKey, kind: "image", status: "active", contentType, width: item.width, height: item.height, bytes: item.bytes, checksum: item.checksum } });
     }
-    const metadata = row.format === "pptx" ? null : officeImportMetadata(output.content), report = { metadata, unitId: output.content.snapshot?.id || null, warnings: metadata?.warnings || output.warnings || output.content.metadata?.warnings || [] };
+    const metadata = null, report = { metadata, unitId: output.content.snapshot?.id || null, warnings: metadata?.warnings || output.warnings || output.content.metadata?.warnings || [] };
     const live = { id, status: "running", attempt: row.attempt, leaseUntil: { gt: new Date() }, deadlineAt: { gt: new Date() } };
     if (!(await db.creationImport.updateMany({ where: live, data: { report } })).count) throw new AppError("OFFICE_LEASE_LOST", 409);
-    const createArtifact = row.format === "pptx" ? createLayoutArtifact : createNativeOfficeArtifact;
+    const createArtifact = createLayoutArtifact;
     await createArtifact(row.userId, row.projectId, output.content, "office_import_" + id, { db, store, hooks: {
       beforeStage: () => bounded.throwIfAborted(),
       beforeCommit: async tx => {

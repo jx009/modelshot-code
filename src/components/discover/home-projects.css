@@ -8,6 +8,6 @@
 .cr-home-project-card>div { position:relative; display:grid; place-items:center; aspect-ratio:4/3; border:1px solid var(--divider); border-radius:10px; background:var(--bg-card); overflow:hidden; color:var(--secondary-text); }
 .cr-home-project-card img { object-fit:cover; }
 .cr-home-project-card>strong { font-size:12px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.cr-home-project-card>time { color:var(--secondary-text); font-size:10px; }
+.cr-home-project-card>time { color:var(--secondary-text); font-size:12px; }
 .cr-home-project-placeholder { aspect-ratio:4/3; background:var(--bg-card); border:1px solid var(--divider); border-radius:10px; }
 @media(max-width:700px) { .cr-home-project-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; } .cr-home-projects { padding:0 18px; } }

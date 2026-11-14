@@ -82,7 +82,7 @@ export default function AdminCost() {
             ))}
           </div>
         </div>
-        <div className="flex justify-between text-[10px] text-secondary-text mt-2">
+        <div className="flex justify-between text-xs text-secondary-text mt-2">
           <span>{data.trend[0]?.date}</span>
           <span>{data.trend[data.trend.length - 1]?.date}</span>
         </div>

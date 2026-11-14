@@ -33,15 +33,49 @@ export function useCanvasState(dimensions, layers) {
   }, [commitCamera, stopCamera]);
   useEffect(() => () => cancelAnimationFrame(animation.current), []);
 
+  const previewFrame = useRef(0), previewSettle = useRef(0), previewTarget = useRef(null);
+  // 以实时 camera 为基准合并：滚轮预览尚未提交时，React 状态里的值已经过期。
   const updateCamera = useCallback((next) => {
     stopCamera();
-    commitCamera((current) => ({ ...current, ...next }));
+    clearTimeout(previewSettle.current);
+    previewSettle.current = 0;
+    commitCamera(() => ({ ...currentCamera.current, ...next }));
   }, [commitCamera, stopCamera]);
+
+  // 高频交互（滚轮缩放、触控板捏合）期间不进 React：直接改 Stage 变换，
+  // 每帧最多绘制一次；停止 120ms 后才提交一次状态，让依赖 camera 的叠加层同步。
+  // react-konva 只在 props 变化时重设节点属性，因此预览期间不会被旧 props 覆盖。
+  const previewCamera = useCallback((stageNode, next) => {
+    cancelAnimationFrame(animation.current);
+    animation.current = 0;
+    const value = typeof next === "function" ? next(currentCamera.current) : next;
+    currentCamera.current = value;
+    previewTarget.current = { node: stageNode, value };
+    if (!previewFrame.current) previewFrame.current = requestAnimationFrame(() => {
+      previewFrame.current = 0;
+      const target = previewTarget.current;
+      if (!target?.node) return;
+      target.node.position({ x: target.value.x, y: target.value.y });
+      target.node.scale({ x: target.value.scale, y: target.value.scale });
+      target.node.batchDraw();
+    });
+    if (!previewSettle.current) setCameraMoving(true);
+    clearTimeout(previewSettle.current);
+    previewSettle.current = setTimeout(() => {
+      previewSettle.current = 0;
+      setCameraMoving(false);
+      setCamera(currentCamera.current);
+    }, 120);
+  }, []);
+  useEffect(() => () => { cancelAnimationFrame(previewFrame.current); clearTimeout(previewSettle.current); }, []);
 
   const zoom = useCallback(
     (factor) => {
       stopCamera();
-      commitCamera((c) => {
+      clearTimeout(previewSettle.current);
+      previewSettle.current = 0;
+      commitCamera(() => {
+        const c = currentCamera.current;
         const scale = Math.min(4, Math.max(0.08, c.scale * factor));
         const center = { x: dimensions.width / 2, y: dimensions.height / 2 };
         return {
@@ -119,6 +153,7 @@ export function useCanvasState(dimensions, layers) {
     dimensions,
     setCamera,
     updateCamera,
+    previewCamera,
     zoom,
     fit,
     fitExpansion,

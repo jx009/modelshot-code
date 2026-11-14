@@ -10,5 +10,8 @@ export default function InspirationImage({ item, thumbnail = false, src: overrid
   const [failed, setFailed] = useState(null);
   const fallback = override || (item.cover.type === "asset" ? `/api/inspiration/${encodeURIComponent(item.id)}/image?delivery=proxy` : inspirationImage({ ...item, imageUrl: undefined, thumbnailUrl: undefined }));
   const current = failed === src ? fallback : src;
-  return <Image {...props} alt={alt} src={current} unoptimized={unoptimized || Boolean(item.imageUrl) || item.cover.type === "asset"} onError={() => setFailed(src)} />;
+  const [loaded, setLoaded] = useState(null);
+  const { onLoad, ...rest } = props;
+  return <Image {...rest} alt={alt} src={current} data-loaded={loaded === current || undefined} unoptimized={unoptimized || Boolean(item.imageUrl) || item.cover.type === "asset"}
+    onLoad={event => { setLoaded(current); onLoad?.(event); }} onError={() => setFailed(src)} />;
 }

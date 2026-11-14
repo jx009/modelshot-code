@@ -22,7 +22,7 @@ const nextConfig = {
 
   // 优化 chunk 分割，减少首屏加载体积
   experimental: {
-    optimizePackageImports: ["lucide-react", "framer-motion"],
+    optimizePackageImports: ["lucide-react"],
     // Reuse recently visited page shells on this browser. User data is still
     // loaded through authenticated APIs; this is not shared server caching.
     staleTimes: { dynamic: 30, static: 300 },
@@ -51,7 +51,7 @@ const nextConfig = {
           },
           // 将大型 UI 库单独打包
           uiLibs: {
-            test: /[\\/]node_modules[\\/](framer-motion|lucide-react)[\\/]/,
+            test: /[\\/]node_modules[\\/]lucide-react[\\/]/,
             name: "ui-libs",
             chunks: "async",
             priority: 9,

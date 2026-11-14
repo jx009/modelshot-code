@@ -2,7 +2,7 @@ import { z } from "zod";
 import { prisma } from "../prisma.js";
 import { getSiteConfig } from "../site-config.js";
 import { AppError } from "../http.js";
-import { CREATION_ACCESS_FLAGS, CREATION_CONTENT_KINDS } from "./access-flags.js";
+import { CREATION_ACCESS_FLAGS, CREATION_CONTENT_KINDS, RETIRED_CREATION_KINDS } from "./access-flags.js";
 
 export const creationAccessSchema = z.object(Object.fromEntries(CREATION_ACCESS_FLAGS.map(({ key }) => [key, z.boolean()]))).strict();
 
@@ -10,7 +10,12 @@ export async function getCreationAccessConfig(db = prisma, env = process.env) {
   const raw = await getSiteConfig("creation_access", db);
   if (raw) {
     // Invalid stored configuration fails closed, rather than silently reopening a feature.
-    try { return creationAccessSchema.parse({ video: false, motion: false, ...JSON.parse(raw) }); }
+    // Retired kinds are dropped explicitly; any other unknown key still fails closed.
+    try {
+      const stored = JSON.parse(raw);
+      for (const kind of RETIRED_CREATION_KINDS) delete stored?.[kind];
+      return creationAccessSchema.parse({ video: false, motion: false, ...stored });
+    }
     catch { throw new AppError("CREATION_CONFIG_INVALID", 503); }
   }
   return Object.fromEntries(CREATION_ACCESS_FLAGS.map(({ key, env: name }) => [key, env[name] === "true"]));
@@ -30,6 +35,7 @@ export async function getCreationEnv(userId, { db = prisma, env = process.env } 
 }
 
 export function assertCreationAccess(env, { kind, workspace = kind !== "image", runs = false } = {}) {
+  if (RETIRED_CREATION_KINDS.includes(kind)) throw new AppError("CREATION_NOT_ENABLED", 403);
   const flag = CREATION_ACCESS_FLAGS.find(item => item.key === kind);
   if ((workspace && env.CREATION_WORKSPACE_ENABLED !== "true")
     || (runs && env.CREATION_RUNS_ENABLED !== "true")

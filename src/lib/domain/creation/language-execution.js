@@ -12,11 +12,6 @@ import { invokeCreationLanguage } from "./language-provider.js";
 import { prepareCreationReferenceImages } from "./reference-images.js";
 import { prepareCreationReferenceFiles } from "./reference-reader.js";
 import { languageInputSchema, validateLanguageResult, LANGUAGE_MAX_RESULT_BYTES } from "../../creation/contracts/language.js";
-import { validateDocumentSelection } from "../../creation/contracts/document-language.js";
-import { validateSheetSelection } from "../../creation/sheet-selection.js";
-import { validateWebSelection } from "../../creation/web-selection.js";
-import { validateNativeSheetSelection } from "../../creation/native-sheet-edit.js";
-import { validateNativeDocumentSelection } from "../../creation/native-document-edit.js";
 
 const blobIdFor = id => `language-${id}`;
 function checkBlob(blob, output) {
@@ -77,14 +72,7 @@ export async function executeCreationLanguage(id, { db = prisma, store = objectS
       await finishOutput(id, output.fence, { resultData: output.resultData }, db);
       return;
     }
-    const nativeKind = input.purpose === "sheet.native.edit" ? "sheet" : input.purpose === "document.native.edit" ? "document" : null;
-    const nativeService = nativeKind ? await import("./native-office-artifacts.js") : null;
-    const readSource = nativeService ? (user, id, revision, options) => nativeService.readNativeOfficeArtifact(user, id, nativeKind, revision, options) : input.purpose === "document.edit" ? (await import("./document-artifacts.js")).readDocumentArtifact : input.purpose === "sheet.edit" ? (await import("./sheet-artifacts.js")).readSheetArtifact : input.purpose === "web.edit" ? (await import("./web-artifacts.js")).readWebArtifact : readLayoutArtifact;
-    const source = input.artifactId ? (await readSource(output.userId, input.artifactId, input.baseRevision, { db, store })).content : null;
-    if (input.purpose === "document.edit") validateDocumentSelection(input, source);
-    if (input.purpose === "sheet.edit") validateSheetSelection(input, source);
-    if (nativeKind) (nativeKind === "sheet" ? validateNativeSheetSelection : validateNativeDocumentSelection)(input, source);
-    if (input.purpose === "web.edit") validateWebSelection(input, source);
+    const source = input.artifactId ? (await readLayoutArtifact(output.userId, input.artifactId, input.baseRevision, { db, store })).content : null;
     if (blob) {
       const result = await decodeBlob(blob, output, store);
       validateLanguageResult(input, result, source);
@@ -136,7 +124,7 @@ export async function executeCreationLanguage(id, { db = prisma, store = objectS
     await store.put(blob.objectKey, bytes, "application/json");
     if (await attachResult(output, blob, db)) await finishOutput(id, output.fence, { resultData: { creationLanguage: { schemaVersion: 1, purpose: input.purpose, blobId: blob.id } }, durationMs: Date.now() - started }, db);
   } catch (error) {
-    const invalidResult = ["ZodError", "HtmlDocumentError", "LanguageResultError", "NativeSheetEditError", "NativeDocumentEditError"].includes(error.name);
+    const invalidResult = ["ZodError", "HtmlDocumentError", "LanguageResultError"].includes(error.name);
     console.error(JSON.stringify({ code: "CREATION_LANGUAGE_FAILED", jobId: id, purpose: output.snapshot?.purpose, ...languageFailureDiagnostic(error) }));
     // Preserve uncertainty on storage/settlement failure; the same result can
     // be recovered. No retry path resubmits a previously submitted request.

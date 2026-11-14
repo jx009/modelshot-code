@@ -43,7 +43,7 @@ function PicturePreview({ item }) {
         width={item.width}
         height={item.height}
         fontSize={item.fontSize || 36}
-        fill={item.fill || "#D9F154"}
+        fill={item.fill || "#FF6A2B"}
         rotation={item.rotation || 0}
         opacity={item.opacity ?? 1}
       />
@@ -52,13 +52,13 @@ function PicturePreview({ item }) {
 
   return (
     <Group x={item.x} y={item.y} rotation={item.rotation || 0} opacity={item.opacity ?? 1}>
-      <Rect width={item.width} height={item.height} fill="#D9F154" opacity={0.13} cornerRadius={12} />
+      <Rect width={item.width} height={item.height} fill="#FF6A2B" opacity={0.13} cornerRadius={12} />
       <Text
         text="▶ VIDEO"
         width={item.width}
         align="center"
         y={item.height / 2 - 10}
-        fill="#D9F154"
+        fill="#FF6A2B"
         fontSize={22}
       />
     </Group>

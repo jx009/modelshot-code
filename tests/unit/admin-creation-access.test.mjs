@@ -37,8 +37,8 @@ it("lets administrators inspect the seven switches but only root may save", asyn
   expect((await GET(new Request("https://example.test/api/admin/creation-access"))).status).toBe(403);
 });
 
-it("persists all seven boolean switches atomically through a root-scoped audit", async () => {
-  const closed = { ...config, poster: false, runs: false };
+it("persists all creation access switches atomically through a root-scoped audit", async () => {
+  const closed = { ...config, slides: false, runs: false };
   expect((await PATCH(request({ config: closed, reason: "调整创作开放范围" }))).status).toBe(200);
   expect(ports.write).toHaveBeenCalledWith("creation_access", JSON.stringify(closed), {});
   const call = ports.audit.mock.calls[0];
@@ -47,7 +47,7 @@ it("persists all seven boolean switches atomically through a root-scoped audit",
   expect(ports.invalidate).toHaveBeenCalledOnce();
 });
 
-it.each([{ ...config, poster: "false" }, { poster: false }, { ...config, injected: true }])("rejects malformed or incomplete config without writing", async invalid => {
+it.each([{ ...config, slides: "false" }, { slides: false }, { ...config, injected: true }])("rejects malformed or incomplete config without writing", async invalid => {
   expect((await PATCH(request({ config: invalid, reason: "调整配置" }))).status).toBe(400);
   expect(ports.audit).not.toHaveBeenCalled();
   expect(ports.write).not.toHaveBeenCalled();
@@ -59,11 +59,11 @@ it("lets admins inspect individually visible launcher buttons while only root ma
   const request = new Request("https://example.test/api/admin/creation-launcher-visibility", { method: "PATCH", headers: { "content-type": "application/json", "idempotency-key": "launcher-visibility-save-123" }, body: JSON.stringify({ config: DEFAULT_CREATION_LAUNCHER_VISIBILITY, reason: "调整首页入口" }) });
   expect((await patchLauncher(request)).status).toBe(403);
   expect(ports.write).not.toHaveBeenCalled();
-  expect(CREATION_LAUNCHER_ITEMS).toHaveLength(8);
+  expect(CREATION_LAUNCHER_ITEMS).toHaveLength(4);
 });
 
 it("saves per-button visibility through the root audit", async () => {
-  const config = { ...DEFAULT_CREATION_LAUNCHER_VISIBILITY, motion: false, video: false, document: false, sheet: false, web: false };
+  const config = { ...DEFAULT_CREATION_LAUNCHER_VISIBILITY, motion: false, video: false };
   const request = new Request("https://example.test/api/admin/creation-launcher-visibility", { method: "PATCH", headers: { "content-type": "application/json", "idempotency-key": "launcher-visibility-save-456" }, body: JSON.stringify({ config, reason: "精简首页创作入口" }) });
   expect((await patchLauncher(request)).status).toBe(200);
   expect(ports.write).toHaveBeenCalledWith("creation_launcher_visibility", JSON.stringify(config), {});

@@ -20,8 +20,8 @@ beforeEach(() => {
   ports.config.mockResolvedValue({ value: JSON.stringify(flags(false)) });
   ports.user.mockResolvedValue({ role: "user", status: "active" });
   ports.auth.mockResolvedValue({ id: "u", role: "root" }); // Stale/forged session role is ignored.
-  ports.project.mockResolvedValue({ kind: "poster" });
-  ports.read.mockResolvedValue({ id: "p", kind: "poster" });
+  ports.project.mockResolvedValue({ kind: "slides" });
+  ports.read.mockResolvedValue({ id: "p", kind: "slides" });
 });
 
 it.each(["user", "agent", "admin"])("closed switches deny %s while open switches allow access", role => {
@@ -46,10 +46,17 @@ it("uses environment defaults until saved, then applies live DB settings over th
   ports.config.mockResolvedValueOnce(null);
   expect(await getCreationAccessConfig(undefined, env(true))).toEqual(flags(true));
   expect(await getCreationAccessConfig(undefined, env(true))).toEqual(flags(false));
-  ports.config.mockResolvedValue({ value: JSON.stringify({ ...flags(true), poster: false }) });
-  expect((await getCreationEnv("u", { env: env(false) })).CREATION_SHEET_ENABLED).toBe("true");
-  expect((await getCreationEnv("u", { env: env(true) })).CREATION_POSTER_ENABLED).toBe("false");
-  ports.config.mockResolvedValue({ value: '{"poster":"false"}' });
+  ports.config.mockResolvedValue({ value: JSON.stringify({ ...flags(true), slides: false }) });
+  expect((await getCreationEnv("u", { env: env(false) })).CREATION_VIDEO_ENABLED).toBe("true");
+  expect((await getCreationEnv("u", { env: env(true) })).CREATION_SLIDES_ENABLED).toBe("false");
+  ports.config.mockResolvedValue({ value: '{"slides":"false"}' });
+  await expect(getCreationAccessConfig()).rejects.toThrow("CREATION_CONFIG_INVALID");
+});
+
+it("ignores switches of retired kinds in stored configurations but still rejects unknown keys", async () => {
+  ports.config.mockResolvedValue({ value: JSON.stringify({ ...flags(true), poster: true, document: true, sheet: false, web: true }) });
+  expect(await getCreationAccessConfig()).toEqual(flags(true));
+  ports.config.mockResolvedValue({ value: JSON.stringify({ ...flags(true), unknown: true }) });
   await expect(getCreationAccessConfig()).rejects.toThrow("CREATION_CONFIG_INVALID");
 });
 
@@ -61,10 +68,10 @@ it("loads older seven-switch configurations with video modules closed", async ()
 
 it("keeps workspace, individual modules and task admission independent", () => {
   const user = { role: "user", status: "active" };
-  let resolved = effectiveCreationEnv({ ...flags(true), runs: false, web: false }, user, {});
-  expect(() => assertCreationAccess(resolved, { kind: "poster" })).not.toThrow();
-  expect(() => assertCreationAccess(resolved, { kind: "poster", runs: true })).toThrow();
-  expect(allowedCreationKinds(resolved)).toEqual(["poster", "slides", "document", "sheet", "video", "motion"]);
+  let resolved = effectiveCreationEnv({ ...flags(true), runs: false, motion: false }, user, {});
+  expect(() => assertCreationAccess(resolved, { kind: "slides" })).not.toThrow();
+  expect(() => assertCreationAccess(resolved, { kind: "slides", runs: true })).toThrow();
+  expect(allowedCreationKinds(resolved)).toEqual(["slides", "video"]);
   resolved = effectiveCreationEnv({ ...flags(true), workspace: false }, user, {});
   expect(allowedCreationKinds(resolved)).toEqual([]);
   expect(() => assertCreationAccess(resolved, { kind: "image", runs: true })).not.toThrow();
@@ -82,17 +89,21 @@ it("enforces persisted roles on old project links before loading project content
 });
 
 it.each(["artifact", "session", "run", "import", "export"])("guards the stored kind of an owned %s, including nested resources", async resource => {
-  const project = { kind: "poster" }, artifact = { kind: "poster", project };
+  const project = { kind: "slides" }, artifact = { kind: "slides", project };
   ports[resource].mockResolvedValue(resource === "export" ? { revision: { artifact } } : { ...artifact });
-  const resolved = effectiveCreationEnv({ ...flags(true), poster: false }, { role: "user", status: "active" }, {});
+  const resolved = effectiveCreationEnv({ ...flags(true), slides: false }, { role: "user", status: "active" }, {});
   await expect(assertCreationResource("u", resolved, resource, "item")).rejects.toThrow("CREATION_NOT_ENABLED");
+  // Resources of retired kinds stay closed even when every switch is open.
+  const retired = { kind: "document", project: { kind: "document" } };
+  ports[resource].mockResolvedValue(resource === "export" ? { revision: { artifact: retired } } : { ...retired });
+  await expect(assertCreationResource("u", effectiveCreationEnv(flags(true), { role: "root", status: "active" }, {}), resource, "item")).rejects.toThrow("CREATION_NOT_ENABLED");
   ports[resource].mockResolvedValue(null);
   await expect(assertCreationResource("u", env(true), resource, "foreign")).rejects.toThrow("CREATION_RESOURCE_NOT_FOUND");
 });
 
 it("blocks API admission immediately after an administrator closes a switch", async () => {
   ports.config.mockResolvedValue({ value: JSON.stringify(flags(true)) });
-  await expect(requireCreationUser({ kind: "poster", runs: true })).resolves.toMatchObject({ id: "u" });
+  await expect(requireCreationUser({ kind: "slides", runs: true })).resolves.toMatchObject({ id: "u" });
   ports.config.mockResolvedValue({ value: JSON.stringify({ ...flags(true), runs: false }) });
-  await expect(requireCreationUser({ kind: "poster", runs: true })).rejects.toThrow("CREATION_NOT_ENABLED");
+  await expect(requireCreationUser({ kind: "slides", runs: true })).rejects.toThrow("CREATION_NOT_ENABLED");
 });

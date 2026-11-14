@@ -2,7 +2,6 @@ import { expect, it } from "vitest";
 import { extractOfficeReference } from "../../src/lib/creation/references/office-text.js";
 import { openOfficeZip } from "../../src/lib/creation/references/office-zip.js";
 import { officeFile, W, S, P, R, rels } from "../fixtures/creation-office-reference.mjs";
-import { buildDocumentDocx } from "../../src/lib/creation/exports/docx.js";
 import { buildWorkbookXlsx } from "../../src/lib/creation/exports/xlsx.js";
 import { buildLayoutPptx } from "../../src/lib/creation/exports/pptx.js";
 
@@ -91,9 +90,7 @@ it("rejects external main documents and never follows arbitrary relationship typ
   expect(() => extractOfficeReference(wrong, "docx")).toThrow("CREATION_REFERENCE_OFFICE_INVALID");
 });
 
-it("reads actual generated Office packages, including exported Chinese text, formula results and slide notes", async () => {
-  const docx = await buildDocumentDocx({ schemaVersion: 1, kind: "document", title: "报告", sections: [{ id: "s", title: "发布", blocks: [{ id: "p", type: "paragraph", runs: [{ text: "咖啡店开业计划", marks: {} }] }] }] });
-  expect(extractOfficeReference(docx, "docx").text).toContain("咖啡店开业计划");
+it("reads actual generated XLSX and PPTX packages, including Chinese text, formula results and slide notes", async () => {
   const xlsx = await buildWorkbookXlsx({ schemaVersion: 1, kind: "sheet", title: "预算", sheets: [{ id: "s", name: "预算", cells: [{ id: "a", address: "A1", value: 2000 }, { id: "b", address: "A2", formula: "=SUM(A1:A1)" }] }] });
   expect(extractOfficeReference(xlsx, "xlsx").text).toContain('"formula":"SUM(A1:A1)"');
   const pptx = await buildLayoutPptx({ schemaVersion: 1, kind: "slides", title: "发布方案", theme: { name: "Brand", primary: "#202124", accent: "#cc6600", background: "#ffffff", fontFamily: "sans" }, pages: [{ id: "p", title: "首页", notes: "介绍品牌", width: 1920, height: 1080, nodes: [{ id: "t", type: "text", name: "标题", text: "城市咖啡", x: 50, y: 50, width: 600, height: 150, style: {} }] }] });

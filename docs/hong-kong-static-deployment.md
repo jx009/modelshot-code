@@ -87,6 +87,34 @@ rsync 将不完整文件保留在本次 `${BUILD_TAG}/partials`，与待发布�
 
 只在检查成功后重载。开启 GitHub Variable 后，在 main 手动运行 Publish Docker image，成功后再更新美国镜像。
 
+## 公开页面 HTML 微缓存（一次性修改）
+
+静态资源本地化之后，页面 HTML 仍从美国回源：中国网络访问首页实测首字节约 7.9 秒，且响应未压缩。首页、定价页和作品详情页由 Next.js 预渲染，内容与登录态无关，可以安全地在香港缓存。
+
+配置在 `docker/nginx/hk-page-cache.conf`，分三部分：
+
+1. **http 层**：新增缓存区 `letaidraw_hk_pages` 和判定 RSC 请求的 `map`，与现有 upstream 同级。先创建目录 `/www/server/nginx/proxy_cache/letaidraw_pages` 并交给 Nginx 运行用户。
+2. **server 层**：把文件中注释掉的 `location ~ ^/(zh|en)...` 取消注释，放在 `location /` 之前。只匹配 `/zh`、`/en`、`/pricing`、`/explore/<slug>`，其余路径行为不变。
+3. **压缩**：开启 gzip；已编译 brotli 模块时一并开启。
+
+行为说明：
+
+- 只缓存完整文档请求，RSC 与预取请求（带 `RSC`、`Next-Router-*` 请求头）直接回源，不会把 RSC 载荷当成 HTML 返回。
+- 带 `Set-Cookie` 的响应不进缓存，这是 Nginx 默认行为，**不要**加 `proxy_ignore_headers Set-Cookie`。
+- 缓存 60 秒，过期后先返回旧页面、后台刷新；美国源站故障时继续返回旧页面。
+- 发布新版本后，最长 60 秒内旧 HTML 仍引用上一版资源路径。由于香港静态资源按 `BUILD_TAG` 隔离且从不删除，旧页面仍可正常加载。
+- 管理端修改灵感库后，页面最长约 5 分钟生效（Next.js ISR 300 秒 + 香港 60 秒）。
+
+验证：
+
+```bash
+curl -sI https://www.letaidraw.com/zh | grep -i "x-hk-page-cache\|content-encoding"
+```
+
+第二次请求应看到 `X-HK-Page-Cache: HIT` 与 `content-encoding: gzip`（或 `br`），首字节应降到数百毫秒以内。带 `RSC: 1` 请求头的请求应显示 `BYPASS`。
+
+若此前观察到"内容已下载完但连接 60 秒不结束"，开启缓存后由 Nginx 直接返回带长度的完整响应，可一并消除；若仍复现，检查该 location 是否继承了 `proxy_buffering off`。
+
 ## 验证与维护
 
 ### 公开图片的一次性 Nginx 配置

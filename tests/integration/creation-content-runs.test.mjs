@@ -10,8 +10,6 @@ import { executeCreationLanguage } from "../../src/lib/domain/creation/language-
 import { createLayoutArtifact, readLayoutArtifact, modifyLayoutArtifact } from "../../src/lib/domain/creation/artifacts.js";
 import { usageSummary } from "../../src/lib/domain/billing/ledger.js";
 import { confirmOutline, readOutlineReview } from "../../src/lib/domain/creation/outline-review.js";
-import { readDocumentArtifact } from "../../src/lib/domain/creation/document-artifacts.js";
-import { DOCUMENT_SCHEDULER_HEARTBEAT, DOCUMENT_LANGUAGE_HEARTBEAT, DOCUMENT_PIPELINE_VERSION } from "../../src/lib/creation/contracts/document-runtime.js";
 import { HTML_SCHEDULER_HEARTBEAT, HTML_LANGUAGE_HEARTBEAT, HTML_PIPELINE_VERSION } from "../../src/lib/creation/contracts/html-runtime.js";
 
 let fixture;
@@ -21,7 +19,7 @@ const store = { put: async (key, bytes) => objects.set(key, Buffer.from(bytes)),
   return Buffer.from(objects.get(key));
 } };
 const config = { plannerProvider: "fixture-language", plannerKind: "openai", visionBaseURL: "https://fixture.invalid/v1", visionApiKey: "fixture", chatModel: "fixture-model", plannerCreditCost: 2 };
-const env = { CREATION_RUNS_ENABLED: "true", CREATION_WORKSPACE_ENABLED: "true", CREATION_POSTER_ENABLED: "true", CREATION_SLIDES_ENABLED: "true", CREATION_DOCUMENT_ENABLED: "true" };
+const env = { CREATION_RUNS_ENABLED: "true", CREATION_WORKSPACE_ENABLED: "true", CREATION_POSTER_ENABLED: "true", CREATION_SLIDES_ENABLED: "true" };
 const configFor = async () => config;
 const theme = { name: "Coffee", primary: "#202124", accent: "#ff8800", background: "#ffffff", fontFamily: "sans" };
 const page = (id = "page", title = "Opening") => ({ id, title, width: 1080, height: 1440, nodes: [
@@ -39,7 +37,6 @@ async function setup(kind = "poster") {
   const user = await fixture.user(); users.push(user.id);
   const project = await createProject(user.id, { createKey: randomUUID(), name: "Coffee", kind }, fixture.db);
   for (const id of ["worker", "creation-worker", "creation-language-worker"]) await fixture.db.serviceHeartbeat.upsert({ where: { id }, create: { id }, update: { updatedAt: new Date() } });
-  if (kind === "document") for (const id of [DOCUMENT_SCHEDULER_HEARTBEAT, DOCUMENT_LANGUAGE_HEARTBEAT]) await fixture.db.serviceHeartbeat.upsert({ where: { id }, create: { id, details: { version: DOCUMENT_PIPELINE_VERSION } }, update: { updatedAt: new Date(), details: { version: DOCUMENT_PIPELINE_VERSION } } });
   const sessionId = project.sessions[0].id;
   const input = kind === "document" ? { kind, prompt: "咖啡店开业方案", locale: "zh", sectionCount: 2, audience: "店长", maxCredits: 6 } : { kind, prompt: "Coffee opening", locale: "zh", width: 1080, height: 1440, pageCount: kind === "slides" ? 2 : 1, maxCredits: kind === "slides" ? 6 : 2 };
   return { user, project, sessionId, input, create: (body = input, key = randomUUID()) => createContentRun(user.id, sessionId, body, key, options()) };
@@ -244,35 +241,4 @@ it("does not expose an artifact when cancellation wins during its upload", async
   await advance(run.id);
   expect((await readRun(user.id, run.id, fixture.db)).status).toBe("cancelled");
   expect(await fixture.db.creationArtifact.count({ where: { projectId: project.id } })).toBe(0);
-});
-
-it("generates reviewed document sections durably and assembles their checkpoints without another paid invocation", async () => {
-  const { user, create } = await setup("document"), run = await create();
-  await advance(run.id);
-  const first = (await readRun(user.id, run.id, fixture.db)).steps[0];
-  await execute(first.jobId, async () => ({ title: "开业方案", sections: [{ id: "a", title: "概览", brief: "开业目标" }, { id: "b", title: "执行", brief: "执行安排" }] }));
-  await advance(run.id);
-  const waiting = await readRun(user.id, run.id, fixture.db);
-  expect(waiting.status).toBe("awaiting_input"); expect(waiting.steps).toHaveLength(1);
-  const review = await readOutlineReview(user.id, run.id, options());
-  expect(review.kind).toBe("document");
-  const approved = { ...review.outline, sections: review.outline.sections.toReversed() };
-  const body = { saveKey: randomUUID(), expectedSequence: review.expectedSequence, expectedUnitCost: 2, maxCredits: 6, outline: approved };
-  await confirmOutline(user.id, run.id, body, options());
-  expect((await confirmOutline(user.id, run.id, body, { ...options(), env: {} })).steps).toHaveLength(4);
-  const invoke = vi.fn(async (_config, { input }) => ({ id: input.sectionId, title: input.title, blocks: [{ id: "same-id", type: "paragraph", runs: [{ text: input.brief }] }] }));
-  for (let i = 0; i < 10; i++) {
-    await advance(run.id);
-    const state = await readRun(user.id, run.id, fixture.db);
-    if (state.status === "succeeded") break;
-    const pending = state.steps.find(step => step.jobId && step.status !== "succeeded");
-    if (pending) await execute(pending.jobId, invoke);
-  }
-  const done = await readRun(user.id, run.id, fixture.db);
-  expect(done.status).toBe("succeeded"); expect(invoke).toHaveBeenCalledTimes(2);
-  expect(invoke.mock.calls[0][1].input.audience).toBe("店长");
-  const artifact = await readDocumentArtifact(user.id, done.steps.at(-1).result.artifactId, undefined, options());
-  expect(artifact.content.sections.map(section => section.id)).toEqual(["b", "a"]);
-  expect(artifact.content.sections[0].blocks[0].id).not.toBe(artifact.content.sections[1].blocks[0].id);
-  expect((await usageSummary(user.id, fixture.db)).credits).toBe(94);
 });

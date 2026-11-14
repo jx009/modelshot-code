@@ -11,27 +11,6 @@ beforeEach(() => { sessionStorage.clear(); mock.api.mockReset(); Object.definePr
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 const props = onFlush => ({ artifactId: "artifact", userId: "user", zh: false, onFlush, onClose: vi.fn() });
 
-it("explains the Markdown image package and recovers the same saved revision after a lost response", async () => {
-  const flush = vi.fn(async () => ({ revision: 18 })), submitted = [];
-  mock.api.mockImplementation(async (_url, options) => {
-    if (options?.method === "POST") { submitted.push(options.body); if (submitted.length === 1) throw new Error("network"); return { id: "markdown" }; }
-    return { formats: [{ format: "docx", enabled: false }, { format: "markdown", enabled: true }], items: [] };
-  });
-  render(<ExportDialog {...props(flush)} kind="document" />);
-  fireEvent.change(screen.getByLabelText("Export format"), { target: { value: "markdown" } });
-  await waitFor(() => expect(screen.getByText("Save and export MARKDOWN").disabled).toBe(false));
-  expect(screen.getByText(/ZIP containing document.md/)).toBeTruthy();
-  fireEvent.click(screen.getByText("Save and export MARKDOWN")); await screen.findByText("Recover submission");
-  expect(screen.getByLabelText("Export format").disabled).toBe(true);
-  cleanup(); const newFlush = vi.fn();
-  render(<ExportDialog {...props(newFlush)} kind="document" />);
-  expect(screen.getByText(/ZIP containing document.md/)).toBeTruthy();
-  fireEvent.click(screen.getByText("Recover submission"));
-  await waitFor(() => expect(submitted).toHaveLength(2));
-  expect(submitted).toEqual([{ revision: 18, format: "markdown" }, { revision: 18, format: "markdown" }]);
-  expect(flush).toHaveBeenCalledOnce(); expect(newFlush).not.toHaveBeenCalled();
-});
-
 it("offers PDF for slides, freezes its saved revision across remounts and retries a historical PDF independently of PPTX", async () => {
   const flush = vi.fn(async () => ({ revision: 16 })), submitted = [];
   mock.api.mockImplementation(async (_url, options) => {
@@ -163,41 +142,6 @@ it("checks admission by selected format while retaining completed poster downloa
   expect(screen.getByText("Download").getAttribute("href")).toContain("/done/download");
   fireEvent.change(screen.getByLabelText("Export format"), { target: { value: "jpeg" } });
   expect(screen.getByText("Save and export JPEG").disabled).toBe(false);
-});
-
-it("uses document-specific copy and freezes the saved document revision for DOCX", async () => {
-  const flush = vi.fn(async () => ({ revision: 11 }));
-  mock.api.mockResolvedValue({ formats: [{ format: "docx", enabled: true }], items: [] });
-  render(<ExportDialog {...props(flush)} kind="document" />);
-  await waitFor(() => expect(screen.getByText("Save and export DOCX").disabled).toBe(false));
-  expect(screen.getByText("Export document")).toBeTruthy();
-  expect(screen.queryByText("Save and export PPTX")).toBeNull();
-  expect(screen.getByText(/Block locks do not become Word editing protection/)).toBeTruthy();
-  fireEvent.click(screen.getByText("Save and export DOCX"));
-  await waitFor(() => expect(mock.api.mock.calls.find(([, options]) => options?.method === "POST")?.[1].body).toEqual({ revision: 11, format: "docx" }));
-  expect(flush).toHaveBeenCalledOnce();
-});
-
-it("uses the historical export's retry admission even when the latest source format cannot start exports", async () => {
-  const flush = vi.fn();
-  mock.api.mockResolvedValue({ formats: [{ format: "docx", enabled: false }], items: [{ id: "old", format: "docx", revision: 2, status: "failed", attempt: 3, canRetry: true }] });
-  render(<ExportDialog {...props(flush)} kind="document" sourceSchemaVersion={2} />);
-  await waitFor(() => expect(screen.getByText("Retry this version").disabled).toBe(false));
-  expect(screen.getByText("Save and export DOCX").disabled).toBe(true);
-  fireEvent.click(screen.getByText("Retry this version"));
-  await waitFor(() => expect(mock.api.mock.calls.find(([, options]) => options?.method === "POST")?.[1].body).toMatchObject({ format: "docx", revision: 2, retryAttempt: 3 }));
-  expect(flush).not.toHaveBeenCalled();
-});
-it("offers a website ZIP export using the flushed revision without publishing a site", async () => {
-  const flush = vi.fn(async () => ({ revision: 12 }));
-  mock.api.mockResolvedValue({ formats: [{ format: "zip", enabled: true }], items: [] });
-  render(<ExportDialog {...props(flush)} kind="web" />);
-  await waitFor(() => expect(screen.getByText("Save and export ZIP").disabled).toBe(false));
-  expect(screen.getByText("Export website")).toBeTruthy();
-  expect(screen.getByText(/Export does not publish a website/)).toBeTruthy();
-  fireEvent.click(screen.getByText("Save and export ZIP"));
-  await waitFor(() => expect(mock.api.mock.calls.find(([, options]) => options?.method === "POST")?.[1].body).toEqual({ revision: 12, format: "zip" }));
-  expect(flush).toHaveBeenCalledOnce();
 });
 
 it("shows SVG fidelity boundaries and recovers the same saved SVG version after a lost response", async () => {

@@ -71,20 +71,20 @@ export default function AdminPresets() {
                 )}
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-bold truncate">{item.name}</div>
-                  <div className="text-[10px] text-secondary-text mt-0.5">
+                  <div className="text-xs text-secondary-text mt-0.5">
                     {tab === "models"
                       ? `${item.gender} · ${item.ethnicity} · ${item.bodyType}`
                       : item.category}
                   </div>
                   {tab === "scenes" && item.promptSnippet && (
-                    <div className="text-[10px] text-secondary-text mt-1 line-clamp-2">{item.promptSnippet}</div>
+                    <div className="text-xs text-secondary-text mt-1 line-clamp-2">{item.promptSnippet}</div>
                   )}
                 </div>
               </div>
               <div className="flex gap-2 mt-3">
                 <button
                   onClick={() => toggleActive(item)}
-                  className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer ${
+                  className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
                     item.isActive
                       ? "bg-success/10 border-success/30 text-success"
                       : "bg-bg-page border-divider text-secondary-text"
@@ -94,7 +94,7 @@ export default function AdminPresets() {
                 </button>
                 <button
                   onClick={() => remove(item)}
-                  className="px-3 py-1.5 rounded-lg text-[11px] font-bold bg-danger/10 border border-danger/20 text-danger hover:bg-danger/20 transition-colors cursor-pointer"
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-danger/10 border border-danger/20 text-danger hover:bg-danger/20 transition-colors cursor-pointer"
                 >
                   删除
                 </button>

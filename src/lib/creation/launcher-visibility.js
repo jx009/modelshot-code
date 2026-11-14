@@ -5,7 +5,7 @@ export { CREATION_LAUNCHER_ITEMS } from "./launcher-items.js";
 
 export const creationLauncherVisibilitySchema = z.object(Object.fromEntries(
   CREATION_LAUNCHER_ITEMS.map(({ key }) => [key, z.boolean()]),
-)).strict();
+));  // 默认剥离未知键：已下线入口的旧配置不应让整份设置失效
 
 export const DEFAULT_CREATION_LAUNCHER_VISIBILITY = Object.fromEntries(
   CREATION_LAUNCHER_ITEMS.map(({ key }) => [key, true]),

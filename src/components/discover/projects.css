@@ -20,10 +20,10 @@
 .mp-card-footer { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; padding:13px 2px 0; }
 .mp-card-footer>div:first-child { min-width:0; flex:1; }
 .mp-card h2 { font-size:14px; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin:0 0 6px; }
-.mp-card time { font-size:11px; color:var(--tertiary-text); }
+.mp-card time { font-size:12px; color:var(--tertiary-text); }
 .mp-card form { display:flex; flex-wrap:wrap; gap:6px; }
 .mp-card form input { min-width:0; width:100%; background:var(--bg-elevated); border:1px solid var(--divider-strong); border-radius:6px; padding:5px 7px; color:var(--primary-text); }
-.mp-card form button { font-size:11px; background:var(--bg-elevated); border:0; border-radius:5px; padding:4px 8px; color:var(--primary-text); }
+.mp-card form button { font-size:12px; background:var(--bg-elevated); border:0; border-radius:5px; padding:4px 8px; color:var(--primary-text); }
 .mp-card-menu { position:relative; }
 .mp-card-menu>button { border-radius:7px; padding:3px 5px; }
 .mp-card-menu>button:hover { background:var(--bg-elevated); }

@@ -1,12 +1,12 @@
-> 2026-10-25 交付更新：以下为历史施工记录，状态已被 [当前交付说明](cheso-alignment-implementation-status.md) 与 [剩余验收清单](creation-remaining-work.md) 替代。HTML 海报/PPT、OOXML 导入、跨类型 Agent、网页运行/发布已接入；不要将下文旧的“未实现”用于判断本次提交。实际限制和未完成验收仍明确保留。
+> 2026-10-25 交付更新：以下为历史施工记录，状态已被 [当前交付说明](archive/cheso-alignment-implementation-status.md) 与 [剩余验收清单](creation-remaining-work.md) 替代。HTML 海报/PPT、OOXML 导入、跨类型 Agent、网页运行/发布已接入；不要将下文旧的“未实现”用于判断本次提交。实际限制和未完成验收仍明确保留。
 
 # AI 创作工作台实施进度
 
-> 2026-10-25 最新纠正：[Cheso 对标剩余方案](cheso-alignment-remaining-plan.md) 已明确海报/PPT 路线返工与后续交付批次。下表 P2/P3 的对象 JSON 实现不能计作 HTML 海报/VPPT 已完成；固定海报模板入口需要撤掉。该方案是待实施计划，不是实现进度。
+> 2026-10-25 最新纠正：[Cheso 对标剩余方案](archive/cheso-alignment-remaining-plan.md) 已明确海报/PPT 路线返工与后续交付批次。下表 P2/P3 的对象 JSON 实现不能计作 HTML 海报/VPPT 已完成；固定海报模板入口需要撤掉。该方案是待实施计划，不是实现进度。
 
 更新时间：2026-10-25。代码基线 `435963a`；当前修改尚未提交或部署。对应 [完整方案](ai-creation-workbench-plan.md)。
 
-最新补充：两种文档源格式均已接入固定版本 PDF，完成真实转换子进程和全部 10 页渲染检查，见 [文档 PDF](creation-document-pdf-export.md)。暂存对象清理已接入调度 Worker 的独立维护周期。画布局部修改采用侧栏、创作工作台铺满可用区域、属性栏默认关闭、输入区限高，网页预览保持选定 CSS 视口。固定海报模板路线停止，后续按 HTML 海报和逐页 HTML PPT 改造；尚未完成替换。
+最新补充：两种文档源格式均已接入固定版本 PDF，完成真实转换子进程和全部 10 页渲染检查，见 [文档 PDF](archive/creation-document-pdf-export.md)。暂存对象清理已接入调度 Worker 的独立维护周期。画布局部修改采用侧栏、创作工作台铺满可用区域、属性栏默认关闭、输入区限高，网页预览保持选定 CSS 视口。固定海报模板路线停止，后续按 HTML 海报和逐页 HTML PPT 改造；尚未完成替换。
 
 本次后续校验：原生 Markdown 相关 5 文件/30 用例（含实际转换子进程），导出流程 1 文件/19 用例，海报/语言/布局 3 文件/38 用例，网页和 Office 样式 4 文件/31 用例通过；33 个相关文件 ESLint 通过。以上按各组记录，有重叠文件，不累计宣传为全量测试数。浏览器最新 PPT 和网页两场景通过；此前画布密度三场景及 30 页诊断边界见专项记录。所有业务 API 为本机替身，尚无真实数据库/队列/计费全链、生产性能或全面 Cheso 视觉验收结论。
 
@@ -254,7 +254,7 @@ PPT 增补用例（未执行）：缩略图串行执行、不可见待处理页�
 
 - 新增 `src/lib/creation/exports/docx.js`，只接收 `schemaVersion=1/kind=document` 的自产语义文档，写入原生 WordprocessingML：正文/标题、基础 run 样式、超链接、列表/嵌套层级、矩形表格、图片、页眉页脚、页码字段与 A4/Letter 横竖版页面。图片只嵌入一次并按页面可用区等比缩放；原语义文档保持不变。
 - DOCX 经已有隔离导出子进程执行，新增独立 `docx` exporter 版本、能力心跳、导出开关 `CREATION_DOCX_EXPORT_ENABLED` 与下载 MIME/扩展名；文档任务按文档 codec 读取固定 revision，无法误读海报/PPT。ExportDialog 增加文档说明，明确字体未嵌入、分页可能差异、锁定不等于 Word 保护。当前仍未启动专用 Worker 或打开开关。
-- 新增 `docs/creation-document-engine-evaluation.md`。根据 Univer 1.2.0 公共类型/入口确认原生 `IDocumentData`、`FDocument.save/dispose`、稳定段落 ID、范围修改与 selection API；原生快照包含 resources、脚注、原始 OOXML、表格/列表等，不能压回当前简化语义 schema 充当无损往返。文档编辑器选型仍需安装、运行和性能验证。
+- 新增 `docs/archive/creation-document-engine-evaluation.md`。根据 Univer 1.2.0 公共类型/入口确认原生 `IDocumentData`、`FDocument.save/dispose`、稳定段落 ID、范围修改与 selection API；原生快照包含 resources、脚注、原始 OOXML、表格/列表等，不能压回当前简化语义 schema 充当无损往返。文档编辑器选型仍需安装、运行和性能验证。
 - 修复导出失败重试：`nextCheckAt` 作为真正的最早执行时间，claim 阶段拒绝重复/过早唤醒；恢复调度不会绕过 30 秒退避或延迟已到期任务。
 - 定向验证：DOCX 结构/Unicode/链接/列表/表格/图片/页面 5 个用例、隔离转换子进程 1 个新增用例、导出工作流 6 个用例和导出面板/策略回归合计 23 个用例通过；受影响文件 ESLint 0 errors（文档被配置忽略）。未运行集成测试、数据库迁移、构建、Word/WPS、Univer、Worker 或性能测量。
 
@@ -517,7 +517,7 @@ PPT 增补用例（未执行）：缩略图串行执行、不可见待处理页�
 - 未适配富文本、图表/绘图、非空插件/保护规则、继承样式、部分装饰及未知内容时明确失败，原快照不改动。公式不在导出主机求值，正向语法与引用预算限制，丢弃旧缓存并要求 Office 重算；字体未嵌入、列宽换算有近似，尚无 Office 打开一致性验收。
 - Office 导出请求在事务外校验读取指定 revision 的 2 MiB 私有 blob，限时/流式字节/SHA-256 检查后识别 schema；事务再次核对 ID/checksum。不能根据最新 artifact 格式猜测历史版本。新 `univer-sheet-xlsx-1` 转换器与 `univer-xlsx` Worker 心跳键分离，原生 Office 与 native-XLSX 双开关默认关闭。原生 DOCX 尚未实现，明确拒绝，不误走旧 codec；格式不匹配改为确定失败，避免反复重试。
 - 原生表格接入延迟加载导出弹窗：先确认输入/保存，再固定版本；未知响应重放原请求，新编辑不改变待恢复 revision。修正 Activity 隐藏/显示后的 busy 残留和旧请求回调跨生命周期解锁/更新问题。
-- 完整支持矩阵、限制与执行链见 `docs/creation-native-office-export.md`。测试过程中发现实际 Univer save 会补计算设置，已兼容非迭代配置；复核并修正旋转方向、像素列宽转换及 XML 空白保留。没有新增依赖、数据库字段/迁移，也没有改变上线开关。
+- 完整支持矩阵、限制与执行链见 `docs/archive/creation-native-office-export.md`。测试过程中发现实际 Univer save 会补计算设置，已兼容非迭代配置；复核并修正旋转方向、像素列宽转换及 XML 空白保留。没有新增依赖、数据库字段/迁移，也没有改变上线开关。
 - 本轮 **9 个定向文件、59 个不同用例最终通过，17 个触及代码/测试文件 ESLint 通过**。最终回归后补了历史版本独立重试准入，相关 2 文件/23 用例再次通过；Activity 修复通过生命周期测试和静态规则。测试使用真实 ZIP/XML、Univer core 与实际限额子进程，但不是服务/Office 客户端验收。仍未构建/启动服务、数据库、队列 Worker 或生成 Prisma。真实性能、浏览器/Office 显示与 Cheso 对标目标仍未验收，总目标继续开发中。
 
 ## 原生文档 DOCX 导出（2026-10-24，本轮）
@@ -528,7 +528,7 @@ PPT 增补用例（未执行）：缩略图串行执行、不可见待处理页�
 - 新转换器 `univer-document-docx-1` 和 `univer-docx` 心跳键，要求 `CREATION_NATIVE_OFFICE_ENABLED` 与 `CREATION_NATIVE_DOCX_EXPORT_ENABLED` 联合开启；仍默认关闭。旧 DOCX 开关/Worker 不自动获得原生能力。沿用固定 revision、幂等提交/恢复、租约取消、隔离并发 1 子进程和输出上限。原生文档界面加入按需加载的导出入口，保存未确认输入时仍拒绝提交。
 - 解析/输出另有限额：全文 story 合计 50 万 UTF-16 单元、2 万段落、10 万 inline 片段、1 万表格单元格、8 层嵌套、32 个页眉页脚、200 个列表定义、1000 个列表实例、单 part 1 万关系、32 MiB 累计 run XML。未在 Web 导入转换器或引擎核心；没有以单元测试冒充性能实测。
 - **11 个定向测试文件、78 个不同用例通过；14 个触及代码/测试文件 ESLint 通过**。验证包含真实核心模型、真实 ZIP/XML、真实子进程图片解码、AI 文本变长后的结构位置、页码/软分页、链接样式、拒绝路径、独立 Worker 准入、私有素材与 React/controller/session 保存后导出接线。初次真实核心模型用例发现引擎补入断词设置，补齐转换后通过。
-- 支持矩阵和资源边界更新在 `docs/creation-native-office-export.md`。本轮没有安装依赖、构建、启动服务/数据库/队列 Worker、Prisma 生成或迁移，未部署或改变开关。Word/WPS 打开效果、浏览器视觉、真实模型质量与全站性能仍待验收；总目标仍未完成。
+- 支持矩阵和资源边界更新在 `docs/archive/creation-native-office-export.md`。本轮没有安装依赖、构建、启动服务/数据库/队列 Worker、Prisma 生成或迁移，未部署或改变开关。Word/WPS 打开效果、浏览器视觉、真实模型质量与全站性能仍待验收；总目标仍未完成。
 
 ## 文件导航、响应式布局与首轮浏览器验证（2026-10-24）
 
@@ -585,7 +585,7 @@ PPT 增补用例（未执行）：缩略图串行执行、不可见待处理页�
 
 - 新增 Markdown 格式、独立开关/心跳与固定历史 schema 校验。普通文档生成 `document.md`＋相对图片＋格式损失清单的 ZIP；高级原生文档明确拒绝，避免静默降级。转换只动态加载到独立后台子进程，不进入首页/画布。
 - 保留标题、正文、安全富文本/链接、嵌套列表、零或多表头、图片说明；静态 HTML 需要阅读器支持。不保留页面排版、页眉页脚、颜色与锁定。图片经过私有归属/校验和/解码与有界资源检查。
-- **5 文件 / 47 用例、12 文件 ESLint 通过**，含实际转换子进程及 ZIP/PNG 解析。未运行实际 Markdown 阅读器、完整页面或服务全链/性能验收；未开启功能或新增安装。代码与边界见 [Markdown 导出实现](creation-document-markdown-export.md)。
+- **5 文件 / 47 用例、12 文件 ESLint 通过**，含实际转换子进程及 ZIP/PNG 解析。未运行实际 Markdown 阅读器、完整页面或服务全链/性能验收；未开启功能或新增安装。代码与边界见 [Markdown 导出实现](archive/creation-document-markdown-export.md)。
 - 修订本文顶部过时的状态表：Univer 原生引擎/导出、网页可视修改、SVG/PDF 已有源码和局部验证，不再列为完全未开发；整体仍未交付。
 
 ### 后续待办

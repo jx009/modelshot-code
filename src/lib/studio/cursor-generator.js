@@ -4,7 +4,7 @@
  * @param {string} color - Cursor color (hex)
  * @returns {string} CSS cursor value
  */
-export function generateBrushCursor(size, color = "#30ed19") {
+export function generateBrushCursor(size, color = "#FF6A2B") {
   const diameter = Math.max(8, Math.min(128, size + 4));
   const center = diameter / 2;
 
@@ -25,7 +25,7 @@ export function generateBrushCursor(size, color = "#30ed19") {
  * @param {number} brushSize - Brush size for brush mode
  * @returns {string} CSS cursor value
  */
-export function getCursorForMode(mode, brushSize = 8, color = "#30ed19") {
+export function getCursorForMode(mode, brushSize = 8, color = "#FF6A2B") {
   switch (mode) {
     case "hand":
       return "grab";

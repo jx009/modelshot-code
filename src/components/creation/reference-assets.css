@@ -2,21 +2,21 @@
 .cw-reference-assets-list { display:flex; flex-wrap:wrap; gap:8px; }
 .cw-reference-asset { position:relative; width:52px; height:52px; border:1px solid var(--divider); border-radius:7px; margin:0 0 6px; background:var(--bg-page); }
 .cw-reference-asset img { object-fit:cover; border-radius:6px; }
-.cw-reference-asset>span { position:absolute; left:2px; bottom:2px; padding:1px 4px; background:#000a; color:#fff; border-radius:3px; font-size:9px; }
+.cw-reference-asset>span { position:absolute; left:2px; bottom:2px; padding:1px 4px; background:#000a; color:#fff; border-radius:3px; font-size:12px; }
 .cw-reference-assets .cw-reference-asset>button { position:absolute; top:-5px; right:-5px; display:flex; align-items:center; justify-content:center; border:1px solid var(--divider); border-radius:50%; padding:2px; min-height:18px; width:18px; height:18px; background:var(--bg-card); color:var(--primary-text); }
-.cw-reference-assets .cw-add-reference { display:inline-flex; align-items:center; gap:5px; padding:5px 0; background:transparent; border:0; color:var(--secondary-text); font-size:11px; cursor:pointer; }
+.cw-reference-assets .cw-add-reference { display:inline-flex; align-items:center; gap:5px; padding:5px 0; background:transparent; border:0; color:var(--secondary-text); font-size:12px; cursor:pointer; }
 .cw-reference-files { margin:0 0 6px; }
-.cw-reference-files .cw-add-reference { display:inline-flex; align-items:center; gap:5px; padding:5px 0; background:transparent; border:0; color:var(--secondary-text); font-size:11px; cursor:pointer; }
+.cw-reference-files .cw-add-reference { display:inline-flex; align-items:center; gap:5px; padding:5px 0; background:transparent; border:0; color:var(--secondary-text); font-size:12px; cursor:pointer; }
 .cw-reference-files button:disabled { cursor:default; opacity:.5; }
 .cw-reference-files button:focus-visible,.cw-reference-files summary:focus-visible,.cw-reference-file-list a:focus-visible { outline:2px solid var(--primary); outline-offset:2px; }
-.cw-reference-files summary,.cw-reference-file-hint { color:var(--secondary-text); font-size:11px; margin:4px 0; }
+.cw-reference-files summary,.cw-reference-file-hint { color:var(--secondary-text); font-size:12px; margin:4px 0; }
 .cw-reference-file-list,.cw-reference-message-files { display:grid; gap:4px; list-style:none; padding:0; margin:0 0 4px; }
-.cw-reference-file-list li { display:flex; align-items:center; gap:6px; min-width:0; max-width:100%; color:var(--secondary-text); font-size:11px; }
+.cw-reference-file-list li { display:flex; align-items:center; gap:6px; min-width:0; max-width:100%; color:var(--secondary-text); font-size:12px; }
 .cw-reference-file-list li>span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.cw-reference-file-list li>small { flex:none; opacity:.7; font-size:9px; }
+.cw-reference-file-list li>small { flex:none; opacity:.7; font-size:12px; }
 .cw-reference-file-list li>a { display:inline-flex; flex:none; padding:3px; color:inherit; border-radius:3px; }
 .cw-reference-file-list li>button { display:inline-flex; padding:2px; border:0; background:transparent; color:inherit; cursor:pointer; }
-.cw-reference-message-files { margin:6px 0 0 18px; list-style:disc; font-size:11px; }
+.cw-reference-message-files { margin:6px 0 0 18px; list-style:disc; font-size:12px; }
 .cw-reference-assets button:disabled { cursor:default; opacity:.5; }
 .cw-reference-assets button:focus-visible,.cw-reference-dialog button:focus-visible { outline:2px solid var(--primary); outline-offset:2px; }
 .cw-reference-dialog { width:min(1000px,94vw); max-height:90dvh; padding:0; border:1px solid var(--divider); border-radius:12px; color:var(--primary-text); background:var(--bg-card); overflow:auto; }

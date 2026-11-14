@@ -60,5 +60,5 @@
 @media(max-width:600px) {
   .cr-shell .cr-creation-hero .cr-home-composer.cr-launch-card { padding:6px; border-radius:20px; }
   .cr-shell .cr-creation-hero .cr-composer-surface { padding:10px; border-radius:14px; }
-  .cr-shell .cr-creation-hero .cr-home-composer.cr-launch-card .cr-mode-tabs>button { gap:5px; padding-inline:6px; font-size:11px; }
+  .cr-shell .cr-creation-hero .cr-home-composer.cr-launch-card .cr-mode-tabs>button { gap:5px; padding-inline:6px; font-size:12px; }
 }

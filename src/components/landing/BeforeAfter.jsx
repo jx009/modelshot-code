@@ -66,7 +66,7 @@ export default function BeforeAfter({ beforeSrc, afterSrc, beforeLabel, afterLab
             draggable={false}
           />
         </div>
-        <span className="absolute bottom-3 left-3 bg-bg-page/80 backdrop-blur text-[10px] text-secondary-text px-2.5 py-1 rounded-full">
+        <span className="absolute bottom-3 left-3 bg-bg-page/80 backdrop-blur text-xs text-secondary-text px-2.5 py-1 rounded-full">
           {beforeLabel}
         </span>
       </div>
@@ -75,11 +75,11 @@ export default function BeforeAfter({ beforeSrc, afterSrc, beforeLabel, afterLab
       <div className="absolute inset-y-0 pointer-events-none" style={{ left: `${pos}%` }}>
         <div className="absolute inset-y-0 -left-px w-0.5 bg-primary" />
         <div className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-8 h-8 rounded-full bg-bg-elevated border border-primary flex items-center justify-center shadow-lg">
-          <span className="text-primary text-[10px] tracking-widest">◀▶</span>
+          <span className="text-primary text-xs tracking-widest">◀▶</span>
         </div>
       </div>
 
-      <span className="absolute bottom-3 right-3 bg-bg-page/80 backdrop-blur text-[10px] text-secondary-text px-2.5 py-1 rounded-full">
+      <span className="absolute bottom-3 right-3 bg-bg-page/80 backdrop-blur text-xs text-secondary-text px-2.5 py-1 rounded-full">
         {afterLabel}
       </span>
     </div>

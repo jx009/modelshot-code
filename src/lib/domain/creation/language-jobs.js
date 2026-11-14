@@ -8,9 +8,6 @@ import { ACTIVE, LIMITS } from "../generation/contracts.js";
 import { creationInputDigest } from "./input-digest.js";
 import { studioConfig } from "../studio/providers.js";
 import { languageInputSchema } from "../../creation/contracts/language.js";
-import { DOCUMENT_PIPELINE_VERSION, DOCUMENT_LANGUAGE_HEARTBEAT } from "../../creation/contracts/document-runtime.js";
-import { SHEET_PIPELINE_VERSION, SHEET_LANGUAGE_HEARTBEAT } from "../../creation/contracts/sheet-runtime.js";
-import { WEB_PIPELINE_VERSION, WEB_LANGUAGE_HEARTBEAT } from "../../creation/contracts/web-runtime.js";
 import { POSTER_IMAGE_PIPELINE_VERSION, POSTER_IMAGE_LANGUAGE_HEARTBEAT } from "../../creation/contracts/poster-runtime.js";
 import { ownedArtifact } from "./artifacts.js";
 import { lockRun } from "./runs.js";
@@ -50,8 +47,8 @@ export async function submitCreationLanguageStep(userId, runId, stepId, sequence
     if (!Number.isSafeInteger(cost) || cost < 0) throw new AppError("INVALID_PRICE", 503);
     if (step.expectedCost !== cost) throw new AppError("PRICE_CHANGED", 409);
     if (run.committedCredits + cost > run.maxCredits) throw new AppError("CREATION_BUDGET_EXCEEDED", 409);
-    const heartbeat = await tx.serviceHeartbeat.findUnique({ where: { id: run.kind === "agent" ? AGENT_LANGUAGE_HEARTBEAT : input.sourceFormat === "html" ? HTML_LANGUAGE_HEARTBEAT : input.visualAssetId ? POSTER_IMAGE_LANGUAGE_HEARTBEAT : run.kind === "document" ? DOCUMENT_LANGUAGE_HEARTBEAT : run.kind === "sheet" ? SHEET_LANGUAGE_HEARTBEAT : run.kind === "web" ? WEB_LANGUAGE_HEARTBEAT : "creation-language-worker" } });
-    const pipelineVersion = run.kind === "agent" ? AGENT_PIPELINE_VERSION : input.sourceFormat === "html" ? HTML_PIPELINE_VERSION : input.visualAssetId ? POSTER_IMAGE_PIPELINE_VERSION : run.kind === "document" ? DOCUMENT_PIPELINE_VERSION : run.kind === "sheet" ? SHEET_PIPELINE_VERSION : run.kind === "web" ? WEB_PIPELINE_VERSION : null;
+    const heartbeat = await tx.serviceHeartbeat.findUnique({ where: { id: run.kind === "agent" ? AGENT_LANGUAGE_HEARTBEAT : input.sourceFormat === "html" ? HTML_LANGUAGE_HEARTBEAT : input.visualAssetId ? POSTER_IMAGE_LANGUAGE_HEARTBEAT : "creation-language-worker" } });
+    const pipelineVersion = run.kind === "agent" ? AGENT_PIPELINE_VERSION : input.sourceFormat === "html" ? HTML_PIPELINE_VERSION : input.visualAssetId ? POSTER_IMAGE_PIPELINE_VERSION : null;
     if (!heartbeat || heartbeat.updatedAt <= new Date(+now - 90000) || pipelineVersion !== null && heartbeat.details?.version !== pipelineVersion) throw new AppError("CREATION_LANGUAGE_WORKER_UNAVAILABLE", 503);
     if (input.artifactId) {
       const artifact = await ownedArtifact(userId, input.artifactId, tx);

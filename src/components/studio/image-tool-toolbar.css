@@ -9,7 +9,7 @@
 .ms-image-tool-menu>button,.ms-image-tool-menu>a{position:relative;display:flex;align-items:center;gap:11px;width:100%;min-height:42px;padding:10px 12px;border:0;border-radius:8px;background:transparent;color:inherit;font:inherit;font-size:13px;text-align:left;text-decoration:none;cursor:pointer}
 .ms-image-tool-menu>button:hover,.ms-image-tool-menu>a:hover{background:var(--bg-card-hover)}
 .ms-image-tool-menu svg,.ms-image-tool-toolbar svg{flex-shrink:0}
-.ms-image-tool-menu small{margin-left:auto;font-size:10px;color:var(--primary);background:var(--primary-muted);padding:2px 6px;border-radius:5px}
+.ms-image-tool-menu small{margin-left:auto;font-size:12px;color:var(--primary);background:var(--primary-muted);padding:2px 6px;border-radius:5px}
 .ms-image-tool-toolbar button:focus-visible,.ms-image-tool-menu>:focus-visible{outline:2px solid var(--primary);outline-offset:-2px}
 .ms-image-tool-menu .ms-setup-dot{margin-left:auto;flex-shrink:0}
 .ms-canvas-space:has(.ms-stage.is-dragging-artwork) .ms-image-tool-toolbar,
@@ -17,4 +17,4 @@
 body:has(.ms-stage.is-dragging-artwork) .ms-image-tool-menu,
 body:has(.ms-stage.is-dragging-artwork) .ms-image-tool-menu *{pointer-events:none}
 @media(max-width:760px){.ms-canvas-space:has(.ms-image-tool-toolbar) .ms-zoom{top:auto;bottom:64px}}
-@media(max-width:760px){.ms-image-tool-toolbar{top:100px!important;width:calc(100% - 24px);max-width:none;padding:4px;border-radius:10px}.ms-image-tool-toolbar .ms-context-scroll{display:flex;flex-wrap:nowrap;justify-content:flex-start;overflow-x:auto;scrollbar-width:thin;gap:2px}.ms-image-tool-toolbar .ms-context-scroll>button{flex-shrink:0;flex-direction:row;gap:4px;padding:6px;min-height:34px;font-size:11px;position:relative}.ms-image-tool-toolbar .ms-tool-chevron{width:10px}}
+@media(max-width:760px){.ms-image-tool-toolbar{top:100px!important;width:calc(100% - 24px);max-width:none;padding:4px;border-radius:10px}.ms-image-tool-toolbar .ms-context-scroll{display:flex;flex-wrap:nowrap;justify-content:flex-start;overflow-x:auto;scrollbar-width:thin;gap:2px}.ms-image-tool-toolbar .ms-context-scroll>button{flex-shrink:0;flex-direction:row;gap:4px;padding:6px;min-height:34px;font-size:12px;position:relative}.ms-image-tool-toolbar .ms-tool-chevron{width:10px}}

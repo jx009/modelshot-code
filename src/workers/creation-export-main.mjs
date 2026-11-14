@@ -11,17 +11,13 @@ import { executeOfficeImport, recoverOfficeImports, OFFICE_IMPORT_VERSION } from
 // machine, never in the web/payment worker. This explicit guard is an operator
 // assertion, not proof that cgroup/CPU/disk limits have been configured.
 if (process.env.CREATION_EXPORT_ISOLATED !== "true") throw new Error("CREATION_EXPORT_ISOLATED must be explicitly enabled on the isolated export host");
-const exporters = { pptx: EXPORTER_VERSION, docx: exportFormat("docx").version, xlsx: exportFormat("xlsx").version, zip: exportFormat("zip").version };
+const exporters = { pptx: EXPORTER_VERSION };
 if (process.env.CREATION_HTML_RUNTIME === "true") {
   await probeRasterInProcess({ html: true });
   for (const format of ["png", "jpeg", "pdf", "pptx"]) {
     const descriptor = exportFormat(format, 3, format === "pptx" ? "slides" : "poster"); exporters[descriptor.workerKey] = descriptor.version;
   }
 }
-exporters.markdown = exportFormat("markdown").version;
-exporters[exportFormat("xlsx", 2).workerKey] = exportFormat("xlsx", 2).version;
-exporters[exportFormat("docx", 2).workerKey] = exportFormat("docx", 2).version;
-exporters[exportFormat("markdown", 2).workerKey] = exportFormat("markdown", 2).version;
 if (process.env.CREATION_RASTER_RUNTIME === "true") {
   // Fail startup on missing native renderer/fonts; never advertise a format
   // that this deployment cannot render. The main worker stays free of Skia.
@@ -33,10 +29,6 @@ if (process.env.CREATION_PDF_RUNTIME === "true") {
   // Probe the actual native multi-page/vector encoder before advertising PDF.
   await probeRasterInProcess({ pdf: true });
   exporters.pdf = exportFormat("pdf").version;
-  for (const schema of [1, 2]) {
-    const descriptor = exportFormat("pdf", schema, "document");
-    exporters[descriptor.workerKey] = descriptor.version;
-  }
 }
 const connection = queueConnection(), abort = new AbortController();
 const worker = new Worker(CREATION_EXPORT_QUEUE_NAME, async job => {

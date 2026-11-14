@@ -65,7 +65,7 @@ export default function StudioToolPricingPage() {
                     </span>
                     <div>
                       <h2 className="text-sm font-medium text-primary-text">{tool.zh}</h2>
-                      <p className="text-[10px] text-secondary-text mt-0.5">{tool.dependency === "ocr" ? "独立视觉大模型 · 方舟 / OpenAI 兼容" : tool.dependency === "upscale" ? "火山智能视觉 · 图片超分 2×" : tool.dependency === "local" ? "纯代码处理 · 无需模型" : tool.dependency === "vision" ? "自动调用后台通用大语言模型" : tool.dependency === "image" ? "图像模型处理" : tool.dependency === "split" ? "拆分为独立 RGBA 图层" : "使用已部署的专用服务"}</p>
+                      <p className="text-xs text-secondary-text mt-0.5">{tool.dependency === "ocr" ? "独立视觉大模型 · 方舟 / OpenAI 兼容" : tool.dependency === "upscale" ? "火山智能视觉 · 图片超分 2×" : tool.dependency === "local" ? "纯代码处理 · 无需模型" : tool.dependency === "vision" ? "自动调用后台通用大语言模型" : tool.dependency === "image" ? "图像模型处理" : tool.dependency === "split" ? "拆分为独立 RGBA 图层" : "使用已部署的专用服务"}</p>
                     </div>
                   </div>
                   <button

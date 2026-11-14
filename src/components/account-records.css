@@ -12,32 +12,32 @@
 .ma-dialog nav{display:flex;gap:4px;border:1px solid var(--divider);border-radius:11px;padding:3px;background:var(--bg-page)}
 .ma-dialog nav button{background:transparent;color:var(--secondary-text);padding:9px 14px;border-radius:8px}
 .ma-dialog nav button[aria-pressed=true]{background:var(--primary-text);color:var(--bg-card)}
-.ma-balance{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--secondary-text)}
+.ma-balance{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--secondary-text)}
 .ma-balance strong{font-size:15px;font-weight:600;color:var(--primary-text);font-variant-numeric:tabular-nums}
 .ma-dialog .ma-scroll{min-height:190px;max-height:50dvh;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;padding:0 28px}
 .ma-dialog table{width:100%;border-collapse:collapse;font-size:12px;text-align:left;font-variant-numeric:tabular-nums}
-.ma-dialog th{position:sticky;top:0;z-index:1;background:var(--bg-card);color:var(--secondary-text);font-weight:400;font-size:11px;white-space:nowrap}
+.ma-dialog th{position:sticky;top:0;z-index:1;background:var(--bg-card);color:var(--secondary-text);font-weight:400;font-size:12px;white-space:nowrap}
 .ma-dialog :is(th,td){padding:14px 12px;border-bottom:1px solid var(--divider)}
 .ma-dialog :is(th,td):first-child{padding-left:0}
 .ma-dialog :is(th,td):last-child{padding-right:0;text-align:right}
 .ma-dialog time{display:flex;flex-direction:column;gap:4px;white-space:nowrap}
-.ma-dialog time small{font-size:10px;color:var(--secondary-text)}
+.ma-dialog time small{font-size:12px;color:var(--secondary-text)}
 .ma-money,.ma-credit{font-weight:600;white-space:nowrap}
 .ma-activity{font-weight:500;min-width:84px}
-.ma-dialog .ma-detail{color:var(--secondary-text);line-height:1.7;font-size:11px}
+.ma-dialog .ma-detail{color:var(--secondary-text);line-height:1.7;font-size:12px}
 .ma-change{white-space:nowrap;font-weight:600}
-.ma-change small{display:block;font-weight:400;font-size:10px;color:var(--secondary-text);margin-top:4px}
+.ma-change small{display:block;font-weight:400;font-size:12px;color:var(--secondary-text);margin-top:4px}
 .ma-change[data-positive=true]{color:#5baf84}
-.ma-status{display:inline-block;border:1px solid var(--divider);border-radius:6px;padding:4px 7px;font-size:10px;white-space:nowrap;color:var(--secondary-text)}
+.ma-status{display:inline-block;border:1px solid var(--divider);border-radius:6px;padding:4px 7px;font-size:12px;white-space:nowrap;color:var(--secondary-text)}
 .ma-status[data-status=paid]{color:#5baf84;border-color:#5baf8433;background:#5baf840c}
 .ma-status[data-status=pending]{color:#cf925b;border-color:#cf925b33;background:#cf925b0c}
 .ma-empty{min-height:190px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:var(--secondary-text);font-size:12px;text-align:center}
 .ma-empty p{margin:0;line-height:1.8}
 .ma-dialog footer{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 28px;border-top:1px solid var(--divider);background:var(--bg-card);flex-shrink:0}
-.ma-pagination{display:flex;align-items:center;gap:14px;color:var(--secondary-text);font-size:11px}
+.ma-pagination{display:flex;align-items:center;gap:14px;color:var(--secondary-text);font-size:12px}
 .ma-pagination button{padding:7px}
 .ma-dialog .ma-recharge{border-color:var(--divider);background:transparent}
-@media(max-width:600px){.ma-dialog{width:calc(100vw - 20px);max-width:calc(100vw - 20px);max-height:calc(100dvh - 28px);border-radius:18px}.ma-dialog header{padding:20px 16px 0}.ma-dialog h2{font-size:20px}.ma-toolbar{padding:18px 16px 16px;gap:12px}.ma-balance{font-size:10px}.ma-balance strong{font-size:13px}.ma-balance-label{display:none}.ma-dialog nav button{padding:8px 10px}.ma-dialog .ma-scroll{padding:0 16px;max-height:52dvh}.ma-dialog :is(th,td){padding:12px 6px;font-size:11px}.ma-dialog th{font-size:10px}.ma-dialog time small{font-size:9px}.ma-status{padding:3px 5px;font-size:9px}.ma-dialog footer{padding:15px 16px;gap:10px}.ma-dialog .ma-detail{font-size:10px}.ma-activity{min-width:72px}.ma-usage{table-layout:fixed}.ma-usage th:nth-child(1){width:26%}.ma-usage th:nth-child(2){width:25%}.ma-usage th:nth-child(3){width:18%}.ma-usage th:nth-child(4){width:31%}}
+@media(max-width:600px){.ma-dialog{width:calc(100vw - 20px);max-width:calc(100vw - 20px);max-height:calc(100dvh - 28px);border-radius:18px}.ma-dialog header{padding:20px 16px 0}.ma-dialog h2{font-size:20px}.ma-toolbar{padding:18px 16px 16px;gap:12px}.ma-balance{font-size:12px}.ma-balance strong{font-size:13px}.ma-balance-label{display:none}.ma-dialog nav button{padding:8px 10px}.ma-dialog .ma-scroll{padding:0 16px;max-height:52dvh}.ma-dialog :is(th,td){padding:12px 6px;font-size:12px}.ma-dialog th{font-size:12px}.ma-dialog time small{font-size:12px}.ma-status{padding:3px 5px;font-size:12px}.ma-dialog footer{padding:15px 16px;gap:10px}.ma-dialog .ma-detail{font-size:12px}.ma-activity{min-width:72px}.ma-usage{table-layout:fixed}.ma-usage th:nth-child(1){width:26%}.ma-usage th:nth-child(2){width:25%}.ma-usage th:nth-child(3){width:18%}.ma-usage th:nth-child(4){width:31%}}
 @media(prefers-reduced-motion:reduce){.ma-dialog *{transition:none!important}}
 
 [data-theme=light] .ma-change[data-positive=true],[data-theme=light] .ma-status[data-status=paid]{color:#23734d}

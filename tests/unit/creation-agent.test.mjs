@@ -17,11 +17,11 @@ import { verifiedAgentParent } from "../../src/lib/domain/creation/agent-links.j
 import { prepareDependencyContext } from "../../src/lib/domain/creation/dependency-context.js";
 import { creationLanguageMessages } from "../../src/lib/domain/creation/language-provider.js";
 
-const poster = { kind: "poster", prompt: "Coffee opening", width: 1080, height: 1440, maxCredits: 0 };
-const contentStep = (id = "poster") => ({ id, tool: "content.create", explanation: "Design poster", dependsOn: [], request: poster });
-const planInput = () => languageInputSchema.parse({ purpose: "agent.plan", prompt: "Poster then slides", allowedKinds: ["poster", "slides"], imageSizes: [], referenceIds: ["ref"] });
+const poster = { kind: "slides", prompt: "Coffee opening", width: 1920, height: 1080, maxCredits: 0 };
+const contentStep = (id = "poster") => ({ id, tool: "content.create", explanation: "Design slides", dependsOn: [], request: poster });
+const planInput = () => languageInputSchema.parse({ purpose: "agent.plan", prompt: "Opening deck", allowedKinds: ["slides"], imageSizes: [], referenceIds: ["ref"] });
 const configFor = async () => ({ visionApiKey: "test", chatModel: "test", plannerCreditCost: 1 });
-const env = { CREATION_POSTER_ENABLED: "true", CREATION_RUNS_ENABLED: "true", CREATION_WORKSPACE_ENABLED: "true" };
+const env = { CREATION_SLIDES_ENABLED: "true", CREATION_RUNS_ENABLED: "true", CREATION_WORKSPACE_ENABLED: "true" };
 function fixture() {
   const runs = new Map(), jobs = new Map(), exports = new Map();
   const run = { id: "root", userId: "u", projectId: "p", sessionId: "s", kind: "agent", status: "running", eventSequence: 1, committedCredits: 1, maxCredits: 20,
@@ -57,7 +57,7 @@ it("validates a finite registered plan and rejects cycles, invented tools, side 
   for (const steps of [[{ ...contentStep(), dependsOn: ["poster"] }], [{ ...contentStep(), tool: "shell.exec" }], [contentStep(), { id: "x", tool: "artifact.export", explanation: "Export", dependsOn: ["poster"], sourceStepId: "poster", format: "xlsx" }], Array.from({ length: 17 }, (_, index) => contentStep(`s${index}`))]) expect(agentPlanSchema.safeParse({ title: "x", steps }).success).toBe(false);
 });
 it("only admits enabled kinds, supplied references and the exact user-selected edit scope", () => {
-  expect(() => validateLanguageResult(planInput(), { title: "x", steps: [{ ...contentStep(), request: { kind: "web", prompt: "x", maxCredits: 0 } }] })).toThrow("AGENT_PLAN_SCOPE_INVALID");
+  expect(() => validateLanguageResult(planInput(), { title: "x", steps: [{ ...contentStep(), request: { ...poster, kind: "poster" } }] })).toThrow("AGENT_PLAN_SCOPE_INVALID");
   expect(() => validateLanguageResult(planInput(), { title: "x", steps: [{ id: "read", tool: "reference.read", explanation: "Read", dependsOn: [], referenceIds: ["foreign"] }] })).toThrow("AGENT_PLAN_SCOPE_INVALID");
   const editRequest = { ...poster, target: { artifactId: "a", baseRevision: 1, pageId: "page", nodeIds: ["title"] } };
   const input = languageInputSchema.parse({ ...planInput(), editRequest });

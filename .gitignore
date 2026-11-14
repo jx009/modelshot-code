@@ -56,3 +56,12 @@ __pycache__/
 /test-results-creation/
 /output/imagegen/inspiration-2026/
 /output/imagegen/inspiration-diverse/
+
+# 本地截图、调试产物与临时文件（不进版本库）
+/artifacts/
+/test-results-*/
+/tmp/
+/demo-assets-contact-sheet.png
+/garment-contact-sheet.png
+/model-contact-sheet-new.png
+/test/

@@ -1,13 +1,7 @@
-import { publicInspirationGallery } from "@/lib/server/inspiration";
 import { errorResponse } from "@/lib/http";
-import { after } from "next/server";
-import { enqueueInspirationGallery, inspirationDelivery } from "@/lib/server/inspiration-delivery";
+import { deliveredPublicGallery, GALLERY_CACHE_CONTROL } from "@/lib/server/inspiration-cache";
+
 export async function GET() {
-  try {
-    const gallery = await publicInspirationGallery();
-    const delivered = await inspirationDelivery(gallery);
-    if (delivered.deliveryPending) after(() => enqueueInspirationGallery(gallery));
-    return Response.json(delivered, { headers: { "Cache-Control": "no-store" } });
-  }
+  try { return Response.json(await deliveredPublicGallery(), { headers: { "Cache-Control": GALLERY_CACHE_CONTROL } }); }
   catch (e) { return errorResponse(e); }
 }

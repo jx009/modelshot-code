@@ -5,9 +5,6 @@ import { Worker } from "bullmq";
 import { prisma } from "../lib/prisma.js";
 import { queueConnection, CREATION_QUEUE_NAME } from "../lib/infra/queue/index.js";
 import { advanceRun, recoverRuns } from "../lib/domain/creation/scheduler.js";
-import { DOCUMENT_PIPELINE_VERSION, DOCUMENT_SCHEDULER_HEARTBEAT } from "../lib/creation/contracts/document-runtime.js";
-import { SHEET_PIPELINE_VERSION, SHEET_SCHEDULER_HEARTBEAT } from "../lib/creation/contracts/sheet-runtime.js";
-import { WEB_PIPELINE_VERSION, WEB_SCHEDULER_HEARTBEAT } from "../lib/creation/contracts/web-runtime.js";
 import { POSTER_IMAGE_PIPELINE_VERSION, POSTER_IMAGE_SCHEDULER_HEARTBEAT } from "../lib/creation/contracts/poster-runtime.js";
 import { cleanupExpiredCreationBlobs } from "../lib/domain/creation/blob-maintenance.js";
 import { objectStorage } from "../lib/infra/storage/s3.js";
@@ -37,15 +34,6 @@ async function recover() {
       update: { updatedAt: new Date(), details: { version: POSTER_IMAGE_PIPELINE_VERSION } } });
     await prisma.serviceHeartbeat.upsert({ where: { id: "creation-worker" },
       create: { id: "creation-worker", details: { queue: CREATION_QUEUE_NAME } }, update: { updatedAt: new Date() } });
-    await prisma.serviceHeartbeat.upsert({ where: { id: DOCUMENT_SCHEDULER_HEARTBEAT },
-      create: { id: DOCUMENT_SCHEDULER_HEARTBEAT, details: { version: DOCUMENT_PIPELINE_VERSION } },
-      update: { updatedAt: new Date(), details: { version: DOCUMENT_PIPELINE_VERSION } } });
-    await prisma.serviceHeartbeat.upsert({ where: { id: SHEET_SCHEDULER_HEARTBEAT },
-      create: { id: SHEET_SCHEDULER_HEARTBEAT, details: { version: SHEET_PIPELINE_VERSION } },
-      update: { updatedAt: new Date(), details: { version: SHEET_PIPELINE_VERSION } } });
-    await prisma.serviceHeartbeat.upsert({ where: { id: WEB_SCHEDULER_HEARTBEAT },
-      create: { id: WEB_SCHEDULER_HEARTBEAT, details: { version: WEB_PIPELINE_VERSION } },
-      update: { updatedAt: new Date(), details: { version: WEB_PIPELINE_VERSION } } });
   } catch { console.error(JSON.stringify({ code: "CREATION_RECOVERY_FAILED" })); }
   finally { recovering = false; }
 }

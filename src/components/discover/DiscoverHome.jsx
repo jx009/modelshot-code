@@ -22,17 +22,28 @@ import { usePageVisible } from "@/components/ui/LocalNavigation";
 import { clearImageCapabilities, readImageCapabilities } from "@/lib/studio/image-capabilities-client";
 import { useNavigationRouter as useRouter } from "@/hooks/useNavigationRouter";
 import Link from "@/components/ui/NavigationLink";
-import { ArrowUp, ArrowUpRight, MessageCircle, ShoppingBag, ImagePlus, Image as ImageIcon, PanelsTopLeft, Presentation, FileText, Table2, Globe2, WandSparkles, X, Type, LoaderCircle, Clapperboard, Video } from "lucide-react";
+import { ArrowUp, ArrowUpRight, ShoppingBag, ImagePlus, Image as ImageIcon, Presentation, Sparkles, X, Type, LoaderCircle, Clapperboard, Video, ChevronDown } from "lucide-react";
 import ModelPicker from "@/components/ui/ModelPicker";
 import ImageSizePicker from "@/components/ui/ImageSizePicker";
 import CreationLauncher from "./CreationLauncher";
 import VideoLauncher from "@/components/video/VideoLauncher";
 import dynamic from "next/dynamic";
 import "./home-composer.css";
+import "./home.css";
+import { WALL_COLUMNS, sceneImage } from "./hero-wall";
+import { HOME_SCENES, HOME_CHIPS } from "./home-scenes";
+import { useHeroPointer } from "./use-hero-pointer";
 const CommerceLauncher = dynamic(() => import("./CommerceLauncher"));
 const InspirationGallery = dynamic(() => import("./InspirationGallery"), {
   loading: () => <section id="inspiration" className="cr-inspiration ig-section" aria-hidden="true"><p className="route-loading-text">正在加载灵感作品…</p></section>,
 });
+
+const HOME_KINDS = [
+  ["image", ImageIcon, "图片", "Image"],
+  ["video", Video, "视频生成", "Video"],
+  ["motion", Clapperboard, "视频制作", "Motion"],
+  ["slides", Presentation, "PPT", "Slides"],
+];
 
 export default function DiscoverHome() {
   const auth = useAuth();
@@ -40,6 +51,7 @@ export default function DiscoverHome() {
   const activePage = useRef(visible);
   useEffect(() => { activePage.current = visible; return () => { activePage.current = false; }; }, [visible]);
   const zh = useLocale() === "zh", router = useRouter();
+  const hero = useHeroPointer();
   const { status, data: session } = useSession(), uploadInput = useRef(null);
   const guestPrompt = useContext(HomeGuestPromptContext);
   const [mode, setMode] = useState("chat"), [prompt, setPrompt] = useState(() => session?.user?.id ? guestPrompt?.text || "" : "");
@@ -58,7 +70,7 @@ export default function DiscoverHome() {
   const [models, setModels] = useState([]), [provider, setProvider] = useState(""), [busy, setBusy] = useState(false), [error, setError] = useState("");
   const launcherVisibility = creationCaps?.launcherVisibility;
   const creationType = launcherVisibility?.[creationTypeState] === false
-    ? ["image", "motion", "video", "poster", "slides", "document", "sheet", "web"].find(kind => launcherVisibility[kind] !== false) || "image"
+    ? HOME_KINDS.map(([kind]) => kind).find(kind => launcherVisibility[kind] !== false) || "image"
     : creationTypeState;
   useEffect(() => {
     if (!session?.user?.id || !visible) return;
@@ -177,12 +189,92 @@ export default function DiscoverHome() {
   const selectedModel = models.find(m => m.id === provider);
   const selectedOffer = modelCaps?.imageProvider === provider ? modelCaps.tools?.find(tool => tool.id === (attachments.length ? "edit" : "generate")) || selectedModel : null;
   const estimatedCost = selectedOffer ? imageCreditCost(selectedOffer, size) * count : "—";
-  return <><section className="cr-hero cr-creation-hero"><div className="cr-hero-content"><h1 className="cr-hero-brand"><BrandMark size={76} /><span className="cr-hero-brand-copy">来塔绘梦<small>letaidraw</small></span></h1><p className="cr-hero-subtitle">{zh ? "让想象，一键成真" : "Bring imagination to life in one click"}</p><div ref={composer} className="cr-home-composer cr-launch-card"><div className="cr-mode-tabs" role="tablist" aria-label={zh ? "创作模式" : "Creative mode"}>{[["chat", MessageCircle, "AI 创作", "AI creation"], ["commerce", ShoppingBag, "电商套图 Agent", "Commerce Agent"]].map(([id, Icon, cn, en]) => <button key={id} role="tab" aria-selected={mode === id} onClick={() => { setMode(id); if (id === "commerce") setCommerceOpened(true); }}><Icon size={15} />{zh ? cn : en}{id === "commerce" && <span>NEW</span>}</button>)}</div><div className="cr-composer-surface">{commerceOpened && <div hidden={mode !== "commerce"}><CommerceLauncher initialDescription={prompt} /></div>}{mode === "chat" && ["video", "motion"].includes(creationType) && <VideoLauncher key={`${session?.user?.id}:${creationType}`} mode={creationType} userId={session?.user?.id} zh={zh} visible={visible} initialDraft={creationDrafts[creationType]} onDraft={draft => setCreationDrafts(current => ({ ...current, [creationType]: draft }))} />}{mode === "chat" && !["image", "video", "motion"].includes(creationType) && <CreationLauncher key={`${session?.user?.id}:${creationType}`} userId={session?.user?.id} kind={creationType} zh={zh} visible={visible} initialDraft={creationDrafts[creationType]} initialCaps={creationCaps} onDraft={draft => setCreationDrafts(current => ({ ...current, [creationType]: draft }))} attachmentIds={attachments.map(item => item.assetId)} />}{mode === "chat" && creationType === "image" && <><UploadFeedback items={uploads} onDismiss={dismissUpload} zh={zh} />{attachments.length > 0 && <div className="cr-attachments">{attachments.map((layer, i) => <div key={layer.id}><Image src={previewUrl(layer.assetId, 320)} unoptimized width={64} height={64} alt={layer.name} /><span>{i + 1} · {layer.name}</span><button disabled={busy} aria-label={`${zh ? "移除参考图" : "Remove reference "}${i + 1}`} onClick={() => setAttachments(rows => rows.filter(l => l.id !== layer.id))}><X size={14} /></button></div>)}</div>}{fixedOpen && <textarea className="cr-fixed-prompt" aria-label={zh ? "固定提示词" : "Set fixed prompt"} value={fixed} maxLength={1600} onChange={e => setFixed(e.target.value)} placeholder={zh ? "每次创作都要保持的风格、品牌或要求…" : "Consistent style, brand and instructions…"} />}<textarea data-image-paste="reference" aria-label={zh ? "描述你的创意" : "Describe your idea"} value={prompt} disabled={status === "loading"} maxLength={2400} onChange={e => { setPrompt(e.target.value); if (status === "unauthenticated") guestPrompt?.remember(e.target.value); }} onKeyDown={handlePromptKeyDown} placeholder={mode === "commerce" ? zh ? "描述产品、卖点和想要的风格，下一步上传产品图与参考图…" : "Describe your product and art direction. Add product and style references next…" : zh ? "说说你的想法吧：一张有呼吸感的产品海报，一组电影感的画面…" : "An airy product poster, a cinematic scene… What will you create?"} /><div className="cr-composer-bottom"><button disabled={busy || attachments.length >= 3} onClick={() => uploadInput.current.click()} className="cr-upload-shortcut"><ImagePlus size={17} /><span>{zh ? "添加图片" : "Add image"}</span></button><ModelPicker key={visible ? "visible-models" : "hidden-models"} size={size} models={models} value={provider} onChange={setProvider} zh={zh} disabled={busy} emptyLabel={status !== "authenticated" ? zh ? "登录后选择模型" : "Sign in to choose a model" : !modelsReady ? zh ? "正在加载模型…" : "Loading models…" : zh ? "暂无可用生图模型" : "No image model configured"} /><button className="cr-parameter" aria-label={zh ? "设置固定提示词" : "Set fixed prompt"} aria-pressed={fixedOpen} onClick={() => setFixedOpen(v => !v)}><Type size={16} /></button><ImageSizePicker key={visible ? "visible-size" : "hidden-size"} value={size} onChange={setSize} zh={zh} disabled={busy} source={attachments[0] ? { width: attachments[0].pixelWidth, height: attachments[0].pixelHeight } : null} /><select className="cr-parameter" aria-label={zh ? "生成张数" : "Image count"} value={count} onChange={e => setCount(Number(e.target.value))} disabled={busy}>{[1,2,3,4].map(n => <option key={n} value={n}>{n}{zh ? "张" : "×"}</option>)}</select><input hidden ref={uploadInput} aria-label={zh ? "上传参考图片" : "Upload reference images"} type="file" multiple accept="image/png,image/jpeg,image/webp" onChange={e => upload(e.target.files)} /><button disabled={busy} className="cr-send" aria-label={zh ? "开始创作" : "Start creating"} onClick={start} title={`${estimatedCost} ${zh ? "积分" : "credits"}`}>{busy ? <LoaderCircle size={18} className="ca-spin" /> : <ArrowUp size={18} />}<span className="generation-price" aria-label={`${estimatedCost} ${zh ? "积分" : "credits"}`}><CreditIcon size={13} />{estimatedCost}</span></button></div><div className="cr-generation-note">{zh ? `一次生成 ${count} 张 · ${estimatedCost} 积分 · 原图与结果分别保存` : `${count} images · ${estimatedCost} credits · Originals preserved`}</div>{error && <p role="alert">{error}{resumeDocument && <Link href={`/studio-v2?document=${resumeDocument}`}>{zh ? "打开项目，查看已提交的任务" : "Open project to recover submitted tasks"}</Link>}</p>}</>}</div></div>{mode === "chat" && <div className="cr-creation-types" role="group" aria-label={zh ? "创作类型" : "Creation type"}>{[
-    ["image", ImageIcon, "图片创作", "Image creation"], ["motion", Clapperboard, "视频制作", "Video production"], ["video", Video, "视频生成", "Video generation"], ["poster", PanelsTopLeft, "海报设计", "Poster design"], ["slides", Presentation, "演示文稿", "Presentation"], ["document", FileText, "文档", "Document"], ["sheet", Table2, "表格", "Spreadsheet"], ["web", Globe2, "网页", "Website"],
-  ].filter(([kind]) => creationCaps?.launcherVisibility?.[kind] !== false).map(([kind, Icon, cn, en]) => {
-    const available = kind === "image" || Boolean(creationCaps?.[kind]);
-    return <button key={kind} disabled={busy || !available} aria-pressed={creationType === kind} title={!available ? (zh ? "创作服务尚未就绪" : "Creation service is not ready") : undefined} onClick={() => setCreationType(kind)}><Icon size={17} aria-hidden="true" /><span>{zh ? cn : en}</span></button>;
-  })}</div>}<div className="cr-quick-links">{[["commerce", "产品广告", "Product campaigns"], ["manga", "漫画叙事", "Comics"], ["poster", "创意海报", "Creative posters"]].map(([id, cn, en]) => <Link href={`/?category=${id}#inspiration`} key={id}><WandSparkles size={13} />{zh ? cn : en}<ArrowUpRight size={12} /></Link>)}</div></div></section>
-    {modelsError && <p role="alert">{zh ? "模型列表刷新失败，页面仍可使用。" : "Could not refresh models. You can still use this page."}<button type="button" onClick={() => { clearImageCapabilities(); setModelsRevision(value => value + 1); }}>{zh ? "重试加载模型" : "Retry models"}</button></p>}
+  const commerce = mode === "commerce";
+  const activeKind = commerce ? "commerce" : creationType;
+  const chooseKind = kind => {
+    if (kind === "commerce") { setMode("commerce"); setCommerceOpened(true); return; }
+    setMode("chat"); setCreationType(kind);
+  };
+  const applyIdea = text => {
+    setPrompt(text);
+    if (status === "unauthenticated") guestPrompt?.remember(text);
+    composer.current?.querySelector("textarea.lh-prompt")?.focus();
+  };
+  const openScene = scene => {
+    if (scene.kind === "image") { chooseKind("image"); applyIdea(scene.prompt); return; }
+    chooseKind(scene.kind);
+  };
+  const kinds = [...HOME_KINDS.filter(([kind]) => creationCaps?.launcherVisibility?.[kind] !== false), ["commerce", ShoppingBag, "电商套图", "Commerce"]];
+  return <>
+  <section className="cr-creation-hero lh-hero" ref={hero.ref} onPointerMove={hero.onPointerMove} onPointerLeave={hero.onPointerLeave}>
+    <div className="lh-wall" aria-hidden="true">
+      {WALL_COLUMNS.map((tiles, column) => <div className="lh-wall-col" key={column} style={{ "--lh-speed": `${[78, 104, 88, 118][column % 4]}s`, "--lh-dir": column % 2 ? "reverse" : "normal" }}>
+        {[...tiles, ...tiles].map((tile, index) => <Image key={`${tile[0]}-${index}`} src={sceneImage(tile[0])} alt="" width={tile[1]} height={tile[2]} unoptimized aria-hidden className="lh-wall-img" />)}
+      </div>)}
+    </div>
+    <div className="lh-veil" aria-hidden="true" />
+    <div className="lh-hero-inner">
+      <p className="lh-eyebrow"><Sparkles size={13} />{zh ? "图像 · 视频 · 演示文稿 · 电商套图" : "Images · Video · Slides · Commerce"}</p>
+      <h1 className="lh-title">
+        <span>{zh ? "让想象，" : "Imagine it."}</span>
+        <em>{zh ? "成为作品" : "See it made."}</em>
+      </h1>
+      <p className="lh-subtitle">{zh ? "写下一句话，或丢进一张图。剩下的交给 AI。" : "Write a sentence, or drop in an image. The rest is up to AI."}</p>
+      <div ref={composer} className="cr-home-composer lh-composer" data-kind={activeKind}>
+        <div className="lh-kinds" role="tablist" aria-label={zh ? "创作类型" : "Creation type"}>{kinds.map(([kind, Icon, cn, en]) => {
+          const available = kind === "image" || kind === "commerce" || Boolean(creationCaps?.[kind]);
+          return <button key={kind} role="tab" type="button" aria-selected={activeKind === kind} disabled={busy || !available} title={!available ? (zh ? "创作服务尚未就绪" : "Creation service is not ready") : undefined} onClick={() => chooseKind(kind)}><Icon size={15} />{zh ? cn : en}</button>;
+        })}</div>
+        <div className="cr-composer-surface lh-surface">
+          {commerceOpened && <div hidden={!commerce}><CommerceLauncher initialDescription={prompt} /></div>}
+          {!commerce && ["video", "motion"].includes(creationType) && <VideoLauncher key={`${session?.user?.id}:${creationType}`} mode={creationType} userId={session?.user?.id} zh={zh} visible={visible} initialDraft={creationDrafts[creationType]} onDraft={draft => setCreationDrafts(current => ({ ...current, [creationType]: draft }))} />}
+          {!commerce && creationType === "slides" && <CreationLauncher key={`${session?.user?.id}:slides`} userId={session?.user?.id} kind="slides" zh={zh} visible={visible} initialDraft={creationDrafts.slides} initialCaps={creationCaps} onDraft={draft => setCreationDrafts(current => ({ ...current, slides: draft }))} attachmentIds={attachments.map(item => item.assetId)} />}
+          {!commerce && creationType === "image" && <>
+            <UploadFeedback items={uploads} onDismiss={dismissUpload} zh={zh} />
+            {attachments.length > 0 && <div className="lh-attachments">{attachments.map((layer, i) => <figure key={layer.id}>
+              <Image src={previewUrl(layer.assetId, 320)} unoptimized width={64} height={64} alt={layer.name} />
+              <figcaption>{i + 1}</figcaption>
+              <button type="button" disabled={busy} aria-label={`${zh ? "移除参考图" : "Remove reference "}${i + 1}`} onClick={() => setAttachments(rows => rows.filter(l => l.id !== layer.id))}><X size={12} /></button>
+            </figure>)}</div>}
+            {fixedOpen && <textarea className="lh-fixed" aria-label={zh ? "固定提示词" : "Set fixed prompt"} value={fixed} maxLength={1600} onChange={e => setFixed(e.target.value)} placeholder={zh ? "每次创作都要保持的风格、品牌或要求…" : "Consistent style, brand and instructions…"} />}
+            <textarea className="lh-prompt" data-image-paste="reference" aria-label={zh ? "描述你的创意" : "Describe your idea"} value={prompt} disabled={status === "loading"} maxLength={2400} onChange={e => { setPrompt(e.target.value); if (status === "unauthenticated") guestPrompt?.remember(e.target.value); }} onKeyDown={handlePromptKeyDown} placeholder={zh ? "描述你想要的画面，例如：清晨薄雾中的玻璃温室，柔和自然光，胶片质感…" : "Describe what you want to see — a glass greenhouse in morning mist, soft light, film grain…"} />
+            <div className="lh-toolbar">
+              <button type="button" disabled={busy || attachments.length >= 3} onClick={() => uploadInput.current.click()} className="lh-tool" title={zh ? "添加参考图（最多 3 张）" : "Add reference images"}><ImagePlus size={17} /><span>{zh ? "参考图" : "Image"}</span></button>
+              <ModelPicker key={visible ? "visible-models" : "hidden-models"} size={size} models={models} value={provider} onChange={setProvider} zh={zh} disabled={busy} emptyLabel={status !== "authenticated" ? zh ? "登录后选择模型" : "Sign in to choose a model" : !modelsReady ? zh ? "正在加载模型…" : "Loading models…" : zh ? "暂无可用生图模型" : "No image model configured"} />
+              <ImageSizePicker key={visible ? "visible-size" : "hidden-size"} value={size} onChange={setSize} zh={zh} disabled={busy} source={attachments[0] ? { width: attachments[0].pixelWidth, height: attachments[0].pixelHeight } : null} />
+              <label className="lh-tool lh-count"><select aria-label={zh ? "生成张数" : "Image count"} value={count} onChange={e => setCount(Number(e.target.value))} disabled={busy}>{[1, 2, 3, 4].map(n => <option key={n} value={n}>{n}{zh ? " 张" : "×"}</option>)}</select><ChevronDown size={14} /></label>
+              <button type="button" className="lh-tool lh-icon" aria-label={zh ? "设置固定提示词" : "Set fixed prompt"} title={zh ? "固定提示词" : "Fixed prompt"} aria-pressed={fixedOpen} onClick={() => setFixedOpen(v => !v)}><Type size={16} /></button>
+              <input hidden ref={uploadInput} aria-label={zh ? "上传参考图片" : "Upload reference images"} type="file" multiple accept="image/png,image/jpeg,image/webp" onChange={e => upload(e.target.files)} />
+              <button type="button" disabled={busy} className="lh-send" aria-label={zh ? "开始创作" : "Start creating"} onClick={start} title={`${estimatedCost} ${zh ? "积分" : "credits"}`}>
+                <span className="lh-send-cost" aria-label={`${estimatedCost} ${zh ? "积分" : "credits"}`}><CreditIcon size={13} />{estimatedCost}</span>
+                <span className="lh-send-icon">{busy ? <LoaderCircle size={18} className="ca-spin" /> : <ArrowUp size={18} strokeWidth={2.4} />}</span>
+              </button>
+            </div>
+            {error && <p className="lh-error" role="alert">{error}{resumeDocument && <Link href={`/studio-v2?document=${resumeDocument}`}>{zh ? "打开项目，查看已提交的任务" : "Open project to recover submitted tasks"}</Link>}</p>}
+          </>}
+        </div>
+      </div>
+      {!commerce && creationType === "image" && <div className="lh-chips">{HOME_CHIPS.map(scene => <button type="button" key={scene.id} onClick={() => openScene(scene)}>
+        <Image src={sceneImage(scene.image)} width={44} height={44} unoptimized alt="" aria-hidden />
+        <span>{zh ? scene.label : scene.labelEn}</span>
+        <ArrowUpRight size={13} />
+      </button>)}</div>}
+    </div>
+    <div className="lh-scroll-hint" aria-hidden="true"><span>{zh ? "更多灵感" : "More inspiration"}</span><ChevronDown size={16} /></div>
+  </section>
+  <section className="lh-scenes" aria-labelledby="lh-scenes-title">
+    <header>
+      <div><p className="lh-kicker">{zh ? "快速上手" : "Start here"}</p><h2 id="lh-scenes-title">{zh ? "从这些场景开始" : "Pick a starting point"}</h2></div>
+      <Link href="/#inspiration" className="lh-more">{zh ? "浏览全部作品" : "Browse all works"}<ArrowUpRight size={14} /></Link>
+    </header>
+    <div className="lh-scene-row">{HOME_SCENES.map((scene, index) => <button type="button" key={scene.id} className="lh-scene" onClick={() => openScene(scene)} style={{ "--i": index }}>
+      <span className="lh-scene-art">
+        <Image src={sceneImage(scene.image)} width={640} height={640} unoptimized alt={zh ? scene.label : scene.labelEn} sizes="(max-width: 700px) 72vw, 320px" />
+        <span className="lh-scene-go">{zh ? "做同款" : "Remix"}<ArrowUpRight size={13} /></span>
+      </span>
+      <span className="lh-scene-label"><scene.Icon size={15} />{zh ? scene.label : scene.labelEn}</span>
+    </button>)}</div>
+  </section>
+  <div className="lh-error-slot">{modelsError && <p className="lh-error" role="alert">{zh ? "模型列表刷新失败，页面仍可使用。" : "Could not refresh models. You can still use this page."}<button type="button" aria-label={zh ? "重试加载模型" : "Retry models"} onClick={() => { clearImageCapabilities(); setModelsRevision(value => value + 1); }}>{zh ? "重试" : "Retry"}</button></p>}</div>
     <InspirationGallery zh={zh} /></>;
 }

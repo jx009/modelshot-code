@@ -13,7 +13,12 @@ import { api } from "@/lib/client-api";
 
 const GalleryCard = memo(function GalleryCard({ item, mode, zh }) {
   return <Link href={`/explore/${item.id}`} className="ig-card" aria-label={zh ? item.title : item.titleEn || item.title}>
-    <InspirationCover defer item={item} mode={mode} className="ig-cover" alt={zh ? item.title : item.titleEn || item.title}><span className="ig-use">{zh ? "以此创作" : "Create with this"}<ArrowUpRight size={14} /></span></InspirationCover>
+    <InspirationCover defer item={item} mode={mode} className="ig-cover" alt={zh ? item.title : item.titleEn || item.title}>
+      <span className="ig-overlay" aria-hidden="true">
+        <span className="ig-overlay-copy"><b>{zh ? item.title : item.titleEn || item.title}</b><small>{zh ? item.promptZh || item.prompt : item.prompt}</small></span>
+        <span className="ig-use">{zh ? "做同款" : "Remix"}<ArrowUpRight size={14} /></span>
+      </span>
+    </InspirationCover>
   </Link>;
 });
 
@@ -110,7 +115,7 @@ function Gallery({ zh }) {
   const { layout } = gallery;
   return <section id="inspiration" className="cr-inspiration ig-section">
     {error && <p role="status">{zh ? "刷新暂时失败，仍显示上次内容。" : "Refresh failed. Showing the previous content."}<button onClick={() => setReload(value => value + 1)}>{zh ? "重试" : "Try again"}</button></p>}
-    <div className="cr-section-heading"><div><h2><Sparkles size={19} />{zh ? "灵感发现" : "Discover inspiration"}<span>{zh ? "让好想法，成为下一件作品" : "Find your next creative direction"}</span></h2></div></div>
+    <div className="cr-section-heading"><div><h2><Sparkles size={18} />{zh ? "灵感发现" : "Discover"}</h2><p>{zh ? "社区精选作品，点开即可查看提示词并一键做同款" : "Curated works. Open any piece to see its prompt and remix it."}</p></div></div>
     <div className="cr-filter-bar"><div className="cr-categories" role="group" aria-label={zh ? "案例分类" : "Case categories"}>{INSPIRATION_CATEGORIES.map(([id, cn, en]) => <button key={id} className={category === id ? "active" : ""} onClick={() => setCategory(id)}>{zh ? cn : en}</button>)}</div><label className="cr-search"><Search size={15} /><input value={query} onChange={e => setQuery(e.target.value)} aria-label={zh ? "搜索灵感" : "Search inspiration"} placeholder={zh ? "搜索作品或提示词" : "Search images or prompts"} /></label></div>
     {layout.mode === "masonry" ? <MasonryGallery items={visible} layout={layout} zh={zh} /> : <div className={`ig-gallery ig-grid ig-columns-${layout.columns}`} style={{ "--ig-columns": layout.columns, "--ig-gap": `${layout.gap}px` }}>{visible.map(item => <GalleryCard key={item.id} item={item} mode={layout.mode} zh={zh} />)}</div>}
     {!visible.length && <div className="cr-no-results">{zh ? "暂时没有匹配的作品。" : "No matching works."}<button onClick={() => { setCategory("all"); setQuery(""); }}>{zh ? "查看全部" : "Show all"}</button></div>}

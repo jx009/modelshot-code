@@ -1,6 +1,5 @@
 "use client";
 
-import { sheetGenerationCalls } from "@/lib/creation/sheet-generation-policy";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { ArrowUp, FileImage, LoaderCircle, MessageSquare, PanelLeftClose, PanelLeftOpen, Paperclip, TriangleAlert, SlidersHorizontal, RefreshCw, X } from "lucide-react";
 import { api, requestKey } from "@/lib/client-api";
@@ -42,7 +41,6 @@ export default function CreationWorkspace({ userId, projectId, initialSessionId,
   const [project, setProject] = useState(null), [sessionId, setSessionId] = useState(null), [messages, setMessages] = useState({ items: [], nextCursor: null });
   const [caps, setCaps] = useState(null), [runId, setRunId] = useState(null), [fileId, setFileId] = useState(null), [loadedFormat, setLoadedFormat] = useState(null), [editorEpoch, setEditorEpoch] = useState(0);
   const [prompt, setPrompt] = useState(""), [reference, setReference] = useState(null), [pages, setPages] = useState(10), [ratio, setRatio] = useState("1080x1440");
-  const [sectionCount, setSectionCount] = useState(6), [sheetCount, setSheetCount] = useState(1), [targetRows, setTargetRows] = useState(20);
   const [budget, setBudget] = useState(""), [pending, setPending] = useState(null), [busy, setBusy] = useState(false), [error, setError] = useState(null), [loading, setLoading] = useState(true);
   const compact = useSyncExternalStore(subscribeCompact, compactSnapshot, wideServerSnapshot);
   const [treePreference, setTreeOpen] = useState(null), [mobileTab, setMobileTab] = useState("chat"), [stepsOpen, setStepsOpen] = useState(false), [updatedFile, setUpdatedFile] = useState(null);
@@ -104,7 +102,7 @@ export default function CreationWorkspace({ userId, projectId, initialSessionId,
         finalSeen.current = latestRun && !active(latestRun.status) ? `${latestRun.id}:${latestRun.eventSequence}` : null;
         setRunId(latestRun?.id || null);
         if (latestRun?.errorCode === "CREATION_OUTLINE_CONFIRMATION_REQUIRED" && !initialFileId) setOutlineRunId(latestRun.kind === "agent" ? latestRun.steps?.find(step => step.status !== "succeeded" && step.result?.childRunId)?.result.childRunId : latestRun.id);
-        setRatio(value.kind === "slides" ? "1920x1080" : "1080x1440"); setPages(value.kind === "web" ? 1 : 10);
+        setRatio(value.kind === "slides" ? "1920x1080" : "1080x1440"); setPages(10);
         try {
           const saved = JSON.parse(sessionStorage.getItem(journalKey) || "null"), draft = JSON.parse(sessionStorage.getItem(draftKey) || "null");
           if (saved?.key && saved?.body && saved.sessionId === chosen) {
@@ -113,10 +111,7 @@ export default function CreationWorkspace({ userId, projectId, initialSessionId,
             setImageProvider(saved.body.image?.provider || saved.body.imageProvider || "");
             const target = saved.body.target;
             if (target) {
-              const selected = saved.body.kind === "web" ? { kind: "web", fileIds: target.fileIds, paths: target.paths }
-                : saved.body.kind === "document" ? target.format === "univer-document-1" ? { kind: "document", format: target.format, unitId: target.unitId, segmentId: target.segmentId, spans: target.spans, baseRevision: target.baseRevision } : { kind: "document", sectionId: target.sectionId, blockIds: target.blockIds }
-                  : saved.body.kind === "sheet" ? target.format === "univer-sheet-1" ? { kind: "sheet", format: target.format, unitId: target.unitId, sheetId: target.sheetId, cells: target.cells, baseRevision: target.baseRevision } : { kind: "sheet", sheetId: target.sheetId, addresses: target.addresses }
-                    : { pageId: target.pageId, nodeId: target.nodeIds?.[0] };
+              const selected = { pageId: target.pageId, nodeId: target.nodeIds?.[0] };
               setReference({ artifactId: target.artifactId, ...selected, label: zh ? "上次选中的内容" : "Previously selected content" });
               setFileId(target.artifactId);
             }
@@ -125,10 +120,7 @@ export default function CreationWorkspace({ userId, projectId, initialSessionId,
             setGenerateImage(draft.generateImage ?? true); setImageProvider(typeof draft.imageProvider === "string" ? draft.imageProvider : "");
             if (["1080x1440", "1080x1080", "1920x1080", "1080x1920"].includes(draft.ratio)) setRatio(draft.ratio);
             if (Number.isInteger(draft.pages) && draft.pages >= 1 && draft.pages <= 100) setPages(draft.pages);
-            if (Number.isInteger(draft.sectionCount) && draft.sectionCount >= 1 && draft.sectionCount <= 50) setSectionCount(draft.sectionCount);
             setAgentMode(draft.agentMode === true);
-            if (Number.isInteger(draft.sheetCount) && draft.sheetCount >= 1 && draft.sheetCount <= 5) setSheetCount(draft.sheetCount);
-            if (Number.isInteger(draft.targetRows) && draft.targetRows >= 1 && draft.targetRows <= 500) setTargetRows(draft.targetRows);
           }
         } catch { /* Cloud state remains available if local storage is disabled. */ }
       } catch (failure) { if (!controller.signal.aborted) setError(failure); }
@@ -149,11 +141,11 @@ export default function CreationWorkspace({ userId, projectId, initialSessionId,
   }, [fileId, project, listedKind, notify]);
   useEffect(() => {
     if (loading || !sessionId) return;
-    const snapshot = { key: draftKey, value: JSON.stringify({ prompt, reference, assetIds, referenceIds, ratio, pages, sectionCount, sheetCount, targetRows, generateImage, imageProvider, agentMode }) };
+    const snapshot = { key: draftKey, value: JSON.stringify({ prompt, reference, assetIds, referenceIds, ratio, pages, generateImage, imageProvider, agentMode }) };
     composerDraft.current = snapshot;
     composerTimer.current = setTimeout(() => { try { sessionStorage.setItem(snapshot.key, snapshot.value); } catch { /* Sending still requires a durable pending journal. */ } }, 300);
     return () => clearTimeout(composerTimer.current);
-  }, [prompt, reference, assetIds, referenceIds, ratio, pages, sectionCount, sheetCount, targetRows, generateImage, imageProvider, agentMode, draftKey, loading, sessionId]);
+  }, [prompt, reference, assetIds, referenceIds, ratio, pages, generateImage, imageProvider, agentMode, draftKey, loading, sessionId]);
   useEffect(() => {
     const save = () => {
       clearTimeout(composerTimer.current);
@@ -206,7 +198,7 @@ export default function CreationWorkspace({ userId, projectId, initialSessionId,
   const observed = useCreationRun(runId, onRunChange, revision), run = observed.run?.id === runId ? observed.run : null;
   const occupied = run && (active(run.status) || run.status.startsWith("awaiting_"));
   const kind = reference ? fileKind || project?.kind : project?.kind, useAgent = agentMode, enabled = Boolean(caps?.[useAgent ? "agent" : kind]);
-  const estimatedCalls = reference ? 1 : kind === "slides" ? pages + 1 : kind === "document" ? sectionCount + 1 : kind === "sheet" ? sheetGenerationCalls(sheetCount, targetRows) : 1;
+  const estimatedCalls = reference ? 1 : kind === "slides" ? pages + 1 : 1;
   const imageChoice = pending ? pending.body.image : !useAgent && kind === "poster" && !reference ? posterImageChoice(caps, ratio, imageProvider) : null;
   const withImage = Boolean(imageChoice && generateImage && assetIds.length < 8);
   const estimated = pending ? pending.body.maxCredits : (caps?.languageUnitCost ?? 0) * (useAgent ? 1 : estimatedCalls) + (withImage ? imageChoice.expectedCost : 0);
@@ -259,35 +251,14 @@ export default function CreationWorkspace({ userId, projectId, initialSessionId,
         if (reference) {
           if (reference.artifactId !== fileId || !editor.current) throw new Error("LANGUAGE_SELECTION_CHANGED");
           const saved = await editor.current.flush();
-          if (kind === "document" && reference.format === "univer-document-1") {
-            const { nativeDocumentTargetFromReference } = await import("@/lib/creation/native-document-edit");
-            target = nativeDocumentTargetFromReference(reference, saved, fileId);
-          } else if (kind === "sheet" && reference.format === "univer-sheet-1") {
-            const { nativeSheetTargetFromReference } = await import("@/lib/creation/native-sheet-edit");
-            target = nativeSheetTargetFromReference(reference, saved, fileId);
-          } else if (kind === "web") {
-            const { validateWebSelection } = await import("@/lib/creation/web-selection");
-            validateWebSelection(reference, saved.content);
-            target = { artifactId: fileId, baseRevision: saved.revision, fileIds: reference.fileIds, paths: reference.paths };
-          } else if (kind === "document") {
-            const { validateDocumentSelection } = await import("@/lib/creation/contracts/document-language");
-            validateDocumentSelection(reference, saved.content);
-            target = { artifactId: fileId, baseRevision: saved.revision, sectionId: reference.sectionId, blockIds: reference.blockIds };
-          } else if (kind === "sheet") {
-            const { validateSheetSelection } = await import("@/lib/creation/sheet-selection");
-            validateSheetSelection(reference, saved.content);
-            target = { artifactId: fileId, baseRevision: saved.revision, sheetId: reference.sheetId, addresses: reference.addresses };
-          } else {
+          {
             const sourcePage = saved.content?.pages?.find(page => page.id === reference.pageId);
             if (!sourcePage || reference.nodeId && sourcePage.nodes && !sourcePage.nodes.some(node => node.id === reference.nodeId && !node.locked)) throw new Error("LANGUAGE_SELECTION_CHANGED");
             target = { artifactId: fileId, baseRevision: saved.revision, pageId: reference.pageId, nodeIds: reference.nodeIds || (reference.nodeId ? [reference.nodeId] : []) };
           }
         }
         if (signal.aborted) return;
-        const parameters = kind === "web" ? { pageCount: Math.min(20, pages) }
-          : kind === "poster" || kind === "slides" ? { width, height, pageCount: kind === "slides" ? pages : 1 }
-            : kind === "document" ? { sectionCount, audience: "" }
-              : { sheetCount, targetRows };
+        const parameters = { width, height, pageCount: kind === "slides" ? pages : 1 };
         const typedRequest = { kind, prompt: prompt.trim(), locale: zh ? "zh" : "en", ...parameters, assetIds: [], referenceIds: [], maxCredits: 0, ...(target ? { target } : {}) };
         const body = { kind: useAgent ? "agent" : kind, prompt: prompt.trim(), locale: zh ? "zh" : "en", ...(useAgent ? (target ? { editRequest: typedRequest } : {}) : parameters),
           assetIds, referenceIds, maxCredits: Number(budget || estimated), ...(!useAgent && target ? { target } : {}) };

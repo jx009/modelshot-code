@@ -39,9 +39,9 @@ export default function AdminDashboard() {
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         {cards.map(c => (
           <div key={c.label} className="bg-bg-card border border-divider rounded-xl p-4">
-            <div className="text-[10px] uppercase font-bold text-secondary-text tracking-wider">{c.label}</div>
+            <div className="text-xs uppercase font-bold text-secondary-text tracking-wider">{c.label}</div>
             <div className="text-2xl font-black mt-1.5">{c.value}</div>
-            {c.sub && <div className="text-[10px] text-secondary-text mt-1">{c.sub}</div>}
+            {c.sub && <div className="text-xs text-secondary-text mt-1">{c.sub}</div>}
           </div>
         ))}
       </div>
@@ -62,7 +62,7 @@ export default function AdminDashboard() {
               );
             })}
           </div>
-          <div className="flex justify-between text-[10px] text-secondary-text mt-1.5">
+          <div className="flex justify-between text-xs text-secondary-text mt-1.5">
             <span>{stats.trend[0]?.date}</span>
             <span className="flex items-center gap-3">
               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-primary inline-block" />成功</span>

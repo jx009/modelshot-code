@@ -1,6 +1,6 @@
 # 创作工作台剩余验收与能力边界
 
-2026-10-25。旧清单中“没有 HTML 海报、没有跨类型 Agent、没有 Office 导入”的表述已过时。当前实现、入口、测试及部署见 [交付说明](cheso-alignment-implementation-status.md)。完整范围仍以 [对标方案](cheso-alignment-remaining-plan.md) 为准。
+2026-10-25。旧清单中“没有 HTML 海报、没有跨类型 Agent、没有 Office 导入”的表述已过时。当前实现、入口、测试及部署见 [交付说明](archive/cheso-alignment-implementation-status.md)。完整范围仍以 [对标方案](archive/cheso-alignment-remaining-plan.md) 为准。
 
 ## 尚未实现的扩展或完整程度
 

@@ -74,17 +74,17 @@ test("reports model load failures separately and retries without replacing the c
   expect(screen.getByLabelText("描述你的创意").value).toBe("保留输入");
 });
 
-test("shows only individually enabled creation buttons", async () => {
+test("shows only individually enabled creation tabs", async () => {
   mocks.read.mockImplementation(() => new Promise(() => {}));
-  mocks.api.mockResolvedValue({ launcherVisibility: { image: true, motion: false, video: false, poster: true, slides: true, document: false, sheet: false, web: false } });
+  mocks.api.mockResolvedValue({ launcherVisibility: { image: true, motion: false, video: false, slides: true } });
   render(<DiscoverHome />);
-  expect(await screen.findByRole("button", { name: "演示文稿" })).toBeTruthy();
-  expect(screen.getByRole("button", { name: "图片创作" })).toBeTruthy();
-  expect(screen.getByRole("button", { name: "海报设计" })).toBeTruthy();
+  expect(await screen.findByRole("tab", { name: "PPT" })).toBeTruthy();
+  expect(screen.getByRole("tab", { name: "图片" })).toBeTruthy();
+  expect(screen.getByRole("tab", { name: "电商套图" })).toBeTruthy();
   await waitFor(() => {
-    for (const name of ["视频制作", "视频生成", "文档", "表格", "网页"]) expect(screen.queryByRole("button", { name })).toBeNull();
+    for (const name of ["视频制作", "视频生成"]) expect(screen.queryByRole("tab", { name })).toBeNull();
   });
-  expect(document.querySelector(".cr-creation-types").className).toContain("cr-creation-types");
+  expect(document.querySelector(".lh-kinds")).toBeTruthy();
 });
 
 test("does not start a model read for a retained hidden homepage", () => {
@@ -92,19 +92,19 @@ test("does not start a model read for a retained hidden homepage", () => {
   expect(mocks.read).not.toHaveBeenCalled();
 });
 
-test.each(["海报设计", "演示文稿", "文档", "表格", "网页"])("opens the %s form synchronously and preserves its draft while optional chunks are unavailable", async type => {
+test.each(["PPT"])("opens the %s form synchronously and preserves its draft while optional chunks are unavailable", async type => {
   mocks.read.mockImplementation(() => new Promise(() => {}));
   render(<DiscoverHome />);
   await act(async () => {});
-  fireEvent.click(screen.getByRole("button", { name: type }));
+  fireEvent.click(screen.getByRole("tab", { name: type }));
   // next/dynamic is stubbed above: no optional chunk can resolve in this test.
   const composer = screen.getByRole("textbox", { name: "创作需求" });
   expect(composer.disabled).toBe(false);
   expect(screen.getByRole("button", { name: "添加参考图片" })).toBeTruthy();
   fireEvent.change(composer, { target: { value: "切换后继续编辑" } });
-  fireEvent.click(screen.getByRole("button", { name: "图片创作" }));
+  fireEvent.click(screen.getByRole("tab", { name: "图片" }));
   expect(screen.getByRole("textbox", { name: "描述你的创意" })).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: type }));
+  fireEvent.click(screen.getByRole("tab", { name: type }));
   expect(screen.getByRole("textbox", { name: "创作需求" }).value).toBe("切换后继续编辑");
   expect(mocks.api.mock.calls.map(([url]) => url)).toEqual(["/api/creation/capabilities"]);
 });

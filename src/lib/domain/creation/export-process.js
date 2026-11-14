@@ -62,18 +62,14 @@ function runChild(root, signal) {
     });
   });
 }
-export async function renderLayoutInProcess(document, assets, { store, signal, format, exporterVersion, original }) {
+export async function renderLayoutInProcess(document, assets, { store, signal, format, exporterVersion }) {
   if (!exportFormat(format)) throw new AppError("EXPORT_FORMAT_UNSUPPORTED", 422);
   const root = await mkdtemp(join(tmpdir(), "modelshot-export-"));
   try {
     const downloadSignal = AbortSignal.any([signal, AbortSignal.timeout(120000)]);
-    if (original) {
-      if (!Number.isSafeInteger(original.bytes) || original.bytes < 22 || original.bytes > 4 * 1024 * 1024) throw new AppError("EXPORT_SOURCE_INTEGRITY_FAILED", 422);
-      await copyAsset(original, join(root, "original.bin"), store, downloadSignal);
-    }
     for (let index = 0; index < assets.length; index++) await copyAsset(assets[index], join(root, `asset-${index}`), store, downloadSignal);
     const metadata = assets.map(({ id, bytes, checksum }) => ({ id, bytes, checksum }));
-    await writeFile(join(root, "input.json"), JSON.stringify({ document, assets: metadata, format, exporterVersion, ...(original ? { original: { bytes: original.bytes, checksum: original.checksum } } : {}) }));
+    await writeFile(join(root, "input.json"), JSON.stringify({ document, assets: metadata, format, exporterVersion }));
     signal.throwIfAborted();
     await runChild(root, signal);
     signal.throwIfAborted();

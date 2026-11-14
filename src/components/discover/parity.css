@@ -21,7 +21,7 @@
 .cr-shell .cr-creation-hero .cr-model-label select { max-width:220px; color:inherit; border:0; background:transparent; outline:0; font-size:12px; }
 .cr-shell .cr-creation-hero .cr-send { margin-left:auto; }
 .cr-shell .cr-creation-hero .cr-home-composer .cr-home-images { text-align:left; }
-@media(max-width:600px) { .cr-shell .cr-creation-hero { padding:30px 16px 26px; }.cr-shell .cr-creation-hero h1 { font-size:25px; letter-spacing:0; }.cr-shell .cr-creation-hero .cr-hero-subtitle { font-size:12px; }.cr-shell .cr-creation-hero .cr-mode-tabs button { font-size:11px; padding:9px 5px; }.cr-shell .cr-creation-hero .cr-mode-tabs button span { display:none; }.cr-shell .cr-creation-hero .cr-quick-links { gap:10px; flex-wrap:wrap; }.cr-shell .cr-creation-hero .cr-model-label select { max-width:150px; } }
+@media(max-width:600px) { .cr-shell .cr-creation-hero { padding:30px 16px 26px; }.cr-shell .cr-creation-hero h1 { font-size:25px; letter-spacing:0; }.cr-shell .cr-creation-hero .cr-hero-subtitle { font-size:12px; }.cr-shell .cr-creation-hero .cr-mode-tabs button { font-size:12px; padding:9px 5px; }.cr-shell .cr-creation-hero .cr-mode-tabs button span { display:none; }.cr-shell .cr-creation-hero .cr-quick-links { gap:10px; flex-wrap:wrap; }.cr-shell .cr-creation-hero .cr-model-label select { max-width:150px; } }
 @media(prefers-reduced-motion:reduce) { .cr-shell { --motion-press:0ms; --motion-fast:0ms; --motion-panel:0ms; --motion-image:0ms; }.cr-shell .cr-sidebar nav a svg { transition:none; } }
 
 .cr-shell .cr-topbar>span{display:flex;align-items:center;gap:12px}.cr-shell .cr-topbar .mr-popover{left:0}.cr-shell .cr-topbar .mr-list a{font-size:12px}
@@ -29,7 +29,7 @@
 .cr-shell .cr-creation-hero .cr-mode-tabs{width:100%;display:flex}.cr-shell .cr-creation-hero .cr-mode-tabs button{white-space:nowrap}
 
 /* Keep navigation and supporting copy readable at normal browser zoom. */
-.cr-shell .cr-sidebar nav a>span { font-size:11px; width:74px; max-width:74px; white-space:normal; text-align:center; line-height:1.35; }
+.cr-shell .cr-sidebar nav a>span { font-size:12px; width:74px; max-width:74px; white-space:normal; text-align:center; line-height:1.35; }
 .cr-shell .cr-topbar { font-size:13px; }
 .cr-shell .cr-creation-hero .cr-hero-subtitle,
 .cr-shell .cr-section-heading h2>span { color:var(--secondary-text); }
@@ -53,5 +53,5 @@
   .cr-shell .cr-topbar>span>.cr-live-dot { display:none; }
   .cr-shell .cr-topbar>div { width:auto; white-space:nowrap; }
   .cr-shell .cr-topbar>span { margin-right:auto; }
-  .cr-shell .cr-quick-links a { font-size:11px; padding:4px; }
+  .cr-shell .cr-quick-links a { font-size:12px; padding:4px; }
 }

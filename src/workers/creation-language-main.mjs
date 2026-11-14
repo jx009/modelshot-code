@@ -5,9 +5,6 @@ import { Worker } from "bullmq";
 import { prisma } from "../lib/prisma.js";
 import { queueConnection, CREATION_LANGUAGE_QUEUE_NAME } from "../lib/infra/queue/index.js";
 import { executeCreationLanguage } from "../lib/domain/creation/language-execution.js";
-import { DOCUMENT_PIPELINE_VERSION, DOCUMENT_LANGUAGE_HEARTBEAT } from "../lib/creation/contracts/document-runtime.js";
-import { SHEET_PIPELINE_VERSION, SHEET_LANGUAGE_HEARTBEAT } from "../lib/creation/contracts/sheet-runtime.js";
-import { WEB_PIPELINE_VERSION, WEB_LANGUAGE_HEARTBEAT } from "../lib/creation/contracts/web-runtime.js";
 import { REFERENCE_READER_VERSION, REFERENCE_READER_HEARTBEAT } from "../lib/creation/reference-policy.js";
 import { POSTER_IMAGE_PIPELINE_VERSION, POSTER_IMAGE_LANGUAGE_HEARTBEAT } from "../lib/creation/contracts/poster-runtime.js";
 
@@ -38,15 +35,6 @@ async function heartbeat() {
     await prisma.serviceHeartbeat.upsert({ where: { id: "creation-language-worker" },
       create: { id: "creation-language-worker", details: { queue: CREATION_LANGUAGE_QUEUE_NAME, concurrency } },
       update: { updatedAt: new Date(), details: { queue: CREATION_LANGUAGE_QUEUE_NAME, concurrency } } });
-    await prisma.serviceHeartbeat.upsert({ where: { id: DOCUMENT_LANGUAGE_HEARTBEAT },
-      create: { id: DOCUMENT_LANGUAGE_HEARTBEAT, details: { version: DOCUMENT_PIPELINE_VERSION } },
-      update: { updatedAt: new Date(), details: { version: DOCUMENT_PIPELINE_VERSION } } });
-    await prisma.serviceHeartbeat.upsert({ where: { id: SHEET_LANGUAGE_HEARTBEAT },
-      create: { id: SHEET_LANGUAGE_HEARTBEAT, details: { version: SHEET_PIPELINE_VERSION } },
-      update: { updatedAt: new Date(), details: { version: SHEET_PIPELINE_VERSION } } });
-    await prisma.serviceHeartbeat.upsert({ where: { id: WEB_LANGUAGE_HEARTBEAT },
-      create: { id: WEB_LANGUAGE_HEARTBEAT, details: { version: WEB_PIPELINE_VERSION } },
-      update: { updatedAt: new Date(), details: { version: WEB_PIPELINE_VERSION } } });
     // Office parsing is allowed only on an explicitly isolated deployment.
     // This is an operator assertion; container CPU/memory/disk/network limits
     // must be set by deployment. No heartbeat is advertised on an ordinary host.

@@ -40,17 +40,17 @@
 .mpk-option[aria-selected=true] { background:var(--bg-popover-selected); }
 .mpk-copy { display:flex; flex:1; min-width:0; flex-direction:column; gap:4px; }
 .mpk-name { font-size:14px; font-weight:550; line-height:1.35; overflow-wrap:anywhere; }
-.mpk-description { font-size:11px; line-height:1.45; color:var(--secondary-text); }
-.mpk-price { font-size:10px; line-height:1.4; color:var(--secondary-text); }
+.mpk-description { font-size:12px; line-height:1.45; color:var(--secondary-text); }
+.mpk-price { font-size:12px; line-height:1.4; color:var(--secondary-text); }
 .mpk-check { width:18px; flex-shrink:0; }
 .mpk-panel button:focus-visible,.mpk-trigger:focus-visible { outline:2px solid var(--primary-text); outline-offset:-2px; }
 /* Size controls to their content; only the model label shrinks when space runs out. */
 .ms-studio .ms-composer-tools { display:flex; flex-wrap:nowrap; min-width:0; gap:4px; }
-.ms-studio .ms-composer-tools .mpk-trigger { flex:0 1 auto; width:auto; min-width:0; max-width:none; padding:6px; gap:5px; font-size:11px; }
+.ms-studio .ms-composer-tools .mpk-trigger { flex:0 1 auto; width:auto; min-width:0; max-width:none; padding:6px; gap:5px; font-size:12px; }
 .ms-studio .ms-composer-tools .mpk-trigger-name { flex:0 1 auto; min-width:0; text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .ms-studio .ms-composer-tools .mpk-mark-small { width:22px; height:22px; border-radius:7px; }
 .ms-studio .ms-composer-tools > .ms-icon { flex:0 0 auto; width:auto; padding-inline:4px; }
-.ms-studio .ms-composer-tools > .isp-trigger { flex:0 0 auto; min-width:0; padding:7px 6px; gap:5px; font-size:11px; }
+.ms-studio .ms-composer-tools > .isp-trigger { flex:0 0 auto; min-width:0; padding:7px 6px; gap:5px; font-size:12px; }
 .ms-studio .ms-composer-tools > .isp-trigger > * { flex-shrink:0; }
 .ms-studio .ms-composer-tools > select { flex:0 0 auto; min-width:0; width:auto; padding-inline:3px; }
 .ms-studio .ms-composer-tools > .ms-send { margin-left:0; }

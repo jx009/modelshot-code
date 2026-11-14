@@ -1,4 +1,4 @@
-.generation-model-select { display:inline-flex; align-items:center; gap:8px; min-width:0; max-width:100%; color:var(--secondary-text); font-size:11px; }
+.generation-model-select { display:inline-flex; align-items:center; gap:8px; min-width:0; max-width:100%; color:var(--secondary-text); font-size:12px; }
 .generation-model-select select { min-width:0; max-width:220px; padding:5px 8px; border:1px solid var(--divider); border-radius:8px; background:var(--bg-card); color:var(--primary-text); font:inherit; text-overflow:ellipsis; }
 .generation-model-select select:focus-visible { outline:2px solid var(--primary); outline-offset:2px; }
 .generation-model-select select:disabled { opacity:.6; }

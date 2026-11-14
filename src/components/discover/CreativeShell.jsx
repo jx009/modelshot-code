@@ -13,16 +13,17 @@ import { usePathname } from "@/i18n/navigation";
 import Link from "@/components/ui/NavigationLink";
 import { useLocalNavigation } from "@/components/ui/LocalNavigation";
 import { useNavigationPath } from "@/components/ui/NavigationFeedback";
-import { House, Images, LayoutGrid, ShoppingBag, ArrowUpRight, FolderOpen, CircleHelp, Globe2, SunMoon, PanelLeftOpen, PanelLeftClose } from "lucide-react";
+import { House, Images, ImagePlus, Clapperboard, Presentation, ShoppingBag, ArrowUpRight, FolderOpen, Globe2, SunMoon, PanelLeftOpen, PanelLeftClose } from "lucide-react";
 import "./discover.css";
 import "./creative-direction.css";
 import "./parity.css";
 import "./atelier.css";
 import "./inspiration.css";
 import "./brand-navigation.css";
+import "./shell.css";
 import UserMenu from "@/components/UserMenu";
 import { WorkspaceHeaderProvider, WorkspaceHeaderSlot } from "@/components/creation/WorkspaceHeader";
-import BrandLogo, { BrandMark } from "@/components/BrandLogo";
+import { BrandMark } from "@/components/BrandLogo";
 import MobileNavigation from "./MobileNavigation";
 import { subscribeWorkspaceTitle, workspaceTitleSnapshot, workspaceTitleServerSnapshot } from "@/lib/creation/client/workspace-title";
 
@@ -45,8 +46,64 @@ function CreativeShellContent({ children }) {
   const local = useLocalNavigation(), routePath = usePathname();
   const zh = useLocale() === "zh", path = useNavigationPath("creative", local?.path ?? routePath), { data: session } = useSession();
   const compactWorkspace = path === "/creation" || path === "/video";
-  const links = [["/", House, "创作首页", "Create"], ["/commerce", ShoppingBag, "电商套图 Agent", "Commerce Agent"], ["/studio-v2", LayoutGrid, "自由画布", "Canvas"], ["/projects", Images, "我的项目", "My projects"], ["/assets", FolderOpen, "素材库", "Assets"]];
-  return <div className={`cr-shell${compactWorkspace ? " cr-shell-creation" : ""}`} data-workspace={path === "/video" ? "video" : undefined} data-navigation-expanded={compactWorkspace && navigationExpanded || undefined}><aside className="cr-sidebar"><Link prefetch="intent" href="/" className="cr-logo" aria-label="来塔绘梦"><BrandLogo /></Link>{compactWorkspace && <button type="button" className="cr-sidebar-toggle" aria-expanded={navigationExpanded} aria-label={zh ? navigationExpanded ? "收起侧边导航" : "展开侧边导航" : navigationExpanded ? "Collapse navigation" : "Expand navigation"} title={zh ? navigationExpanded ? "收起侧边导航" : "展开侧边导航" : navigationExpanded ? "Collapse navigation" : "Expand navigation"} onClick={() => setNavigationExpanded(value => !value)}>{navigationExpanded ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}</button>}<div className="cr-workspace-label">{zh ? "创意工作空间" : "YOUR CREATIVE SPACE"}</div><nav aria-label={zh ? "创作导航" : "Creative navigation"}>{links.map(([href, Icon, cn, en]) => <Link prefetch={path === href ? false : "intent"} onPrefetch={href === "/studio-v2" ? preloadCanvas : undefined} key={href} href={href} aria-label={zh ? cn : en} title={zh ? cn : en} className={path === href || href === "/" && path.startsWith("/explore/") ? "active" : ""}><Icon size={18} /><span>{zh ? cn : en}</span>{href === "/commerce" && <small>NEW</small>}</Link>)}</nav><div className="cr-sidebar-bottom"><div className="cr-upgrade"><span className="cr-overline">CREATE SOMETHING GREAT</span><p>{zh ? "让好想法，多一点可能。" : "Make more room for good ideas."}</p><button className="cr-recharge-upgrade" onClick={recharge.open}>{zh ? "积分充值" : "Buy credits"}<ArrowUpRight size={15} /></button></div><Link prefetch="intent" className="cr-support" href="/#inspiration"><CircleHelp size={16} />{zh ? "从一个案例开始" : "Start with a reference"}</Link><button className="cr-account" onClick={() => session?.user ? recharge.openRecords("usage") : auth.open()}><span className="cr-avatar">{session?.user ? (session.user.name || session.user.email).slice(0, 1).toUpperCase() : "L"}</span><span>{session?.user ? session.user.name || (zh ? "我的账户" : "My account") : zh ? "登录，保存你的创意" : "Sign in to save your ideas"}<small>{zh ? "你的下一件作品，从这里开始" : "Your next creation starts here"}</small></span></button></div></aside><div className="cr-main"><header className="cr-topbar" data-scrolled={!compactWorkspace && scrolled || undefined}><div className="cr-topbar-surface"><div className="cr-topbar-context"><MobileNavigation links={links} path={path} zh={zh} />{compactWorkspace && <div className="cr-creation-navigation"><Link href="/" aria-label={zh ? "创作首页" : "Home"}><BrandMark size={22} /></Link><button aria-label={zh ? "展开导航" : "Toggle navigation"} aria-expanded={navigationExpanded} onClick={() => setNavigationExpanded(value => !value)}><PanelLeftOpen size={16} /></button></div>}<span className="cr-live-dot" />{path === "/video" ? <WorkspaceHeaderSlot name="title" /> : <span className="cr-workspace-title" title={path === "/creation" ? creationTitle : undefined}>{path === "/creation" ? creationTitle || (zh ? "AI 创作" : "AI Creation") : zh ? "创意工作室" : "Creative studio"}</span>}{session?.user && !compactWorkspace && <RecentProjects zh={zh} userId={session.user.id} />}</div><div className="cr-topbar-actions">{path === "/video" ? <WorkspaceHeaderSlot name="actions" /> : <><button className="cr-theme-toggle" aria-label={zh ? "切换明暗主题" : "Toggle color theme"} title={zh ? "切换明暗主题" : "Toggle color theme"} onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}><SunMoon size={17} /></button>{SHOW_LANGUAGE_SWITCHER && <Link prefetch="intent" href={path} locale={zh ? "en" : "zh"} aria-label={zh ? "Switch to English" : "切换中文"}><Globe2 size={15} />{zh ? "EN" : "中文"}</Link>}<button className="cr-recharge-trigger" onClick={recharge.open} aria-label={zh ? "积分充值" : "Buy credits"}><CreditIcon />{session?.user?.credits ?? "—"}</button></>}{session?.user ? <UserMenu user={session.user} /> : <Link prefetch="intent" className="cr-top-cta" href="/login">{zh ? "登录" : "Sign in"}<ArrowUpRight size={14} /></Link>}</div></div></header>{children}<footer className="cr-footer"><span>来塔绘梦 © {new Date().getFullYear()} · {zh ? "让想象有形" : "Make imagination visible"}</span><span>{zh ? "从灵感出发，让创作发生。" : "Start with inspiration. Make something yours."}</span></footer></div></div>;
+  const links = [
+    ["/", House, "首页", "Home"],
+    ["/studio-v2", ImagePlus, "图像", "Image"],
+    ["/video", Clapperboard, "视频", "Video"],
+    ["/creation", Presentation, "PPT", "Slides"],
+    ["/commerce", ShoppingBag, "电商", "Commerce"],
+    ["/projects", Images, "作品", "Works"],
+    ["/assets", FolderOpen, "素材", "Assets"],
+  ];
+  const credits = session?.user?.credits;
+  return <div className={`cr-shell ls${compactWorkspace ? " cr-shell-creation" : ""}`} data-workspace={path === "/video" ? "video" : undefined} data-navigation-expanded={compactWorkspace && navigationExpanded || undefined}>
+    <aside className="cr-sidebar">
+      <Link prefetch="intent" href="/" className="cr-logo" aria-label="来塔绘梦"><BrandMark size={30} /></Link>
+      {compactWorkspace && <button type="button" className="cr-sidebar-toggle" aria-expanded={navigationExpanded} aria-label={zh ? navigationExpanded ? "收起侧边导航" : "展开侧边导航" : navigationExpanded ? "Collapse navigation" : "Expand navigation"} onClick={() => setNavigationExpanded(value => !value)}>{navigationExpanded ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}</button>}
+      <nav aria-label={zh ? "创作导航" : "Creative navigation"}>{links.map(([href, Icon, cn, en]) => {
+        const active = path === href || href === "/" && path.startsWith("/explore/");
+        return <Link prefetch={active ? false : "intent"} onPrefetch={href === "/studio-v2" ? preloadCanvas : undefined} key={href} href={href} aria-label={zh ? cn : en} aria-current={active ? "page" : undefined} className={active ? "active" : ""}>
+          <span className="ls-nav-icon"><Icon size={19} strokeWidth={1.8} /></span><span>{zh ? cn : en}</span>
+        </Link>;
+      })}</nav>
+      <div className="cr-sidebar-bottom">
+        <button className="ls-rail-button" onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")} aria-label={zh ? "切换明暗主题" : "Toggle color theme"} title={zh ? "切换明暗主题" : "Toggle color theme"}><SunMoon size={18} strokeWidth={1.8} /></button>
+        <button className="cr-account" onClick={() => session?.user ? recharge.openRecords("usage") : auth.open()} aria-label={session?.user ? zh ? "我的账户" : "My account" : zh ? "登录" : "Sign in"}>
+          <span className="cr-avatar">{session?.user ? (session.user.name || session.user.email).slice(0, 1).toUpperCase() : "L"}</span>
+        </button>
+      </div>
+    </aside>
+    <div className="cr-main">
+      <header className="cr-topbar" data-scrolled={!compactWorkspace && scrolled || undefined}>
+        <div className="cr-topbar-surface">
+          <div className="cr-topbar-context">
+            <MobileNavigation links={links} path={path} zh={zh} />
+            {compactWorkspace && <div className="cr-creation-navigation">
+              <Link href="/" aria-label={zh ? "创作首页" : "Home"}><BrandMark size={22} /></Link>
+              <button aria-label={zh ? "展开导航" : "Toggle navigation"} aria-expanded={navigationExpanded} onClick={() => setNavigationExpanded(value => !value)}><PanelLeftOpen size={16} /></button>
+            </div>}
+            {compactWorkspace ? path === "/video" ? <WorkspaceHeaderSlot name="title" /> : <span className="cr-workspace-title" title={creationTitle || undefined}>{creationTitle || (zh ? "PPT 创作" : "Slides")}</span>
+              : <Link prefetch="intent" href="/" className="ls-wordmark" aria-label="来塔绘梦"><BrandMark size={26} /><span>来塔绘梦</span></Link>}
+            {!compactWorkspace && <nav className="ls-topnav" aria-label={zh ? "主导航" : "Main navigation"}>{links.map(([href, , cn, en]) => {
+              const active = path === href || href === "/" && path.startsWith("/explore/");
+              return <Link prefetch={active ? false : "intent"} onPrefetch={href === "/studio-v2" ? preloadCanvas : undefined} key={href} href={href} aria-current={active ? "page" : undefined} className={active ? "active" : ""}>{zh ? cn : en}</Link>;
+            })}</nav>}
+          </div>
+          <div className="cr-topbar-actions">{path === "/video" ? <WorkspaceHeaderSlot name="actions" /> : <>
+            {session?.user && !compactWorkspace && <RecentProjects zh={zh} userId={session.user.id} />}
+            {!compactWorkspace && <button type="button" className="ls-icon-button" onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")} aria-label={zh ? "切换明暗主题" : "Toggle color theme"} title={zh ? "切换明暗主题" : "Toggle color theme"}><SunMoon size={17} strokeWidth={1.8} /></button>}
+            {SHOW_LANGUAGE_SWITCHER && <Link prefetch="intent" href={path} locale={zh ? "en" : "zh"} aria-label={zh ? "Switch to English" : "切换中文"}><Globe2 size={15} />{zh ? "EN" : "中文"}</Link>}
+            <button className="cr-recharge-trigger" onClick={recharge.open} aria-label={zh ? "积分充值" : "Buy credits"}><CreditIcon /><b>{credits ?? "—"}</b><span className="ls-recharge-label">{zh ? "充值" : "Top up"}</span></button>
+          </>}{session?.user ? <UserMenu user={session.user} /> : <Link prefetch="intent" className="cr-top-cta" href="/login">{zh ? "登录 / 注册" : "Sign in"}<ArrowUpRight size={14} /></Link>}</div>
+        </div>
+      </header>
+      {children}
+      <footer className="cr-footer">
+        <span>来塔绘梦 © {new Date().getFullYear()}</span>
+        <span>{zh ? "让想象，一键成真" : "Make imagination visible"}</span>
+      </footer>
+    </div>
+  </div>;
 }
 
 export default function CreativeShell({ children }) {

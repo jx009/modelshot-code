@@ -109,12 +109,12 @@ export default function AdminTryons() {
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-divider text-secondary-text">
-                <th className="text-left px-4 py-2.5 font-bold uppercase text-[10px] tracking-wider">输入 / 结果</th>
-                <th className="text-left px-4 py-2.5 font-bold uppercase text-[10px] tracking-wider">操作 / 提示词</th>
-                <th className="text-left px-4 py-2.5 font-bold uppercase text-[10px] tracking-wider">用户</th>
-                <th className="text-left px-4 py-2.5 font-bold uppercase text-[10px] tracking-wider">状态 / QA</th>
-                <th className="text-left px-4 py-2.5 font-bold uppercase text-[10px] tracking-wider">通道/成本</th>
-                <th className="text-left px-4 py-2.5 font-bold uppercase text-[10px] tracking-wider">时间 / 详情</th>
+                <th className="text-left px-4 py-2.5 font-bold uppercase text-xs tracking-wider">输入 / 结果</th>
+                <th className="text-left px-4 py-2.5 font-bold uppercase text-xs tracking-wider">操作 / 提示词</th>
+                <th className="text-left px-4 py-2.5 font-bold uppercase text-xs tracking-wider">用户</th>
+                <th className="text-left px-4 py-2.5 font-bold uppercase text-xs tracking-wider">状态 / QA</th>
+                <th className="text-left px-4 py-2.5 font-bold uppercase text-xs tracking-wider">通道/成本</th>
+                <th className="text-left px-4 py-2.5 font-bold uppercase text-xs tracking-wider">时间 / 详情</th>
               </tr>
             </thead>
             <tbody>
@@ -128,30 +128,30 @@ export default function AdminTryons() {
                           {item.url ? <>
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img src={item.url} alt={item.label} loading="lazy" className="w-12 h-14 object-cover rounded border border-divider" />
-                          </> : <span className="w-12 h-14 rounded border border-dashed border-divider flex items-center justify-center text-[10px] text-secondary-text">无{item.label}图</span>}
+                          </> : <span className="w-12 h-14 rounded border border-dashed border-divider flex items-center justify-center text-xs text-secondary-text">无{item.label}图</span>}
                         </button>)}
                       </div>
                     </td>
                     <td className="px-4 py-3 min-w-[180px] max-w-[260px]">
                       <div className="font-bold">{t.toolLabel}</div>
                       <p className="line-clamp-2 mt-1 text-secondary-text break-words">{t.userPrompt || t.prompt || "无文字输入"}</p>
-                      <div className="text-[10px] text-secondary-text mt-1">输入 {t.inputs?.length || 0} · 结果 {t.outputs?.length || 0}</div>
+                      <div className="text-xs text-secondary-text mt-1">输入 {t.inputs?.length || 0} · 结果 {t.outputs?.length || 0}</div>
                     </td>
                     <td className="px-4 py-3">
                       <div className="font-bold max-w-[160px] truncate">{t.userName || "—"}</div>
-                      <div className="text-[10px] text-secondary-text max-w-[160px] truncate">{t.userEmail}</div>
+                      <div className="text-xs text-secondary-text max-w-[160px] truncate">{t.userEmail}</div>
                     </td>
                     <td className="px-4 py-3">
-                      <span className={clsx("px-2 py-0.5 rounded-full text-[10px] font-bold border", sm.cls)}>{sm.label}</span>
-                      {t.errorCode && <div className="text-[10px] text-danger mt-1 max-w-[180px] break-words">{t.errorCode}</div>}
+                      <span className={clsx("px-2 py-0.5 rounded-full text-xs font-bold border", sm.cls)}>{sm.label}</span>
+                      {t.errorCode && <div className="text-xs text-danger mt-1 max-w-[180px] break-words">{t.errorCode}</div>}
                       {t.qaScore !== null && t.qaScore !== undefined && (
-                        <div className="text-[10px] text-secondary-text mt-1">QA {t.qaScore}</div>
+                        <div className="text-xs text-secondary-text mt-1">QA {t.qaScore}</div>
                       )}
                     </td>
                     <td className="px-4 py-3">
                       <div className="font-bold max-w-[180px] break-words">{t.provider || "—"}</div>
-                      <div className="text-[10px] text-secondary-text max-w-[180px] break-words">{t.model || "—"}</div>
-                      <div className="text-[10px] text-secondary-text">{t.costUsd ? `$${t.costUsd}` : "—"}{t.platformSpec ? ` · ${t.platformSpec}` : ""}</div>
+                      <div className="text-xs text-secondary-text max-w-[180px] break-words">{t.model || "—"}</div>
+                      <div className="text-xs text-secondary-text">{t.costUsd ? `$${t.costUsd}` : "—"}{t.platformSpec ? ` · ${t.platformSpec}` : ""}</div>
                     </td>
                     <td className="px-4 py-3 text-secondary-text">
                       <div className="whitespace-nowrap">{new Date(t.createTime).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}</div>

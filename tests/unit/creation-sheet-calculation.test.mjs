@@ -2,7 +2,6 @@ import { expect, it } from "vitest";
 import { calculateWorkbook } from "../../src/lib/creation/sheet-calculation.js";
 import { workbookSchema } from "../../src/lib/creation/contracts/sheet.js";
 import { parseSheetFormula, cellPosition, columnName } from "../../src/lib/creation/sheet-formula.js";
-import { applySheetOperations } from "../../src/lib/creation/sheet-operations.js";
 
 const workbook = cells => ({ schemaVersion: 1, kind: "sheet", title: "Test", sheets: [{ id: "s", name: "Data", cells: cells.map((cell, index) => ({ id: `c${index}`, ...cell })) }] });
 const value = (formula, cells = []) => calculateWorkbook(workbook([...cells, { address: "Z1", formula }])).sheets[0].cells.at(-1).calculated;
@@ -34,7 +33,6 @@ it("handles absolute and multi-letter references with quoted Unicode sheet names
   expect(calculateWorkbook(book).sheets[1].cells[0].calculated).toBe(7);
   expect(cellPosition("XFD1048576")).toMatchObject({ column: 16384, row: 1048576 });
   expect(cellPosition("XFE1")).toBeNull(); expect(cellPosition("A1048577")).toBeNull(); expect(columnName(703)).toBe("AAA");
-  expect(() => applySheetOperations(book, [{ op: "renameSheet", sheetId: "s", name: "Renamed" }])).toThrow("SHEET_RENAME_REFERENCED");
 });
 it("uses approximate LOOKUP on sorted vectors and refuses ambiguous unsorted lookup data", () => {
   const cells = [{ address: "A1", value: 10 }, { address: "A2", value: 20 }, { address: "B1", value: "low" }, { address: "B2", value: "high" }];

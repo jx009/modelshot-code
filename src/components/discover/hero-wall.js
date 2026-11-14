@@ -48,3 +48,6 @@ export const WALL_COLUMNS = (() => {
 
 // 装饰位一律用预生成的 480px 缩略图（scripts/build-inspiration-thumbs.mjs）
 export const sceneImage = file => `/inspiration/thumbs/${file}-480.webp`;
+
+// 首屏每列先加载的张数（4 列共 8 张），其余在页面空闲后补齐。
+export const WALL_FIRST_PAINT = 2;

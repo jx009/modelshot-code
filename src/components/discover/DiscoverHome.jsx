@@ -30,7 +30,8 @@ import VideoLauncher from "@/components/video/VideoLauncher";
 import dynamic from "next/dynamic";
 import "./home-composer.css";
 import "./home.css";
-import { WALL_COLUMNS, sceneImage } from "./hero-wall";
+import { sceneImage } from "./hero-wall";
+import HeroWall from "./HeroWall";
 import { HOME_SCENES, HOME_CHIPS } from "./home-scenes";
 import { useHeroPointer } from "./use-hero-pointer";
 const CommerceLauncher = dynamic(() => import("./CommerceLauncher"));
@@ -207,11 +208,7 @@ export default function DiscoverHome() {
   const kinds = [...HOME_KINDS.filter(([kind]) => creationCaps?.launcherVisibility?.[kind] !== false), ["commerce", ShoppingBag, "电商套图", "Commerce"]];
   return <>
   <section className="cr-creation-hero lh-hero" ref={hero.ref} onPointerMove={hero.onPointerMove} onPointerLeave={hero.onPointerLeave}>
-    <div className="lh-wall" aria-hidden="true">
-      {WALL_COLUMNS.map((tiles, column) => <div className="lh-wall-col" key={column} style={{ "--lh-speed": `${[78, 104, 88, 118][column % 4]}s`, "--lh-dir": column % 2 ? "reverse" : "normal" }}>
-        {[...tiles, ...tiles].map((tile, index) => <Image key={`${tile[0]}-${index}`} src={sceneImage(tile[0])} alt="" width={tile[1]} height={tile[2]} unoptimized decoding="async" fetchPriority="low" aria-hidden className="lh-wall-img" />)}
-      </div>)}
-    </div>
+    <HeroWall />
     <div className="lh-veil" aria-hidden="true" />
     <div className="lh-hero-inner">
       <p className="lh-eyebrow"><Sparkles size={13} />{zh ? "图像 · 视频 · 演示文稿 · 电商套图" : "Images · Video · Slides · Commerce"}</p>

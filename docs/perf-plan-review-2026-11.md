@@ -20,7 +20,7 @@
 | --- | --- | --- |
 | `https://www.letaidraw.com/zh` 首字节 | **7.90s** | 已命中 ISR 缓存（`x-nextjs-cache: HIT`），慢在链路上，不在渲染 |
 | 同一请求完整耗时 | **60.01s（触发 curl 超时）** | 32KB 内容早已下载完，连接不结束，需排查 |
-| 响应压缩 | **无 `content-encoding`** | 请求已带 `Accept-Encoding`，HTML 未压缩传输 |
+| 响应压缩 | 已开启 gzip | 早先测量时 curl 未带 `Accept-Encoding`，误判为未压缩；2026-11-14 复测确认 HTML 已 gzip |
 | `/api/inspiration` | 首次 8.4s / 120KB，再次 24.2s | `Cache-Control: no-store`，每次访问都回源 |
 | `src/lib`、`src/app` 中服务端缓存用法 | **0 处** `unstable_cache` / `use cache` | 所有数据请求都实时查库 |
 | 客户端组件 | 194 个文件带 `"use client"` | 客户端边界偏大 |
@@ -48,7 +48,7 @@
 
 1. 把已预渲染的公开页（`/`、`/pricing`、`/explore/[slug]`）的 HTML 也纳入香港发布流程，按 `BUILD_TAG` 版本隔离，沿用现有的"不覆盖旧文件 + 原子切换"机制。
 2. `explore/[slug]` 目前是 `force-dynamic`，改为静态生成（内容来自配置，不依赖用户）。
-3. 香港 Nginx 开启 brotli/gzip（当前 HTML 未压缩）。
+3. 香港 Nginx 已开启 gzip；如已编译 brotli 模块可再开启 brotli。
 4. 排查"连接 60 秒不结束"：确认是否有长连接（SSE）或未结束的流式响应挂在页面上，导致浏览器一直处于加载态。
 
 **预期**：中国访问首字节从 7.9s 降到 0.2s 量级；首页 LCP 有质的改善。

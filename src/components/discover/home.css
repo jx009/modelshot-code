@@ -18,12 +18,13 @@
 }
 .cr-shell.ls .lh-wall-col {
   flex: 1; display: flex; flex-direction: column; gap: 16px; min-width: 0;
-  animation: lh-scroll var(--lh-speed, 90s) linear infinite var(--lh-dir, normal);
   will-change: transform;
 }
+/* 补齐作品后才开始滚动；首屏阶段静止，避免只有两张图时露出空白 */
+.cr-shell.ls .lh-wall[data-ready] .lh-wall-col { animation: lh-scroll var(--lh-speed, 90s) linear infinite var(--lh-dir, normal); }
 @keyframes lh-scroll { to { transform: translateY(-50%); } }
 .cr-shell.ls .lh-wall-img {
-  display: block; width: 100%; height: auto; border-radius: 10px;
+  display: block; width: 100%; height: auto; border-radius: 10px; background: #141416;
   filter: saturate(.82) contrast(1.04) brightness(.82);
 }
 

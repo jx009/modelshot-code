@@ -56,8 +56,9 @@ import UserMenu from "@/components/UserMenu";
 import Modal from "@/components/ui/Modal";
 import "./studio.css";
 import "./workspace-density.css";
+import BrandLoader from "@/components/ui/BrandLoader";
 
-const Canvas = dynamic(() => import("./StudioCanvas"), { ssr: false, loading: () => <div className="ms-loading"><LoaderCircle className="ms-spin" size={22} /></div> });
+const Canvas = dynamic(() => import("./StudioCanvas"), { ssr: false, loading: () => <BrandLoader variant="panel" label="正在打开画布" /> });
 const StudioImageViewer = lazy(() => import("./StudioImageViewer"));
 const StudioExportDialog = lazy(() => import("./StudioExportDialog"));
 const AssetLibrary = dynamic(() => import("./AssetLibrary"), { loading: ToolLoading });

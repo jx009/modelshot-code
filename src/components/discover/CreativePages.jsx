@@ -13,6 +13,7 @@ import CreativeShell from "./CreativeShell";
 import DiscoverHome from "./DiscoverHome";
 import InspirationDetailImage from "./InspirationDetailImage";
 import { HomeGuestPromptContext } from "./home-guest-prompt";
+import BrandLoader from "@/components/ui/BrandLoader";
 
 const loadInspirationDetail = () => import("./InspirationDetail");
 const InspirationDetail = lazy(loadInspirationDetail);
@@ -115,7 +116,7 @@ function RetainedPages({ children }) {
   const standalone = path === "/studio-v2";
   const ActivePage = supported && !retained.has(path) ? pages[path] : null;
   const active = supported && !retained.has(path) && <PageError key={`${path}:${entry}`} href={`/${locale}${path}`} zh={locale === "zh"}>
-    <Suspense fallback={<p role="status">{locale === "zh" ? "正在打开模块…" : "Opening module…"}</p>}><ActivePage /></Suspense>
+    <Suspense fallback={<BrandLoader label={locale === "zh" ? "正在打开模块" : "Opening module"} />}><ActivePage /></Suspense>
   </PageError>;
   return <><Activity mode={standalone ? "hidden" : "visible"}><CreativeShell>
     {visited.map(route => {
@@ -123,7 +124,7 @@ function RetainedPages({ children }) {
       return <Activity key={route} mode={visible ? "visible" : "hidden"}>
         <PageVisibilityContext.Provider value={visible}>
           <PageError href={`/${locale}${route === "/" ? "" : route}`} zh={locale === "zh"}>
-            <Suspense fallback={<p role="status">{locale === "zh" ? "正在打开页面…" : "Opening page…"}</p>}><Page /></Suspense>
+            <Suspense fallback={<BrandLoader label={locale === "zh" ? "正在打开页面" : "Opening page"} />}><Page /></Suspense>
           </PageError>
         </PageVisibilityContext.Provider>
       </Activity>;

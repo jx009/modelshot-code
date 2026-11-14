@@ -3,10 +3,11 @@
 import { Component, Suspense } from "react";
 import { useLocale } from "next-intl";
 import Modal from "./Modal";
+import BrandLoader from "./BrandLoader";
 
 export function ToolLoading() {
   const zh = useLocale() === "zh";
-  return <p role="status" className="route-loading-text">{zh ? "正在加载工具…" : "Loading tool…"}</p>;
+  return <BrandLoader variant="inline" label={zh ? "正在加载工具" : "Loading tool"} />;
 }
 
 function ToolFallback({ label, onClose, failed = false }) {

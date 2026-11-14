@@ -37,6 +37,7 @@ export default function StoryboardWorkspace({ video, caps, storyboard, result, d
         <span>{zh ? RUN_COPY[run.status]?.[0] : RUN_COPY[run.status]?.[1]}{active && ` · ${done}/${run.steps.length}`}{run.errorCode && !active ? ` · ${videoMessage(run.errorCode, zh)}` : ""}</span>
         {active && run.status !== "cancelling" && <button type="button" disabled={storyboard.busy} onClick={storyboard.cancel}><Square size={12} />{text("停止", "Stop")}</button>}
         {failed && <button type="button" disabled={storyboard.busy} onClick={storyboard.retry}><RotateCcw size={12} />{text("继续 / 重试失败的步骤", "Retry failed steps")}</button>}
+        {active && <span className="sb-run-bar" aria-hidden="true"><i style={{ width: `${Math.max(6, Math.round(done / Math.max(1, run.steps.length) * 100))}%` }} /></span>}
       </div>}
     </div>
     {storyboard.error && <p className="sb-error" role="alert">{videoMessage(storyboard.error, zh)}<button type="button" onClick={() => storyboard.setError("")}>{text("知道了", "Dismiss")}</button></p>}

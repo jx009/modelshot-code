@@ -35,9 +35,10 @@ import { sceneImage } from "./hero-wall";
 import HeroWall from "./HeroWall";
 import { HOME_SCENES, HOME_CHIPS } from "./home-scenes";
 import { useHeroPointer } from "./use-hero-pointer";
+import BrandLoader from "@/components/ui/BrandLoader";
 const CommerceLauncher = dynamic(() => import("./CommerceLauncher"));
 const InspirationGallery = dynamic(() => import("./InspirationGallery"), {
-  loading: () => <section id="inspiration" className="cr-inspiration ig-section" aria-hidden="true"><p className="route-loading-text">正在加载灵感作品…</p></section>,
+  loading: () => <section id="inspiration" className="cr-inspiration ig-section" aria-hidden="true"><BrandLoader variant="panel" label="正在加载灵感作品" /></section>,
 });
 
 const HOME_KINDS = [

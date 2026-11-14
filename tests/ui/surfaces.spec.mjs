@@ -118,9 +118,10 @@ test("slow navigation shows a themed loading state until the destination arrives
     await link.hover();
     await dynamicRequest;
     await link.click();
-    await expect(page.getByRole("status", { name: "正在打开…", exact: true })).toBeVisible();
+    await expect(page.getByRole("status", { name: "正在打开", exact: true })).toBeVisible();
     await expect(page.locator(".route-loading")).toHaveCSS("display", "flex");
-    await expect(page.locator(".route-loading-grid")).toHaveCSS("display", "grid");
+    // 品牌加载动画：光环在旋转
+    await expect(page.locator(".route-loading .bl-ring")).toHaveCSS("animation-name", "bl-spin");
     await expectContained(page.locator(".route-loading"), page);
     expect(await topbar.evaluate(el => el.isConnected)).toBe(true);
     await expect(page.getByRole("button", { name: "切换明暗主题" })).toBeEnabled();

@@ -13,11 +13,12 @@ import { alignNodeToPage, duplicateLayoutNode } from "@/lib/creation/layout-geom
 import { createThemeOperation } from "@/lib/creation/layout-theme";
 import { presentationPages } from "@/lib/creation/layout-rendering";
 import Modal from "@/components/ui/Modal";
+import BrandLoader from "@/components/ui/BrandLoader";
 
-const Presentation = dynamic(() => import("./SlidePresentation"), { ssr: false, loading: () => <div className="cw-loading" role="status">正在打开演示… / Opening presentation…</div> });
-const ThemeDialog = dynamic(() => import("./ThemeDialog"), { ssr: false, loading: () => <div role="status">正在打开主题设置… / Opening theme settings…</div> });
-const Canvas = dynamic(() => import("./LayoutCanvas"), { ssr: false, loading: () => <div className="cw-loading" role="status">正在打开画布… / Opening canvas…</div> });
-const AssetLibrary = dynamic(() => import("@/components/studio/AssetLibrary"), { loading: () => <div className="cw-loading" role="status">正在打开素材库… / Opening assets…</div> });
+const Presentation = dynamic(() => import("./SlidePresentation"), { ssr: false, loading: () => <BrandLoader variant="panel" label="正在打开演示" /> });
+const ThemeDialog = dynamic(() => import("./ThemeDialog"), { ssr: false, loading: () => <BrandLoader variant="inline" label="正在打开主题设置" /> });
+const Canvas = dynamic(() => import("./LayoutCanvas"), { ssr: false, loading: () => <BrandLoader variant="panel" label="正在打开画布" /> });
+const AssetLibrary = dynamic(() => import("@/components/studio/AssetLibrary"), { loading: () => <BrandLoader variant="panel" label="正在打开素材库" /> });
 const issueLabels = {
   EMPTY_PAGE: ["页面还没有可见内容", "This page has no visible content"],
   NODE_OUTSIDE_PAGE: ["对象超出了画板边界", "Object extends beyond the page"],

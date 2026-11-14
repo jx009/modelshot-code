@@ -16,9 +16,13 @@ const STATE_COPY = { waiting: ["排队中", "Queued"], frame: ["生成首帧", "
 const RATIOS = ["16:9", "9:16", "1:1", "4:5"];
 const MAX_SELECTED = 12;
 
-function Thumb({ scene, media, zh }) {
+const WORKING = new Set(["frame", "clip", "voice", "partial"]);
+
+function Thumb({ scene, media, state, zh }) {
   const asset = media.find(item => item.id === scene.assetId), frame = scene.frameAssetId || (asset?.type === "image" ? asset.id : null);
   const Icon = SOURCE_ICON[scene.source] || Clapperboard;
+  // 生成中：缩略图上一道光扫过，并显示当前步骤，避免看起来像卡住。
+  if (state && WORKING.has(state.state)) return <span className="sb-thumb is-working">{frame && <img src={previewUrl(frame, 320)} alt="" />}<span className="sb-thumb-scan" /><span className="sb-thumb-step"><LoaderCircle size={14} className="vm-spin" />{zh ? STATE_COPY[state.state][0] : STATE_COPY[state.state][1]}</span></span>; // eslint-disable-line @next/next/no-img-element
   if (frame) return <span className="sb-thumb"><img src={previewUrl(frame, 320)} alt="" />{asset?.type === "video" && <Film size={13} className="sb-thumb-badge" />}</span>; // eslint-disable-line @next/next/no-img-element
   if (asset?.type === "video") return <span className="sb-thumb is-video"><Film size={18} /><small>{zh ? "视频片段" : "Clip"}</small></span>;
   return <span className="sb-thumb is-empty" style={scene.source === "text" ? { background: scene.background } : undefined}><Icon size={18} /><small>{scene.source === "text" ? (zh ? "文字卡片" : "Text") : (zh ? "待生成" : "Pending")}</small></span>;
@@ -27,8 +31,9 @@ function Thumb({ scene, media, zh }) {
 function StateChip({ state, zh }) {
   if (!state) return null;
   const [cn, en] = STATE_COPY[state.state] || STATE_COPY.waiting;
+  if (state.state === "waiting") return <span className="sb-state is-waiting">{zh ? cn : en}<span className="sb-wait-dots" aria-hidden="true"><i /><i /><i /></span></span>;
   const Icon = state.state === "done" ? Check : state.state === "failed" ? AlertTriangle : LoaderCircle;
-  return <span className={`sb-state is-${state.state}`}><Icon size={12} className={["done", "failed", "waiting"].includes(state.state) ? "" : "vm-spin"} />{zh ? cn : en}</span>;
+  return <span className={`sb-state is-${state.state}`}><Icon size={12} className={["done", "failed"].includes(state.state) ? "" : "vm-spin"} />{zh ? cn : en}</span>;
 }
 
 export default function StoryboardTable({ composition, media, onChange, disabled, states, selection, onSelection, voiceModels = [], tracks = [], onUploadMusic, onRefine, onGenerate, generateLabel, zh }) {
@@ -73,10 +78,10 @@ export default function StoryboardTable({ composition, media, onChange, disabled
     <ol className="sb-rows">{scenes.map((scene, index) => {
       const state = states[scene.id], chars = scene.narration.length, long = chars > scene.duration * 4.5;
       const lockedVisual = scene.source === "text";
-      return <li key={scene.id} className={`sb-row${selection.has(scene.id) ? " is-selected" : ""}${state?.state === "failed" || scene.status === "failed" ? " is-failed" : ""}`}>
+      return <li key={scene.id} className={`sb-row${selection.has(scene.id) ? " is-selected" : ""}${state?.state === "failed" || scene.status === "failed" ? " is-failed" : ""}${state && WORKING.has(state.state) ? " is-working" : ""}${state?.state === "waiting" ? " is-queued" : ""}`}>
         <div className="sb-lead">
           <label className="sb-pick"><input type="checkbox" checked={selection.has(scene.id)} disabled={disabled || !selection.has(scene.id) && selection.size >= MAX_SELECTED} onChange={() => toggle(scene.id)} aria-label={text(`选择第 ${index + 1} 镜`, `Select shot ${index + 1}`)} /><b>{String(index + 1).padStart(2, "0")}</b></label>
-          <Thumb scene={scene} media={media} zh={zh} />
+          <Thumb scene={scene} media={media} state={state} zh={zh} />
           {state ? <StateChip state={state} zh={zh} /> : scene.status === "ready" && <span className="sb-state is-done"><Check size={12} />{text("已生成", "Ready")}</span>}
         </div>
         <div className="sb-main">

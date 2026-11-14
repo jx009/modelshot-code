@@ -1,0 +1,82 @@
+/* ══════════ 品牌加载动画 ══════════
+   只动 transform / opacity；120ms 后才淡入，快速加载时不闪烁。 */
+.bl-loader {
+  --bl-size: 76px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px;
+  width: 100%; color: var(--primary-text);
+  opacity: 0; animation: bl-enter .45s var(--ease-out-expo, cubic-bezier(.16, 1, .3, 1)) .12s forwards;
+}
+.bl-page { min-height: calc(100dvh - 180px); padding: 48px 20px; }
+.bl-panel { height: 100%; min-height: 320px; padding: 32px 16px; }
+.bl-inline { --bl-size: 30px; flex-direction: row; gap: 12px; min-height: 120px; padding: 16px; }
+
+.bl-stage { position: relative; display: grid; place-items: center; width: calc(var(--bl-size) * 1.9); height: calc(var(--bl-size) * 1.9); }
+.bl-inline .bl-stage { width: calc(var(--bl-size) * 1.6); height: calc(var(--bl-size) * 1.6); }
+
+/* 柔光：橙色光晕缓慢呼吸 */
+.bl-halo {
+  position: absolute; inset: -18%; border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--primary) 38%, transparent) 0%, transparent 62%);
+  filter: blur(6px); animation: bl-breathe 2.6s ease-in-out infinite;
+}
+/* 光环：一段渐变弧线绕标志旋转 */
+.bl-ring {
+  position: absolute; inset: 0; border-radius: 50%;
+  background: conic-gradient(from 0deg, transparent 0 58%, color-mix(in srgb, var(--primary) 20%, transparent) 70%, var(--primary) 96%, transparent 100%);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
+  animation: bl-spin 1.25s linear infinite;
+}
+.bl-ring::after {
+  content: ""; position: absolute; top: 50%; right: 0; width: 7px; height: 7px; margin-top: -3.5px; border-radius: 50%;
+  background: var(--primary); box-shadow: 0 0 12px 3px color-mix(in srgb, var(--primary) 70%, transparent);
+}
+.bl-inline .bl-ring::after { width: 4px; height: 4px; margin-top: -2px; box-shadow: 0 0 6px 2px color-mix(in srgb, var(--primary) 70%, transparent); }
+/* 星点：三颗小光点沿更大的轨道反向环绕 */
+.bl-orbit { position: absolute; inset: -14%; animation: bl-spin 4.8s linear infinite reverse; }
+.bl-orbit i { position: absolute; width: 4px; height: 4px; border-radius: 50%; background: var(--primary-text); opacity: .5; }
+.bl-orbit i:nth-child(1) { top: 6%; left: 50%; }
+.bl-orbit i:nth-child(2) { bottom: 16%; left: 10%; width: 3px; height: 3px; opacity: .35; }
+.bl-orbit i:nth-child(3) { bottom: 22%; right: 6%; width: 5px; height: 5px; background: var(--primary); opacity: .65; }
+.bl-inline .bl-orbit { display: none; }
+
+/* 标志：三条笔画从左到右依次绘制，橙色方块随后弹出 */
+.bl-mark { position: relative; width: var(--bl-size); height: auto; overflow: visible; fill: currentColor; }
+.bl-bar, .bl-dot { transform-box: fill-box; }
+.bl-bar { transform-origin: left center; animation: bl-draw 2.2s var(--ease-out-expo, cubic-bezier(.16, 1, .3, 1)) infinite; }
+.bl-bar-2 { animation-delay: .12s; }
+.bl-bar-3 { animation-delay: .24s; }
+.bl-dot { fill: #FF5C1A; transform-origin: center; animation: bl-pop 2.2s var(--ease-spring, cubic-bezier(.34, 1.56, .64, 1)) .3s infinite; }
+
+/* 文字：流光扫过 + 三个跳动的点 */
+.bl-label { display: inline-flex; align-items: baseline; gap: 2px; margin: 0; font-size: var(--text-sm, 14px); font-weight: 500; letter-spacing: .04em; }
+.bl-label > span:first-child {
+  background: linear-gradient(90deg, var(--tertiary-text) 0%, var(--primary-text) 45%, var(--primary) 50%, var(--primary-text) 55%, var(--tertiary-text) 100%);
+  background-size: 250% 100%; -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: bl-shimmer 2.2s linear infinite;
+}
+.bl-inline .bl-label { font-size: var(--text-xs, 12px); }
+.bl-dots { display: inline-flex; gap: 3px; margin-left: 4px; }
+.bl-dots i { width: 4px; height: 4px; border-radius: 50%; background: var(--primary); animation: bl-hop 1.2s ease-in-out infinite; }
+.bl-dots i:nth-child(2) { animation-delay: .15s; }
+.bl-dots i:nth-child(3) { animation-delay: .3s; }
+
+/* 进度：不确定进度条往复扫动 */
+.bl-progress { position: relative; display: block; width: 148px; height: 2px; overflow: hidden; border-radius: 2px; background: var(--divider); }
+.bl-progress i { position: absolute; inset: 0; width: 40%; border-radius: inherit; background: linear-gradient(90deg, transparent, var(--primary), transparent); animation: bl-sweep 1.4s ease-in-out infinite; }
+
+@keyframes bl-enter { from { opacity: 0; transform: translateY(6px) scale(.98); } to { opacity: 1; transform: none; } }
+@keyframes bl-spin { to { transform: rotate(360deg); } }
+@keyframes bl-breathe { 0%, 100% { transform: scale(.86); opacity: .45; } 50% { transform: scale(1.08); opacity: .9; } }
+@keyframes bl-draw { 0% { transform: scaleX(.42); opacity: .5; } 30%, 82% { transform: scaleX(1); opacity: 1; } 100% { transform: scaleX(.42); opacity: .5; } }
+@keyframes bl-pop { 0%, 14% { transform: scale(.55); opacity: .45; } 28% { transform: scale(1.25); opacity: 1; } 38%, 82% { transform: scale(1); opacity: 1; } 100% { transform: scale(.55); opacity: .45; } }
+@keyframes bl-shimmer { from { background-position: 100% 0; } to { background-position: -150% 0; } }
+@keyframes bl-hop { 0%, 60%, 100% { transform: translateY(0); opacity: .45; } 30% { transform: translateY(-4px); opacity: 1; } }
+@keyframes bl-sweep { 0% { transform: translateX(-110%); } 100% { transform: translateX(260%); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .bl-loader { animation-duration: .01s; }
+  .bl-ring, .bl-orbit, .bl-bar, .bl-dot, .bl-dots i, .bl-progress i, .bl-label > span:first-child { animation: none; }
+  .bl-halo { animation-duration: 4s; }
+  .bl-label > span:first-child { color: var(--secondary-text); background: none; }
+}

@@ -254,3 +254,22 @@
 .cr-shell.ls.ls.cr-shell-creation .vm-scenarios button strong { font-size: var(--text-sm); font-weight: 600; }
 .cr-shell.ls.ls.cr-shell-creation .vm-scenarios button small { color: var(--tertiary-text); font-size: 11px; line-height: 1.4; }
 .cr-shell.ls.ls.cr-shell-creation .vm-scenarios button[aria-pressed="true"] { border-color: var(--primary); background: var(--primary-muted); }
+
+/* 对话中的任务卡：运行时底部进度扫光 + 描边流光，排队时轻呼吸 */
+.cr-shell.ls.ls.cr-shell-creation .vm-job { position: relative; overflow: hidden; }
+.cr-shell.ls.ls.cr-shell-creation .vm-job:is(.is-queued, .is-running, .is-reconciling) { border-color: color-mix(in srgb, var(--primary) 35%, var(--divider)); }
+.cr-shell.ls.ls.cr-shell-creation .vm-job:is(.is-queued, .is-running, .is-reconciling)::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px;
+  background: linear-gradient(90deg, transparent, var(--primary), transparent); background-size: 40% 100%; background-repeat: no-repeat;
+  animation: vm-job-sweep 1.4s ease-in-out infinite;
+}
+.cr-shell.ls.ls.cr-shell-creation .vm-job:is(.is-running, .is-reconciling)::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(110deg, transparent 30%, color-mix(in srgb, var(--primary) 9%, transparent) 50%, transparent 70%); background-size: 250% 100%;
+  animation: vm-job-glow 2.4s linear infinite;
+}
+.cr-shell.ls.ls.cr-shell-creation .vm-job.is-queued { animation: vm-job-breathe 2s ease-in-out infinite; }
+@keyframes vm-job-sweep { from { background-position: -40% 0; } to { background-position: 140% 0; } }
+@keyframes vm-job-glow { from { background-position: 150% 0; } to { background-position: -100% 0; } }
+@keyframes vm-job-breathe { 0%, 100% { opacity: .8; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .cr-shell.ls.ls.cr-shell-creation .vm-job, .cr-shell.ls.ls.cr-shell-creation .vm-job::before, .cr-shell.ls.ls.cr-shell-creation .vm-job::after { animation: none; } }

@@ -106,3 +106,38 @@
   .sb-actions { margin-top: 0; }
 }
 @media (prefers-reduced-motion: reduce) { .sb-confirm, .sb-confirm-layer { animation: none; } }
+
+/* ── 生成中的动效：正在处理的镜头流光描边 + 缩略图扫光，排队镜头轻呼吸 ── */
+.sb-row { position: relative; }
+.sb-row.is-working { border-color: transparent; background:
+  linear-gradient(var(--bg-page), var(--bg-page)) padding-box,
+  conic-gradient(from var(--sb-angle, 0deg), color-mix(in srgb, var(--primary) 15%, var(--divider)) 0 70%, var(--primary) 85%, color-mix(in srgb, var(--primary) 15%, var(--divider)) 100%) border-box;
+  animation: sb-border 2.4s linear infinite; box-shadow: 0 0 0 1px transparent, 0 12px 40px -24px var(--primary); }
+@property --sb-angle { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
+@keyframes sb-border { to { --sb-angle: 360deg; } }
+.sb-row.is-queued .sb-thumb { animation: sb-breathe 2s ease-in-out infinite; }
+@keyframes sb-breathe { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
+
+.sb-thumb.is-working { background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 16%, var(--bg-card)), var(--bg-card)); color: var(--primary-text); }
+.sb-thumb.is-working img { position: absolute; inset: 0; filter: saturate(.6) brightness(.7); }
+.sb-thumb-scan { position: absolute; inset: 0; background: linear-gradient(100deg, transparent 20%, color-mix(in srgb, var(--primary) 45%, transparent) 48%, rgba(255, 255, 255, .5) 50%, color-mix(in srgb, var(--primary) 45%, transparent) 52%, transparent 80%); background-size: 250% 100%; mix-blend-mode: screen; animation: sb-scan 1.6s ease-in-out infinite; }
+@keyframes sb-scan { from { background-position: 150% 0; } to { background-position: -100% 0; } }
+.sb-thumb-step { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 999px; background: rgba(0, 0, 0, .55); color: #fff; font-size: 11px; font-weight: 600; }
+
+.sb-state.is-waiting { gap: 2px; color: var(--tertiary-text); }
+.sb-wait-dots { display: inline-flex; gap: 2px; margin-left: 2px; }
+.sb-wait-dots i { width: 3px; height: 3px; border-radius: 50%; background: currentColor; animation: sb-hop 1.2s ease-in-out infinite; }
+.sb-wait-dots i:nth-child(2) { animation-delay: .15s; }
+.sb-wait-dots i:nth-child(3) { animation-delay: .3s; }
+@keyframes sb-hop { 0%, 60%, 100% { transform: translateY(0); opacity: .4; } 30% { transform: translateY(-3px); opacity: 1; } }
+.sb-state.is-frame, .sb-state.is-clip, .sb-state.is-voice, .sb-state.is-partial { background: var(--primary-muted); }
+
+/* 顶部运行状态：真实进度 + 流动条纹 */
+.sb-run { position: relative; overflow: hidden; }
+.sb-run-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: color-mix(in srgb, var(--primary) 18%, transparent); }
+.sb-run-bar i { position: absolute; inset: 0 auto 0 0; border-radius: 0 2px 2px 0; background: repeating-linear-gradient(90deg, var(--primary) 0 10px, color-mix(in srgb, var(--primary) 55%, #fff) 10px 20px); background-size: 40px 100%; animation: sb-stripes .8s linear infinite; transition: width .6s var(--ease-out-expo, ease); }
+@keyframes sb-stripes { to { background-position: 40px 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .sb-row.is-working, .sb-row.is-queued .sb-thumb, .sb-thumb-scan, .sb-wait-dots i, .sb-run-bar i { animation: none; }
+}

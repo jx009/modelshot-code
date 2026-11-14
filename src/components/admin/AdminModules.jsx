@@ -7,6 +7,7 @@ import { useSession } from "next-auth/react";
 import { destinationPath } from "@/lib/navigation-destination";
 import NavigationContent from "@/components/ui/NavigationContent";
 import { PageVisibilityContext } from "@/components/ui/LocalNavigation";
+import BrandLoader from "@/components/ui/BrandLoader";
 
 const modules = {
   "/admin": lazy(() => import("../../app/[locale]/admin/page.js")),
@@ -93,7 +94,7 @@ function ModulePages({ children }) {
   const ActiveModule = modules[context?.path];
   const path = context?.path;
   const visited = context?.visited || [];
-  const renderModule = (route, Module) => <ModuleError key={route} zh={zh} href={`/${locale}${route}`}><Suspense fallback={<section role="status" aria-live="polite"><p>{zh ? "正在打开模块…" : "Opening module…"}</p></section>}><Module /></Suspense></ModuleError>;
+  const renderModule = (route, Module) => <ModuleError key={route} zh={zh} href={`/${locale}${route}`}><Suspense fallback={<BrandLoader label={zh ? "正在打开模块" : "Opening module"} />}><Module /></Suspense></ModuleError>;
   return <>
     {visited.map(route => <Activity key={route} mode={path === route ? "visible" : "hidden"}><PageVisibilityContext.Provider value={path === route}>{renderModule(route, modules[route])}</PageVisibilityContext.Provider></Activity>)}
     {ActiveModule && !retained.has(path) && renderModule(path, ActiveModule)}

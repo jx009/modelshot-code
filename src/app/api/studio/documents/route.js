@@ -14,9 +14,11 @@ export async function GET(request) {
       if (typeof cursor?.id !== "string" || !Number.isFinite(Date.parse(cursor?.date))) throw new AppError("INVALID_CURSOR");
     }
     const limit = paged ? 24 : 100;
+    const kinds = [...new Set((query.get("kind") || "").split(",").filter(kind => ["commerce", "canvas", "motion", "video"].includes(kind)))];
     const rows = await prisma.studioDocument.findMany({
       where: { userId: user.id, deletedAt: query.get("kind") === "trash" ? { not: null } : null, ...(search ? { name: { contains: search, mode: "insensitive" } } : {}),
-        ...(["commerce", "canvas", "motion", "video"].includes(query.get("kind")) ? { kind: query.get("kind") } : {}),
+        // kind 支持逗号分隔多个类型，例如视频工作台同时列出单镜头与分镜成片。
+        ...(kinds.length ? { kind: kinds.length === 1 ? kinds[0] : { in: kinds } } : {}),
         ...(cursor ? { OR: [{ updatedAt: { lt: new Date(cursor.date) } }, { updatedAt: new Date(cursor.date), id: { lt: cursor.id } }] } : {}),
       }, orderBy: [{ updatedAt: "desc" }, { id: "desc" }], take: limit + 1,
       select: { id: true, name: true, version: true, nameSource: true, updatedAt: true, kind: true, coverAssetId: true, itemCount: true },

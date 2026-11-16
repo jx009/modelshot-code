@@ -58,6 +58,7 @@ import "./studio.css";
 import "./workspace-density.css";
 import BrandLoader from "@/components/ui/BrandLoader";
 import CountPicker from "@/components/ui/CountPicker";
+import VideoPlayer from "@/components/ui/VideoPlayer";
 
 const Canvas = dynamic(() => import("./StudioCanvas"), { ssr: false, loading: () => <BrandLoader variant="panel" label="正在打开画布" /> });
 const StudioImageViewer = lazy(() => import("./StudioImageViewer"));
@@ -919,10 +920,10 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
     <input className="ms-file-input" ref={fileInput} type="file" accept="image/png,image/jpeg,image/webp" multiple aria-label={t("上传图片文件", "Upload image files")} onChange={e => upload(e.target.files, uploadDestination.current)} />
     {notice && <div className="ms-notice" role="alert"><span>{notice}</span><button className="ms-icon" title={t("关闭提示", "Dismiss")} onClick={() => setNotice(null)}><X size={16} /></button></div>}
     {exportOpen && <DeferredTool label={t("导出作品", "Export artwork")} onClose={() => setExportOpen(false)}><StudioExportDialog zh={zh} selected={selected && selected.type !== "video"} onClose={() => setExportOpen(false)} onExport={options => canvas.current.exportImage({ ...options, name: draft.name })} /></DeferredTool>}
-    {projects && <ProjectManager key={session?.user?.id || "guest"} userId={session?.user?.id} locale={locale} draft={draft} ready={ready} update={update} save={save} onChoose={openProject} onClose={() => setProjects(null)} onError={notify} />}
+    {projects && <ProjectManager key={session?.user?.id || "guest"} userId={session?.user?.id} locale={locale} kinds={["canvas"]} currentId={draft.id} ready={ready} editor={{ draft, update, save, onError: notify }} creates={[{ label: t("新建画布", "New canvas"), onClick: newProject }]} onChoose={row => openProject(row.id)} onClose={() => setProjects(null)} />}
     {videoSources && <CanvasVideoSourceDialog sources={videoSources} zh={zh} busy={busy} onClose={() => setVideoSources(null)} onConfirm={openVideoSources} />}
     {libraryOpen && <Modal label={t("选择素材", "Choose assets")} className="ml-picker-dialog" onClose={() => setLibraryOpen(false)}><button className="ms-icon" title={t("关闭", "Close")} onClick={() => setLibraryOpen(false)}><X size={18} /></button><AssetLibrary maxSelection={libraryOpen === "tool" ? Math.max(0, 2 - toolReferences.length) : libraryOpen === "reference" ? Math.max(0, referenceLimit - references.length) : 10} onSelect={importLibrary} /></Modal>}
     {imagePreview && <DeferredTool label={t("图片预览", "Image preview")} onClose={() => setImagePreview(null)}><StudioImageViewer assetId={imagePreview} initialImage={previewSeed?.assetId === imagePreview ? previewSeed.image : null} layers={draft.layers.filter(layer => layer.type === "image")} zh={zh} onCommerce={useCommerceBaseline} onReuse={reuseImageSettings} onVariation={useImageBaseline} onSelect={setImagePreview} onClose={() => setImagePreview(null)} /></DeferredTool>}
-    {preview && <Modal className="ms-video-modal" label={t("视频预览", "Video preview")} onClose={() => setPreview(null)}><button className="ms-icon" title={t("关闭视频", "Close video")} onClick={() => setPreview(null)}><X size={20} /></button><video src={imageUrl(preview)} controls autoPlay playsInline /></Modal>}
+    {preview && <Modal className="ms-video-modal" label={t("视频预览", "Video preview")} onClose={() => setPreview(null)}><header className="ms-video-head"><strong>{draft.layers.find(layer => layer.assetId === preview)?.name || t("视频预览", "Video preview")}</strong><button className="ms-icon" title={t("关闭视频", "Close video")} onClick={() => setPreview(null)}><X size={18} /></button></header><VideoPlayer key={preview} src={imageUrl(preview)} poster={draft.layers.find(layer => layer.assetId === preview)?.posterAssetId ? previewUrl(draft.layers.find(layer => layer.assetId === preview).posterAssetId, 1280) : undefined} downloadHref={`${imageUrl(preview)}?download=1`} autoPlay zh={zh} /></Modal>}
   </div>;
 }

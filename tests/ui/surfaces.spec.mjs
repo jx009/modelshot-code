@@ -299,7 +299,7 @@ for (const theme of ["dark", "light"]) {
       await page.getByRole("button", { name: "关闭工具", exact: true }).click();
     }
     await page.locator(".ms-project-trigger").click();
-    const projects = page.getByRole("dialog", { name: "项目管理", exact: true });
+    const projects = page.getByRole("dialog", { name: "我的项目", exact: true });
     await expectOpaque(projects);
     await expectContained(projects, page);
     await page.keyboard.press("Escape");

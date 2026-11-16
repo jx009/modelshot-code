@@ -8,6 +8,7 @@ import StoryboardTable from "./StoryboardTable";
 import GenerationConfirm from "./GenerationConfirm";
 import MotionPreview from "./MotionPreview";
 import "./storyboard.css";
+import VideoPlayer from "@/components/ui/VideoPlayer";
 
 const RUN_COPY = { queued: ["排队中", "Queued"], running: ["正在生成", "Generating"], cancelling: ["正在停止", "Stopping"], awaiting_budget: ["积分预算不足，已暂停", "Paused: budget"], awaiting_input: ["已暂停", "Paused"], failed: ["部分镜头生成失败", "Some shots failed"], cancelled: ["已停止", "Stopped"], succeeded: ["已完成", "Done"] };
 
@@ -42,7 +43,7 @@ export default function StoryboardWorkspace({ video, caps, storyboard, result, d
     </div>
     {storyboard.error && <p className="sb-error" role="alert">{videoMessage(storyboard.error, zh)}<button type="button" onClick={() => storyboard.setError("")}>{text("知道了", "Dismiss")}</button></p>}
     {view === "result" && result ? <div className="sb-result">
-      <video key={result.assetId} src={`/api/assets/${result.assetId}`} poster={result.posterAssetId ? previewUrl(result.posterAssetId, 1280) : undefined} controls playsInline preload="metadata" />
+      <VideoPlayer key={result.assetId} src={`/api/assets/${result.assetId}`} poster={result.posterAssetId ? previewUrl(result.posterAssetId, 1280) : undefined} downloadHref={`/api/assets/${result.assetId}?download=1`} zh={zh} />
       <div className="sb-result-actions"><a className="sb-primary" href={`/api/assets/${result.assetId}?download=1`} download><Download size={16} />{text("下载 MP4", "Download MP4")}</a><button type="button" className="sb-ghost" onClick={() => onView("table")}><Table2 size={14} />{text("回到分镜继续修改", "Back to storyboard")}</button></div>
     </div> : view === "preview" ? <MotionPreview composition={composition} media={video.media} tracks={tracks} time={time} onTime={onTime} selected={selected} onSelect={onSelect} editing={false} generating={active} zh={zh} />
       : <StoryboardTable composition={composition} media={video.media} onChange={onChange} disabled={disabled || active} states={states} selection={selection} onSelection={setSelection}

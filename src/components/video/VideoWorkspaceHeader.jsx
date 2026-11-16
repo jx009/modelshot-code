@@ -1,10 +1,10 @@
 "use client";
 
-import { Check, Download, FolderOpen, MessageSquare, MoreHorizontal, PanelLeftOpen, Pencil, Redo2, Save, SunMoon, Undo2 } from "lucide-react";
+import { Check, ChevronDown, Download, FolderOpen, MessageSquare, MoreHorizontal, PanelLeftOpen, Pencil, Redo2, Save, SunMoon, Undo2 } from "lucide-react";
 import { useTheme } from "next-themes";
 import WorkspaceHeader from "@/components/creation/WorkspaceHeader";
 
-export default function VideoWorkspaceHeader({ project, zh, disabled, motion, editing, onEdit, chatOpen, onChat, treeOpen, onFiles, tab, history, onTravel, onDownloadProject, onRender, renderOffer, result, showMotion, onImport }) {
+export default function VideoWorkspaceHeader({ project, zh, disabled, motion, editing, onEdit, onProjects, chatOpen, onChat, treeOpen, onFiles, tab, history, onTravel, onDownloadProject, onRender, renderOffer, result, showMotion, onImport }) {
   const { draft, change, setError } = project;
   const { resolvedTheme, setTheme } = useTheme();
   const text = (cn, en) => zh ? cn : en;
@@ -13,6 +13,7 @@ export default function VideoWorkspaceHeader({ project, zh, disabled, motion, ed
     title={<>
       <input className="vm-project-name" value={draft.name} aria-label={text("项目名称", "Project name")} maxLength={100} disabled={disabled} onChange={event => { const name = event.target.value; change(current => ({ ...current, name })); }} />
       <span className="vm-save-status" role="status">{project.saving ? text("保存中", "Saving") : project.dirty ? text("待保存", "Unsaved") : project.id ? text("已保存", "Saved") : text("新项目", "New project")}</span>
+      {onProjects && <button type="button" className="vm-projects" onClick={onProjects} aria-haspopup="dialog" title={text("切换或新建视频项目", "Switch or create video projects")}><FolderOpen size={14} />{text("切换项目", "Projects")}<ChevronDown size={12} /></button>}
     </>}
     actions={<>
       <button type="button" aria-label={text("切换对话与作品", "Toggle conversation and preview")} title={text("对话 / 作品", "Conversation / preview")} aria-pressed={chatOpen && tab === "chat"} onClick={onChat}><MessageSquare size={16} /></button>

@@ -63,7 +63,8 @@
 .sb-selected { margin-left: auto; color: var(--tertiary-text); font-size: var(--text-xs); }
 
 .sb-result { display: flex; flex-direction: column; gap: 12px; align-items: center; justify-content: center; flex: 1; min-height: 0; }
-.sb-result video { max-width: 100%; max-height: calc(100% - 64px); border-radius: 14px; background: #000; box-shadow: var(--depth-2); }
+.sb-result .vp-player { width: auto; max-width: 100%; max-height: calc(100% - 64px); }
+.sb-result .vp-player video { max-height: calc(100vh - 320px); }
 .sb-result-actions { display: flex; gap: 10px; }
 
 /* 生成确认单：右侧抽屉 */

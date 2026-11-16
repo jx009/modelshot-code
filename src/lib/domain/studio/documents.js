@@ -67,7 +67,11 @@ export async function saveDocument(userId, input, db = prisma) {
       name: projectTitle(data.name, data.content),
       ...(data.nameSource ? { nameSource: data.nameSource } : {}),
       kind: data.content.video?.mode || (data.content.commerce ? "commerce" : "canvas"),
-      coverAssetId: data.content.commerce?.productAssetId || data.content.layers.find(layer => layer.type === "image")?.assetId || null,
+      // 封面：电商主图 → 画布首张图片 → 视频封面帧 → 分镜首帧 / 图片画面。
+      coverAssetId: data.content.commerce?.productAssetId || data.content.layers.find(layer => layer.type === "image")?.assetId
+        || data.content.layers.find(layer => layer.type === "video" && layer.posterAssetId)?.posterAssetId
+        || data.content.video?.composition?.scenes.find(scene => scene.frameAssetId)?.frameAssetId
+        || data.content.video?.media.find(item => item.type === "image")?.id || null,
       itemCount: data.content.video?.composition?.scenes.length ?? data.content.commerce?.sections.length ?? data.content.layers.length,
     };
     if (data.id) {

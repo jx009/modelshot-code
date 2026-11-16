@@ -12,7 +12,8 @@ BASH = "C:/Program Files/Git/bin/bash.exe" if os.name == "nt" else shutil.which(
 @unittest.skipUnless(BASH and Path(BASH).exists(), "Bash is required")
 class HkStaticRetryTests(unittest.TestCase):
     def invoke(self, stage="rsync", failures=1, status=255,
-               error="Timeout, server example not responding.", bandwidth="0"):
+               error="Timeout, server example not responding.", bandwidth="0",
+               region="HK", missing_cn_key=False):
         temp = tempfile.TemporaryDirectory()
         self.addCleanup(temp.cleanup)
         folder = Path(temp.name)
@@ -55,7 +56,19 @@ scp() { mock_call scp "$@"; }
                    HK_SERVER_PORT="22", HK_SERVER_SSH_KEY="fake-key",
                    HK_SERVER_KNOWN_HOSTS="fake-host-key", BUILD_TAG="build-abc123-42-1",
                    HK_STATIC_BWLIMIT_KIB=bandwidth, RUNNER_TEMP=folder.as_posix())
-        result = subprocess.run([BASH, "scripts/deploy-hk-static.sh", source.as_posix()],
+        # Clear inherited CN settings so local credentials cannot affect tests.
+        for key in list(env):
+            if key.startswith("CN_"):
+                del env[key]
+        command = [BASH, "scripts/deploy-hk-static.sh", source.as_posix()]
+        if region != "HK":
+            env.update(CN_SERVER_HOST="cn.example.invalid", CN_SERVER_USER="cn_deploy",
+                       CN_SERVER_PORT="2222", CN_SERVER_SSH_KEY="fake-cn-key",
+                       CN_SERVER_KNOWN_HOSTS="fake-cn-host-key", CN_STATIC_BWLIMIT_KIB=bandwidth)
+            if missing_cn_key:
+                del env["CN_SERVER_SSH_KEY"]
+            command = [BASH, "scripts/deploy-static.sh", source.as_posix(), region]
+        result = subprocess.run(command,
                                 cwd=ROOT, env=env, capture_output=True, text=True, timeout=10)
         calls = log.read_text().splitlines() if log.exists() else []
         return result, calls
@@ -122,6 +135,32 @@ scp() { mock_call scp "$@"; }
 
     def test_invalid_bandwidth_rejected_before_remote_calls(self):
         result, calls = self.invoke(bandwidth="-1")
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(calls, [])
+
+    def test_cn_uses_only_cn_connection_settings_and_retries(self):
+        result, calls = self.invoke(region="CN", bandwidth="512")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        remote_calls = [call for call in calls if call.startswith(("prepare ", "rsync ", "scp ", "publish ", "cleanup "))]
+        self.assertTrue(remote_calls)
+        for call in remote_calls:
+            self.assertIn("cn_deploy@cn.example.invalid", call)
+            self.assertNotIn("deploy@example.invalid", call)
+            self.assertIn("2222", call)
+        uploads = [call for call in calls if call.startswith("rsync ")]
+        self.assertEqual(len(uploads), 2)
+        self.assertEqual(uploads[0], uploads[1])
+        self.assertIn("--bwlimit=512", uploads[0])
+        self.assertIn("/www/wwwroot/www.letaidraw.com/_next/static", "\n".join(calls))
+
+    def test_cn_missing_key_does_not_fall_back_to_hk_credentials(self):
+        result, calls = self.invoke(region="CN", missing_cn_key=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Missing CN_SERVER_SSH_KEY", result.stdout)
+        self.assertEqual(calls, [])
+
+    def test_unknown_region_rejected_before_remote_calls(self):
+        result, calls = self.invoke(region="UNKNOWN")
         self.assertEqual(result.returncode, 2)
         self.assertEqual(calls, [])
 

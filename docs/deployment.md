@@ -222,3 +222,5 @@ docker compose --env-file .env.production -f compose.prod.yaml down -v   # 连�
 - Redis 未设密码，仅靠 Compose 内部网络隔离，端口不对宿主机开放。要求更高可自行加 `--requirepass` 并同步改 `REDIS_URL`。
 - 发布镜像固定为无 C2PA 签名构建，`C2PA_ENABLED=1` 会在启动时被入口脚本拒绝，真实签名需要另有专门构建与验收。
 - 支付（`PAYMENTS_ENABLED`）、自动 QA（`QA_ENABLED`）默认关闭，通过各自真实验收后再打开。
+
+国内入口复用同一工作流发布静态资源，配置与宝塔接入见 [国内部署说明](./mainland-static-deployment.md)。启用国内节点后，国内和香港所有已启用节点同步成功才推进正式镜像标签。

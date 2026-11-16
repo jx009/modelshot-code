@@ -188,7 +188,7 @@ test("composer price follows model, resolution and output count on canvas and ho
     await page.getByRole("button", { name: "4K", exact: true }).click();
     await page.getByRole("button", { name: "完成", exact: true }).click();
     await expect(page.locator(".ms-send .generation-price")).toHaveText("29");
-    await page.getByRole("combobox", { name: "生成张数" }).selectOption("3");
+    await page.getByRole("button", { name: "生成张数", exact: true }).click(); await page.getByRole("button", { name: "3 张", exact: true }).click();
     await expect(page.locator(".ms-send .generation-price")).toHaveText("87");
     await page.locator(".mpk-trigger").click();
     await expect(page.locator(".mpk-price")).toHaveCount(0);
@@ -213,7 +213,7 @@ test("composer price follows model, resolution and output count on canvas and ho
     await page.getByRole("button", { name: "图片比例", exact: true }).click();
     await page.getByRole("button", { name: "2K", exact: true }).click();
     await page.getByRole("button", { name: "完成", exact: true }).click();
-    await page.getByRole("combobox", { name: "生成张数" }).selectOption("4");
+    await page.getByRole("button", { name: "生成张数", exact: true }).click(); await page.getByRole("button", { name: "4 张", exact: true }).click();
     await expect(page.locator(".cr-send .generation-price")).toHaveText("52");
     await page.screenshot({ path: info.outputPath("home-resolution-price.png") });
     await page.setViewportSize({ width: 390, height: 844 });

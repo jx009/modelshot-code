@@ -42,7 +42,7 @@ test("home uploads, project references, fixed prompt and multi-output retry keep
     await expect(page.locator(".ms-reference-list .ms-reference")).toHaveCount(2);
     await page.getByRole("button", { name: "Fixed prompt", exact: true }).click();
     await page.getByLabel("Fixed prompt", { exact: true }).fill("Warm morning light.");
-    await page.getByLabel("Output count", { exact: true }).selectOption("2");
+    await page.getByRole("button", { name: "Output count", exact: true }).click(); await page.getByRole("button", { name: "2×", exact: true }).click();
     await page.reload();
     await expect(page.getByLabel("Creative prompt")).toHaveValue("Two images, preserve the cat");
     await expect(page.locator(".ms-reference-list .ms-reference")).toHaveCount(2);

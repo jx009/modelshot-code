@@ -1,5 +1,6 @@
 import localFont from "next/font/local";
 import "../globals.css";
+import "../select.css";
 import StylesheetRecovery from "../../components/StylesheetRecovery";
 import WebVitals from "../../components/WebVitals";
 import { Providers } from "../providers";

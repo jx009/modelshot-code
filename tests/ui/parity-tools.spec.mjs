@@ -225,7 +225,7 @@ test("homepage retains references and submits chosen ratio, fixed prompt and bat
   await page.getByRole("button",{name:"图片比例",exact:true}).click();
   await page.getByRole("dialog",{name:"比例与分辨率"}).getByRole("button",{name:"2:3",exact:true}).click();
   await page.getByRole("button",{name:"完成",exact:true}).click();
-  await page.getByLabel("生成张数").selectOption("2");
+  await page.getByRole("button", { name: "生成张数", exact: true }).click(); await page.getByRole("button", { name: "2 张", exact: true }).click();
   await page.getByLabel("开始创作",{exact:true}).click();
   await expect(page).toHaveURL(/studio-v2\?document=/);
   expect(f.posted).toHaveLength(2);
@@ -295,7 +295,7 @@ test("homepage batch retry preserves one message and reuses the uncertain job ke
   await page.goto("/zh");
   await expect(page.getByRole("button", {name:/生图模型：Fixture image/})).toBeVisible();
   await page.getByLabel("描述你的创意").fill("画一只狮子");
-  await page.getByLabel("生成张数").selectOption("2");
+  await page.getByRole("button", { name: "生成张数", exact: true }).click(); await page.getByRole("button", { name: "2 张", exact: true }).click();
   await page.getByLabel("开始创作", {exact:true}).click();
   await expect(page.locator(".cr-home-composer [role=alert]")).toContainText("TEMPORARILY_UNAVAILABLE");
   expect(f.posted).toHaveLength(1);

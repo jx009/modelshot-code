@@ -36,6 +36,7 @@ import HeroWall from "./HeroWall";
 import { HOME_SCENES, HOME_CHIPS } from "./home-scenes";
 import { useHeroPointer } from "./use-hero-pointer";
 import BrandLoader from "@/components/ui/BrandLoader";
+import CountPicker from "@/components/ui/CountPicker";
 const CommerceLauncher = dynamic(() => import("./CommerceLauncher"));
 const InspirationGallery = dynamic(() => import("./InspirationGallery"), {
   loading: () => <section id="inspiration" className="cr-inspiration ig-section" aria-hidden="true"><BrandLoader variant="panel" label="正在加载灵感作品" /></section>,
@@ -244,7 +245,7 @@ export default function DiscoverHome() {
               <button type="button" disabled={busy || attachments.length >= 3} onClick={() => uploadInput.current.click()} className="lh-tool" title={zh ? "添加参考图（最多 3 张）" : "Add reference images"}><ImagePlus size={17} /><span>{zh ? "参考图" : "Image"}</span></button>
               <ModelPicker key={visible ? "visible-models" : "hidden-models"} size={size} models={models} value={provider} onChange={setProvider} zh={zh} disabled={busy} emptyLabel={status !== "authenticated" ? zh ? "登录后选择模型" : "Sign in to choose a model" : !modelsReady ? zh ? "正在加载模型…" : "Loading models…" : zh ? "暂无可用生图模型" : "No image model configured"} />
               <ImageSizePicker key={visible ? "visible-size" : "hidden-size"} value={size} onChange={setSize} zh={zh} disabled={busy} source={attachments[0] ? { width: attachments[0].pixelWidth, height: attachments[0].pixelHeight } : null} />
-              <label className="lh-tool lh-count"><select aria-label={zh ? "生成张数" : "Image count"} value={count} onChange={e => setCount(Number(e.target.value))} disabled={busy}>{[1, 2, 3, 4].map(n => <option key={n} value={n}>{n}{zh ? " 张" : "×"}</option>)}</select><ChevronDown size={14} /></label>
+              <CountPicker value={count} onChange={setCount} unitCost={selectedOffer ? imageCreditCost(selectedOffer, size) : undefined} zh={zh} disabled={busy} />
               <button type="button" className="lh-tool lh-icon" aria-label={zh ? "设置固定提示词" : "Set fixed prompt"} title={zh ? "固定提示词" : "Fixed prompt"} aria-pressed={fixedOpen} onClick={() => setFixedOpen(v => !v)}><Type size={16} /></button>
               <input hidden ref={uploadInput} aria-label={zh ? "上传参考图片" : "Upload reference images"} type="file" multiple accept="image/png,image/jpeg,image/webp" onChange={e => upload(e.target.files)} />
               <button type="button" disabled={busy} className="lh-send" aria-label={zh ? "开始创作" : "Start creating"} onClick={start} title={`${estimatedCost} ${zh ? "积分" : "credits"}`}>

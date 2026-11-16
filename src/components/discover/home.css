@@ -145,13 +145,6 @@
 .cr-shell.ls .lh-tool:hover:not(:disabled), .cr-shell.ls .lh-tool[aria-pressed="true"] { color: #fff; border-color: rgba(255,255,255,.3); background: rgba(255,255,255,.07); }
 .cr-shell.ls .lh-tool:disabled { opacity: .4; }
 .cr-shell.ls .lh-icon { width: 34px; padding: 0; justify-content: center; }
-.cr-shell.ls .lh-count { padding-right: 10px; }
-.cr-shell.ls .lh-count select {
-  appearance: none; -webkit-appearance: none; border: 0; outline: 0; background: transparent;
-  color: inherit; font: inherit; padding-right: 2px; cursor: pointer;
-}
-.cr-shell.ls .lh-count select option { background: #17171a; color: #fff; }
-.cr-shell.ls .lh-count svg { pointer-events: none; opacity: .7; }
 .cr-shell.ls .lh-toolbar .mpk-trigger, .cr-shell.ls .lh-toolbar .isp-trigger {
   height: 34px; border-radius: 999px; border-color: rgba(255,255,255,.12); background: transparent; color: rgba(255,255,255,.72);
 }

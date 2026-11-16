@@ -32,7 +32,7 @@ Next.js 16.2+ 设置 `deploymentId` 后会固定使用 `build-TfctsWXpff2fKS` �
 
 对应香港磁盘路径仍在现有 `/_next/static/` 目录内，无须为此新增 Nginx location。美国应用仅将**当前镜像自己的前缀**重写回其 `.next/static`，支持香港缺失文件时回源和直接访问美国；不会把旧版本请求误映射到当前清单。两个架构也各用自己的路径，避免构建差异冲突。提取时读取的 `required-server-files.json` 只用于校验，绝不放入公开上传目录。
 
-首次修复必须运行**包含修复提交的新工作流，完成全部构建与发布**。不要重跑旧提交的失败上传步骤，也不需要删除香港旧资源或关闭防覆盖保护。GitHub 的 “Re-run failed jobs” 会改变 `run_attempt` 却跳过已经成功的构建，可能找不到当前 attempt 的镜像；需要重试时请选择 “Re-run all jobs”。
+首次修复必须运行**包含修复提交的新工作流，完成全部构建与发布**。旧提交的工作流仍在每个 job 中重新计算 `run_attempt`，只重跑失败上传会寻找不存在的镜像；旧运行请选择 “Re-run all jobs”。新流程在 prepare 中生成并输出 BUILD_TAG，构建、香港/国内上传和镜像合并统一使用该输出：新流程的 “Re-run failed jobs” 会复用成功 prepare 的原始标签，可以重试失败上传而不重建镜像。“Re-run all jobs” 会重新运行 prepare，生成新的发布标识。若要主动重建已经发布过静态资源的镜像，也应重跑全部 job，不单独重跑已成功的构建 job，避免同一资源路径出现不同内容。
 
 ## GitHub 配置
 

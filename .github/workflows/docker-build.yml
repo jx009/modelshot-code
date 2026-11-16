@@ -11,7 +11,6 @@ permissions:
 
 env:
   IMAGE: ${{ vars.DOCKERHUB_IMAGE }}
-  BUILD_TAG: build-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
 
 concurrency:
   group: docker-publish-${{ github.ref }}
@@ -20,6 +19,8 @@ concurrency:
 jobs:
   prepare:
     runs-on: ubuntu-latest
+    outputs:
+      build_tag: ${{ steps.release.outputs.build_tag }}
     steps:
       - name: Resolve image repository
         env:
@@ -75,10 +76,19 @@ jobs:
               sys.exit(1)
           print(f"Docker Hub push authorization verified for {image}.")
           PY
+      # Failed-job reruns reuse this successful job's output. Do not recompute
+      # run_attempt in consumers: successful build jobs may not run again.
+      - name: Freeze release tag for downstream jobs
+        id: release
+        env:
+          RELEASE_TAG: build-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+        run: printf 'build_tag=%s\n' "$RELEASE_TAG" >> "$GITHUB_OUTPUT"
 
   build_single_arch:
     name: Build and push (${{ matrix.arch }})
     needs: prepare
+    env:
+      BUILD_TAG: ${{ needs.prepare.outputs.build_tag }}
     strategy:
       fail-fast: false
       max-parallel: 1
@@ -155,6 +165,8 @@ jobs:
     name: Build image tools (${{ matrix.arch }})
     # Avoid competing with the application's two architecture publications.
     needs: [prepare, build_single_arch]
+    env:
+      BUILD_TAG: ${{ needs.prepare.outputs.build_tag }}
     strategy:
       fail-fast: false
       max-parallel: 1
@@ -210,7 +222,9 @@ jobs:
 
   publish_hk_static:
     name: Publish immutable static assets to Hong Kong
-    needs: build_single_arch
+    needs: [prepare, build_single_arch]
+    env:
+      BUILD_TAG: ${{ needs.prepare.outputs.build_tag }}
     if: github.ref == 'refs/heads/main' && vars.HK_STATIC_DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -238,7 +252,9 @@ jobs:
 
   publish_cn_static:
     name: Publish immutable static assets to mainland China
-    needs: build_single_arch
+    needs: [prepare, build_single_arch]
+    env:
+      BUILD_TAG: ${{ needs.prepare.outputs.build_tag }}
     if: github.ref == 'refs/heads/main' && vars.CN_STATIC_DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -267,6 +283,8 @@ jobs:
   create_manifests:
     name: Publish multi-arch tags
     needs: [prepare, build_single_arch, build_tools_single_arch, publish_hk_static, publish_cn_static]
+    env:
+      BUILD_TAG: ${{ needs.prepare.outputs.build_tag }}
     # Disabled edge deployments and non-main releases may skip their uploads.
     # Once enabled, an upload failure must prevent latest/main/SHA tags advancing.
     if: >-

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Cloud, Database, ShieldCheck, Save, PlugZap, ArrowRight } from "lucide-react";
+import { Cloud, Database, ShieldCheck, Save, PlugZap, ArrowRight, RefreshCw, X } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAdminReason } from "@/hooks/useAdminReason";
 import { uploadCosObject } from "@/lib/cos-upload";
@@ -12,7 +12,12 @@ const messages = {
   CROSS_ORIGIN_REQUEST: "当前访问域名不在服务端允许的来源中。请在服务器 .env 的 ALLOWED_ORIGINS 中加入该域名后重启服务。",
   ADMIN_SCOPE_DENIED: "当前账号不是 ROOT，或账号状态不是“正常”，后台写操作被拒绝。请在用户管理中确认账号状态。",
   IDEMPOTENCY_CONFLICT: "上一次提交的内容与本次不同，请刷新页面后重试。",
-  COS_PRIMARY_MIGRATION_REQUIRED: "已有原图直接存放在 COS，迁移原图前不能更换存储桶或地域；可继续更新密钥和其他设置。",
+  COS_PRIMARY_MIGRATION_REQUIRED: "已有原图直接存放在 COS，不能直接改桶。请使用下方「更换存储桶」迁移，搬完后自动切换。",
+  COS_MIGRATION_BUSY: "已有一轮迁移在进行中，请等它完成或先取消。",
+  COS_MIGRATION_NOOP: "新桶与当前桶相同，无需迁移。",
+  COS_MIGRATION_TARGET_REQUIRED: "请填写新的存储桶名称和地域。",
+  COS_DISABLED: "请先启用 COS 并保存，再更换存储桶。",
+  COS_MIGRATION_NOT_RUNNING: "当前没有进行中的迁移。",
   COS_CREDENTIALS_REQUIRED: "请填写存储桶、SecretId 和 SecretKey。",
   COS_ACCESS_DENIED: "权限不足：请检查子账号对指定目录的上传、读取、删除权限，以及存储桶 ACL 读取权限。",
   COS_INVALID_SIGNATURE: "签名不匹配：请核对 SecretId 和 SecretKey 是否配套。",
@@ -67,12 +72,49 @@ export default function StorageSettings() {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [test, setTest] = useState(null);
+  const [saved, setSaved] = useState(null);
+  const [migration, setMigration] = useState({ active: false });
+  const [target, setTarget] = useState({ bucket: "", region: "" });
   async function load() {
     const body = await responseBody(await fetch("/api/admin/storage", { cache: "no-store" }));
     const { credentialsConfigured, endpoint, ...values } = body.config;
     setInfo({ canManage: body.canManage, mirrored: body.mirrored, credentialsConfigured, endpoint });
     setConfig({ directUploadEnabled: false, ...values, secretId: "", secretKey: "" });
+    setSaved({ bucket: values.bucket, region: values.region });
+    setMigration(body.migration || { active: false });
   }
+  // 迁移在后台推进，进度按 5 秒轮询；完成后重新读取配置，界面上的桶名自动变成新桶。
+  useEffect(() => {
+    if (!migration.active) return;
+    let cancelled = false;
+    const timer = setInterval(async () => {
+      try {
+        const body = await responseBody(await fetch("/api/admin/storage", { cache: "no-store" }));
+        if (cancelled) return;
+        setMigration(body.migration || { active: false });
+        if (body.migration?.status === "done" && !body.migration.active) await load();
+      } catch { /* 轮询失败不打断页面，下一轮继续 */ }
+    }, 5000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [migration.active]);
+  async function migrate(mode) {
+    const operation = await reasonPrompt.ask();
+    if (!operation) return;
+    if (mode === "start" && (!target.bucket.trim() || !target.region.trim())) { setError("请填写新的存储桶名称和地域。"); return; }
+    setBusy("migrate"); setError("");
+    try {
+      const data = await responseBody(await fetch("/api/admin/storage", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "Idempotency-Key": operation.key },
+        body: JSON.stringify(mode === "start" ? { action: "start", bucket: target.bucket.trim(), region: target.region.trim(), reason: operation.reason } : { action: "cancel", reason: operation.reason }),
+      }));
+      setMigration(data.migration);
+      if (mode === "start") toast.success("迁移已开始，后台会分批复制对象；期间线上仍读旧桶。");
+      else toast.success("已请求取消迁移，已复制的对象保留在旧桶，配置不变。");
+    } catch (e) { setError(e.message); }
+    finally { setBusy(""); }
+  }
+  const bucketChanged = Boolean(saved && (config.bucket !== saved.bucket || config.region !== saved.region));
   useEffect(() => { void Promise.resolve().then(load).catch(e => setError(e.message)); }, []);
   function change(key, value) { setConfig(current => ({ ...current, [key]: value })); setTest(null); }
   async function submit(mode) {
@@ -126,7 +168,27 @@ export default function StorageSettings() {
       <p className="flex items-start gap-2 text-xs leading-6 text-secondary-text"><ShieldCheck size={16} className="mt-1 shrink-0 text-primary" />COS 桶保持私有，通过 CDN 回源鉴权读取。接口仍校验用户权限，但 CDN 图片链接是公开的，任何拿到链接的人均可读取；退出登录或关闭加速不会撤销已有 CDN 链接。</p>
       {error && <p role="alert" className="rounded-xl border border-error/25 bg-error/5 p-3 text-sm text-error">{error}</p>}
       {test && <p role="status" className="rounded-xl border border-primary/25 bg-primary/5 p-3 text-sm text-primary">{test}</p>}
+      {bucketChanged && <p role="status" className="rounded-xl border border-primary/25 bg-primary/5 p-3 text-xs leading-6 text-primary">桶名或地域已改动。已有原图时不能直接保存，请清空这两个字段恢复原值，再用下方「更换存储桶」迁移。</p>}
       <div className="flex flex-wrap gap-3"><button className="button compact" disabled={!info.canManage || Boolean(busy)} onClick={() => submit("test")}><PlugZap size={15} />{busy === "test" ? "正在检测读写与跨域…" : "测试连接与跨域"}</button><button className="button primary compact" disabled={!info.canManage || Boolean(busy)} onClick={() => submit("save")}><Save size={15} />{busy === "save" ? "保存中…" : "保存配置"}</button></div>
+    </section>
+    <section className="space-y-4 rounded-2xl border border-divider bg-bg-card p-5 sm:p-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="flex items-center gap-2 font-medium"><RefreshCw size={18} />更换存储桶</h2>
+        {migration.active && <span className="rounded-full bg-primary/10 px-3 py-1.5 text-xs text-primary">迁移中 {migration.percent ?? 0}%</span>}
+      </div>
+      <p className="text-xs leading-6 text-secondary-text">把现有原图与预览图复制到另一个桶或另一个地域，全部复制完成后自动切换配置。迁移期间线上继续读旧桶；取消或失败不会改变配置，已复制的对象留在旧桶。</p>
+      {migration.status === "done" && <p role="status" className="rounded-xl border border-primary/25 bg-primary/5 p-3 text-xs leading-6 text-primary">上一次迁移已完成并切换到 {migration.target?.bucket}，共复制 {migration.copied ?? 0} 个对象。确认图片显示正常后，可到旧桶删除副本。</p>}
+      {migration.status === "failed" && <p role="alert" className="rounded-xl border border-error/25 bg-error/5 p-3 text-xs leading-6 text-error">上一次迁移未完成（{migration.error || "未知原因"}），配置未改变，可以重新开始。</p>}
+      {migration.active && <div className="space-y-2">
+        <div className="h-2 overflow-hidden rounded-full bg-bg-page"><div className="h-full rounded-full bg-primary transition-all" style={{ width: `${migration.percent ?? 0}%` }} /></div>
+        <p className="text-xs text-secondary-text">{migration.source?.bucket} → {migration.target?.bucket}（{migration.target?.region}）· {migration.phase === "catchup" ? "正在补齐迁移期间新增的对象" : migration.status === "switching" ? "正在切换配置" : "正在复制对象"} · 已复制 {migration.copied ?? 0} 个（预计约 {migration.estimate ?? 0} 个）</p>
+        <button className="button compact" disabled={!info.canManage || Boolean(busy)} onClick={() => migrate("cancel")}><X size={15} />取消迁移</button>
+      </div>}
+      {!migration.active && <fieldset disabled={!info.canManage || Boolean(busy) || !saved?.bucket} className="grid gap-4 sm:grid-cols-2">
+        <Field label="新存储桶名称" hint="必须先在同一账号下建好私有桶，例如 letaidraw-1250000000。"><input className={fieldClass} placeholder="new-bucket-1250000000" value={target.bucket} onChange={e => setTarget(current => ({ ...current, bucket: e.target.value }))} /></Field>
+        <Field label="新桶地域" hint="优先使用 COS 服务端复制，不占服务器带宽；复制被拒绝时自动改为下载再上传。"><input className={fieldClass} placeholder="ap-guangzhou" value={target.region} onChange={e => setTarget(current => ({ ...current, region: e.target.value }))} /></Field>
+      </fieldset>}
+      {!migration.active && <button className="button primary compact" disabled={!info.canManage || Boolean(busy) || !saved?.bucket} onClick={() => migrate("start")}><RefreshCw size={15} />{busy === "migrate" ? "正在启动…" : "开始迁移并切换"}</button>}
     </section>
     <section className="space-y-4 rounded-2xl border border-divider bg-bg-card p-5 sm:p-6">
       <h2 className="font-medium">首次配置</h2>

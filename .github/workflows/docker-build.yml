@@ -316,7 +316,9 @@ jobs:
       ${{ !cancelled() && needs.prepare.result == 'success' && needs.create_manifests.result == 'success' &&
           vars.MIRROR_IMAGE != '' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # The first copy uploads ~1.3 GB over the runner's uplink; later tags reuse
+    # those blobs. 30 minutes was not enough for the tools image alone.
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:

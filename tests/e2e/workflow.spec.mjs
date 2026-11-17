@@ -69,13 +69,13 @@ test("legacy private draft, durable worker and ZIP delivery remain compatible", 
 test("workspace controls fit six viewport widths in both languages", async ({ page }, info) => {
   test.setTimeout(150000);
   const widths = info.project.name === "desktop" ? [768, 810, 1280, 1440] : [360, 390];
-  for (const theme of ["dark", "light"]) for (const locale of ["en", "zh"]) for (const width of widths) {
+  for (const theme of ["dark"]) for (const locale of ["en", "zh"]) for (const width of widths) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto(`/${locale}/studio-v2`);
     await expect(page.getByRole("textbox", { name: locale === "en" ? "Creative prompt" : "创作描述", exact: true })).toBeEnabled();
     await page.evaluate(value => { localStorage.setItem("theme", value); }, theme);
     await page.reload();
-    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
     await expect(page.locator(".ms-composer-hint")).toBeVisible();
     await expect(page.getByRole("button", { name: locale === "en" ? "Show canvas" : "展开画布", exact: true })).toBeVisible();
     await expect(page.getByRole("textbox", { name: locale === "en" ? "Creative prompt" : "创作描述", exact: true })).toBeVisible();

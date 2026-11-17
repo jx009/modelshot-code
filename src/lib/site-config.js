@@ -14,6 +14,8 @@ export const CONFIG_KEYS = {
   execution_limits: { env: "EXECUTION_LIMITS", sensitive: false },
   image_resolution_pricing: { env: "IMAGE_RESOLUTION_PRICING", sensitive: false },
   cos_delivery:          { env: "COS_DELIVERY_CONFIG", sensitive: true },
+  // 换桶迁移的持久化进度（由 cos-migration.js 读写，不走管理页表单）
+  cos_migration:         { env: "COS_MIGRATION_STATE", sensitive: false },
   announcements:         { env: "SITE_ANNOUNCEMENTS", sensitive: false },
   google_login_enabled:  { env: "GOOGLE_LOGIN_ENABLED", sensitive: false },
   registration_credits:  { env: "REGISTRATION_CREDITS", sensitive: false },

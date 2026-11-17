@@ -11,11 +11,20 @@ export function cosStorage(config, client) {
   client ||= new COS({ SecretId: config.secretId, SecretKey: config.secretKey, Protocol: "https:", Timeout: 15000 });
   const base = { Bucket: config.bucket, Region: config.region };
   return {
+    bucket: config.bucket, region: config.region,
     async put(key, bytes, contentType) {
       return client.putObject({ ...base, Key: key, Body: bytes, ContentLength: bytes.length, ContentType: contentType, ACL: "private", CacheControl: contentType.startsWith("image/") ? "public, max-age=86400" : "private, no-store", ContentDisposition: "inline" });
     },
     async get(key, etag) { return Buffer.from((await client.getObject({ ...base, Key: key, ...(etag ? { IfMatch: etag } : {}) })).Body); },
     async head(key) { return (await client.headObject({ ...base, Key: key })).headers; },
+    /** 服务端同地域复制：源桶与本桶在同一地域时才可用，跨地域会由 COS 拒绝。 */
+    async copyFrom(sourceStore, key) {
+      return client.putObjectCopy({
+        ...base, Key: key,
+        CopySource: `${sourceStore.bucket}.cos.${sourceStore.region}.myqcloud.com/${key.split("/").map(encodeURIComponent).join("/")}`,
+        MetadataDirective: "Copy", ACL: "private",
+      });
+    },
     async copy(source, key, etag, contentType) {
       return client.putObjectCopy({ ...base, Key: key, CopySource: `${config.bucket}.cos.${config.region}.myqcloud.com/${source.split("/").map(encodeURIComponent).join("/")}`,
         CopySourceIfMatch: etag, MetadataDirective: "Replaced", ContentType: contentType, ACL: "private", CacheControl: "public, max-age=86400", ContentDisposition: "inline" });
@@ -25,6 +34,13 @@ export function cosStorage(config, client) {
         Headers: { "content-type": contentType, "content-length": String(bytes) } }, (error, result) => error ? reject(error) : resolve(result.Url)));
     },
     async delete(key) { await client.deleteObject({ ...base, Key: key }); },
+    /** 按前缀分页列举对象，供换桶迁移使用。marker 为上一页的 NextMarker。 */
+    async list(prefix, marker, maxKeys = 200) {
+      const page = await client.getBucket({ ...base, Prefix: prefix, Marker: marker || undefined, MaxKeys: maxKeys });
+      const contents = (page.Contents || []).map(item => ({ key: item.Key, size: Number(item.Size) || 0, lastModified: item.LastModified }));
+      const truncated = page.IsTruncated === true || page.IsTruncated === "true";
+      return { contents, nextMarker: truncated ? (page.NextMarker || contents.at(-1)?.key || null) : null };
+    },
     async assertPrivateBucket() {
       const acl = await client.getBucketAcl(base);
       if ((acl.ACL && acl.ACL !== "private") || (acl.Grants || []).some(g => /AllUsers|AuthenticatedUsers/i.test(g.Grantee?.URI || ""))) throw new AppError("COS_BUCKET_PUBLIC");

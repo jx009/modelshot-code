@@ -66,8 +66,10 @@ export default async function LocaleLayout({ children, params }) {
       <body className={`min-h-dvh w-full flex flex-col antialiased bg-bg-page text-primary-text font-sans`}>
         <StylesheetRecovery locale={locale} />
         <WebVitals />
-        {/* 首次访问与服务端首屏默认深色；用户手动选择的浅色或系统主题继续保留。 */}
-        <ThemeProvider attribute="data-theme" defaultTheme="dark" enableSystem disableTransitionOnChange={false}>
+        {/* 全站强制深色：浅色主题与首屏作品墙的风格差距过大，脚本生成的浅色页面观感不稳，
+            因此不再跟随系统或用户偏好。forcedTheme 会持续写回 data-theme="dark"，
+            并忽略 localStorage 里残留的旧偏好。 */}
+        <ThemeProvider attribute="data-theme" defaultTheme="dark" forcedTheme="dark" enableSystem={false} disableTransitionOnChange={false}>
           <NextIntlClientProvider messages={Object.fromEntries(Object.entries(messages).filter(([key]) => !SERVER_ONLY_NAMESPACES.has(key)))}>
             <Providers>
               <AnnouncementBanner />

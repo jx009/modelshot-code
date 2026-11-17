@@ -1,12 +1,10 @@
 "use client";
 
-import { Check, ChevronDown, Download, FolderOpen, MessageSquare, MoreHorizontal, PanelLeftOpen, Pencil, Redo2, Save, SunMoon, Undo2 } from "lucide-react";
-import { useTheme } from "next-themes";
+import { Check, ChevronDown, Download, FolderOpen, MessageSquare, MoreHorizontal, PanelLeftOpen, Pencil, Redo2, Save, Undo2 } from "lucide-react";
 import WorkspaceHeader from "@/components/creation/WorkspaceHeader";
 
 export default function VideoWorkspaceHeader({ project, zh, disabled, motion, editing, onEdit, onProjects, chatOpen, onChat, treeOpen, onFiles, tab, history, onTravel, onDownloadProject, onRender, renderOffer, result, showMotion, onImport }) {
   const { draft, change, setError } = project;
-  const { resolvedTheme, setTheme } = useTheme();
   const text = (cn, en) => zh ? cn : en;
   const canEdit = motion && draft.content.video.composition && draft.content.video.confirmed;
   return <WorkspaceHeader
@@ -34,7 +32,6 @@ export default function VideoWorkspaceHeader({ project, zh, disabled, motion, ed
             <button type="button" onClick={onDownloadProject}><FolderOpen size={15} />{text("下载可编辑工程", "Download editable project")}</button>
           </>}
           {motion && <button type="button" disabled={disabled} onClick={onImport}>{text("导入本账号工程 JSON", "Import project JSON")}</button>}
-          <button type="button" onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}><SunMoon size={15} />{text("切换明暗主题", "Toggle theme")}</button>
         </div>
       </details>
     </>}

@@ -16,18 +16,14 @@ async function fixtures(page, state = { item: notice }) {
   });
 }
 
-test("first visit defaults to dark even on a light OS and preserves a manual theme choice", async ({ page }) => {
+test("stays dark on a light OS and ignores a stored light preference", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "light" });
+  await page.addInitScript(() => localStorage.setItem("theme", "light"));
   await fixtures(page);
   const response = await page.goto("/zh");
   expect(await response.text()).toMatch(/<html[^>]*data-theme="dark"/);
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
-  await page.getByRole("button", { name: "切换明暗主题" }).click();
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
-  await page.reload();
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
-  await page.getByRole("button", { name: "切换明暗主题" }).click();
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect(page.getByRole("button", { name: "切换明暗主题" })).toHaveCount(0);
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
 });

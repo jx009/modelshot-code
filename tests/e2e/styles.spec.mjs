@@ -8,15 +8,16 @@ async function expectTheme(page, theme) {
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
 }
 
-for (const theme of ["light", "dark"]) {
-  test(`${theme} styles survive direct loads and client navigation`, async ({ page }, info) => {
+// 主题已全站强制深色；即使 localStorage 里留着 light，也必须渲染为 dark。
+for (const theme of ["dark", "light"]) {
+  test(`styles survive direct loads and client navigation (${theme} stored)`, async ({ page }, info) => {
     await page.addInitScript(value => localStorage.setItem("theme", value), theme);
     await page.goto("/en/login?callbackUrl=/en");
     await page.getByLabel("Email", { exact: true }).fill(E2E_USERS[0].email);
     await page.getByLabel("Password", { exact: true }).fill(E2E_PASSWORD);
     await page.getByRole("button", { name: "Sign in", exact: true }).click();
     await expect(page).toHaveURL(/\/en$/);
-    await expectTheme(page, theme);
+    await expectTheme(page, "dark");
     await page.getByLabel("Describe your idea").focus();
     await expect(page.getByLabel("Describe your idea")).toHaveCSS("outline-style", "none");
     await expect(page.locator(".cr-logo")).toHaveCSS("text-decoration-line", "none");
@@ -25,7 +26,7 @@ for (const theme of ["light", "dark"]) {
     for (const [name, path] of [["My projects", "/en/projects"], ["Assets", "/en/assets"], ["Create", "/en"]]) {
       await (await creativeLink(page, name)).click();
       await expect(page).toHaveURL(new RegExp(`${path}$`));
-      await expectTheme(page, theme);
+      await expectTheme(page, "dark");
       await page.screenshot({ path: info.outputPath(`${name}-${theme}.png`), fullPage: true });
       await page.reload();
       await expectTheme(page, theme);

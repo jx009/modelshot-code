@@ -4,7 +4,6 @@ import dynamic from "next/dynamic";
 import { preloadCanvas } from "@/lib/studio/preload-canvas";
 import CreditIcon from "@/components/ui/CreditIcon";
 import { SHOW_LANGUAGE_SWITCHER } from "@/lib/ui-features";
-import { useTheme } from "next-themes";
 import { useRecharge } from "@/components/billing/RechargeProvider";
 import { useLocale } from "next-intl";
 import { useSession } from "next-auth/react";
@@ -12,7 +11,7 @@ import { usePathname } from "@/i18n/navigation";
 import Link from "@/components/ui/NavigationLink";
 import { useLocalNavigation } from "@/components/ui/LocalNavigation";
 import { useNavigationPath } from "@/components/ui/NavigationFeedback";
-import { House, Images, ImagePlus, Clapperboard, Presentation, ShoppingBag, ArrowUpRight, FolderOpen, Globe2, SunMoon } from "lucide-react";
+import { House, Images, ImagePlus, Clapperboard, Presentation, ShoppingBag, ArrowUpRight, FolderOpen, Globe2 } from "lucide-react";
 import "./discover.css";
 import "./creative-direction.css";
 import "./parity.css";
@@ -39,7 +38,6 @@ const initialScroll = () => false;
 function CreativeShellContent({ children }) {
   const creationTitle = useSyncExternalStore(subscribeWorkspaceTitle, workspaceTitleSnapshot, workspaceTitleServerSnapshot);
   const scrolled = useSyncExternalStore(subscribeScroll, isScrolled, initialScroll);
-  const { resolvedTheme, setTheme } = useTheme();
   const recharge = useRecharge();
   const local = useLocalNavigation(), routePath = usePathname();
   const zh = useLocale() === "zh", path = useNavigationPath("creative", local?.path ?? routePath), { data: session } = useSession();
@@ -73,7 +71,6 @@ function CreativeShellContent({ children }) {
             {path === "/video" && <WorkspaceHeaderSlot name="actions" />}
             {path !== "/video" && <>
             {session?.user && !compactWorkspace && <RecentProjects zh={zh} userId={session.user.id} />}
-            <button type="button" className="ls-icon-button" onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")} aria-label={zh ? "切换明暗主题" : "Toggle color theme"} title={zh ? "切换明暗主题" : "Toggle color theme"}><SunMoon size={17} strokeWidth={1.8} /></button>
             {SHOW_LANGUAGE_SWITCHER && <Link prefetch="intent" href={path} locale={zh ? "en" : "zh"} aria-label={zh ? "Switch to English" : "切换中文"}><Globe2 size={15} />{zh ? "EN" : "中文"}</Link>}
             </>}
             <button className="cr-recharge-trigger" onClick={recharge.open} aria-label={zh ? "积分充值" : "Buy credits"}><CreditIcon /><b>{credits ?? "—"}</b><span className="ls-recharge-label">{zh ? "充值" : "Top up"}</span></button>

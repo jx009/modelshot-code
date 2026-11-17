@@ -5,6 +5,7 @@ import { queueConnection, workQueue, QUEUE_NAME, MIRROR_QUEUE_NAME, GENERATION_Q
 import { getExecutionConfig, executionDefaults } from "../lib/infra/execution-config.js";
 import { imageTransfers, imageProcessing } from "../lib/infra/concurrency.js";
 import { processCosAsset, processCosRemoval } from "../lib/domain/assets/cos-delivery.js";
+import { getMigrationState, isMigrating, migrateBatch } from "../lib/domain/assets/cos-migration.js";
 import { processInspirationMirror } from "../lib/server/inspiration-delivery.js";
 import { executeOutput } from "../lib/domain/generation/execution.js";
 import { recoverWork } from "../lib/domain/generation/recovery.js";
@@ -42,6 +43,26 @@ const mirrorWorker = new Worker(MIRROR_QUEUE_NAME, async job => {
   await handlers[job.name](job.data.id);
 }, { connection, concurrency: 2 });
 mirrorWorker.on("failed", job => console.error(JSON.stringify({ code: "COS_MIRROR_RETRY", assetId: job?.data?.id })));
+
+// 换桶迁移：按批推进，游标持久化在 cos_migration，重启后接着跑。
+// 只有显式启动后才会工作，空闲时每 10 秒才查一次状态。
+let migrating = false;
+async function migrateLoop() {
+  if (migrating) return;
+  migrating = true;
+  try {
+    for (;;) {
+      const state = await getMigrationState();
+      if (!isMigrating(state)) break;
+      const result = await migrateBatch();
+      if (!result.remaining) break;
+    }
+  } catch (error) {
+    console.error(JSON.stringify({ code: "COS_MIGRATION_FAILED", message: String(error?.message || error).slice(0, 200) }));
+  } finally { migrating = false; }
+}
+setInterval(() => { void migrateLoop(); }, Number(process.env.COS_MIGRATION_POLL_MS) || 10000).unref();
+setTimeout(() => { void migrateLoop(); }, 3000).unref();
 mirrorWorker.on("error", () => console.error(JSON.stringify({ code: "COS_WORKER_ERROR" })));
 const handlers = { generate: executeOutput, delivery: processDelivery, qa: processQuality, export: processExport, payment: async id => processPaymentEvent(id, { stripe: await getStripe() }), refund: async id => processRefundRequest(id, { stripe: await getStripe() }) };
 handlers.subscription = async id => processSubscriptionChange(id, { stripe: await getStripe() });

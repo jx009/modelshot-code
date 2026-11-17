@@ -94,3 +94,18 @@ it("checks reading without a browser PUT when direct upload is off", async () =>
   expect((await screen.findByRole("status")).textContent).toContain("无需浏览器 PUT 权限");
   expect(fetch.mock.calls.some(([, init]) => init?.method === "PUT")).toBe(false);
 });
+
+it("starts a bucket migration from the admin page and shows its progress", async () => {
+  const running = { active: true, status: "running", phase: "copy", source: { bucket: config.bucket }, target: { bucket: "next-1250000000", region: "ap-guangzhou" }, copied: 4, estimate: 10, percent: 40 };
+  const fetch = vi.fn(async (_url, init) => ({ ok: true, json: async () => init?.method === "PUT" ? { migration: running } : { config: { ...config, enabled: true }, canManage: true, mirrored: 3, migration: { active: false } } }));
+  vi.stubGlobal("fetch", fetch);
+  render(<StorageSettings />);
+  fireEvent.change(await screen.findByLabelText(/^新存储桶名称/), { target: { value: "next-1250000000" } });
+  fireEvent.change(screen.getByLabelText(/^新桶地域/), { target: { value: "ap-guangzhou" } });
+  fireEvent.click(screen.getByRole("button", { name: "开始迁移并切换" }));
+  await waitFor(() => expect(fetch.mock.calls.some(([, init]) => init?.method === "PUT")).toBe(true));
+  const [, init] = fetch.mock.calls.find(([, init]) => init?.method === "PUT");
+  expect(JSON.parse(init.body)).toEqual({ action: "start", bucket: "next-1250000000", region: "ap-guangzhou", reason: "Configure private delivery" });
+  expect(await screen.findByText("迁移中 40%")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "取消迁移" })).toBeTruthy();
+});

@@ -182,6 +182,7 @@ export default function StorageSettings() {
       {migration.active && <div className="space-y-2">
         <div className="h-2 overflow-hidden rounded-full bg-bg-page"><div className="h-full rounded-full bg-primary transition-all" style={{ width: `${migration.percent ?? 0}%` }} /></div>
         <p className="text-xs text-secondary-text">{migration.source?.bucket} → {migration.target?.bucket}（{migration.target?.region}）· {migration.phase === "catchup" ? "正在补齐迁移期间新增的对象" : migration.status === "switching" ? "正在切换配置" : "正在复制对象"} · 已复制 {migration.copied ?? 0} 个（预计约 {migration.estimate ?? 0} 个）</p>
+        {migration.error && <p role="alert" className="rounded-xl border border-error/25 bg-error/5 p-3 text-xs leading-6 text-error">切换配置失败，后台会自动重试：{migration.error}</p>}
         <button className="button compact" disabled={!info.canManage || Boolean(busy)} onClick={() => migrate("cancel")}><X size={15} />取消迁移</button>
       </div>}
       {!migration.active && <fieldset disabled={!info.canManage || Boolean(busy) || !saved?.bucket} className="grid gap-4 sm:grid-cols-2">

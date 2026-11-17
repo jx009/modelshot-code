@@ -21,6 +21,8 @@ import { qrTarget } from "../../server/announcement-qr.js";
 
 const STATE_KEY = "cos_migration";
 const PAGE = 200;
+// 切换是单事务，失败会整体回滚；失败后按轮询自动重试，超过次数才判定失败。
+const SWITCH_ATTEMPTS = 5;
 
 const targetOf = config => ({ bucket: config.bucket, region: config.region, prefix: config.prefix, targetId: cosTargetId(config) });
 
@@ -103,8 +105,10 @@ export async function cancelMigration({ db = prisma, config } = {}) {
  */
 export async function migrateBatch({ db = prisma, config, sourceStore, targetStore } = {}) {
   const state = await getMigrationState(db);
-  if (!state || state.status !== "running") return { active: false, remaining: false };
+  if (!state || !isMigrating(state)) return { active: false, remaining: false };
   config ||= await getCosConfig(db);
+  // 复制已完成、切换失败过：只重试切换，不再重复复制对象。
+  if (state.status === "switching") return trySwitch(state, config, db);
   // 迁移期间配置被改过（换密钥、换前缀）就中止，避免复制到错误的位置。
   if (cosTargetId(config) !== state.source.targetId) {
     await saveState({ ...state, status: "failed", error: "CONFIG_CHANGED", finishedAt: new Date().toISOString() }, db);
@@ -131,10 +135,25 @@ export async function migrateBatch({ db = prisma, config, sourceStore, targetSto
     await saveState({ ...next, phase: "catchup", cursor: null }, db);
     return { active: true, remaining: true, copied };
   }
-  const switching = { ...next, status: "switching", phase: "switch" };
+  const switching = { ...next, status: "switching", phase: "switch", switchAttempts: 0 };
   await saveState(switching, db);
-  const result = await switchConfig({ state: switching, config, db });
-  return { active: false, remaining: false, copied, result };
+  return { ...(await trySwitch(switching, config, db)), copied };
+}
+
+async function trySwitch(state, config, db) {
+  try {
+    const result = await switchConfig({ state, config, db });
+    return { active: false, remaining: false, result };
+  } catch (error) {
+    // 事务已回滚，配置和数据都没变；记录原因，下一轮再试，次数用尽才标记失败。
+    const attempts = (state.switchAttempts || 0) + 1;
+    const message = String(error?.message || error).replace(/\s+/g, " ").slice(0, 300);
+    const failed = attempts >= SWITCH_ATTEMPTS;
+    await saveState({ ...state, switchAttempts: attempts, error: `SWITCH_FAILED: ${message}`,
+      ...(failed ? { status: "failed", finishedAt: new Date().toISOString() } : {}) }, db);
+    console.error(JSON.stringify({ code: "COS_MIGRATION_SWITCH_FAILED", attempts, message }));
+    return { active: !failed, remaining: false, error: message };
+  }
 }
 
 /** 单事务切换：key 改写、预览图回执搬迁、直传回执作废、二维码目标更新、配置切换。 */
@@ -148,8 +167,10 @@ export async function switchConfig({ state, config, db = prisma }) {
 
   const result = await db.$transaction(async tx => {
     // 1. 改写钉在旧桶上的原图 key。
+    // 用 substr 且显式转 integer：参数无类型时 substring(x from $n) 会被解析成正则版本，
+    // 匹配不到返回 NULL，拼接后整列变 NULL。substr 只有整数版本，不存在这种歧义。
     const moved = await tx.$executeRaw`
-      UPDATE "Asset" SET "objectKey" = ${newPrefix} || substring("objectKey" from ${oldPrefix.length + 1})
+      UPDATE "Asset" SET "objectKey" = ${newPrefix}::text || substr("objectKey", ${oldPrefix.length + 1}::integer)
       WHERE "objectKey" LIKE ${`${oldPrefix}%`}`;
     // 2. 预览图对象已在新桶，同一 key；回执改挂到新 targetId，否则会被当作未生成而重新生成。
     const receipts = await tx.assetDelivery.findMany({ where: { targetId: source.targetId } });
@@ -170,9 +191,9 @@ export async function switchConfig({ state, config, db = prisma }) {
     }
     await setSiteConfig("cos_delivery", JSON.stringify(nextConfig), tx);
     return { moved, deliveryRows: receipts.length, uploads: uploads.count };
-  });
+  }, { timeout: 60_000 });
 
-  const done = { ...state, status: "done", phase: "done", cursor: null, finishedAt: new Date().toISOString() };
+  const done = { ...state, status: "done", phase: "done", cursor: null, error: null, finishedAt: new Date().toISOString() };
   await saveState(done, db);
   invalidateSiteConfig();
   return { status: "done", ...result };

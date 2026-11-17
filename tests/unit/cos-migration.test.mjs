@@ -144,3 +144,31 @@ describe("switchConfig", () => {
     expect(result).toMatchObject({ status: "done", moved: 2, deliveryRows: 1, uploads: 3 });
   });
 });
+
+describe("switch retry", () => {
+  it("records a failed switch, retries it without copying again, and gives up after five attempts", async () => {
+    mock.state = { status: "switching", phase: "switch", source, target, copied: 10, startedAt, switchAttempts: 0 };
+    const { sourceStore, targetStore } = stores({});
+    const db = database({ $transaction: async () => { throw new Error("function substring(text, bigint) does not exist"); } });
+    const first = await migrateBatch({ db, config, sourceStore, targetStore });
+    expect(first).toMatchObject({ active: true, remaining: false });
+    expect(mock.state).toMatchObject({ status: "switching", switchAttempts: 1 });
+    expect(mock.state.error).toContain("substring");
+    expect(sourceStore.list).not.toHaveBeenCalled();
+    for (let i = 0; i < 4; i++) await migrateBatch({ db, config, sourceStore, targetStore });
+    expect(mock.state).toMatchObject({ status: "failed", switchAttempts: 5 });
+  });
+
+  it("finishes a migration that was stuck in switching once the switch succeeds", async () => {
+    mock.state = { status: "switching", phase: "switch", source, target, copied: 10, startedAt, switchAttempts: 2, error: "SWITCH_FAILED: old" };
+    const tx = {
+      $executeRaw: vi.fn(async () => 0),
+      assetDelivery: { findMany: async () => [], deleteMany: async () => {}, createMany: async () => {} },
+      assetUpload: { deleteMany: async () => ({ count: 0 }) },
+      systemConfig: { findUnique: async () => null, update: vi.fn() },
+    };
+    const result = await migrateBatch({ db: database({ $transaction: async fn => fn(tx) }), config, ...stores({}) });
+    expect(result).toMatchObject({ remaining: false, result: { status: "done" } });
+    expect(mock.state).toMatchObject({ status: "done", error: null });
+  });
+});

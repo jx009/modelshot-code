@@ -5,9 +5,9 @@
 .cr-shell.ls .lh-hero {
   position: relative; isolation: isolate; overflow: hidden;
   display: flex; flex-direction: column; justify-content: center; align-items: center;
-  min-height: min(100svh, 960px);
-  margin-top: calc(var(--ls-top) * -1);
-  padding: calc(var(--ls-top) + 48px) 24px 96px;
+  min-height: min(100svh, calc(960px * var(--ls-zoom, 1)));
+  margin-top: calc(var(--ls-top) * var(--ls-zoom, 1) * -1);
+  padding: calc((var(--ls-top) + 48px) * var(--ls-zoom, 1)) 24px calc(96px * var(--ls-zoom, 1));
   text-align: center; background: #060607; color: #F7F5F2;
 }
 
@@ -248,7 +248,8 @@
 .cr-shell.ls .ig-section .cr-section-heading p { margin: 0; color: var(--secondary-text); font-size: var(--text-sm); }
 
 .cr-shell.ls .ig-section .cr-filter-bar {
-  position: sticky; top: calc(var(--site-announcement-height, 0px) + var(--ls-top)); z-index: 5;
+  /* 所在区块可能被大屏缩放：公告高度不随缩放，先除以缩放比例抵消 */
+  position: sticky; top: calc(var(--site-announcement-height, 0px) / var(--ls-zoom, 1) + var(--ls-top)); z-index: 5;
   display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: nowrap;
   margin: 0 -40px 4px; padding: 10px 40px;
   background: color-mix(in srgb, var(--bg-page) 82%, transparent); backdrop-filter: blur(16px) saturate(1.4);
@@ -342,3 +343,13 @@
   .cr-shell.ls .lh-wall-col, .cr-shell.ls .lh-scroll-hint, .cr-shell.ls .lh-hero-inner > *, .cr-shell.ls .lh-scene, .cr-shell.ls .ig-card, .cr-shell.ls .ig-cover { animation: none; }
   .cr-shell.ls .lh-hero::before { display: none; }
 }
+
+/* ══════════ 大屏等比放大 ══════════
+   设计基准约 1440px 宽。更宽、更高的屏幕上（如 27/32 寸显示器）把首屏内容、场景卡和灵感区整体按比例放大，
+   避免内容缩在中间显得空。只在视口同时足够宽和高时生效，小屏与笔记本保持原样。
+   --ls-zoom 定义在 shell.css 的 .cr-shell.ls 上，顶栏与页脚使用同一比例。 */
+.cr-shell.ls .lh-hero-inner,
+.cr-shell.ls .lh-scroll-hint,
+.cr-shell.ls .lh-scenes,
+.cr-shell.ls .lh-error-slot,
+.cr-shell.ls .cr-inspiration.ig-section { zoom: var(--ls-zoom, 1); }

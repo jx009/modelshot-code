@@ -16,8 +16,8 @@
 
 /* ── 顶栏 ── */
 .cr-shell.ls:not(.cr-shell-creation) .cr-topbar {
-  position: sticky; top: var(--site-announcement-height, 0px); z-index: 30;
-  height: var(--ls-top); padding: 0 32px; margin: 0;
+  position: sticky; top: calc(var(--site-announcement-height, 0px) / var(--ls-zoom, 1)); z-index: 30;
+  height: var(--ls-top); padding: 0 32px; margin: 0; zoom: var(--ls-zoom, 1);
   border-bottom: 1px solid transparent; background: transparent; color: var(--primary-text);
   transition: background var(--dur-base), border-color var(--dur-base);
 }
@@ -119,3 +119,11 @@
     border: 1px solid var(--divider); color: inherit; background: transparent;
   }
 }
+
+/* 大屏等比放大：常规页面的顶栏、首页内容与页脚共用 --ls-zoom（视频 / PPT 工作台、画布不受影响）。
+   只在宽高都足够时放大，超宽但较矮的带鱼屏保持原尺寸，避免首屏放不下。 */
+@media (min-width: 1800px) and (min-height: 860px) { .cr-shell.ls:not(.cr-shell-creation) { --ls-zoom: 1.12; } }
+@media (min-width: 2100px) and (min-height: 980px) { .cr-shell.ls:not(.cr-shell-creation) { --ls-zoom: 1.25; } }
+@media (min-width: 2500px) and (min-height: 1150px) { .cr-shell.ls:not(.cr-shell-creation) { --ls-zoom: 1.4; } }
+@media (min-width: 3000px) and (min-height: 1400px) { .cr-shell.ls:not(.cr-shell-creation) { --ls-zoom: 1.6; } }
+.cr-shell.ls:not(.cr-shell-creation) .cr-footer { zoom: var(--ls-zoom, 1); }

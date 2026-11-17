@@ -223,4 +223,4 @@ docker compose --env-file .env.production -f compose.prod.yaml down -v   # 连�
 - 发布镜像固定为无 C2PA 签名构建，`C2PA_ENABLED=1` 会在启动时被入口脚本拒绝，真实签名需要另有专门构建与验收。
 - 支付（`PAYMENTS_ENABLED`）、自动 QA（`QA_ENABLED`）默认关闭，通过各自真实验收后再打开。
 
-国内入口复用同一工作流发布静态资源，配置与宝塔接入见 [国内部署说明](./mainland-static-deployment.md)。启用国内节点后，国内和香港所有已启用节点同步成功才推进正式镜像标签。
+静态资源发布只面向香港节点，由 `HK_STATIC_DEPLOY_ENABLED` 控制，见 [香港静态资源发布](./hong-kong-static-deployment.md)。国内入口只做反向代理，静态资源仍由美国源站提供。

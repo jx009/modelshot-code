@@ -1,6 +1,6 @@
 # 香港入口的静态资源发布
 
-同一 Action 也支持可独立启用的国内节点，见 [国内部署说明](./mainland-static-deployment.md)。香港现有 HK_* 配置继续生效；同时启用时，两边上传都成功才推进正式镜像标签。
+静态资源只发布到香港节点，由 `HK_STATIC_DEPLOY_ENABLED=true` 启用；上传成功后才会推进 `latest`/`main`/SHA 标签。国内节点不参与静态资源发布。
 
 美国运行 Next.js Web、Worker、数据库与存储，香港 Nginx 作为 `www.letaidraw.com` 的入口。
 反代是否完成仍需验证：DNS 指向香港、美国 `PUBLIC_URL=https://www.letaidraw.com`、登录和生成成功、SSE 及时返回。

@@ -1,5 +1,9 @@
 # 国内入口的静态资源发布
 
+> **已停用。** `publish_cn_static` 已从 `.github/workflows/docker-build.yml` 移除，`CN_*` 变量与 Secrets 不再生效。
+> 国内节点现在只做反向代理回美国源站，静态资源由香港节点发布。本文件仅作为恢复该能力时的历史参考。
+
+
 现有 `.github/workflows/docker-build.yml` 同时支持香港和中国大陆节点，不新增独立构建流程。国内 Nginx 本地提供 JS、CSS、字体及随构建发布的公开图片，页面 HTML、RSC、API、登录、SSE、图片优化和私有素材仍由美国 Next.js 服务处理。这不是静态导出整个 Next.js 网站。
 
 ## GitHub 配置

@@ -9,6 +9,8 @@ import { ASSET_CDN_ORIGIN } from "@/lib/asset-cdn";
 
 const fieldClass = "w-full min-w-0 rounded-xl border border-divider bg-bg-page px-3 py-2.5 text-sm text-primary-text disabled:opacity-60";
 const messages = {
+  ADMIN_SCOPE_DENIED: "当前账号不是 ROOT，或账号状态不是“正常”，后台写操作被拒绝。请在用户管理中确认账号状态。",
+  IDEMPOTENCY_CONFLICT: "上一次提交的内容与本次不同，请刷新页面后重试。",
   COS_PRIMARY_MIGRATION_REQUIRED: "已有原图直接存放在 COS，迁移原图前不能更换存储桶或地域；可继续更新密钥和其他设置。",
   COS_CREDENTIALS_REQUIRED: "请填写存储桶、SecretId 和 SecretKey。",
   COS_ACCESS_DENIED: "权限不足：请检查子账号对指定目录的上传、读取、删除权限，以及存储桶 ACL 读取权限。",
@@ -22,10 +24,22 @@ const messages = {
   INVALID_INPUT: "配置格式有误，请核对桶名、地域、目录前缀和链接有效期。",
 };
 function Field({ label, hint, children }) { return <label className="block space-y-2 text-xs text-secondary-text"><span>{label}</span>{children}{hint && <span className="block leading-5">{hint}</span>}</label>; }
+// 403 可能来自三处：账号权限（纯文本 Forbidden）、后台写操作的账号状态校验（JSON 错误码）、
+// 或请求在到达服务前被网关 / WAF 拦截（HTML 或空响应）。分别提示，避免把所有 403 都说成“不是 ROOT”。
 async function responseBody(response) {
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(response.status === 403 ? "仅 ROOT 可修改和测试云存储配置。" : messages[data.error] || "操作失败，请稍后重试。");
-  return data;
+  let text = "", data = {};
+  if (typeof response.text === "function") {
+    text = await response.text().catch(() => "");
+    try { data = JSON.parse(text); } catch { /* 非 JSON 响应 */ }
+  } else data = await response.json().catch(() => ({}));
+  if (response.ok) return data;
+  const code = data.error || data.code;
+  if (code) throw new Error(messages[code] || `操作失败（${code}${data.traceId ? ` · 追踪号 ${data.traceId.slice(0, 8)}` : ""}），请稍后重试。`);
+  if (response.status === 403) throw new Error(text.trim() === "Forbidden"
+    ? "服务端判定当前登录账号不是 ROOT 或已被封禁。请退出后重新登录再试。"
+    : "请求在到达服务前被拦截（HTTP 403）。请检查香港 Nginx、CDN 或 WAF 是否拦截了 /api/admin/storage 的 POST / PATCH 请求。");
+  if (response.status === 401) throw new Error("登录已失效，请重新登录。");
+  throw new Error(`操作失败（HTTP ${response.status}），请稍后重试。`);
 }
 function browserProbe(url) {
   return new Promise((resolve, reject) => {

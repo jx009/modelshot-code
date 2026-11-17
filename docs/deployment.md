@@ -104,6 +104,8 @@ MODELSHOT_IMAGE=jx009/modelshot:latest
 MODELSHOT_TOOLS_IMAGE=jx009/modelshot:tools-latest
 ```
 
+国内服务器直连 Docker Hub 时拉取 1.3 GB 常常要几分钟以上。启用 GitHub 仓库变量 `MIRROR_IMAGE` 后，发布流程会把相同的四个标签复制到指定镜像仓库（例如腾讯云 TCR 的 `ccr.ccs.tencentyun.com/<命名空间>/modelshot`）。随后把上面两行改成该仓库的 `latest` 与 `tools-latest` 即可，标签语义不变，回滚只需改回 Docker Hub 地址。配置方法见 [Docker 镜像发布](./docker-publishing.md#国内镜像仓库镜像)。
+
 `tools` 只在 Compose 私有网络监听 8090，不应映射到公网。第一次自行构建会下载并写入 U2Net 抠图权重，因此比普通 Web 镜像慢；运行时不下载模型。物体移动和局部修改的圈选由配置好的火山智能视觉 EntitySegment API 完成。
 
 本地工具服务只用 rembg 处理一键抠图，不再负责物体分割。在“模型配置 → 工具专用模型”新增火山智能视觉 EntitySegment，填写 AK/SK；“工具配置”可为物体移动和局部修改指定该通道。不要反复对整套服务执行 `--force-recreate`，这会重置抠图模型加载。若先前启动被依赖检查中断，在数据库、Redis、存储和迁移已成功的前提下，用以下命令恢复应用容器：

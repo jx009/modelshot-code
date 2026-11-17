@@ -308,3 +308,44 @@ jobs:
           TAGS: ${{ steps.tools-meta.outputs.tags }}
         shell: bash
         run: bash scripts/publish-image-manifest.sh "$IMAGE:tools-$BUILD_TAG-amd64" "$IMAGE:tools-$BUILD_TAG-arm64"
+
+  mirror_registry:
+    name: Mirror tags to a regional registry
+    needs: [prepare, create_manifests]
+    if: >-
+      ${{ !cancelled() && needs.prepare.result == 'success' && needs.create_manifests.result == 'success' &&
+          vars.MIRROR_IMAGE != '' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.sha }}
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+      - name: Sign in to both registries
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          MIRROR_REGISTRY_USERNAME: ${{ secrets.MIRROR_REGISTRY_USERNAME }}
+          MIRROR_REGISTRY_PASSWORD: ${{ secrets.MIRROR_REGISTRY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+          host=${MIRROR_IMAGE%%/*}
+          echo "$MIRROR_REGISTRY_PASSWORD" | docker login -u "$MIRROR_REGISTRY_USERNAME" --password-stdin "$host"
+      - name: Copy the merged indexes
+        # A mirror failure must not fail the release: Docker Hub remains the source of truth.
+        continue-on-error: true
+        env:
+          MIRROR_IMAGE: ${{ vars.MIRROR_IMAGE }}
+          SHA: ${{ github.sha }}
+        shell: bash
+        run: bash scripts/mirror-image.sh
+      - name: Deployment summary
+        if: ${{ always() }}
+        env:
+          MIRROR_IMAGE: ${{ vars.MIRROR_IMAGE }}
+        run: >-
+          echo "Regional mirror: ${MIRROR_IMAGE:-not configured} (see the copy step above for per-tag results)."
+          >> "$GITHUB_STEP_SUMMARY"

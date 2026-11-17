@@ -23,6 +23,31 @@
 
 每次运行先写带 SHA/run ID/attempt 的架构临时标签，两个架构成功后合并公共标签，避免混合两次运行的架构镜像。不同架构缓存独立，最终标签可用于 x86_64 和 ARM64 主机。Actions summary 可查看镜像 digest；生产建议固定 `sha256` digest 部署。
 
+## 国内镜像仓库镜像
+
+国内服务器直连 Docker Hub 拉取 `latest` 与 `tools-latest`（合计约 1.3 GB）经常要几分钟以上，瓶颈是出口链路而不是服务器本身。可选启用一次额外的标签复制，让国内服务器从同地域的镜像仓库拉取。
+
+在本仓库 Settings → Secrets and variables → Actions 增加：
+
+| 类型 | 名称 | 值 |
+| --- | --- | --- |
+| Variable | `MIRROR_IMAGE` | 目标仓库，含命名空间，如 `ccr.ccs.tencentyun.com/modelshot/modelshot`。留空则完全跳过这一步 |
+| Secret | `MIRROR_REGISTRY_USERNAME` | 该仓库的推送账号 |
+| Secret | `MIRROR_REGISTRY_PASSWORD` | 该账号的密码或 Token |
+
+`create_manifests` 成功推进公共标签之后，`mirror_registry` 会用 `docker buildx imagetools create` 把合并好的多架构索引原样复制到 `latest`、`sha-<sha>`、`tools-latest`、`tools-sha-<sha>` 四个标签，再逐个读回确认，不重新构建也不改摘要。这一步标记为 `continue-on-error`：镜像仓库不可用时只在日志里失败，Docker Hub 仍然是唯一权威来源，发布不受影响。
+
+目标仓库需要事先创建并允许推送。腾讯云 TCR 个人版免费，实例地址形如 `ccr.ccs.tencentyun.com`；企业版的地址不同，按控制台给的填。`postgres`、`redis` 与 MinIO 三个基础镜像很少变化，首次部署时单独镜像一次或用云厂商的公共镜像即可，不在此流程内。
+
+启用后把服务器 `.env.production` 里的两个镜像名改成镜像仓库地址，标签名保持一致：
+
+```ini
+MODELSHOT_IMAGE=ccr.ccs.tencentyun.com/modelshot/modelshot:latest
+MODELSHOT_TOOLS_IMAGE=ccr.ccs.tencentyun.com/modelshot/modelshot:tools-latest
+```
+
+回滚时改回 Docker Hub 地址即可，两种地址的标签一一对应。
+
 ## 运行
 
 同一镜像支持 Web、Worker、迁移和运维命令。部署环境文件需自行提供数据库、Redis、私有 S3、登录地址及随机密钥。容器中的 localhost 指容器自身，应使用 Docker 网络服务名或实际服务地址。不要将本地 `.env` 打进镜像。

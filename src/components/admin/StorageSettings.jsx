@@ -9,6 +9,7 @@ import { ASSET_CDN_ORIGIN } from "@/lib/asset-cdn";
 
 const fieldClass = "w-full min-w-0 rounded-xl border border-divider bg-bg-page px-3 py-2.5 text-sm text-primary-text disabled:opacity-60";
 const messages = {
+  CROSS_ORIGIN_REQUEST: "当前访问域名不在服务端允许的来源中。请在服务器 .env 的 ALLOWED_ORIGINS 中加入该域名后重启服务。",
   ADMIN_SCOPE_DENIED: "当前账号不是 ROOT，或账号状态不是“正常”，后台写操作被拒绝。请在用户管理中确认账号状态。",
   IDEMPOTENCY_CONFLICT: "上一次提交的内容与本次不同，请刷新页面后重试。",
   COS_PRIMARY_MIGRATION_REQUIRED: "已有原图直接存放在 COS，迁移原图前不能更换存储桶或地域；可继续更新密钥和其他设置。",

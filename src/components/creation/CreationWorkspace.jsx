@@ -38,7 +38,7 @@ function subscribeCompact(onChange) {
 }
 const active = status => ["queued", "running", "cancelling"].includes(status);
 
-const SLIDE_IDEAS = [
+export const SLIDE_IDEAS = [
   ["为咖啡新品发布会做一份 10 页 PPT，品牌调性温暖", "A 10-slide launch deck for a new coffee, warm brand tone"],
   ["季度经营复盘汇报，图表清晰、商务风格", "Quarterly business review, clear charts, corporate style"],
   ["给小学生讲太阳系的科普课件，活泼有趣", "A playful solar-system lesson for primary school"],

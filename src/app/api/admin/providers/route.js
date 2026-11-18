@@ -18,8 +18,10 @@ import { synthesizeSpeech } from "../../../../lib/domain/studio/voice.js";
 import { VIDEO_DURATIONS, videoModelOptions } from "../../../../lib/video/model-protocols.js";
 import { GPTBEST_VIDEO_APIS, validVideoParameters } from "../../../../lib/video/gptbest-catalog.js";
 import { videoVariantsSchema, videoFieldChoicesSchema } from "../../../../lib/video/variants.js";
+import { videoPricingSchema, perSecondCredits, pricedResolutions, RESOLUTIONS } from "../../../../lib/video/pricing.js";
 
 const kindSchema = z.enum(["openai", "gemini", "fashn", "dashscope", "volcengine", "minimax", "volc-visual", "fal", "zzshu", "gptbest"]);
+const reuseConnection = { reuseConnectionFrom: z.string().trim().min(1).max(128).optional() };
 function assertVideoSettings(kind, config) {
   if (kind !== "gptbest" || config.studioCapability !== "video") return;
   const options = videoModelOptions(kind, config);
@@ -28,9 +30,19 @@ function assertVideoSettings(kind, config) {
   if (Object.keys(config.videoFieldChoices || {}).some(key => !keys.includes(key))) throw new AppError("VIDEO_FIELDS_INVALID", 422);
 }
 const visualSecrets = { accessKeyId: z.string().max(4096).optional(), secretAccessKey: z.string().max(4096).optional() };
+// 复用已有模型的 Base URL 与密钥：只传通道 id，密钥密文在服务端内部复制，不回传明文。
+async function copyConnection(tx, sourceId, config) {
+  if (!sourceId) return;
+  const source = await tx.modelProvider.findUnique({ where: { id: sourceId }, select: { config: true } });
+  if (!source) throw new AppError("PROVIDER_NOT_FOUND", 404);
+  const origin = JSON.parse(source.config || "{}");
+  if (origin.apiKeyEnc) { config.apiKeyEnc = origin.apiKeyEnc; config.reusedFrom = sourceId; }
+  if (origin.baseURL) { config.baseURL = origin.baseURL; config.reusedFrom = sourceId; }
+  if (origin.accessKeyIdEnc && origin.secretAccessKeyEnc) { config.accessKeyIdEnc = origin.accessKeyIdEnc; config.secretAccessKeyEnc = origin.secretAccessKeyEnc; config.reusedFrom = sourceId; }
+}
 const channelFields = { scope: z.enum(["public", "tool", "language"]).optional(), studioCapability: z.enum(["image", "video", "segment", "split", "language", "ocr", "upscale", "voice"]).optional(),
   voiceOptions: z.object({ voices: z.array(z.object({ id: z.string().regex(/^[a-zA-Z0-9_.:-]{1,64}$/), label: z.string().trim().min(1).max(40) }).strict()).min(1).max(30) }).strict().optional(), imageMode: z.enum(["both", "generate", "edit"]).optional(), studioDefault: z.boolean().optional(),
-  videoVariants: videoVariantsSchema.optional(), videoFieldChoices: videoFieldChoicesSchema.optional(),
+  videoVariants: videoVariantsSchema.optional(), videoFieldChoices: videoFieldChoicesSchema.optional(), videoPricing: videoPricingSchema,
   videoApi: z.enum(GPTBEST_VIDEO_APIS.map(api => api.id)).optional(), videoParameters: z.record(z.string(), z.json()).refine(validVideoParameters).optional(),
   videoInputMode: z.enum(["text", "image", "both"]).optional(), videoReferenceMode: z.enum(["first_frame", "reference_images"]).optional(), videoDurations: z.array(z.union(VIDEO_DURATIONS.map(value => z.literal(value)))).min(1).max(VIDEO_DURATIONS.length).refine(values => new Set(values).size === values.length).optional() };
 
@@ -53,12 +65,15 @@ function safeConfig(configStr, row) {
     hasAccessKey: Boolean(cfg.accessKeyIdEnc),
     hasSecretKey: Boolean(cfg.secretAccessKeyEnc),
     baseURL: cfg.baseURL || "",
+    reusedFrom: cfg.reusedFrom || "",
     model: cfg.model || "",
     chatModel: cfg.chatModel || "",
     scope: channelScope(row, cfg), studioCapability: channelCapability(row, cfg), imageMode: cfg.imageMode || "both", studioDefault: Boolean(cfg.studioDefault),
     ...(channelCapability(row, cfg) === "video" ? { videoInputMode: videoModelOptions(row.kind, cfg)?.inputMode, videoDurations: videoModelOptions(row.kind, cfg)?.durations,
       ...(row.kind === "gptbest" ? { videoApi: videoModelOptions(row.kind, cfg).api, videoParameters: cfg.videoParameters || {}, videoVariants: cfg.videoVariants || [], videoFieldChoices: cfg.videoFieldChoices || {} } : {}),
-      ...(row.kind === "zzshu" ? { videoReferenceMode: videoModelOptions(row.kind, cfg).referenceMode } : {}) } : {}),
+      ...(row.kind === "zzshu" ? { videoReferenceMode: videoModelOptions(row.kind, cfg).referenceMode } : {}),
+      // 按秒计费：回传已配置的每秒价，管理端据此显示每档清晰度的实际单价。
+      ...(cfg.videoPricing ? { videoPricing: cfg.videoPricing, perSecond: Object.fromEntries(RESOLUTIONS.map(resolution => [resolution, perSecondCredits(cfg.videoPricing, resolution)])) } : {}) } : {}),
     ...(channelCapability(row, cfg) === "voice" ? { voiceOptions: cfg.voiceOptions || { voices: [] } } : {}),
   };
 }
@@ -124,13 +139,14 @@ export async function PATCH(req) {
   try {
     const auth = await requireAdmin(req, "root");
     if (auth.response) return auth.response;
-    const input = await readJson(req, z.object({ ...channelFields, ...visualSecrets, id: z.string().min(1).max(128), kind: kindSchema.optional(), isActive: z.boolean().optional(), isDefault: z.boolean().optional(), isPlanner: z.boolean().optional(), priority: z.number().int().min(0).max(1000).optional(), displayName: z.string().min(1).max(100).optional(), creditCost: z.number().int().min(0).max(100000).optional(), costPerImage: z.number().min(0).max(1000).optional(), apiKey: z.string().max(4096).optional(), baseURL: z.string().trim().max(500).optional(), model: z.string().max(128).optional(), chatModel: z.string().max(128).optional(), reason: z.string().min(3).max(500) }).strict());
+    const input = await readJson(req, z.object({ ...reuseConnection, ...channelFields, ...visualSecrets,id: z.string().min(1).max(128), kind: kindSchema.optional(), isActive: z.boolean().optional(), isDefault: z.boolean().optional(), isPlanner: z.boolean().optional(), priority: z.number().int().min(0).max(1000).optional(), displayName: z.string().min(1).max(100).optional(), creditCost: z.number().int().min(0).max(100000).optional(), costPerImage: z.number().min(0).max(1000).optional(), apiKey: z.string().max(4096).optional(), baseURL: z.string().trim().max(500).optional(), model: z.string().max(128).optional(), chatModel: z.string().max(128).optional(), reason: z.string().min(3).max(500) }).strict());
     if (!allowedProviderBaseURL(input.baseURL)) throw new AppError("PROVIDER_BASE_URL_INVALID");
     const result = await auditedOperation(auth.user.id, req.headers.get("idempotency-key"), "UPDATE_PROVIDER", input, async tx => {
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended('provider-config', 0))::text`;
       const existing = await tx.modelProvider.findUnique({ where: { id: input.id } });
       if (!existing) throw new AppError("PROVIDER_NOT_FOUND", 404);
       const cfg = JSON.parse(existing.config || "{}");
+      if (input.reuseConnectionFrom && input.reuseConnectionFrom !== existing.id) await copyConnection(tx, input.reuseConnectionFrom, cfg);
       if (input.apiKey?.trim()) cfg.apiKeyEnc = encryptSecret(input.apiKey.trim());
       if (input.accessKeyId?.trim()) cfg.accessKeyIdEnc = encryptSecret(input.accessKeyId.trim());
       if (input.secretAccessKey?.trim()) cfg.secretAccessKeyEnc = encryptSecret(input.secretAccessKey.trim());
@@ -142,6 +158,9 @@ export async function PATCH(req) {
       if (kind !== "zzshu" || cfg.studioCapability !== "video") delete cfg.videoReferenceMode;
       if (kind !== "gptbest" || cfg.studioCapability !== "video") { delete cfg.videoApi; delete cfg.videoParameters; delete cfg.videoVariants; delete cfg.videoFieldChoices; }
       if (cfg.studioCapability !== "voice") delete cfg.voiceOptions;
+      if (cfg.studioCapability !== "video") delete cfg.videoPricing;
+      // 配了按秒价就必须至少有一档能算出价格，否则用户无法选择也无法报价。
+      if (cfg.videoPricing && !pricedResolutions(cfg.videoPricing).length) throw new AppError("VIDEO_PRICING_INVALID", 422);
       if (!validChannel(kind, cfg)) throw new AppError("PROVIDER_CAPABILITY_UNSUPPORTED", 422);
       assertVideoSettings(kind, cfg);
       if (kind === "volc-visual" && (!cfg.accessKeyIdEnc || !cfg.secretAccessKeyEnc)) throw new AppError(cfg.studioCapability === "upscale" ? "UPSCALE_NOT_CONFIGURED" : "SEGMENTATION_NOT_CONFIGURED", 422);
@@ -177,13 +196,14 @@ export async function PUT(req) {
   try {
     const auth = await requireAdmin(req, "root");
     if (auth.response) return auth.response;
-    const input = await readJson(req, z.object({ ...channelFields, ...visualSecrets, kind: kindSchema, displayName: z.string().trim().min(1).max(100), model: z.string().trim().min(1).max(128), chatModel: z.string().trim().max(128).default(""), apiKey: z.string().max(4096).default(""), baseURL: z.string().trim().max(500).default(""), creditCost: z.number().int().min(0).max(100000).default(18), costPerImage: z.number().min(0).max(1000).default(0), reason: z.string().min(3).max(500) }).strict());
+    const input = await readJson(req, z.object({ ...reuseConnection, ...channelFields, ...visualSecrets,kind: kindSchema, displayName: z.string().trim().min(1).max(100), model: z.string().trim().min(1).max(128), chatModel: z.string().trim().max(128).default(""), apiKey: z.string().max(4096).default(""), baseURL: z.string().trim().max(500).default(""), creditCost: z.number().int().min(0).max(100000).default(18), costPerImage: z.number().min(0).max(1000).default(0), reason: z.string().min(3).max(500) }).strict());
     if (!allowedProviderBaseURL(input.baseURL)) throw new AppError("PROVIDER_BASE_URL_INVALID");
     const result = await auditedOperation(auth.user.id, req.headers.get("idempotency-key"), "CREATE_PROVIDER", input, async tx => {
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended('provider-config', 0))::text`;
       const priority = (await tx.modelProvider.aggregate({ _max: { priority: true } }))._max.priority || 0;
       const config = { model: input.model, ...(input.chatModel ? { chatModel: input.chatModel } : {}), ...(input.baseURL ? { baseURL: normalizeBaseURL(input.baseURL) } : {}), ...(input.apiKey.trim() ? { apiKeyEnc: encryptSecret(input.apiKey.trim()) } : {}) };
-      for (const field of ["studioCapability", "imageMode", "scope", "videoInputMode", "videoDurations", "videoReferenceMode", "videoApi", "videoParameters", "videoVariants", "videoFieldChoices", "voiceOptions"]) if (input[field] !== undefined) config[field] = input[field];
+      for (const field of ["studioCapability", "imageMode", "scope", "videoInputMode", "videoDurations", "videoReferenceMode", "videoApi", "videoParameters", "videoVariants", "videoFieldChoices", "voiceOptions", "videoPricing"]) if (input[field] !== undefined) config[field] = input[field];
+      await copyConnection(tx, input.reuseConnectionFrom, config);
       if (input.accessKeyId?.trim()) config.accessKeyIdEnc = encryptSecret(input.accessKeyId.trim());
       if (input.secretAccessKey?.trim()) config.secretAccessKeyEnc = encryptSecret(input.secretAccessKey.trim());
       if (input.kind === "volc-visual" && (!config.accessKeyIdEnc || !config.secretAccessKeyEnc)) throw new AppError(config.studioCapability === "upscale" ? "UPSCALE_NOT_CONFIGURED" : "SEGMENTATION_NOT_CONFIGURED", 422);

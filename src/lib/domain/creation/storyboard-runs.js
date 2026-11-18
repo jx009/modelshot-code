@@ -10,6 +10,7 @@ import { studioConfig, capabilities } from "../studio/providers.js";
 import { imageCreditCost } from "../../studio/image-pricing.js";
 import { videoInputError } from "../../video/model-protocols.js";
 import { selectVideoVariant } from "../../video/variants.js";
+import { defaultResolution, videoJobCost } from "../../video/pricing.js";
 import { motionAssetIds } from "../../video/schema.js";
 import { inspectVideoResult } from "../studio/video-result-media.js";
 import { saveDocument } from "../studio/documents.js";
@@ -75,12 +76,15 @@ export async function planStoryboard(video, sceneIds, { provider, imageProvider,
       const duration = nearestDuration(options?.durations?.length ? options.durations : [5], scene.duration);
       // 配置了规格（清晰度 / 声音组合）的模型必须选一个：取第一个支持该时长与比例的规格。
       const variantId = options?.variants?.find(row => row.durations.includes(duration) && row.ratios.includes(composition.ratio))?.id;
-      const params = { prompt: clipPrompt(scene), ratio: composition.ratio, duration, ...(variantId ? { videoVariant: variantId } : {}) };
+      // 按秒计费的通道：每个镜头按最低清晰度报价，与扣费口径保持一致。
+      const resolution = clip.config.videoPricing ? defaultResolution(clip.config.videoPricing) : undefined;
+      const params = { prompt: clipPrompt(scene), ratio: composition.ratio, duration, ...(variantId ? { videoVariant: variantId } : {}), ...(resolution ? { resolution } : {}) };
       const selection = selectVideoVariant(options, variantId);
       if (selection.error) throw new AppError(selection.error, 422);
       const error = videoInputError(selection.options || options, { ...params, hasImage: Boolean(frameStep) });
       if (error) throw new AppError(error, 422);
-      add({ tool: "video", params: { sceneId: scene.id, ...(clip.config.videoProvider ? { provider: clip.config.videoProvider } : {}), params }, expectedCost: selection.variant?.creditCost ?? tool.cost, explanation: `${label} · 视频`, dependsOn: frameStep ? [frameStep] : [] }, { sceneId: scene.id, label: `${label} · 视频 ${duration} 秒` });
+      const expectedCost = clip.config.videoPricing ? videoJobCost(clip.config.videoPricing, selection.variant?.creditCost ?? tool.cost, duration, resolution) : selection.variant?.creditCost ?? tool.cost;
+      add({ tool: "video", params: { sceneId: scene.id, ...(clip.config.videoProvider ? { provider: clip.config.videoProvider } : {}), params }, expectedCost, explanation: `${label} · 视频`, dependsOn: frameStep ? [frameStep] : [] }, { sceneId: scene.id, label: `${label} · 视频 ${duration} 秒` });
     }
     if (scene.narration.trim() && composition.voice) {
       const voice = await load(`voice:${composition.voice.provider}`, "voice", "tts", composition.voice.provider, { pinned: true });
@@ -152,7 +156,8 @@ export async function priceStoryboardSteps(steps, _provider, db = prisma) {
     const config = await studioConfig(db, step.params.provider, capability, step.tool, { pinned: step.tool !== "video" && Boolean(step.params.provider), skipPreview: true });
     const tool = (await capabilities(db, config)).tools.find(item => item.id === step.tool);
     if (!tool?.available) throw new AppError(tool?.reason || "TOOL_UNAVAILABLE", 503);
-    costs.push(step.tool === "generate" ? imageCreditCost(tool, step.params.params.size, 0) : step.tool === "video" ? selectVideoVariant(config.videoOptions, step.params.params.videoVariant).variant?.creditCost ?? tool.cost : tool.cost);
+    const variant = step.tool === "video" ? selectVideoVariant(config.videoOptions, step.params.params.videoVariant).variant : null;
+    costs.push(step.tool === "generate" ? imageCreditCost(tool, step.params.params.size, 0) : config.videoPricing ? videoJobCost(config.videoPricing, variant?.creditCost ?? tool.cost, step.params.params.duration, step.params.params.resolution || defaultResolution(config.videoPricing)) : variant?.creditCost ?? tool.cost);
   }
   return { costs, providers: [] };
 }

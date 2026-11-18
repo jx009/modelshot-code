@@ -37,6 +37,8 @@ async function request(config, path, { signal, body, headers = {} } = {}) {
 }
 
 export async function videoRequest(config, { image, imageUrl, references = [], media = [], videoFields = {}, videoVariant, prompt, duration, ratio = "16:9", requestId, signal }) {
+  // 计费阶段已按通道价格表确定本次清晰度，执行阶段沿用同一个值，避免报价与扣费不一致。
+  const resolution = config.videoResolution;
   const kind = config.videoKind || "volcengine";
   if (!config.videoKey || !config.videoModel) throw new AppError("SERVICE_NOT_CONFIGURED", 503);
   if (!requestId) {
@@ -44,7 +46,7 @@ export async function videoRequest(config, { image, imageUrl, references = [], m
     if (error) throw new AppError(error, 422);
   } else taskId(requestId);
   const encodedId = requestId ? encodeURIComponent(requestId) : null;
-  if (kind === "gptbest") return gptBestVideoRequest(config, { image: image && config.videoOptions?.api === "sora" ? await referenceImage(image, ratio) : image, references, media, videoFields, prompt, duration, ratio, requestId, signal });
+  if (kind === "gptbest") return gptBestVideoRequest(config, { image: image && config.videoOptions?.api === "sora" ? await referenceImage(image, ratio) : image, references, media, videoFields, prompt, duration, ratio, resolution, requestId, signal });
   if (["openai", "zzshu"].includes(kind)) {
     let body;
     if (!requestId) {
@@ -103,7 +105,7 @@ export async function videoRequest(config, { image, imageUrl, references = [], m
   }
   if (kind !== "volcengine") throw new AppError("VIDEO_PROTOCOL_UNSUPPORTED", 422);
   const data = await request(config, `/contents/generations/tasks${requestId ? `/${encodedId}` : ""}`, { signal, headers: { "Content-Type": "application/json" },
-    ...(!requestId ? { body: JSON.stringify({ model: config.videoModel, content: [{ type: "text", text: `${prompt} --duration ${duration} --watermark false --ratio ${ratio}` }, ...(image ? [{ type: "image_url", image_url: { url: `data:image/png;base64,${image.toString("base64")}` }, role: "first_frame" }] : [])] }) } : {}) });
+    ...(!requestId ? { body: JSON.stringify({ model: config.videoModel, content: [{ type: "text", text: `${prompt} --duration ${duration} --watermark false --ratio ${ratio}${resolution ? ` --resolution ${resolution}` : ""}` }, ...(image ? [{ type: "image_url", image_url: { url: `data:image/png;base64,${image.toString("base64")}` }, role: "first_frame" }] : [])] }) } : {}) });
   if (!requestId) return { state: "pending", requestId: taskId(data.id) };
   if (["failed", "cancelled", "expired"].includes(data.status)) return { state: "failed" };
   if (data.status !== "succeeded") {

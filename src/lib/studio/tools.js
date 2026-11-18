@@ -6,6 +6,7 @@ import { TOOLS, getTool } from "./tool-catalog.js";
 import { ADJUSTMENT_KEYS } from "./adjustments.js";
 import { IMAGE_REFERENCE_ROLES } from "./image-references.js";
 import { motionSchema, videoDocumentSchema, videoMediaSchema, videoRatios, videoDurationSchema, MOTION_SCENARIOS } from "../video/schema.js";
+import { RESOLUTIONS } from "../video/pricing.js";
 
 export { TOOLS, getTool } from "./tool-catalog.js";
 const id = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
@@ -37,6 +38,8 @@ export const paramsSchema = z.object({
   duration: videoDurationSchema.default(5),
   ratio: z.enum(videoRatios).optional(),
   videoVariant: id.optional(),
+  // 输出清晰度。官方按分辨率分档计价，报价与扣费都以这个值为准。
+  resolution: z.enum(RESOLUTIONS).optional(),
   motion: motionSchema.optional(),
   media: z.array(videoMediaSchema).max(50).optional(),
   videoFields: z.record(z.string().regex(/^[a-zA-Z][a-zA-Z0-9_]{0,63}$/), z.string().max(1000)).refine(value => Object.keys(value).length <= 12).optional(),

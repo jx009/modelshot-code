@@ -16,6 +16,7 @@ import { generateCloudImage } from "./cloud.js";
 import { IMAGE_REQUEST_TIMEOUT_MS, imageFetch } from "../../ai/image-request.js";
 import { VIDEO_KINDS, VIDEO_PROTOCOLS, videoModelOptions } from "../../video/model-protocols.js";
 import { publicVideoOptions } from "../../video/gptbest-catalog.js";
+import { parseVideoPricing, pricedResolutions } from "../../video/pricing.js";
 export { videoRequest } from "./video-providers.js";
 
 // Resolve user-visible image selection separately from administrator-owned tool stages.
@@ -74,6 +75,7 @@ export function resolveStudioConfig(rows, toolRows = [], channelName, capability
     plannerProvider: planner?.name || null, plannerKind: planner?.kind || "openai", plannerCreditCost: planner?.creditCost ?? 1,
     videoProvider: videoChannel?.name || null, videoKind: videoChannel?.kind || "volcengine",
     videoDisplayName: videoChannel?.displayName || "Video model", videoCreditCost: videoChannel?.creditCost,
+    videoPricing: parseVideoPricing(videoConfig),
     videoKey: videoChannel ? videoConfig.apiKeyEnc ? decryptSecret(videoConfig.apiKeyEnc) : undefined : process.env.ARK_API_KEY,
     videoModel: videoChannel ? videoConfig.model : process.env.ARK_VIDEO_MODEL,
     videoURL: videoConfig.baseURL || (!videoChannel ? process.env.ARK_BASE_URL : null) || VIDEO_PROTOCOLS[videoChannel?.kind || "volcengine"]?.baseURL,
@@ -116,7 +118,10 @@ export async function capabilities(db = prisma, config, channelName, { imageOnly
     const selected = resolveStudioConfig(rows, settings, model.id, "image", "generate", { pinned: true, skipPreview: true, imageOnly: true });
     model.prices = selected.toolEnabled && supportsImageTask(selected, "generate") ? Object.fromEntries(POSTER_IMAGE_SIZES.filter(size => !imageSizeError(selected, size)).map(size => [size, imageCreditCost({ id: "generate", cost: model.creditCost, resolutionSurcharges: surcharges }, size, 0)])) : {};
   }
-  const videoModels = rows.filter(row => channelScope(row) === "public" && channelCapability(row) === "video" && VIDEO_KINDS.includes(row.kind)).filter(row => { const parsed = JSON.parse(row.config || "{}"); return Boolean(parsed.apiKeyEnc && parsed.model && (parsed.baseURL || VIDEO_PROTOCOLS[row.kind].baseURL)); }).map(row => ({ id: row.name, label: row.displayName, cost: row.creditCost, ...publicVideoOptions(videoModelOptions(row.kind, JSON.parse(row.config || "{}"))) }));
+  const videoModels = rows.filter(row => channelScope(row) === "public" && channelCapability(row) === "video" && VIDEO_KINDS.includes(row.kind)).filter(row => { const parsed = JSON.parse(row.config || "{}"); return Boolean(parsed.apiKeyEnc && parsed.model && (parsed.baseURL || VIDEO_PROTOCOLS[row.kind].baseURL)); }).map(row => {
+    const parsed = JSON.parse(row.config || "{}"), pricing = parseVideoPricing(parsed);
+    return { id: row.name, label: row.displayName, cost: row.creditCost, ...(pricing ? { videoPricing: pricing, resolutions: pricedResolutions(pricing) } : {}), ...publicVideoOptions(videoModelOptions(row.kind, parsed)) };
+  });
   // 旁白配音模型：只公开名称、价格与音色，凭据与接口地址留在服务端。
   const voiceModels = imageOnly ? [] : rows.filter(row => channelCapability(row) === "voice").map(row => ({ row, parsed: JSON.parse(row.config || "{}") }))
     .filter(({ row, parsed }) => voiceChannelReady({ kind: row.kind, apiKey: parsed.apiKeyEnc, model: parsed.model, baseURL: parsed.baseURL, voiceOptions: parsed.voiceOptions }))

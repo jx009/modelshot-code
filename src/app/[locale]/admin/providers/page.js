@@ -10,6 +10,7 @@ import { VIDEO_KINDS, VIDEO_PROTOCOLS, VIDEO_DURATIONS, videoModelOptions } from
 import { GPTBEST_VIDEO_APIS, gptBestApi, validVideoParameters } from "@/lib/video/gptbest-catalog";
 
 import { videoVariantsSchema, videoFieldChoicesSchema } from "@/lib/video/variants";
+import { RESOLUTIONS } from "@/lib/video/pricing";
 
 const providerError = error => ["PROVIDER_BASE_URL_INVALID", "PROVIDER_PROXY_NOT_ALLOWED"].includes(error?.message)
   ? "模型接口地址格式不正确：请填写完整的 http:// 或 https:// 地址，可包含端口和路径，不要附带用户名、密码、查询参数或 #。"
@@ -120,7 +121,8 @@ export default function AdminProviders() {
     {category === "tool" && <div className="flex flex-wrap gap-2">{["ocr", "upscale"].map(purpose => <button key={purpose} type="button" className="h-9 px-4 rounded-[10px] border border-divider text-primary-text text-xs inline-flex items-center gap-1.5" onClick={() => { setChannel(dedicatedPreset(purpose)); setAdding(true); }}><Plus size={14} />新增{PURPOSE_LABELS[purpose]}配置</button>)}</div>}
     {adding && <form onSubmit={create} className="rounded-[16px] border border-primary/50 bg-primary-muted/20 p-5 space-y-4">
       <div className="flex items-center justify-between"><div><h2 className="text-sm font-medium text-primary-text">新增模型</h2><p className="text-xs text-secondary-text mt-1">凭据、地址和实际模型名只在服务端使用。</p></div><button type="button" className="text-secondary-text" onClick={() => setAdding(false)}><X size={16} /></button></div>
-      {!["language", "voice"].includes(category) && <Field label="配置预设"><select defaultValue="" onChange={e => { const preset = CHANNEL_PRESETS[Number(e.target.value)]; if (preset) { const { label, ...settings } = preset; setChannel({ ...emptyChannel, ...settings, scope: category === "video" ? "public" : category, displayName: label }); } }}><option value="" disabled>选择供应商</option>{CHANNEL_PRESETS.map((preset, index) => (category !== "tool" || preset.kind !== "minimax") && (category === "video" ? preset.studioCapability === "video" : preset.studioCapability !== "video" && (category === "tool" || preset.studioCapability === "image" && preset.imageMode !== "edit")) && <option key={preset.label} value={index}>{preset.label}</option>)}</select></Field>}
+      <Field label="复用已有连接（可选）"><select value={channel.reuseConnectionFrom || ""} onChange={e => { const row = providers.find(item => item.id === e.target.value); setChannel(value => ({ ...value, reuseConnectionFrom: e.target.value || undefined, ...(row ? { kind: row.kind, baseURL: row.config.baseURL, model: "", displayName: value.displayName || row.displayName } : {}) })); }}><option value="">不复制 · 单独填写 Base URL 与密钥</option>{providers.filter(row => row.config.hasKey || row.config.hasAccessKey).map(row => <option key={row.id} value={row.id}>{row.displayName} · {row.kind}{row.config.baseURL ? ` · ${row.config.baseURL}` : ""}</option>)}</select><span className="block mt-1 text-xs text-secondary-text">选中后服务端直接复制该通道的 Base URL 与密钥，下面这些字段填新的模型名即可。</span></Field>
+      {!["language", "voice"].includes(category) && <Field label="配置预设"><select defaultValue="" onChange={e => { const preset = CHANNEL_PRESETS[Number(e.target.value)]; if (preset) { const { label, ...settings } = preset; setChannel(value => ({ ...emptyChannel, ...settings, scope: category === "video" ? "public" : category, displayName: label, reuseConnectionFrom: value.reuseConnectionFrom })); } }}><option value="" disabled>选择供应商</option>{CHANNEL_PRESETS.map((preset, index) => (category !== "tool" || preset.kind !== "minimax") && (category === "video" ? preset.studioCapability === "video" : preset.studioCapability !== "video" && (category === "tool" || preset.studioCapability === "image" && preset.imageMode !== "edit")) && <option key={preset.label} value={index}>{preset.label}</option>)}</select></Field>}
       {category === "voice" ? <VoiceChannelFields channel={channel} setChannel={setChannel} /> : <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {category === "tool" && <Field label="用途"><select value={channel.studioCapability} onChange={e => {
           const purpose = e.target.value;
@@ -131,13 +133,14 @@ export default function AdminProviders() {
         <Field label="显示名称"><input required value={channel.displayName} maxLength={100} onChange={e => setChannel(value => ({ ...value, displayName: e.target.value }))} placeholder="例如：来塔绘梦 Pro" /></Field>
         <Field label={channel.studioCapability === "upscale" ? "超分算法（固定）" : channel.studioCapability === "ocr" ? "OCR 视觉模型 ID / Endpoint ID" : "模型名 / 火山 Endpoint ID"}><input required readOnly={channel.kind === "volc-visual"} value={channel.model} maxLength={128} onChange={e => setChannel(value => ({ ...value, model: e.target.value }))} placeholder={channel.studioCapability === "video" ? "供应商提供的实际视频模型 ID" : channel.studioCapability === "ocr" ? "填写支持读图的模型名或 Endpoint ID" : "例如：gpt-image-2"} /></Field>
         {channel.kind === "fal" && <Field label="专用服务"><select value={channel.studioCapability} onChange={e => setChannel(value => ({ ...value, studioCapability: e.target.value }))}><option value="segment">物体分割</option><option value="split">图层拆分</option></select></Field>}
-        {channel.kind === "volc-visual" ? <><Field label="Access Key ID (AK)"><input required type="password" autoComplete="off" value={channel.accessKeyId} onChange={e => setChannel(value => ({ ...value, accessKeyId: e.target.value }))} /></Field><Field label="Secret Access Key (SK)"><input required type="password" autoComplete="off" value={channel.secretAccessKey} onChange={e => setChannel(value => ({ ...value, secretAccessKey: e.target.value }))} /></Field></> : <Field label="API Key"><input required type="password" value={channel.apiKey} maxLength={4096} onChange={e => setChannel(value => ({ ...value, apiKey: e.target.value }))} placeholder="sk-…" /></Field>}
+        {channel.kind === "volc-visual" ? <><Field label="Access Key ID (AK)"><input required={!channel.reuseConnectionFrom} type="password" autoComplete="off" value={channel.accessKeyId} onChange={e => setChannel(value => ({ ...value, accessKeyId: e.target.value }))} placeholder={channel.reuseConnectionFrom ? "复用已有连接" : ""} /></Field><Field label="Secret Access Key (SK)"><input required={!channel.reuseConnectionFrom} type="password" autoComplete="off" value={channel.secretAccessKey} onChange={e => setChannel(value => ({ ...value, secretAccessKey: e.target.value }))} placeholder={channel.reuseConnectionFrom ? "复用已有连接" : ""} /></Field></> : <Field label="API Key"><input required={!channel.reuseConnectionFrom} type="password" value={channel.apiKey} maxLength={4096} onChange={e => setChannel(value => ({ ...value, apiKey: e.target.value }))} placeholder={channel.reuseConnectionFrom ? "复用已有连接" : "sk-…"} /></Field>}
         <Field label="Base URL"><input type="url" value={channel.baseURL} maxLength={500} onChange={e => setChannel(value => ({ ...value, baseURL: e.target.value }))} placeholder="支持 HTTP / HTTPS，留空使用官方地址" /></Field>
         <Field label="每次模型请求积分"><input disabled={["ocr", "upscale"].includes(channel.studioCapability)} type="number" min="0" max="100000" step="1" value={channel.creditCost} onChange={e => setChannel(value => ({ ...value, creditCost: e.target.value }))} /></Field>
       </div>}
       {channel.kind === "minimax" && <MiniMaxNotice />}
       {["ocr", "upscale"].includes(channel.studioCapability) && <p className="text-xs text-secondary-text">{channel.studioCapability === "ocr" ? "支持火山方舟和 OpenAI 兼容 Chat Completions 接口。填写支持图片输入、JSON 输出的模型；兼容服务的 Base URL 填写 API 前缀（通常以 /v1 结尾）。此配置只用于 OCR。" : "原生 2× 超分 · CVProcess · cn-north-1。需开通图片超分权限，AK/SK 与方舟 API Key 不通用。"} 用户积分请在“工具配置”中设置。</p>}
       <button disabled={savingId === "new"} className="h-9 px-4 rounded-[10px] bg-primary text-primary-btn-text text-xs font-medium inline-flex items-center gap-1.5">{savingId === "new" && <LoaderCircle size={12} className="animate-spin" />}保存新模型</button>
+      {category === "video" && <VideoSecondPricing key={channel.videoPricing ? "tiered" : "empty"} value={channel.videoPricing || {}} onChange={videoPricing => setChannel(current => ({ ...current, videoPricing }))} />}
       {category === "video" && <VideoOptions kind={channel.kind} value={videoModelOptions(channel.kind, channel)} onChange={options => setChannel(current => ({ ...current, ...videoSettings(current.kind, options) }))} />}
     </form>}
 
@@ -158,6 +161,27 @@ function VideoOptions({ kind, value, onChange }) {
     <fieldset className="flex flex-wrap items-center gap-3 text-xs text-secondary-text"><legend>允许时长（按供应商模型文档勾选）</legend>{durations.map(duration => <label key={duration}><input type="checkbox" checked={value.durations.includes(duration)} disabled={value.durations.length === 1 && value.durations.includes(duration)} onChange={event => onChange({ ...value, durations: event.target.checked ? [...value.durations, duration].sort((first, second) => first - second) : value.durations.filter(item => item !== duration) })} /> {duration} 秒</label>)}</fieldset>
     <p className="text-xs text-secondary-text">请填写视频 API 前缀，不是聊天接口地址。吱吱鼠使用 JSON，标准 OpenAI Videos 使用表单，两者都请求 /videos（通常前缀为 /v1）。方舟使用 /contents/generations/tasks，百炼使用 /services/aigc/video-generation/video-synthesis。请按供应商文档选择对应协议。</p>
   </div>;
+}
+
+// 按秒 + 分辨率计费：费用 = 每秒积分 × 时长，每秒积分可按清晰度单独设置。
+// 官方口径是 Token 单价 × 用量，用量由分辨率与帧数决定，所以不同清晰度必须分开定价。
+function VideoSecondPricing({ value, onChange }) {
+  const [draft, setDraft] = useState(() => Object.fromEntries(RESOLUTIONS.map(resolution => [resolution, value.creditPerSecondByResolution?.[resolution] ?? ""])));
+  const save = () => {
+    const tiers = Object.fromEntries(Object.entries(draft).filter(([, price]) => price !== "").map(([resolution, price]) => [resolution, Number(price)]));
+    const { creditPerSecond: _flat, creditPerSecondByResolution: _tiers, ...rest } = value;
+    onChange(Object.keys(tiers).length ? { ...rest, creditPerSecondByResolution: tiers } : rest);
+  };
+  return <fieldset className="rounded-[12px] border border-divider p-4 space-y-3">
+    <legend className="px-1 text-xs text-secondary-text">按秒计费（费用 = 每秒积分 × 视频时长）</legend>
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      {RESOLUTIONS.map(resolution => <Field key={resolution} label={resolution}>
+        <input aria-label={`${resolution} 每秒积分`} type="number" min="0" step="1" value={draft[resolution]} placeholder="不启用" onChange={event => setDraft(current => ({ ...current, [resolution]: event.target.value }))} />
+      </Field>)}
+    </div>
+    <p className="text-xs text-secondary-text">按清晰度填写每秒积分；留空的清晰度不会提供给用户选择。保存后立即按新价格报价与扣费。</p>
+    <button type="button" onClick={save} className="h-9 px-4 rounded-[10px] border border-divider text-primary-text text-xs font-medium">保存按秒价格</button>
+  </fieldset>;
 }
 
 function VideoParameterEditor({ value, onChange, label = "模型附加参数（JSON，可选）", fallback = {}, validate = validVideoParameters }) {
@@ -208,6 +232,7 @@ function ProviderCard({ provider: p, saving, testingId, testResult, onPatch, onT
       <Field label="每次模型请求积分"><input disabled={["ocr", "upscale"].includes(selectedCapability)} type="number" min="0" max="100000" step="1" value={creditCost} onChange={e => setCreditCost(e.target.value)} /></Field>
       {scope !== "language" && <Field label="预估成本（美元/次）"><input type="number" min="0" step="0.001" value={costPerImage} onChange={e => setCost(e.target.value)} /></Field>}
     </div>
+    {selectedCapability === "video" && <VideoSecondPricing value={p.config.videoPricing || {}} estimate={p.config.secondsTokens} onChange={videoPricing => onPatch(p.id, { videoPricing })} />}
     {selectedCapability === "video" && videoOptions && <><Field label="视频接口协议"><select value={videoKind} onChange={event => { const kind = event.target.value; setVideoKind(kind); setVideoOptions(videoModelOptions(kind)); }}>{VIDEO_KINDS.map(kind => <option key={kind} value={kind}>{VIDEO_PROTOCOLS[kind].label}</option>)}</select></Field><VideoOptions kind={videoKind} value={videoOptions} onChange={setVideoOptions} /></>}
     {selectedCapability === "voice" && <VoiceListEditor value={voices} onChange={setVoices} />}
     {p.kind === "minimax" && <MiniMaxNotice />}

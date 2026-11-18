@@ -106,8 +106,27 @@
 @media (max-width: 600px) {
   .cr-shell.ls { --ls-top: 56px; }
   .cr-shell.ls:not(.cr-shell-creation) .cr-topbar { padding: 0 14px; }
-  .cr-shell.ls .ls-recharge-label, .cr-shell.ls .ls-icon-button { display: none; }
-  .cr-shell.ls .ls-wordmark span { font-size: 16px; }
+  .cr-shell.ls .ls-icon-button { display: none; }
+  /* 选择器要和桌面规则同等特异性，否则“充值”标签在手机上仍会显示 */
+  .cr-shell.ls .cr-topbar .ls-recharge-label { display: none; }
+  .cr-shell.ls .cr-topbar .cr-recharge-trigger { gap: 6px; padding: 0 12px; }
+  /* 未登录时积分显示为“—”，没有意义，手机上只保留登录按钮 */
+  .cr-shell.ls .cr-topbar .cr-recharge-trigger[data-guest] { display: none; }
+  .cr-shell.ls .cr-topbar .cr-top-cta { padding: 0 14px; }
+  .cr-shell.ls .cr-topbar .cr-top-cta svg { display: none; }
+  .cr-shell.ls .cr-topbar-actions { gap: 6px; }
+  /* 左侧品牌区允许收缩，空间不够时品牌名省略而不是被右侧按钮盖住 */
+  .cr-shell.ls .cr-topbar-context { flex: 1 1 auto; min-width: 0; gap: 10px; }
+  .cr-shell.ls .ls-wordmark { flex: 0 1 auto; min-width: 0; }
+  .cr-shell.ls .ls-wordmark svg { flex: none; }
+  .cr-shell.ls .ls-wordmark span { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 16px; }
+}
+/* 很窄的手机：最近项目已在左侧菜单的“作品”里，先收起；再窄只留品牌图形，避免品牌名被截成单字 */
+@media (max-width: 380px) {
+  .cr-shell.ls:not(.cr-shell-creation) .cr-topbar .mr-recent { display: none; }
+}
+@media (max-width: 340px) {
+  .cr-shell.ls .cr-topbar:has(.cr-recharge-trigger:not([data-guest])) .ls-wordmark span { display: none; }
   .cr-shell.ls:not(.cr-shell-creation) .cr-footer { margin: 24px 0 0; padding: 20px 16px; flex-direction: column; gap: 6px; }
 }
 @media (prefers-reduced-motion: reduce) {

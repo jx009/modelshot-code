@@ -73,7 +73,7 @@ function CreativeShellContent({ children }) {
             {session?.user && !compactWorkspace && <RecentProjects zh={zh} userId={session.user.id} />}
             {SHOW_LANGUAGE_SWITCHER && <Link prefetch="intent" href={path} locale={zh ? "en" : "zh"} aria-label={zh ? "Switch to English" : "切换中文"}><Globe2 size={15} />{zh ? "EN" : "中文"}</Link>}
             </>}
-            <button className="cr-recharge-trigger" onClick={recharge.open} aria-label={zh ? "积分充值" : "Buy credits"}><CreditIcon /><b>{credits ?? "—"}</b><span className="ls-recharge-label">{zh ? "充值" : "Top up"}</span></button>
+            <button className="cr-recharge-trigger" data-guest={session?.user ? undefined : ""} onClick={recharge.open} aria-label={zh ? "积分充值" : "Buy credits"}><CreditIcon /><b>{credits ?? "—"}</b><span className="ls-recharge-label">{zh ? "充值" : "Top up"}</span></button>
             {session?.user ? <UserMenu user={session.user} /> : <Link prefetch="intent" className="cr-top-cta" href="/login">{zh ? "登录 / 注册" : "Sign in"}<ArrowUpRight size={14} /></Link>}</div>
         </div>
       </header>

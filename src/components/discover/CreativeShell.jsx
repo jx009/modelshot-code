@@ -40,7 +40,7 @@ function CreativeShellContent({ children }) {
   const scrolled = useSyncExternalStore(subscribeScroll, isScrolled, initialScroll);
   const recharge = useRecharge();
   const local = useLocalNavigation(), routePath = usePathname();
-  const zh = useLocale() === "zh", path = useNavigationPath("creative", local?.path ?? routePath), { data: session } = useSession();
+  const zh = useLocale() === "zh", path = useNavigationPath("creative", local?.path ?? routePath), { data: session, status } = useSession();
   const compactWorkspace = path === "/creation" || path === "/video";
   const links = [
     ["/", House, "首页", "Home"],
@@ -74,7 +74,8 @@ function CreativeShellContent({ children }) {
             {SHOW_LANGUAGE_SWITCHER && <Link prefetch="intent" href={path} locale={zh ? "en" : "zh"} aria-label={zh ? "Switch to English" : "切换中文"}><Globe2 size={15} />{zh ? "EN" : "中文"}</Link>}
             </>}
             <button className="cr-recharge-trigger" data-guest={session?.user ? undefined : ""} onClick={recharge.open} aria-label={zh ? "积分充值" : "Buy credits"}><CreditIcon /><b>{credits ?? "—"}</b><span className="ls-recharge-label">{zh ? "充值" : "Top up"}</span></button>
-            {session?.user ? <UserMenu user={session.user} /> : <Link prefetch="intent" className="cr-top-cta" href="/login">{zh ? "登录 / 注册" : "Sign in"}<ArrowUpRight size={14} /></Link>}</div>
+            {/* 会话尚未确认时不显示登录入口（保留占位避免跳动），否则已登录用户每次刷新都会先看到“未登录” */}
+            {session?.user ? <UserMenu user={session.user} /> : <Link prefetch="intent" className="cr-top-cta" href="/login" style={status === "loading" ? { visibility: "hidden" } : undefined}>{zh ? "登录 / 注册" : "Sign in"}<ArrowUpRight size={14} /></Link>}</div>
         </div>
       </header>
       {children}

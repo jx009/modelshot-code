@@ -840,7 +840,7 @@ export default function StudioWorkbench({ initialDocument = "", initialPrompt = 
         <button className="ms-button ms-save" data-action="save-studio" onClick={() => save().catch(notify)} disabled={busy || !ready}><Save size={15} />{t("保存", "Save")}</button>
         <button className="ms-button ms-export" onClick={() => setExportOpen(true)}><Download size={15} />{t("导出", "Export")}</button>
         <button onClick={recharge.open} className="ms-credit"><CreditIcon />{usage?.credits ?? "—"}<span>{t("积分", "credits")}</span></button>
-        {session?.user ? <UserMenu user={session.user} /> : <Link href="/login" className="ms-button ms-primary">{t("登录", "Sign in")}</Link>}
+        {session?.user ? <UserMenu user={session.user} /> : <Link href="/login" className="ms-button ms-primary" style={status === "loading" ? { visibility: "hidden" } : undefined}>{t("登录", "Sign in")}</Link>}
       </div>
     </header>
     <div className={`ms-body ${chatCollapsed ? "chat-collapsed" : ""} ${mobileChat ? "show-chat" : "show-canvas"}`}>

@@ -11,11 +11,15 @@ import { createRegisteredUser, registrationCredits } from "./domain/identity/reg
  * 动态构建 authOptions（每次请求重建，Google 凭据 DB > env）
  * 原因：NextAuth providers 在模块加载时固化；要支持管理端在线改 OAuth 凭据，
  * 必须改为工厂函数。调用方：`getServerSession(await buildAuthOptions())`
+ *
+ * Google 凭据只在真正登录时读取：会话校验（会话 cookie、各接口的鉴权）不会用到
+ * providers。默认不读，避免每个鉴权请求都多查一次数据库，也避免这次查询失败
+ * 连累会话接口；登录入口需显式传 `{ providers: true }`。
  */
-export async function buildAuthOptions() {
-  const cfg = await getSiteConfigs(["google_client_id", "google_client_secret", "google_login_enabled"]);
-  const googleClientId = cfg.google_client_id;
-  const googleClientSecret = cfg.google_client_secret;
+export async function buildAuthOptions({ providers = false } = {}) {
+  const google = providers
+    ? await getSiteConfigs(["google_client_id", "google_client_secret", "google_login_enabled"])
+    : null;
   return {
   adapter: {
     ...PrismaAdapter(prisma),
@@ -29,9 +33,9 @@ export async function buildAuthOptions() {
     maxAge: 30 * 24 * 60 * 60,
   },
   providers: [
-    ...(!["0", "false"].includes(cfg.google_login_enabled) && googleClientId && googleClientSecret ? [GoogleProvider({
-      clientId: googleClientId || process.env.GOOGLE_CLIENT_ID,
-      clientSecret: googleClientSecret || process.env.GOOGLE_CLIENT_SECRET,
+    ...(google && !["0", "false"].includes(google.google_login_enabled) && google.google_client_id && google.google_client_secret ? [GoogleProvider({
+      clientId: google.google_client_id,
+      clientSecret: google.google_client_secret,
     })] : []),
     CredentialsProvider({
       id: "email",

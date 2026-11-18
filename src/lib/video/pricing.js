@@ -16,8 +16,11 @@ export const videoPricingSchema = z.object({
   creditPerSecondByResolution: z.record(z.enum(RESOLUTIONS), credits).optional(), // 分清晰度的每秒积分，优先于上一项
 }).strict().optional();
 
+/** 读出通道的按秒价格表；没有任何可用档位（含空对象）时视为未配置，回到单次固定价。 */
 export function parseVideoPricing(config) {
-  return videoPricingSchema.safeParse(config?.videoPricing).success ? config.videoPricing || null : null;
+  const pricing = config?.videoPricing;
+  if (!pricing || !videoPricingSchema.safeParse(pricing).success) return null;
+  return RESOLUTIONS.some(resolution => perSecondCredits(pricing, resolution) > 0) ? pricing : null;
 }
 
 /** 该清晰度每秒的积分：分档价优先，其次统一每秒价。 */

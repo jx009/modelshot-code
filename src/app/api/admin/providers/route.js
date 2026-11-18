@@ -159,8 +159,8 @@ export async function PATCH(req) {
       if (kind !== "gptbest" || cfg.studioCapability !== "video") { delete cfg.videoApi; delete cfg.videoParameters; delete cfg.videoVariants; delete cfg.videoFieldChoices; }
       if (cfg.studioCapability !== "voice") delete cfg.voiceOptions;
       if (cfg.studioCapability !== "video") delete cfg.videoPricing;
-      // 配了按秒价就必须至少有一档能算出价格，否则用户无法选择也无法报价。
-      if (cfg.videoPricing && !pricedResolutions(cfg.videoPricing).length) throw new AppError("VIDEO_PRICING_INVALID", 422);
+      // 价格表清空（没有任何可用档位）表示改回单次固定价，直接移除而不是拒绝保存。
+      if (cfg.videoPricing && !pricedResolutions(cfg.videoPricing).length) delete cfg.videoPricing;
       if (!validChannel(kind, cfg)) throw new AppError("PROVIDER_CAPABILITY_UNSUPPORTED", 422);
       assertVideoSettings(kind, cfg);
       if (kind === "volc-visual" && (!cfg.accessKeyIdEnc || !cfg.secretAccessKeyEnc)) throw new AppError(cfg.studioCapability === "upscale" ? "UPSCALE_NOT_CONFIGURED" : "SEGMENTATION_NOT_CONFIGURED", 422);
@@ -203,7 +203,11 @@ export async function PUT(req) {
       const priority = (await tx.modelProvider.aggregate({ _max: { priority: true } }))._max.priority || 0;
       const config = { model: input.model, ...(input.chatModel ? { chatModel: input.chatModel } : {}), ...(input.baseURL ? { baseURL: normalizeBaseURL(input.baseURL) } : {}), ...(input.apiKey.trim() ? { apiKeyEnc: encryptSecret(input.apiKey.trim()) } : {}) };
       for (const field of ["studioCapability", "imageMode", "scope", "videoInputMode", "videoDurations", "videoReferenceMode", "videoApi", "videoParameters", "videoVariants", "videoFieldChoices", "voiceOptions", "videoPricing"]) if (input[field] !== undefined) config[field] = input[field];
+      if (config.videoPricing && !pricedResolutions(config.videoPricing).length) delete config.videoPricing;
       await copyConnection(tx, input.reuseConnectionFrom, config);
+      // 复制的连接只是默认值：表单里另填了地址或密钥时，以新填的为准。
+      if (input.reuseConnectionFrom && input.baseURL) config.baseURL = normalizeBaseURL(input.baseURL);
+      if (input.reuseConnectionFrom && input.apiKey.trim()) config.apiKeyEnc = encryptSecret(input.apiKey.trim());
       if (input.accessKeyId?.trim()) config.accessKeyIdEnc = encryptSecret(input.accessKeyId.trim());
       if (input.secretAccessKey?.trim()) config.secretAccessKeyEnc = encryptSecret(input.secretAccessKey.trim());
       if (input.kind === "volc-visual" && (!config.accessKeyIdEnc || !config.secretAccessKeyEnc)) throw new AppError(config.studioCapability === "upscale" ? "UPSCALE_NOT_CONFIGURED" : "SEGMENTATION_NOT_CONFIGURED", 422);

@@ -12,9 +12,15 @@ import { GPTBEST_VIDEO_APIS, gptBestApi, validVideoParameters } from "@/lib/vide
 import { videoVariantsSchema, videoFieldChoicesSchema } from "@/lib/video/variants";
 import { RESOLUTIONS } from "@/lib/video/pricing";
 
+const SAVE_ERRORS = {
+  INVALID_INPUT: "提交的内容没有通过校验，未保存。请检查填写的数值后重试。",
+  ADMIN_SCOPE_DENIED: "当前账号不是 ROOT，不能修改模型配置。",
+  PROVIDER_CAPABILITY_UNSUPPORTED: "这个协议不支持所选用途或参数，未保存。",
+  IDEMPOTENCY_CONFLICT: "上一次提交的内容与本次不同，请刷新页面后重试。",
+};
 const providerError = error => ["PROVIDER_BASE_URL_INVALID", "PROVIDER_PROXY_NOT_ALLOWED"].includes(error?.message)
   ? "模型接口地址格式不正确：请填写完整的 http:// 或 https:// 地址，可包含端口和路径，不要附带用户名、密码、查询参数或 #。"
-  : error?.message;
+  : SAVE_ERRORS[error?.message] || error?.message;
 
 const emptyChannel = { scope: "public", kind: "openai", studioCapability: "image", imageMode: "both", displayName: "", model: "", apiKey: "", accessKeyId: "", secretAccessKey: "", baseURL: "", creditCost: 18, costPerImage: 0.08 };
 const PURPOSE_LABELS = { image: "图像编辑", segment: "物体分割", split: "图层拆分", ocr: "OCR 文字识别", upscale: "图片超分" };

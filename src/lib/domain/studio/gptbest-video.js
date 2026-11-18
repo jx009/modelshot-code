@@ -39,7 +39,7 @@ async function call(config, path, { body, signal, headers = {}, method } = {}) {
 export function gptBestBody(config, input) {
   const options = config.videoOptions, api = gptBestApi(options?.api);
   if (!api) throw new AppError("VIDEO_PROTOCOL_UNSUPPORTED", 422);
-  const { prompt, duration, ratio = "16:9", references = [], videoFields = {} } = input;
+  const { prompt, duration, ratio = "16:9", references = [], videoFields = {}, resolution } = input;
   const invalid = gptBestInputError(options, { ...input, media: references, hasImage: Boolean(input.image) });
   if (invalid) throw new AppError(invalid, 422);
   const images = references.filter(item => item.type === "image").map(item => item.url);
@@ -111,7 +111,8 @@ export function gptBestBody(config, input) {
     if (api.id === "kling-lip-sync") { defaults = {}; dynamic = { input: { video_url: videos[0], mode: "audio2video", audio_type: "url", audio_url: audios[0] } }; }
     if (api.id === "kling-effects") { defaults = {}; dynamic = { effect_scene: fields.effect_scene, input: { model_name: model, mode: "std", images, duration: String(duration) } }; }
   }
-  const extras = { ...(options.parameters || {}) };
+  // 下单时确定的清晰度覆盖管理员填的默认值，保证扣费档位与出片一致。
+  const extras = { ...(options.parameters || {}), ...(resolution ? { resolution: resolution.toLowerCase() } : {}) };
   for (const field of api.fields || []) {
     const value = videoFields[field.key]?.trim() || extras[field.key];
     if (field.key === "sourceTaskId") { path = path.replace("{sourceTaskId}", encodeURIComponent(validId(value))); delete extras.sourceTaskId; }

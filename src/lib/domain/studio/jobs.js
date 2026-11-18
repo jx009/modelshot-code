@@ -172,6 +172,7 @@ async function submitAdmittedJob(userId, data, key, db, deps, posterContext = nu
       const resolution = data.params.resolution || defaultResolution(config.videoPricing);
       if (!resolutions.includes(resolution)) throw new AppError("VIDEO_RESOLUTION_UNSUPPORTED", 422);
       // 把确定的清晰度写回任务参数：快照、执行与扣费都以这一个值为准。
+      // 幂等摘要已在上面按原始入参算好，这里补默认值不会影响同一请求的重试。
       data.params = { ...data.params, resolution };
       config = { ...config, videoResolution: resolution };
     } else if (data.params.resolution) throw new AppError("VIDEO_RESOLUTION_UNSUPPORTED", 422);

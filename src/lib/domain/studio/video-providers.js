@@ -36,9 +36,8 @@ async function request(config, path, { signal, body, headers = {} } = {}) {
   return response.json();
 }
 
-export async function videoRequest(config, { image, imageUrl, references = [], media = [], videoFields = {}, videoVariant, prompt, duration, ratio = "16:9", requestId, signal }) {
-  // 计费阶段已按通道价格表确定本次清晰度，执行阶段沿用同一个值，避免报价与扣费不一致。
-  const resolution = config.videoResolution;
+export async function videoRequest(config, { image, imageUrl, references = [], media = [], videoFields = {}, videoVariant, resolution, prompt, duration, ratio = "16:9", requestId, signal }) {
+  // resolution 来自任务快照：下单时已按价格表确定并扣费，执行时原样传给上游。
   const kind = config.videoKind || "volcengine";
   if (!config.videoKey || !config.videoModel) throw new AppError("SERVICE_NOT_CONFIGURED", 503);
   if (!requestId) {

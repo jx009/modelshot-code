@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { VIDEO_DURATIONS } from "./model-protocols.js";
+import { RESOLUTIONS } from "./pricing.js";
 
 export const videoDurationSchema = z.union(VIDEO_DURATIONS.map(value => z.literal(value)));
 
@@ -54,6 +55,8 @@ export const videoDocumentSchema = z.object({
   shotRunId: id.optional(),
   provider: id.optional(),
   videoVariant: id.optional(),
+  // 用户选择的输出清晰度；按秒计费的模型据此报价与扣费。
+  resolution: z.enum(RESOLUTIONS).optional(),
   videoFields: z.record(z.string().regex(/^[a-zA-Z][a-zA-Z0-9_]{0,63}$/), z.string().max(1000)).refine(value => Object.keys(value).length <= 12).optional(),
   mode: z.enum(["video", "motion"]), media: z.array(videoMediaSchema).max(50).default([]),
   scenario: z.enum(MOTION_SCENARIOS).nullable().default(null),

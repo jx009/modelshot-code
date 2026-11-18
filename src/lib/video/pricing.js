@@ -13,7 +13,9 @@ const credits = z.number().int().min(0).max(200000);
 
 export const videoPricingSchema = z.object({
   creditPerSecond: credits.optional(), // 不分清晰度的每秒积分
-  creditPerSecondByResolution: z.record(z.enum(RESOLUTIONS), credits).optional(), // 分清晰度的每秒积分，优先于上一项
+  // 分清晰度的每秒积分，优先于上一项。每一档都可以不填：不能用 z.record(z.enum())，
+  // 它要求枚举里的每个键都出现，只填部分清晰度会让整张价格表校验失败。
+  creditPerSecondByResolution: z.object(Object.fromEntries(RESOLUTIONS.map(resolution => [resolution, credits.optional()]))).strict().optional(),
 }).strict().optional();
 
 /** 读出通道的按秒价格表；没有任何可用档位（含空对象）时视为未配置，回到单次固定价。 */

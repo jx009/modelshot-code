@@ -8,10 +8,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends fontconfig font
 WORKDIR /opt/creation-raster
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/creation-browsers
 COPY docker/creation-export/package.json docker/creation-export/package-lock.json ./
+# next 把 @playwright/test 声明为可选 peer 依赖，npm 因此把 playwright-core 当生产依赖
+# 留在应用镜像里。版本一致时换成导出副本的软链接；版本不一致仍然中止，避免混用两份运行时。
 RUN npm ci --omit=dev --no-audit --no-fund \
     && test ! -e /app/node_modules/skia-canvas \
     && ln -s /opt/creation-raster/node_modules/skia-canvas /app/node_modules/skia-canvas \
-    && test ! -e /app/node_modules/playwright-core \
+    && if [ -e /app/node_modules/playwright-core ]; then \
+         app_version=$(node -p "require('/app/node_modules/playwright-core/package.json').version") \
+         && export_version=$(node -p "require('./node_modules/playwright-core/package.json').version") \
+         && echo "playwright-core: app=$app_version export=$export_version" \
+         && test "$app_version" = "$export_version" \
+         && rm -rf /app/node_modules/playwright-core; \
+       fi \
     && ln -s /opt/creation-raster/node_modules/playwright-core /app/node_modules/playwright-core \
     && node node_modules/playwright-core/cli.js install --with-deps chromium \
     && chmod -R a+rX /opt/creation-browsers

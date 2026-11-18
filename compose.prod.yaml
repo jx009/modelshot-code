@@ -259,12 +259,14 @@ services:
         condition: service_completed_successfully
     stop_grace_period: 210s
 
-  # PPTX 可编辑导入：按需开启，不随默认 up 占用资源。
+  # 演示文稿/海报导出与 PPTX 导入：按需开启，不随默认 up 占用资源。
   # --profile office-import up -d creation-export
   # 已部署独立 compose.creation-export.yaml 时请继续使用它，不要重复启动。
-  # 普通应用镜像具备 Office 导入能力；HTML/PDF 渲染仍由专用镜像提供。
+  # 普通应用镜像只具备 Office 导入能力；HTML 幻灯片、PDF、图片导出需要 CI 发布的
+  # 专用导出镜像（export-latest），把 CREATION_EXPORT_IMAGE 指向它并打开下面三个运行时。
   creation-export:
     <<: *modelshot-service
+    image: ${CREATION_EXPORT_IMAGE:-${MODELSHOT_IMAGE:-modelshot:prod}}
     profiles: [office-import]
     entrypoint: ["node"]
     command: ["src/workers/creation-export-main.mjs"]
@@ -282,9 +284,10 @@ services:
     environment:
       <<: *app-environment
       CREATION_EXPORT_ISOLATED: "true"
-      CREATION_HTML_RUNTIME: "false"
-      CREATION_RASTER_RUNTIME: "false"
-      CREATION_PDF_RUNTIME: "false"
+      # 只有专用导出镜像带 Chromium、Skia 与中文字体；普通镜像保持 false，否则启动探测会失败。
+      CREATION_HTML_RUNTIME: ${CREATION_EXPORT_HTML_RUNTIME:-false}
+      CREATION_RASTER_RUNTIME: ${CREATION_EXPORT_RASTER_RUNTIME:-false}
+      CREATION_PDF_RUNTIME: ${CREATION_EXPORT_PDF_RUNTIME:-false}
     depends_on:
       migrate:
         condition: service_completed_successfully

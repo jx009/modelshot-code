@@ -19,13 +19,19 @@ digest_of() {
   awk '/^Digest:/{print $2; exit}' <<< "$text"
 }
 
-# main publishes latest, sha-<sha>, tools-latest and tools-sha-<sha>.
-tags=(latest "sha-$SHA" tools-latest "tools-sha-$SHA")
+# main publishes latest, sha-<sha>, tools-latest, tools-sha-<sha> and the
+# dedicated export image (export-latest, export-sha-<sha>).
+tags=(latest "sha-$SHA" tools-latest "tools-sha-$SHA" export-latest "export-sha-$SHA")
 failed=()
 for tag in "${tags[@]}"; do
   source_ref="$IMAGE:$tag"
   target_ref="$MIRROR_IMAGE:$tag"
   source_digest=$(digest_of "$source_ref" || true)
+  if [ -z "$source_digest" ]; then
+    # 导出镜像构建失败或该 ref 没有对应标签时，跳过而不是让整轮同步失败。
+    echo "::notice::$source_ref is not published; skipping."
+    continue
+  fi
   target_digest=$(digest_of "$target_ref" || true)
   if [ -n "$source_digest" ] && [ "$source_digest" = "$target_digest" ]; then
     echo "Already mirrored $target_ref ($source_digest); skipping."

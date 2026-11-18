@@ -127,7 +127,9 @@ docker compose --env-file .env.production -f compose.prod.yaml ps
 
 启动后用 `docker compose logs --tail=100 creation-worker creation-language` 检查 `CREATION_WORKER_READY` 和 `CREATION_LANGUAGE_WORKER_READY`，同时检查是否出现心跳、数据库或 Redis 错误。页面能力接口要求 90 秒内的新鲜心跳及匹配的流水线版本，Worker 每 30 秒更新一次。管理员还须配置可用的语言/规划模型及 API 密钥；仅有生图模型不足以启用海报、演示文稿等创作。服务正常后刷新首页。
 
-root 只绕过创作开放权限，不能绕过服务就绪条件。独立导出服务仍使用 `compose.creation-export.yaml` 部署；不要为了点亮入口给普通语言容器设置 `CREATION_REFERENCE_ISOLATED=true`，Office 参考附件需要专门的隔离部署。
+演示文稿与海报导出（PPTX、PDF、PNG/JPEG）由 `creation-export` 服务完成，它需要 GitHub Action 发布的专用导出镜像 `export-latest`（以同一版本的应用镜像为基础，加入 Chromium、Skia 与 Noto 中文字体）。单机部署时在 `.env.production` 中设置 `CREATION_EXPORT_IMAGE`、三个 `CREATION_EXPORT_*_RUNTIME=true` 与对应的 `CREATION_*_EXPORT_ENABLED=true`，然后执行 `sh scripts/deploy-update.sh`，脚本会把导出服务和应用一起更新。没有这个服务时导出按钮显示“当前暂不接受此格式的新导出”。
+
+root 只绕过创作开放权限，不能绕过服务就绪条件。另有独立导出主机时仍使用 `compose.creation-export.yaml` 部署；不要为了点亮入口给普通语言容器设置 `CREATION_REFERENCE_ISOLATED=true`，Office 参考附件需要专门的隔离部署。
 
 图像工具默认同时处理 2 个请求（`TOOLS_CONCURRENCY=2`，上限 4）。8 核单机先保持默认值，压测 CPU、内存和抠图 P95 耗时后再逐步调到 3 或 4；超过并发槽的请求最多等待 20 秒，之后返回 429。调高此值不能增加外部图像生成供应商的额度。
 

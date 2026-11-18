@@ -309,9 +309,53 @@ jobs:
         shell: bash
         run: bash scripts/publish-image-manifest.sh "$IMAGE:tools-$BUILD_TAG-amd64" "$IMAGE:tools-$BUILD_TAG-arm64"
 
+  # 演示文稿/海报导出需要 Chromium 与中文字体，单独构建专用导出镜像。
+  # 以本次刚发布的 amd64 应用镜像为基础，保证 Prisma 客户端与源码版本一致。
+  build_export_image:
+    name: Build export image (amd64)
+    needs: [prepare, create_manifests]
+    if: ${{ !cancelled() && needs.create_manifests.result == 'success' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) }}
+    env:
+      BUILD_TAG: ${{ needs.prepare.outputs.build_tag }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.sha }}
+      - uses: docker/login-action@c99871dec2022cc055c062a10cc1a1310835ceb4 # v4.3.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+      - name: Resolve export tags
+        id: tags
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "tags<<EOF"
+            echo "$IMAGE:export-sha-$GITHUB_SHA"
+            if [ "$GITHUB_REF" = "refs/heads/main" ]; then echo "$IMAGE:export-latest"; fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+      - name: Build and push export image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: Dockerfile.creation-export
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          build-args: |
+            CREATION_APP_IMAGE=${{ env.IMAGE }}:${{ env.BUILD_TAG }}-amd64
+          cache-from: type=gha,scope=modelshot-export
+          cache-to: type=gha,scope=modelshot-export,mode=max,ignore-error=true
+          provenance: false
+
   mirror_registry:
     name: Mirror tags to a regional registry
-    needs: [prepare, create_manifests]
+    needs: [prepare, create_manifests, build_export_image]
     if: >-
       ${{ !cancelled() && needs.prepare.result == 'success' && needs.create_manifests.result == 'success' &&
           vars.MIRROR_IMAGE != '' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) }}

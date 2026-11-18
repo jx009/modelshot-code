@@ -275,7 +275,8 @@ services:
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
-    pids_limit: 64
+    # Chromium 的线程也计入进程数：只启动浏览器就用掉约 40 个，64 会让页面进程创建失败（Target crashed）。
+    pids_limit: 512
     cpus: 1.0
     mem_limit: 768m
     memswap_limit: 768m

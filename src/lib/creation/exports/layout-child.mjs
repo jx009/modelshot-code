@@ -92,7 +92,9 @@ try {
   await convert(JSON.parse(await readFile(join(root, "input.json"), "utf8")));
 } catch (error) {
   const code = typeof error.message === "string" && /^EXPORT_[A-Z_]+$/.test(error.message) ? error.message : "EXPORT_RENDER_FAILED";
-  await writeFile(join(root, "error.json"), JSON.stringify({ code }));
+  // 保留真实原因（截断、单行），否则父进程只能看到笼统的 EXPORT_RENDER_FAILED。
+  const detail = String(error?.message || error).replace(/\s+/g, " ").slice(0, 300);
+  await writeFile(join(root, "error.json"), JSON.stringify({ code, detail }));
   process.exitCode = 1;
 } finally {
   clearTimeout(deadline);

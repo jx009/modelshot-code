@@ -56,9 +56,14 @@ function runChild(root, signal) {
       clearTimeout(timer); signal.removeEventListener("abort", stop);
       if (stopped) { await treeStopped; reject(new AppError(signal.aborted ? "EXPORT_CANCELLED" : "EXPORT_RENDER_TIMEOUT", 422)); return; }
       if (code === 0) { resolve(); return; }
-      let failure = "EXPORT_RENDER_FAILED";
-      try { const info = JSON.parse(await readFile(join(root, "error.json"), "utf8")); if (/^EXPORT_[A-Z_]+$/.test(info.code)) failure = info.code; } catch { /* No child error file on a crash. */ }
-      reject(new AppError(failure, 422));
+      let failure = "EXPORT_RENDER_FAILED", detail = null;
+      try {
+        const info = JSON.parse(await readFile(join(root, "error.json"), "utf8"));
+        if (/^EXPORT_[A-Z_]+$/.test(info.code)) failure = info.code;
+        if (typeof info.detail === "string") detail = info.detail.slice(0, 300);
+      } catch { /* No child error file on a crash. */ }
+      console.error(JSON.stringify({ code: "EXPORT_RENDER_CHILD_FAILED", failure, exitCode: code, detail }));
+      reject(Object.assign(new AppError(failure, 422), { detail }));
     });
   });
 }

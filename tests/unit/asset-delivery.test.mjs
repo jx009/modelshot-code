@@ -66,7 +66,7 @@ it("forgets failed variants without changing unrelated URLs", () => {
 
 it("accepts the configured CDN but not lookalike domains", () => {
   setAssetDeliveryUser("owner");
-  const url = "https://quiz.iamshuaidi.com/letaidraw/originals/image.png";
+  const url = "https://ai-cdn.iamshuaidi.com/letaidraw/originals/image.png";
   consumeAssetDelivery(payload({ items: [{ assetId: "asset-fixture", variant: 320, url }] }), assetDeliveryEpoch());
   expect(resolveAssetImage(src)).toBe(url);
   forgetAssetDelivery(src);

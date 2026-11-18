@@ -13,7 +13,7 @@ letaidraw/originals/cmty2jcum000001nyj11arz4x/original/b6043b7f-2abb-44b8-acc6-0
 普通图片展示地址在返回时拼接：
 
 ```text
-https://quiz.iamshuaidi.com/letaidraw/originals/cmty2jcum000001nyj11arz4x/original/b6043b7f-2abb-44b8-acc6-0980318e5ec9_studio_0.png
+https://ai-cdn.iamshuaidi.com/letaidraw/originals/cmty2jcum000001nyj11arz4x/original/b6043b7f-2abb-44b8-acc6-0980318e5ec9_studio_0.png
 ```
 
 域名集中在 `src/lib/asset-cdn.js`。数据库不保存临时签名、过期时间或 CDN 查询参数。缩略图回执继续保存对象路径；灵感图和公告二维码使用现有版本/标识推导对象路径，不需要重传已存在的对象。
@@ -37,7 +37,7 @@ https://quiz.iamshuaidi.com/letaidraw/originals/cmty2jcum000001nyj11arz4x/origin
 
 ## 部署前配置
 
-1. 将 `quiz.iamshuaidi.com` 配置为 HTTPS CDN 加速域名，源站指向当前 COS 桶；保留完整对象路径，不额外增加或去掉 `letaidraw/`。
+1. 将 `ai-cdn.iamshuaidi.com` 配置为 HTTPS CDN 加速域名，源站指向当前 COS 桶；保留完整对象路径，不额外增加或去掉 `letaidraw/`。
 2. 配置私有桶回源鉴权。浏览器访问不要要求 COS 签名或额外 URL 签名，否则固定地址会返回 403。
 3. CDN 仅允许对外读取需要公开展示的图片目录；不要开放 `${prefix}/uploads/pending/` 暂存目录、桶列举或写入。
 4. 配置 CDN 的 CORS 响应头，允许本站来源 GET/HEAD，暴露 `ETag, Content-Length, Content-Range`。画布读取需要 CORS，仅能显示图片还不够。若按 Origin 动态返回响应头，缓存规则也要正确区分来源。

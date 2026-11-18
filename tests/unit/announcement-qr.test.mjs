@@ -15,7 +15,7 @@ it("stores lossless full-sized PNG permanently and returns stable CDN URLs", asy
   expect(type).toBe("image/png");
   expect(await sharp(saved).metadata()).toMatchObject({ width: 300, height: 420, format: "png" });
   const url = await announcementQrUrl(result.qrImage, { config: { ...config, secretKey: "rotated" }, store });
-  expect(url.url).toBe(`https://quiz.iamshuaidi.com/${key}`);
+  expect(url.url).toBe(`https://ai-cdn.iamshuaidi.com/${key}`);
   expect(store.signedUrl).not.toHaveBeenCalled();
   expect(store.put).toHaveBeenCalledTimes(1);
   await expect(announcementQrUrl(result.qrImage, { config: { ...config, bucket: "different" }, store })).rejects.toMatchObject({ code: "QR_STORAGE_CHANGED" });

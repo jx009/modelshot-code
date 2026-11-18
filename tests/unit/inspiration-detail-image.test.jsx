@@ -11,8 +11,8 @@ afterEach(cleanup);
 
 const item = {
   id: "public-one", title: "测试灵感", size: "1024x1536", cover: { type: "asset", assetId: "cover-one" },
-  imageUrl: "https://quiz.iamshuaidi.com/letaidraw/inspiration/one/original",
-  thumbnailUrl: "https://quiz.iamshuaidi.com/letaidraw/inspiration/one/640.webp",
+  imageUrl: "https://ai-cdn.iamshuaidi.com/letaidraw/inspiration/one/original",
+  thumbnailUrl: "https://ai-cdn.iamshuaidi.com/letaidraw/inspiration/one/640.webp",
 };
 
 test("shows the cached card thumbnail until the original image has loaded", () => {

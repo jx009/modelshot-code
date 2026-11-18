@@ -12,14 +12,14 @@ const context = { params: Promise.resolve({ id: asset.id }) };
 beforeEach(() => {
   mocks.auth.mockResolvedValue({ user: { id: "admin" } });
   mocks.asset.mockResolvedValue(asset);
-  mocks.delivery.mockResolvedValue(`https://quiz.iamshuaidi.com/${asset.objectKey}`);
+  mocks.delivery.mockResolvedValue(`https://ai-cdn.iamshuaidi.com/${asset.objectKey}`);
   mocks.get.mockResolvedValue(Buffer.from("image"));
 });
 
 test("authorizes and audits before redirecting administrator previews to CDN", async () => {
   const response = await GET(new Request("https://example.test/api/admin/assets/image"), context);
   expect(response.status).toBe(307);
-  expect(response.headers.get("location")).toBe(`https://quiz.iamshuaidi.com/${asset.objectKey}`);
+  expect(response.headers.get("location")).toBe(`https://ai-cdn.iamshuaidi.com/${asset.objectKey}`);
   expect(mocks.audit).toHaveBeenCalledOnce();
   expect(mocks.get).not.toHaveBeenCalled();
 });

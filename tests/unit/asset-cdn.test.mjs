@@ -9,7 +9,7 @@ const key = "letaidraw/originals/cmty2jcum000001nyj11arz4x/original/b6043b7f-2ab
 
 it("stores the object path and produces the exact stable CDN URL", () => {
   expect(cosObjectKey(config, key)).toBe(key);
-  expect(cdnImageUrl(key)).toBe(`https://quiz.iamshuaidi.com/${key}`);
+  expect(cdnImageUrl(key)).toBe(`https://ai-cdn.iamshuaidi.com/${key}`);
   expect(new URL(cdnImageUrl(key)).search).toBe("");
   expect(parseCosObjectKey(key)).toEqual({ bucket: null, region: null, key });
   expect(parseCosObjectKey(cdnImageUrl(key)).key).toBe(key);
@@ -27,7 +27,7 @@ it("retains legacy bucket checks and distinguishes MinIO objects", () => {
 });
 
 it("encodes path segments and rejects invalid object paths", () => {
-  expect(cdnImageUrl("letaidraw/originals/空 格.png")).toBe("https://quiz.iamshuaidi.com/letaidraw/originals/%E7%A9%BA%20%E6%A0%BC.png");
+  expect(cdnImageUrl("letaidraw/originals/空 格.png")).toBe("https://ai-cdn.iamshuaidi.com/letaidraw/originals/%E7%A9%BA%20%E6%A0%BC.png");
   for (const value of ["", "/file", "../file", "folder/../file", "folder/./file", "folder//file", "file?token=x", "file#anchor", "file\\name", "file\nname"]) {
     expect(() => cdnImageUrl(value)).toThrow("INVALID_CDN_OBJECT_PATH");
   }
@@ -35,7 +35,7 @@ it("encodes path segments and rejects invalid object paths", () => {
 
 it("only trusts the exact unsigned HTTPS CDN origin", () => {
   expect(isCdnImageUrl(cdnImageUrl(key))).toBe(true);
-  for (const value of ["http://quiz.iamshuaidi.com/image", "https://quiz.iamshuaidi.com.evil.test/image", "https://user@quiz.iamshuaidi.com/image", "https://quiz.iamshuaidi.com:444/image", "https://quiz.iamshuaidi.com/image?q-signature=x", "https://quiz.iamshuaidi.com/"]) {
+  for (const value of ["http://ai-cdn.iamshuaidi.com/image", "https://ai-cdn.iamshuaidi.com.evil.test/image", "https://user@ai-cdn.iamshuaidi.com/image", "https://ai-cdn.iamshuaidi.com:444/image", "https://ai-cdn.iamshuaidi.com/image?q-signature=x", "https://ai-cdn.iamshuaidi.com/"]) {
     expect(isCdnImageUrl(value)).toBe(false);
   }
 });

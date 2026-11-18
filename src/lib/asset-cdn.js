@@ -1,4 +1,4 @@
-export const ASSET_CDN_ORIGIN = "https://quiz.iamshuaidi.com";
+export const ASSET_CDN_ORIGIN = "https://ai-cdn.iamshuaidi.com";
 export const ASSET_DELIVERY_REFRESH_MS = 24 * 60 * 60 * 1000;
 
 export function validObjectPath(value) {

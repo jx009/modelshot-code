@@ -11,7 +11,7 @@ import { GET } from "../../src/app/api/assets/[id]/route.js";
 const asset = { id: "asset-route-fixture", contentType: "image/png", checksum: "checksum", bytes: 3, objectKey: "private/asset" };
 const request = query => new Request(`http://localhost/api/assets/${asset.id}${query}`);
 const context = { params: Promise.resolve({ id: asset.id }) };
-beforeEach(() => { mocks.user.mockResolvedValue({ id: "owner" }); mocks.owned.mockResolvedValue(asset); mocks.delivery.mockImplementation(async (_asset, _variant, { download }) => download ? null : "https://quiz.iamshuaidi.com/letaidraw/originals/image.png"); mocks.stream.mockResolvedValue(new Uint8Array([1, 2, 3])); mocks.preview.mockResolvedValue(new Uint8Array([4, 5])); });
+beforeEach(() => { mocks.user.mockResolvedValue({ id: "owner" }); mocks.owned.mockResolvedValue(asset); mocks.delivery.mockImplementation(async (_asset, _variant, { download }) => download ? null : "https://ai-cdn.iamshuaidi.com/letaidraw/originals/image.png"); mocks.stream.mockResolvedValue(new Uint8Array([1, 2, 3])); mocks.preview.mockResolvedValue(new Uint8Array([4, 5])); });
 
 it.each([401, 404])("does not return a CDN URL before authorization succeeds (%s)", async status => {
   if (status === 401) mocks.user.mockRejectedValue(new AppError("UNAUTHORIZED", 401));

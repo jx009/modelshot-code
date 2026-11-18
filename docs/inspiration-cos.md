@@ -14,7 +14,7 @@
 ## 存储与访问权限
 
 - 对象永久保留，应用没有为灵感对象设置 TTL，也不会随版本部署清理。COS 存储桶自身的生命周期规则仍然有效，请勿给此目录配置到期删除。
-- COS 桶保持私有，由 CDN 通过回源鉴权读取。浏览器使用 `https://quiz.iamshuaidi.com/对象路径`，不带 COS 签名。链接是公开的，任何拿到链接的人均可读取。
+- COS 桶保持私有，由 CDN 通过回源鉴权读取。浏览器使用 `https://ai-cdn.iamshuaidi.com/对象路径`，不带 COS 签名。链接是公开的，任何拿到链接的人均可读取。
 - 已公开案例下架后不再出现在列表里，但原有 CDN 链接不会随之失效。需要撤销访问时必须处理源对象和 CDN 缓存；浏览器已下载的副本无法撤回。
 - COS 禁用、尚未同步或图片加载失败时保留原始图片回退路径。
 
@@ -22,6 +22,6 @@
 
 同时更新 web 和 worker 镜像，保持现有 Redis、worker 服务正常运行。先按 `docs/cos-cdn-delivery.md` 配置 CDN 回源与 CORS，再确认管理台 COS 已启用且连接测试通过，然后打开首页触发同步。
 
-在浏览器网络面板查看 `/api/inspiration`：同步完成的条目会包含 `imageUrl` 和 `thumbnailUrl`，且 `deliveryPending` 为 false。列表图片请求应直接访问 `quiz.iamshuaidi.com` 下的 `640.webp`，不再访问美国的 `/_next/image`。COS 控制台中能看到 `inspiration/v1/` 下的原图和缩略图。
+在浏览器网络面板查看 `/api/inspiration`：同步完成的条目会包含 `imageUrl` 和 `thumbnailUrl`，且 `deliveryPending` 为 false。列表图片请求应直接访问 `ai-cdn.iamshuaidi.com` 下的 `640.webp`，不再访问美国的 `/_next/image`。COS 控制台中能看到 `inspiration/v1/` 下的原图和缩略图。
 
 失败时查看 worker 的 `COS_MIRROR_RETRY` 以及 web 的 `INSPIRATION_COS_ENQUEUE_DEFERRED` 日志。队列自动重试；重试耗尽后，后续访问可以在下一个 10 分钟任务窗口重新入队。不会为了重试删除已有对象。

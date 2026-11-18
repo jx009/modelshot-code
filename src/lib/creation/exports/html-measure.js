@@ -17,10 +17,18 @@ export function measureHtmlSlide() {
     }
     if (element.tagName === "svg" || element.tagName === "SVG") { raster.push({ ...base(element), selector: element.getAttribute("data-node-id") }); warnings.push("SVG_OBJECT_RASTERIZED"); return; }
     if (element.tagName === "IMG") { nodes.push({ ...base(element), type: "image", assetId: element.getAttribute("data-export-asset"), fit: ["contain", "cover"].includes(style.objectFit) ? style.objectFit : "stretch", alt: element.alt || "" }); return; }
-    if (style.backgroundImage !== "none") throw new Error("EXPORT_HTML_BACKGROUND_IMAGE_UNSUPPORTED");
+    // 背景图/渐变：在原位置、原层级放一张只含背景的截图，子元素的文字和形状照常导出为可编辑对象。
+    // 背景截图已包含背景色和边框，所以这类元素不再另画矩形。
+    const backgroundImage = style.backgroundImage !== "none";
+    if (backgroundImage && bounds.width > 0 && bounds.height > 0) {
+      const mark = `bg${++seq}`;
+      element.setAttribute("data-export-bg", mark);
+      nodes.push({ ...base(element), type: "image", assetId: null, fit: "stretch", alt: "", backgroundMark: mark });
+      warnings.push("CSS_BACKGROUND_RASTERIZED");
+    }
     if (style.transform !== "none" || style.rotate !== "none") warnings.push("CSS_TRANSFORM_APPROXIMATED");
     if (style.boxShadow !== "none" || style.textShadow !== "none") warnings.push("CSS_SHADOW_OMITTED");
-    if (bounds.width > 0 && bounds.height > 0 && (style.backgroundColor !== "rgba(0, 0, 0, 0)" || parseFloat(style.borderTopWidth) > 0)) nodes.push({ ...base(element), type: "shape", shape: "rectangle", fill: color(style.backgroundColor), stroke: color(style.borderTopColor), strokeWidth: Math.min(64, parseFloat(style.borderTopWidth) || 0), radius: Math.min(512, parseFloat(style.borderTopLeftRadius) || 0) });
+    if (!backgroundImage && bounds.width > 0 && bounds.height > 0 && (style.backgroundColor !== "rgba(0, 0, 0, 0)" || parseFloat(style.borderTopWidth) > 0)) nodes.push({ ...base(element), type: "shape", shape: "rectangle", fill: color(style.backgroundColor), stroke: color(style.borderTopColor), strokeWidth: Math.min(64, parseFloat(style.borderTopWidth) || 0), radius: Math.min(512, parseFloat(style.borderTopLeftRadius) || 0) });
     for (const child of element.childNodes) {
       if (child.nodeType === Node.ELEMENT_NODE) visit(child);
       else if (child.nodeType === Node.TEXT_NODE && child.textContent.trim()) {

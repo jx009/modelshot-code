@@ -91,7 +91,9 @@ try {
   if ((await stat(join(root, "input.json"))).size > 3 * 1024 * 1024) throw new Error("EXPORT_INPUT_TOO_LARGE");
   await convert(JSON.parse(await readFile(join(root, "input.json"), "utf8")));
 } catch (error) {
-  const code = typeof error.message === "string" && /^EXPORT_[A-Z_]+$/.test(error.message) ? error.message : "EXPORT_RENDER_FAILED";
+  // 浏览器里抛出的错误会带上 "page.evaluate: Error:" 前缀；从消息里取出明确的 EXPORT_ 代码，
+  // 这类内容问题不可重试，不能被当成笼统的 EXPORT_RENDER_FAILED 反复排队。
+  const code = typeof error.message === "string" && error.message.match(/\bEXPORT_[A-Z_]+\b/)?.[0] || "EXPORT_RENDER_FAILED";
   // 保留真实原因（截断、单行），否则父进程只能看到笼统的 EXPORT_RENDER_FAILED。
   const detail = String(error?.message || error).replace(/\s+/g, " ").slice(0, 300);
   await writeFile(join(root, "error.json"), JSON.stringify({ code, detail }));

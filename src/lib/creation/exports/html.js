@@ -35,6 +35,23 @@ export async function renderHtmlArtifact(input, assets, format) {
         const bindings = [...inspectHtml(source.html).ids].filter(([, node]) => node.tagName === "img").map(([id, node]) => [id, attr(node, "src")?.slice(6)]);
         await page.evaluate(bindings => { for (const [id, assetId] of bindings) document.querySelector(`[data-node-id="${CSS.escape(id)}"]`)?.setAttribute("data-export-asset", assetId); }, bindings);
         const output = await page.evaluate(measureHtmlSlide);
+        // 只截背景：截图时隐藏页面上其余所有元素（包括压在上面的兄弟元素），只显示目标元素自身的
+        // 背景和边框，文字透明、子元素隐藏；页面底色不进截图，截完恢复。
+        await page.addStyleTag({ content: "html.__export-bg-mode *{visibility:hidden!important}html.__export-bg-mode .__export-bg-target{visibility:visible!important;color:transparent!important;text-shadow:none!important}html.__export-bg-mode .__export-bg-target *{visibility:hidden!important}html.__export-bg-child,html.__export-bg-child body{background:transparent!important}" });
+        for (const node of output.nodes.filter(item => item.backgroundMark)) {
+          const selector = `[data-export-bg="${node.backgroundMark}"]`, assetId = `html-bg-${source.id}-${node.backgroundMark}`;
+          await page.evaluate(target => {
+            const element = document.querySelector(target), root = document.documentElement;
+            root.classList.add("__export-bg-mode");
+            // body 的背景会铺满整个画布；截其他元素时把页面底色设为透明，圆角等透明区域才不会带上页面背景。
+            if (element && element !== document.body && element !== root) root.classList.add("__export-bg-child");
+            element?.classList.add("__export-bg-target");
+          }, selector);
+          const bytes = await page.locator(selector).screenshot({ type: "png", animations: "disabled", omitBackground: true });
+          await page.evaluate(target => { document.documentElement.classList.remove("__export-bg-mode", "__export-bg-child"); document.querySelector(target)?.classList.remove("__export-bg-target"); }, selector);
+          const meta = await sharp(bytes).metadata(); media.set(assetId, { bytes, format: "png", width: meta.width, height: meta.height });
+          node.assetId = assetId; delete node.backgroundMark;
+        }
         for (const [index, vector] of output.raster.entries()) {
           if (!vector.selector) throw new Error("EXPORT_HTML_VECTOR_ID_REQUIRED");
           const bytes = await page.locator(`[data-node-id="${vector.selector}"]`).screenshot({ type: "png" }), assetId = `html-vector-${source.id}-${index}`;

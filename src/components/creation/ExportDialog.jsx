@@ -110,7 +110,9 @@ export default function ExportDialog({ artifactId, userId, kind = "slides", onFl
       {listing && !enabled(format) && <p>{text("当前暂不接受此格式的新导出，已完成的文件仍可下载。", "New exports in this format are currently unavailable. Completed files can still be downloaded.")}</p>}
       {error && <p role="alert">{creationError(error, zh)} <button disabled={busy} onClick={() => { setError(null); setEpoch(value => value + 1); }}>{text("刷新", "Refresh")}</button></p>}
       {!listing && !error && <p role="status">{text("正在读取导出记录…", "Loading exports…")}</p>}
-      <ul>{listing?.items.map(row => <li key={row.id}><div><strong>{row.format?.toUpperCase()} · V{row.revision}</strong><span role={active(row) ? "status" : undefined}>{labels[row.status]?.[zh ? 0 : 1]}</span>{row.errorCode && <p>{creationError({ code: row.errorCode }, zh)}</p>}</div>
+      <ul>{listing?.items.map(row => <li key={row.id}><div><strong>{row.format?.toUpperCase()} · V{row.revision}</strong><span role={active(row) ? "status" : undefined}>{row.status === "queued" && row.errorCode
+          ? (zh ? `上次转换失败，正在自动重试（第 ${(row.attempt || 0) + 1} 次）` : `Last attempt failed; retrying automatically (attempt ${(row.attempt || 0) + 1})`)
+          : labels[row.status]?.[zh ? 0 : 1]}</span>{row.errorCode && row.status !== "queued" && <p>{creationError({ code: row.errorCode }, zh)}</p>}</div>
         {row.downloadUrl && <a href={row.downloadUrl} download>{text("下载", "Download")}</a>}
         {active(row) && <button disabled={busy} onClick={() => cancel(row.id)}>{text("取消", "Cancel")}</button>}
         {["failed", "cancelled"].includes(row.status) && <button disabled={busy || Boolean(pending) || !exportFormat(row.format) || !(row.canRetry ?? enabled(row.format))} onClick={() => submit(row)}>{text("重试此版本", "Retry this version")}</button>}

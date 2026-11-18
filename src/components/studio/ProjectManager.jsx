@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Clapperboard, Copy, Film, FolderOpen, LayoutGrid, Plus, Save, Search, ShoppingBag, X } from "lucide-react";
+import { Clapperboard, Copy, Film, FolderOpen, LayoutGrid, Plus, Presentation, Save, Search, ShoppingBag, X } from "lucide-react";
 import Modal from "@/components/ui/Modal";
 import Link from "@/components/ui/NavigationLink";
 import Image from "@/components/studio/AssetImage";
@@ -10,7 +10,7 @@ import { peekProjectList, readProjectList } from "@/lib/studio/project-list";
 import { previewUrl } from "@/lib/studio/image-url";
 import "./project-switcher.css";
 
-const KINDS = { canvas: ["自由画布", "Canvas", LayoutGrid], video: ["单镜头视频", "Single shot", Film], motion: ["分镜成片", "Storyboard", Clapperboard], commerce: ["电商套图", "Commerce", ShoppingBag] };
+const KINDS = { canvas: ["自由画布", "Canvas", LayoutGrid], video: ["单镜头视频", "Single shot", Film], motion: ["分镜成片", "Storyboard", Clapperboard], commerce: ["电商套图", "Commerce", ShoppingBag], slides: ["PPT", "Slides", Presentation] };
 
 function ago(value, zh, locale) {
   const minutes = Math.round((Date.now() - new Date(value).getTime()) / 60000);
@@ -21,12 +21,13 @@ function ago(value, zh, locale) {
   return new Date(value).toLocaleDateString(locale, { month: "short", day: "numeric", ...(new Date(value).getFullYear() !== new Date().getFullYear() ? { year: "numeric" } : {}) });
 }
 
-// 项目切换面板：封面网格、搜索、当前项目高亮、分页加载。画布与视频工作台共用，按 kinds 过滤项目类型。
+// 项目切换面板：封面网格、搜索、当前项目高亮、分页加载。画布、视频与 PPT 工作台共用，按 kinds 过滤项目类型。
 // editor 存在时显示当前项目的命名与保存（画布使用）；creates 为“新建”入口。
-export default function ProjectManager({ userId, locale, kinds = ["canvas"], currentId, ready = true, onChoose, onClose, creates = [], editor }) {
+// scope="creation" 读取 PPT 等创作项目（存放在另一张表，走项目库接口，一次只能过滤一种类型）。
+export default function ProjectManager({ userId, locale, kinds = ["canvas"], currentId, ready = true, onChoose, onClose, creates = [], editor, scope }) {
   const zh = locale === "zh", text = (cn, en) => zh ? cn : en;
   const [search, setSearch] = useState(""), query = useDebouncedValue(search.trim(), 300);
-  const params = `paged=1&kind=${kinds.join(",")}${query ? `&q=${encodeURIComponent(query)}` : ""}`;
+  const params = `paged=1${scope ? `&scope=${scope}` : ""}&kind=${kinds.join(",")}${query ? `&q=${encodeURIComponent(query)}` : ""}`;
   const [pages, setPages] = useState(() => ({ params, items: peekProjectList(userId, params)?.items || null, cursor: peekProjectList(userId, params)?.nextCursor || null }));
   const [error, setError] = useState(""), [attempt, setAttempt] = useState(0), [saving, setSaving] = useState(false), [loadingMore, setLoadingMore] = useState(false);
   const active = useRef(false), savingRef = useRef(false);
@@ -58,7 +59,7 @@ export default function ProjectManager({ userId, locale, kinds = ["canvas"], cur
   }
   return <Modal className="pj-switcher" label={text("我的项目", "Your projects")} onClose={onClose}>
     <header className="pj-head">
-      <div><h2>{text("我的项目", "Your projects")}</h2><p>{text("切换后当前修改会自动保存", "Changes are saved before switching")}</p></div>
+      <div><h2>{text("我的项目", "Your projects")}</h2><p>{scope === "creation" ? text("项目内容实时保存，可随时切换", "Projects save as you go. Switch at any time.") : text("切换后当前修改会自动保存", "Changes are saved before switching")}</p></div>
       <div className="pj-head-actions">
         {creates.map(item => item.onClick ? <button type="button" key={item.label} className="pj-new" disabled={!ready} onClick={() => { onClose(); item.onClick(); }}><Plus size={14} />{item.label}</button> : <Link key={item.href} className="pj-new" href={item.href} onClick={onClose}><Plus size={14} />{item.label}</Link>)}
         <button type="button" className="pj-close" aria-label={text("关闭", "Close")} onClick={onClose}><X size={18} /></button>

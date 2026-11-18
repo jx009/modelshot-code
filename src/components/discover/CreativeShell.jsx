@@ -27,6 +27,7 @@ import MobileNavigation from "./MobileNavigation";
 import { subscribeWorkspaceTitle, workspaceTitleSnapshot, workspaceTitleServerSnapshot } from "@/lib/creation/client/workspace-title";
 
 const RecentProjects = dynamic(() => import("@/components/studio/RecentProjects"), { ssr: false });
+const CreationProjectSwitch = dynamic(() => import("@/components/creation/CreationProjectSwitch"), { ssr: false });
 
 function subscribeScroll(onChange) {
   window.addEventListener("scroll", onChange, { passive: true });
@@ -60,7 +61,7 @@ function CreativeShellContent({ children }) {
             <MobileNavigation links={links} path={path} zh={zh} />
             {/* 工作台（视频 / PPT）与画布同一套顶栏：品牌 · 分隔线 · 项目标题 */}
             {compactWorkspace && <><Link prefetch="intent" href="/" className="ls-ws-brand" aria-label="来塔绘梦"><BrandLogo /></Link><span className="ls-ws-divider" aria-hidden="true" /></>}
-            {compactWorkspace ? path === "/video" ? <WorkspaceHeaderSlot name="title" /> : <span className="cr-workspace-title ls-ws-title" title={creationTitle || undefined}>{creationTitle || (zh ? "PPT 创作" : "Slides")}</span>
+            {compactWorkspace ? path === "/video" ? <WorkspaceHeaderSlot name="title" /> : <><span className="cr-workspace-title ls-ws-title" title={creationTitle || undefined}>{creationTitle || (zh ? "PPT 创作" : "Slides")}</span><CreationProjectSwitch /></>
               : <Link prefetch="intent" href="/" className="ls-wordmark" aria-label="来塔绘梦"><BrandMark size={26} /><span>来塔绘梦</span></Link>}
             {!compactWorkspace && <nav className="ls-topnav" aria-label={zh ? "主导航" : "Main navigation"}>{links.map(([href, , cn, en]) => {
               const active = path === href || href === "/" && path.startsWith("/explore/");

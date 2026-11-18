@@ -1,5 +1,6 @@
 import sharp from "sharp";
 import { AppError } from "../../http.js";
+import { providerRejection } from "./provider-rejection.js";
 import { downloadProviderVideo } from "../../infra/storage/download.js";
 import { videoInputError, videoModelOptions } from "../../video/model-protocols.js";
 import { gptBestBase, gptBestVideoRequest } from "./gptbest-video.js";
@@ -31,7 +32,7 @@ function apiBase(config) {
 async function request(config, path, { signal, body, headers = {} } = {}) {
   const response = await fetch(`${apiBase(config)}${path}`, { method: body ? "POST" : "GET", redirect: "manual", signal,
     headers: { Authorization: `Bearer ${config.videoKey}`, ...headers }, ...(body ? { body } : {}) });
-  if (!response.ok) throw new AppError("VIDEO_PROVIDER_REJECTED", response.status >= 400 ? response.status : 502);
+  if (!response.ok) throw await providerRejection(response, path);
   return response.json();
 }
 

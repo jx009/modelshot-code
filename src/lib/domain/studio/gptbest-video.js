@@ -1,4 +1,5 @@
 import { AppError } from "../../http.js";
+import { providerRejection } from "./provider-rejection.js";
 import { gptBestApi, gptBestInputError } from "../../video/gptbest-catalog.js";
 
 const sizes = { "16:9": "1280x720", "9:16": "720x1280", "1:1": "960x960", "4:5": "768x960" };
@@ -29,7 +30,7 @@ async function call(config, path, { body, signal, headers = {}, method } = {}) {
   const response = await fetch(`${gptBestBase(config.videoURL)}${path}`, { method: method || (body ? "POST" : "GET"), signal, redirect: "manual",
     headers: { Authorization: `Bearer ${config.videoKey}`, ...(body && !form ? { "Content-Type": "application/json" } : {}), ...headers },
     ...(body ? { body: form ? body : JSON.stringify(body) } : {}) });
-  if (!response.ok) throw new AppError("VIDEO_PROVIDER_REJECTED", response.status >= 400 ? response.status : 502);
+  if (!response.ok) throw await providerRejection(response, path);
   const data = await response.json();
   if (data.error || data.base_resp?.status_code || data.code !== undefined && ![0, 200, "0", "200"].includes(data.code)) throw new AppError("VIDEO_PROVIDER_REJECTED", 422);
   return data;

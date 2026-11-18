@@ -212,6 +212,9 @@ export async function executeStudio(id, { db = prisma, store = objectStorage(), 
       return;
     }
     const status = error.status || error.statusCode;
+    // 记录供应商的原始拒绝信息，否则任务详情里只有错误码，看不出原因。
+    console.error(JSON.stringify({ code: "STUDIO_JOB_FAILED", jobId: id, tool: snapshot.tool, provider: snapshot.videoProvider || null, videoKind: snapshot.videoKind || null, videoBaseURL: snapshot.videoBaseURL || null, errorCode: error?.code || null, status: status || null,
+      providerStatus: error?.providerStatus ?? null, providerPath: error?.providerPath ?? null, providerBody: error?.providerBody ?? null }));
     if (stored?.state === "claimed" || [400, 401, 403, 404, 413, 415, 422, 429].includes(status) || error instanceof AppError && ![502, 504].includes(status)) {
       await finishOutput(id, output.fence, { errorCode: safeProviderError(error, "PROVIDER_REJECTED") }, db);
     } else {

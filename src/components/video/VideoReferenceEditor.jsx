@@ -19,7 +19,7 @@ export default function VideoReferenceEditor({ media, offer, onChange, onAdd, on
   const mismatch = !motion && media.length && videoReferenceError({ ...offer, referenceLayout: layout }, media);
   const roles = media.map((item, index) => referenceRole(item, index, media, layout));
   const slots = (layout === "frames" ? ["first_frame", "last_frame"] : layout === "first_frame" ? ["first_frame"] : []).filter(role => !roles.includes(role));
-  return <div className="vg-references" aria-label={text("创作素材", "Creative references")}>
+  return <div className="vg-references" data-layout={layout} aria-label={text("创作素材", "Creative references")}>
     <div className="vg-reference-list">
       {media.map((item, index) => {
         const role = referenceRole(item, index, media, layout), label = labels[role]?.[zh ? 0 : 1] || role;

@@ -1,23 +1,32 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Check, ImagePlus, LoaderCircle } from "lucide-react";
+import { Check, LoaderCircle, Sparkles } from "lucide-react";
 import { previewUrl } from "@/lib/studio/image-url";
-import CreditIcon from "@/components/ui/CreditIcon";
+
+const frameAssets = jobs => jobs.filter(job => job.tool === "generate" && job.status === "succeeded").flatMap(job => job.resultData?.assets || []).slice(0, 8);
 
 // 先生成首帧：用当前描述生成候选图，选中后作为视频的首帧参考；比直接生成视频更可控、更省积分。
-export function FrameCandidates({ jobs, media, offer, disabled, busy, onGenerate, onPick, zh }) {
+// 按钮放在输入框的操作栏里，候选图单独排在素材下方（见 FrameCandidateList）。
+export function FrameGenerateButton({ jobs, offer, disabled, busy, onGenerate, zh }) {
   const text = (cn, en) => zh ? cn : en;
-  const frames = jobs.filter(job => job.tool === "generate" && job.status === "succeeded").flatMap(job => job.resultData?.assets || []).slice(0, 8);
   const pending = jobs.some(job => job.tool === "generate" && !["succeeded", "failed", "cancelled"].includes(job.status));
-  const chosen = new Set(media.map(item => item.id));
   if (!offer) return null;
+  const label = text("AI 生成首帧", "Generate a first frame"), credits = text(`${offer.cost} 积分`, `${offer.cost} credits`);
+  return <button type="button" className="vm-frames-generate" disabled={disabled || busy || pending || !offer.available} onClick={onGenerate} aria-label={`${label} · ${credits}`} title={offer.available ? text(`用当前描述先生成一张首帧图（${credits}），比直接生成视频更可控`, `Generate a first frame from this description (${credits}) for more control`) : text("生图模型暂不可用", "Image model unavailable")}>
+    {pending ? <LoaderCircle size={14} className="vm-spin" /> : <Sparkles size={14} />}<b>{frameAssets(jobs).length ? text("再来一张", "Another") : text("AI 生成", "Generate")}</b><span>{offer.cost}</span>
+  </button>;
+}
+
+export function FrameCandidateList({ jobs, media, disabled, onPick, zh }) {
+  const text = (cn, en) => zh ? cn : en;
+  const frames = frameAssets(jobs);
+  if (!frames.length) return null;
+  const chosen = new Set(media.map(item => item.id));
   return <div className="vm-frames">
-    <button type="button" className="vm-frames-generate" disabled={disabled || busy || pending || !offer.available} onClick={onGenerate} title={offer.available ? undefined : text("生图模型暂不可用", "Image model unavailable")}>
-      {pending ? <LoaderCircle size={14} className="vm-spin" /> : <ImagePlus size={14} />}{frames.length ? text("再生成一张首帧", "Another frame") : text("先生成首帧", "Generate first frame")}<span><CreditIcon size={11} />{offer.cost}</span>
-    </button>
-    {frames.length > 0 && <div className="vm-frames-list" role="list" aria-label={text("首帧候选", "Frame candidates")}>{frames.map(asset => <button type="button" role="listitem" key={asset.id} className={chosen.has(asset.id) ? "is-chosen" : ""} disabled={disabled || chosen.has(asset.id)} onClick={() => onPick(asset)} aria-label={chosen.has(asset.id) ? text("已用作首帧", "Used as first frame") : text("用作首帧", "Use as first frame")}>
+    <small>{text("候选首帧", "Frame options")}</small>
+    <div className="vm-frames-list" role="list" aria-label={text("首帧候选", "Frame candidates")}>{frames.map(asset => <button type="button" role="listitem" key={asset.id} className={chosen.has(asset.id) ? "is-chosen" : ""} disabled={disabled || chosen.has(asset.id)} onClick={() => onPick(asset)} aria-label={chosen.has(asset.id) ? text("已用作首帧", "Used as first frame") : text("用作首帧", "Use as first frame")}>
       <img src={previewUrl(asset.id, 320)} alt="" />{chosen.has(asset.id) && <Check size={14} />} {/* eslint-disable-line @next/next/no-img-element */}
-    </button>)}</div>}
+    </button>)}</div>
   </div>;
 }
 

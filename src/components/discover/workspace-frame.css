@@ -192,47 +192,102 @@
   .cr-shell.ls.ls.cr-shell-creation .cr-mobile-menu { display: none; }
 }
 
-/* ── 视频输入框：素材 → 描述 → 一行参数胶囊 → 工具与发送 → 说明小字 ──
+/* ── 视频输入框 ──
+   自上而下：素材（有才占位）→ 描述 → 参数胶囊 → 操作栏（工具在左，价格与发送在右）→ 一行计费说明。
    参数标签文字视觉隐藏（font-size:0），可访问名称不变；下拉框各自恢复字号。 */
-.cr-shell.ls.ls.cr-shell-creation .vm-composer { display: flex; flex-direction: column; gap: 8px; }
-.cr-shell.ls.ls.cr-shell-creation .vm-composer > .vg-references { order: 0; margin: 0; }
-.cr-shell.ls.ls.cr-shell-creation .vm-composer > textarea { order: 1; }
-.cr-shell.ls.ls.cr-shell-creation .vm-composer > .vg-parameters { order: 2; display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 6px; padding-top: 8px; border-top: 1px solid var(--divider); }
-.cr-shell.ls.ls.cr-shell-creation .vm-composer > .vm-composer-tools { order: 3; display: flex; align-items: center; gap: 6px; margin: 0; }
-.cr-shell.ls.ls.cr-shell-creation .vm-composer > .vm-composer-tools > .vm-send { margin-left: auto; }
-.cr-shell.ls.ls.cr-shell-creation .vm-composer > :is(small, .cr-creation-note) { order: 4; margin: 0; padding: 0; color: var(--tertiary-text); font-size: var(--text-xs); line-height: 1.6; }
-.cr-shell.ls.ls.cr-shell-creation .vm-composer .vg-reference-caption { display: block; margin-top: 4px; color: var(--tertiary-text); font-size: var(--text-xs); }
-.cr-shell.ls.ls.cr-shell-creation .vm-composer .vg-references:not(:has(article, .vg-frame-slot)) .vg-reference-caption { display: none; }
-.cr-shell.ls.ls.cr-shell-creation .vm-composer .vg-parameters label { display: block; flex: 0 1 auto; min-width: 0; margin: 0; font-size: 0; }
-.cr-shell.ls.ls.cr-shell-creation .vm-composer .vg-parameters > label.generation-model-select { min-width: 0; }
-.cr-shell.ls.ls.cr-shell-creation .vm-composer .vg-parameter-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; min-width: 0; }
-.cr-shell.ls.ls.cr-shell-creation .vm-composer .vg-parameters select {
-  width: 100%; height: 32px; padding: 0 28px 0 12px; border: 1px solid var(--divider); border-radius: 999px;
-  background-color: var(--bg-card); color: var(--secondary-text); font-size: var(--text-sm); text-overflow: ellipsis;
+.cr-shell.ls.ls.cr-shell-creation .vm-composer { display: flex; flex-direction: column; gap: 10px; padding: 12px; container-type: inline-size; }
+
+/* 素材区只在已有素材（或需要提示用途不匹配）时出现。空白状态不放占位：入口在下面的操作栏里，
+   这样一打开就是输入区，不会先看到一块空的上传框。已有一张首帧时，旁边保留一枚「尾帧」空位。 */
+.cr-shell.ls.ls.cr-shell-creation .vm-composer > .vg-references { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0; }
+.cr-shell.ls.ls.cr-shell-creation .vm-composer > .vg-references:not(:has(article, .vg-reference-warning)) { display: none; }
+.cr-shell.ls.ls.cr-shell-creation .vm-composer .vg-reference-list { align-items: center; gap: 8px; max-width: 100%; padding: 0; }
+.cr-shell.ls.ls.cr-shell-creation .vm-composer .vg-reference-list:empty { display: none; }
+.cr-shell.ls.ls.cr-shell-creation .vm-composer .vg-frame-slot {
+  flex: none; flex-direction: row; gap: 8px; min-height: 0; height: 44px; padding: 0 14px;
+  border: 1px dashed var(--divider-strong); border-radius: 12px; background: transparent;
+  color: var(--secondary-text); font-size: var(--text-sm);
+  transition: border-color var(--dur-fast), color var(--dur-fast), background var(--dur-fast);
 }
-.cr-shell.ls.ls.cr-shell-creation .vm-composer .vg-parameters select:hover:not(:disabled) { border-color: var(--divider-strong); color: var(--primary-text); }
-.cr-shell.ls.ls.cr-shell-creation .vm-composer .vg-parameters :is(p, div[role=status]) { grid-column: 1 / -1; margin: 0; font-size: var(--text-xs); color: var(--tertiary-text); }
-/* 计费说明放在发送按钮左侧，右侧保持发送按钮固定的位置 */
-.cr-shell.ls.ls.cr-shell-creation .vm-composer > small { margin: 0; font-variant-numeric: tabular-nums; }
+.cr-shell.ls.ls.cr-shell-creation .vm-composer .vg-frame-slot svg { width: 17px; height: 17px; }
+.cr-shell.ls.ls.cr-shell-creation .vm-composer .vg-frame-slot:hover:not(:disabled) { border-color: var(--primary); background: var(--primary-muted); color: var(--primary-text); }
+/* 已上传的素材：小缩略图卡片，用途标签叠在图上，下面一排操作 */
+.cr-shell.ls.ls.cr-shell-creation .vm-composer .vg-reference { position: relative; flex: 0 0 88px; padding: 4px; border-radius: 12px; background: var(--bg-card); }
+.cr-shell.ls.ls.cr-shell-creation .vm-composer .vg-reference:has(audio) { flex-basis: 220px; }
+.cr-shell.ls.ls.cr-shell-creation .vm-composer .vg-reference-preview { height: 56px; border-radius: 8px; }
+.cr-shell.ls.ls.cr-shell-creation .vm-composer .vg-reference strong { position: absolute; top: 8px; left: 8px; max-width: calc(100% - 16px); margin: 0; padding: 1px 6px; border-radius: 6px; background: rgba(0, 0, 0, .62); color: #fff; font-size: 11px; font-weight: 600; line-height: 1.5; }
+.cr-shell.ls.ls.cr-shell-creation .vm-composer .vg-reference:has(audio) strong { position: static; padding: 0; background: none; color: var(--primary-text); }
+.cr-shell.ls.ls.cr-shell-creation .vm-composer .vg-reference > span { margin-top: 4px; padding: 0 2px; color: var(--tertiary-text); font-size: 11px; }
+.cr-shell.ls.ls.cr-shell-creation .vm-composer .vg-reference:has(img) > span { display: none; }
+.cr-shell.ls.ls.cr-shell-creation .vm-composer .vg-reference > small { display: block; padding: 0 2px; font-size: 11px; }
+.cr-shell.ls.ls.cr-shell-creation .vm-composer .vg-reference-actions { gap: 0; margin-top: 2px; }
+.cr-shell.ls.ls.cr-shell-creation .vm-composer .vg-reference-actions button { flex: 1; display: grid; place-items: center; height: 22px; margin: 0; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--tertiary-text); }
+.cr-shell.ls.ls.cr-shell-creation .vm-composer .vg-reference-actions button:hover:not(:disabled) { background: var(--bg-card-hover); color: var(--primary-text); }
+.cr-shell.ls.ls.cr-shell-creation .vm-composer .vg-reference-caption { flex: 1 1 140px; display: block; min-width: 0; margin: 0; color: var(--tertiary-text); font-size: var(--text-xs); line-height: 1.6; }
+.cr-shell.ls.ls.cr-shell-creation .vm-composer .vg-reference-warning { flex-basis: 100%; }
+/* 有素材时说明换到卡片下方；首帧模式的卡片已标明用途，不再重复说明 */
+.cr-shell.ls.ls.cr-shell-creation .vm-composer .vg-references:has(article) .vg-reference-caption { flex-basis: 100%; }
+.cr-shell.ls.ls.cr-shell-creation .vm-composer .vg-references[data-layout="first_frame"]:has(article) .vg-reference-caption { display: none; }
+
+.cr-shell.ls.ls.cr-shell-creation .vm-composer > textarea { min-height: 72px; padding: 2px; }
+
+/* 参数：一行胶囊。只有模型、画幅、时长时模型占满剩余宽度；多出清晰度等选项时模型独占一行，其余等分 */
+.cr-shell.ls.ls.cr-shell-creation .vm-composer > .vg-parameters { display: grid; grid-template-columns: minmax(120px, 1fr) auto auto; gap: 6px; }
+.cr-shell.ls.ls.cr-shell-creation .vm-composer > .vg-parameters:has(> label:not(.generation-model-select)) { grid-template-columns: repeat(auto-fit, minmax(84px, 1fr)); }
+.cr-shell.ls.ls.cr-shell-creation .vm-composer > .vg-parameters:has(> label:not(.generation-model-select)) > .generation-model-select { grid-column: 1 / -1; }
+.cr-shell.ls.ls.cr-shell-creation .vm-composer .vg-parameters label { display: block; min-width: 0; margin: 0; font-size: 0; }
+.cr-shell.ls.ls.cr-shell-creation .vm-composer .vg-parameter-row { display: contents; }
+.cr-shell.ls.ls.cr-shell-creation .vm-composer .vg-parameters select {
+  width: 100%; max-width: none; height: 34px; padding: 0 28px 0 12px; border: 1px solid var(--divider); border-radius: 999px;
+  background-color: var(--bg-card); color: var(--primary-text); font-size: var(--text-sm); text-overflow: ellipsis;
+}
+.cr-shell.ls.ls.cr-shell-creation .vm-composer .vg-parameters select:hover:not(:disabled) { border-color: var(--divider-strong); }
+.cr-shell.ls.ls.cr-shell-creation .vm-composer .vg-parameters > :is(p, div) { grid-column: 1 / -1; margin: 0; font-size: var(--text-xs); color: var(--tertiary-text); }
+
+/* 候选首帧：生成后排在素材下方，点击即用作首帧 */
+.cr-shell.ls.ls.cr-shell-creation .vm-composer > .vm-frames { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.cr-shell.ls.ls.cr-shell-creation .vm-composer > .vm-frames > small { flex: none; margin: 0; color: var(--tertiary-text); font-size: var(--text-xs); }
+
+/* 操作栏：左边是一组素材入口（上传 | AI 生成首帧）和润色，右边是带总价的发送按钮，始终同一行 */
+.cr-shell.ls.ls.cr-shell-creation .vm-composer > .vm-composer-tools { display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; min-width: 0; margin: 0; }
+.cr-shell.ls.ls.cr-shell-creation .vm-composer .vm-source { display: inline-flex; flex: 0 1 auto; min-width: 0; height: 34px; border: 1px solid var(--divider); border-radius: 10px; }
+.cr-shell.ls.ls.cr-shell-creation .vm-composer .vm-source:not(:has(button)) { display: none; }
+.cr-shell.ls.ls.cr-shell-creation .vm-composer .vm-source > button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; flex: 0 1 auto; min-width: 34px; height: 100%; padding: 0 11px;
+  border: 0; border-radius: 9px; background: transparent; color: var(--secondary-text); font-size: var(--text-sm); white-space: nowrap;
+}
+.cr-shell.ls.ls.cr-shell-creation .vm-composer .vm-source > button + button { border-left: 1px solid var(--divider); border-radius: 0 9px 9px 0; }
+.cr-shell.ls.ls.cr-shell-creation .vm-composer .vm-source > button:has(+ button) { border-radius: 9px 0 0 9px; }
+.cr-shell.ls.ls.cr-shell-creation .vm-composer .vm-source > button:hover:not(:disabled) { background: var(--bg-card-hover); color: var(--primary-text); }
+.cr-shell.ls.ls.cr-shell-creation .vm-composer .vm-source > button > svg { flex: none; }
+.cr-shell.ls.ls.cr-shell-creation .vm-composer .vm-source > button > b { overflow: hidden; font-weight: inherit; text-overflow: ellipsis; }
+.cr-shell.ls.ls.cr-shell-creation .vm-composer .vm-frames-generate > span { color: var(--tertiary-text); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
+.cr-shell.ls.ls.cr-shell-creation .vm-composer .vm-frames-generate > span::before { content: "· "; }
+/* 已有素材后上传入口收成图标，把宽度让给发送按钮 */
+.cr-shell.ls.ls.cr-shell-creation .vm-composer .vm-source:not([data-empty]) > .vm-upload { padding: 0; }
+.cr-shell.ls.ls.cr-shell-creation .vm-composer .vm-source:not([data-empty]) > .vm-upload > span { display: none; }
+/* 润色：图标按钮，积分写在悬停提示与读屏名称里。选择器带 button 与 :not(.vm-send) 才能压过通用按钮规则 */
+.cr-shell.ls.ls.cr-shell-creation .vm-composer > .vm-composer-tools > button.vm-tool-pill:not(.vm-send) { flex: none; width: 34px; min-width: 34px; padding: 0; gap: 0; overflow: hidden; font-size: 0; }
+.cr-shell.ls.ls.cr-shell-creation .vm-composer > .vm-composer-tools > button.vm-tool-pill:not(.vm-send) > svg { flex: none; width: 15px; height: 15px; }
+.cr-shell.ls.ls.cr-shell-creation .vm-composer > .vm-composer-tools > .vm-send { flex: none; margin-left: auto; }
+.cr-shell.ls.ls.cr-shell-creation .vm-composer .vm-frames-list { display: flex; gap: 6px; min-width: 0; overflow-x: auto; }
+.cr-shell.ls.ls.cr-shell-creation .vm-composer .vm-frames-list button { position: relative; flex: none; width: 44px; height: 44px; padding: 0; overflow: hidden; border: 2px solid transparent; border-radius: 10px; background: var(--bg-card); }
+.cr-shell.ls.ls.cr-shell-creation .vm-composer .vm-frames-list button img { width: 100%; height: 100%; object-fit: cover; }
+.cr-shell.ls.ls.cr-shell-creation .vm-composer .vm-frames-list button.is-chosen { border-color: var(--primary); }
+.cr-shell.ls.ls.cr-shell-creation .vm-composer .vm-frames-list button svg { position: absolute; right: 2px; bottom: 2px; padding: 1px; border-radius: 50%; background: var(--primary); color: var(--primary-btn-text); }
+/* 对话栏拖到很窄时，素材入口只留图标，保证发送按钮始终在同一行 */
+@container (max-width: 300px) {
+  .cr-shell.ls.ls.cr-shell-creation .vm-composer .vm-source > button { padding: 0; gap: 0; }
+  .cr-shell.ls.ls.cr-shell-creation .vm-composer .vm-source > button > :is(span, b) { display: none; }
+}
+
+.cr-shell.ls.ls.cr-shell-creation .vm-composer > :is(small, .cr-creation-note) { margin: 0; padding: 0; color: var(--tertiary-text); font-size: var(--text-xs); line-height: 1.6; font-variant-numeric: tabular-nums; }
 
 /* 项目名输入框按内容自适应宽度，保存状态紧随其后 */
 .cr-shell.ls.ls.cr-shell-creation .vm-project-name { field-sizing: content; width: auto; min-width: 96px; max-width: min(36vw, 360px); }
 @media (max-width: 600px) { .cr-shell.ls.ls.cr-shell-creation .vm-project-name { min-width: 0; max-width: 30vw; padding: 0 6px; } }
 
 /* ── 单镜头：首帧候选、任务耗时、版本条、润色结果 ── */
-.cr-shell.ls.ls.cr-shell-creation .vm-composer > .vm-frames { order: 3; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.cr-shell.ls.ls.cr-shell-creation .vm-frames-generate {
-  display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border: 1px dashed var(--divider-strong); border-radius: 999px;
-  background: transparent; color: var(--secondary-text); font-size: var(--text-sm);
-}
-.cr-shell.ls.ls.cr-shell-creation .vm-frames-generate:hover:not(:disabled) { border-color: var(--primary); color: var(--primary-text); }
-.cr-shell.ls.ls.cr-shell-creation .vm-frames-generate span { display: inline-flex; align-items: center; gap: 2px; color: var(--tertiary-text); font-size: var(--text-xs); }
-.cr-shell.ls.ls.cr-shell-creation .vm-frames-list { display: flex; gap: 6px; }
-.cr-shell.ls.ls.cr-shell-creation .vm-frames-list button { position: relative; width: 44px; height: 44px; padding: 0; overflow: hidden; border: 2px solid transparent; border-radius: 10px; background: var(--bg-card); }
-.cr-shell.ls.ls.cr-shell-creation .vm-frames-list button img { width: 100%; height: 100%; object-fit: cover; }
-.cr-shell.ls.ls.cr-shell-creation .vm-frames-list button.is-chosen { border-color: var(--primary); }
-.cr-shell.ls.ls.cr-shell-creation .vm-frames-list button svg { position: absolute; right: 2px; bottom: 2px; padding: 1px; border-radius: 50%; background: var(--primary); color: var(--primary-btn-text); }
-.cr-shell.ls.ls.cr-shell-creation .vm-elapsed { display: block; margin-top: 4px; color: var(--tertiary-text); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
 .cr-shell.ls.ls.cr-shell-creation .vm-versions { display: flex; gap: 8px; margin-bottom: 10px; overflow-x: auto; }
 .cr-shell.ls.ls.cr-shell-creation .vm-versions button { position: relative; flex: none; width: 72px; height: 48px; padding: 0; overflow: hidden; border: 2px solid transparent; border-radius: 10px; background: var(--bg-card); color: var(--secondary-text); }
 .cr-shell.ls.ls.cr-shell-creation .vm-versions button img { width: 100%; height: 100%; object-fit: cover; }

@@ -40,7 +40,8 @@ export default function VideoPlayer({ src, poster, downloadHref, downloadName, a
   const progress = duration ? time / duration * 100 : 0, loaded = duration ? buffered / duration * 100 : 0;
   return <div ref={root} className={`vp-player${chrome || !playing ? " is-chrome" : ""}${full ? " is-full" : ""} ${className}`.trim()} tabIndex={0} role="group" aria-label={text("视频播放器", "Video player")}
     onMouseMove={wake} onMouseLeave={() => { if (playing) setChrome(false); }} onKeyDown={keys}>
-    <video ref={video} src={src} poster={poster} autoPlay={autoPlay} playsInline preload="metadata" onClick={toggle} onDoubleClick={fullscreen}
+    {/* 用媒体片段请求第 1 帧：没有封面图时浏览器也能解出一帧，而不是在暂停状态下留一个黑框。 */}
+    <video ref={video} src={src.includes("#") ? src : `${src}#t=0.1`} poster={poster} autoPlay={autoPlay} playsInline preload="metadata" onClick={toggle} onDoubleClick={fullscreen}
       onPlay={() => { setPlaying(true); setEnded(false); wake(); }} onPause={() => { setPlaying(false); setChrome(true); }} onEnded={() => { setEnded(true); setPlaying(false); setChrome(true); }}
       onTimeUpdate={event => setTime(event.currentTarget.currentTime)} onLoadedMetadata={event => setDuration(event.currentTarget.duration)} onDurationChange={event => setDuration(event.currentTarget.duration)}
       onProgress={event => { const ranges = event.currentTarget.buffered; if (ranges.length) setBuffered(ranges.end(ranges.length - 1)); }}

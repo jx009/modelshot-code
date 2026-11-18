@@ -197,21 +197,23 @@
 .cr-shell.ls.ls.cr-shell-creation .vm-composer { display: flex; flex-direction: column; gap: 8px; }
 .cr-shell.ls.ls.cr-shell-creation .vm-composer > .vg-references { order: 0; margin: 0; }
 .cr-shell.ls.ls.cr-shell-creation .vm-composer > textarea { order: 1; }
-.cr-shell.ls.ls.cr-shell-creation .vm-composer > .vg-parameters { order: 2; display: flex; flex-wrap: wrap; gap: 6px; }
+.cr-shell.ls.ls.cr-shell-creation .vm-composer > .vg-parameters { order: 2; display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 6px; padding-top: 8px; border-top: 1px solid var(--divider); }
 .cr-shell.ls.ls.cr-shell-creation .vm-composer > .vm-composer-tools { order: 3; display: flex; align-items: center; gap: 6px; margin: 0; }
 .cr-shell.ls.ls.cr-shell-creation .vm-composer > .vm-composer-tools > .vm-send { margin-left: auto; }
 .cr-shell.ls.ls.cr-shell-creation .vm-composer > :is(small, .cr-creation-note) { order: 4; margin: 0; padding: 0; color: var(--tertiary-text); font-size: var(--text-xs); line-height: 1.6; }
 .cr-shell.ls.ls.cr-shell-creation .vm-composer .vg-reference-caption { display: block; margin-top: 4px; color: var(--tertiary-text); font-size: var(--text-xs); }
 .cr-shell.ls.ls.cr-shell-creation .vm-composer .vg-references:not(:has(article, .vg-frame-slot)) .vg-reference-caption { display: none; }
 .cr-shell.ls.ls.cr-shell-creation .vm-composer .vg-parameters label { display: block; flex: 0 1 auto; min-width: 0; margin: 0; font-size: 0; }
-.cr-shell.ls.ls.cr-shell-creation .vm-composer .vg-parameters > label.generation-model-select { flex: 1 1 140px; }
-.cr-shell.ls.ls.cr-shell-creation .vm-composer .vg-parameter-row { display: contents; }
+.cr-shell.ls.ls.cr-shell-creation .vm-composer .vg-parameters > label.generation-model-select { min-width: 0; }
+.cr-shell.ls.ls.cr-shell-creation .vm-composer .vg-parameter-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; min-width: 0; }
 .cr-shell.ls.ls.cr-shell-creation .vm-composer .vg-parameters select {
   width: 100%; height: 32px; padding: 0 28px 0 12px; border: 1px solid var(--divider); border-radius: 999px;
-  background-color: var(--bg-card); color: var(--secondary-text); font-size: var(--text-sm);
+  background-color: var(--bg-card); color: var(--secondary-text); font-size: var(--text-sm); text-overflow: ellipsis;
 }
 .cr-shell.ls.ls.cr-shell-creation .vm-composer .vg-parameters select:hover:not(:disabled) { border-color: var(--divider-strong); color: var(--primary-text); }
-.cr-shell.ls.ls.cr-shell-creation .vm-composer .vg-parameters :is(p, div[role=status]) { flex-basis: 100%; margin: 0; font-size: var(--text-xs); color: var(--tertiary-text); }
+.cr-shell.ls.ls.cr-shell-creation .vm-composer .vg-parameters :is(p, div[role=status]) { grid-column: 1 / -1; margin: 0; font-size: var(--text-xs); color: var(--tertiary-text); }
+/* 计费说明放在发送按钮左侧，右侧保持发送按钮固定的位置 */
+.cr-shell.ls.ls.cr-shell-creation .vm-composer > small { margin: 0; font-variant-numeric: tabular-nums; }
 
 /* 项目名输入框按内容自适应宽度，保存状态紧随其后 */
 .cr-shell.ls.ls.cr-shell-creation .vm-project-name { field-sizing: content; width: auto; min-width: 96px; max-width: min(36vw, 360px); }

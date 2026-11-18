@@ -13,7 +13,8 @@ function Media({ asset, time, playing, volume, trimStart = 0, motion }) {
   if (!asset) return null;
   const src = asset.src || `/api/assets/${asset.id}`;
   if (asset.type === "image") return <img src={src} alt="" draggable={false} style={motion} />; // eslint-disable-line @next/next/no-img-element
-  return asset.type === "audio" ? <audio ref={ref} src={src} preload="metadata" /> : <video ref={ref} src={src} preload="metadata" playsInline muted={volume === 0} />;
+  // #t=0.1 让暂停在第 0 秒的片段也能显示首帧，而不是一块黑。
+  return asset.type === "audio" ? <audio ref={ref} src={src} preload="metadata" /> : <video ref={ref} src={src.includes("#") ? src : `${src}#t=0.1`} preload="metadata" playsInline muted={volume === 0} />;
 }
 
 export default function MotionPreview({ composition, media, tracks = [], time, onTime, selected, onSelect, editing, generating = false, zh }) {

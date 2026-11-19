@@ -90,6 +90,7 @@ const MOTION_IDEAS = [
 ];
 
 function Workspace({ documentId, initialMode, userId, zh }) {
+  const text = (cn, en) => zh ? cn : en;
   const router = useNavigationRouter();
   const [redoBusy, setRedoBusy] = useState(false);
   const project = useVideoProject({ documentId, mode: initialMode, userId, guardNavigation: true });
@@ -114,7 +115,6 @@ function Workspace({ documentId, initialMode, userId, zh }) {
   const results = draft.content.layers.filter(layer => layer.type === "video");
   const result = results.find(layer => layer.assetId === resultId) || results.at(-1);
   const showMotion = motion && Boolean(video.composition);
-  const text = (cn, en) => zh ? cn : en;
   useEffect(() => { chatEnd.current?.scrollIntoView({ block: "nearest" }); }, [draft.content.messages.length, jobs.length]);
   const patchVideo = values => change(current => ({ ...current, content: { ...current.content, video: { ...current.content.video, ...values } } }));
   async function redoScene(scene) {

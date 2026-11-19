@@ -38,6 +38,17 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
+it.each([["video", "References"], ["motion", "Upload media"]])("renders the %s composer before capabilities finish loading", (mode, uploadLabel) => {
+  mocks.mode = mode;
+  mocks.project.draft.content.video.mode = mode;
+  if (mode === "video") mocks.project.draft.content.video.composition = null;
+  mocks.api.mockReturnValue(new Promise(() => {}));
+  render(<Shell />);
+  expect(screen.getByRole("button", { name: uploadLabel })).not.toBeNull();
+  expect(screen.getByText("Loading video capabilities…")).not.toBeNull();
+  expect(screen.getByRole("button", { name: "Generate", exact: true }).disabled).toBe(true);
+});
+
 it("renders only the shared toolbar with no nested project or pane header", async () => {
   render(<Shell />);
   await waitFor(() => expect(screen.getByRole("button", { name: "Export MP4" }).disabled).toBe(false));

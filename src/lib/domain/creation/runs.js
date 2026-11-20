@@ -83,7 +83,7 @@ export async function createImageRun(userId, input, key, db = prisma, deps = {})
       if (!reference.contentType.startsWith("image/")) throw new AppError("INVALID_SOURCE");
     }
     const occupying = [...RUN_ACTIVE, ...RUN_WAITING];
-    if (await tx.creationRun.count({ where: { userId, status: { in: occupying } } }) >= 1) throw new AppError("CREATION_USER_QUEUE_FULL", 429);
+    if (await tx.creationRun.count({ where: { userId, documentId: data.documentId, status: { in: occupying } } }) >= 1) throw new AppError("CREATION_SCOPE_BUSY", 409);
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended('creation-admission', 0))::text`;
     if (await tx.creationRun.count({ where: { status: { in: RUN_ACTIVE } } }) >= 1000) throw new AppError("CREATION_QUEUE_FULL", 503);
     const stepIds = data.steps.map(() => randomUUID());
@@ -163,7 +163,7 @@ export async function resumeRun(userId, id, input, db = prisma, deps = {}) {
     await lockUser(tx, userId);
     const run = await lockRun(tx, userId, id);
     if (run.eventSequence !== data.expectedSequence) throw new AppError("CREATION_RUN_CHANGED", 409);
-    if (await tx.creationRun.count({ where: { userId, id: { not: id }, status: { in: [...RUN_ACTIVE, ...RUN_WAITING] } } })) throw new AppError("CREATION_USER_QUEUE_FULL", 429);
+    if (await tx.creationRun.count({ where: { userId, documentId: run.documentId, id: { not: id }, status: { in: [...RUN_ACTIVE, ...RUN_WAITING] } } })) throw new AppError("CREATION_SCOPE_BUSY", 409);
     if (run.committedCredits + quote.costs.reduce((sum, cost) => sum + cost, 0) > data.maxCredits) throw new AppError("CREATION_BUDGET_EXCEEDED", 409);
     for (const [index, step] of remaining.entries()) await tx.creationStep.update({ where: { id: step.id }, data: {
       status: index ? "blocked" : "ready", expectedCost: quote.costs[index], errorCode: null,

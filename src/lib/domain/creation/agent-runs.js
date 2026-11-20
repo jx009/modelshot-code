@@ -53,7 +53,7 @@ export async function createAgentRun(userId, sessionId, input, key, { db = prism
     if (!session) throw new AppError("CREATION_SESSION_NOT_FOUND", 404);
     await requireReferenceAdmission(tx, userId, sessionId, data.referenceIds, { env });
     if (data.assetIds.length && await tx.asset.count({ where: { id: { in: data.assetIds }, userId, status: "active", contentType: { in: ["image/png", "image/jpeg", "image/webp"] } } }) !== data.assetIds.length) throw new AppError("ASSET_NOT_FOUND", 404);
-    if (await tx.creationRun.count({ where: { userId, status: { in: [...RUN_ACTIVE, ...RUN_WAITING] } } })) throw new AppError("CREATION_USER_QUEUE_FULL", 429);
+    if (await tx.creationRun.count({ where: { userId, sessionId, status: { in: [...RUN_ACTIVE, ...RUN_WAITING] } } })) throw new AppError("CREATION_SCOPE_BUSY", 409);
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended('creation-admission', 0))::text`;
     if (await tx.creationRun.count({ where: { status: { in: RUN_ACTIVE } } }) >= 1000) throw new AppError("CREATION_QUEUE_FULL", 503);
     const run = await tx.creationRun.create({ data: { userId, projectId: session.projectId, sessionId, kind: "agent", requestId, digest, maxCredits: data.maxCredits,
@@ -244,7 +244,7 @@ export async function resumeAgentRun(userId, current, data, { db = prisma, ensur
     const run = await lockRun(tx, userId, current.id);
     if (run.eventSequence !== data.expectedSequence || run.cancelRequestedAt || ![...RUN_WAITING, "failed"].includes(run.status)) throw new AppError("CREATION_RUN_CHANGED", 409);
     const linkedIds = run.steps.filter(step => step.status !== "succeeded" && step.result?.childRunId).map(step => step.result.childRunId);
-    if (await tx.creationRun.count({ where: { userId, id: { notIn: [run.id, ...linkedIds] }, status: { in: [...RUN_ACTIVE, ...RUN_WAITING] } } })) throw new AppError("CREATION_USER_QUEUE_FULL", 429);
+    if (await tx.creationRun.count({ where: { userId, sessionId: run.sessionId, id: { notIn: [run.id, ...linkedIds] }, status: { in: [...RUN_ACTIVE, ...RUN_WAITING] } } })) throw new AppError("CREATION_SCOPE_BUSY", 409);
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended('creation-admission', 0))::text`;
     if (await tx.creationRun.count({ where: { status: { in: RUN_ACTIVE } } }) >= 1000) throw new AppError("CREATION_QUEUE_FULL", 503);
     const remaining = run.steps.filter(step => step.status !== "succeeded");

@@ -51,3 +51,18 @@ it("persists image and page steps with correct page counts and replays the accep
   expect(f.db.creationStep.createMany).toHaveBeenCalledTimes(1);
   expect(f.store.put).toHaveBeenCalledTimes(1);
 });
+
+it("confirms an outline without blocking on another session", async () => {
+  const state = fixture();
+  state.db.creationRun.count = vi.fn(async ({ where }) => where.userId && where.sessionId !== "session" ? 1 : 0);
+  await confirmOutline("owner", "run", state.data, state);
+  expect(state.db.creationRun.count).toHaveBeenCalledWith({ where: { userId: "owner", sessionId: "session", id: { notIn: ["run"] }, status: { in: expect.arrayContaining(["running", "awaiting_input"]) } } });
+  expect(state.db.creationStep.createMany).toHaveBeenCalledOnce();
+});
+
+it("does not confirm an outline over another plan in the same session", async () => {
+  const state = fixture();
+  state.db.creationRun.count = vi.fn(async () => 1);
+  await expect(confirmOutline("owner", "run", state.data, state)).rejects.toThrow("CREATION_SCOPE_BUSY");
+  expect(state.db.creationStep.createMany).not.toHaveBeenCalled();
+});

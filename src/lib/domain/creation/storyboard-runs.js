@@ -136,7 +136,7 @@ export async function createStoryboardRun(userId, input, key, db = prisma, env) 
     if (old) { if (old.digest !== digest) throw new AppError("IDEMPOTENCY_CONFLICT", 409); return presentRun(old); }
     const current = await tx.studioDocument.findFirst({ where: { id: data.documentId, userId, kind: "motion", deletedAt: null }, select: { version: true } });
     if (current?.version !== data.documentVersion) throw new AppError("DOCUMENT_VERSION_CONFLICT", 409);
-    if (await tx.creationRun.count({ where: { userId, status: { in: [...RUN_ACTIVE, ...RUN_WAITING] } } })) throw new AppError("CREATION_USER_QUEUE_FULL", 429);
+    if (await tx.creationRun.count({ where: { userId, documentId: data.documentId, status: { in: [...RUN_ACTIVE, ...RUN_WAITING] } } })) throw new AppError("CREATION_SCOPE_BUSY", 409);
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended('creation-admission', 0))::text`;
     if (await tx.creationRun.count({ where: { status: { in: RUN_ACTIVE } } }) >= 1000) throw new AppError("CREATION_QUEUE_FULL", 503);
     const run = await tx.creationRun.create({ data: { userId, documentId: data.documentId, requestId, digest, kind: "storyboard", maxCredits: data.maxCredits,

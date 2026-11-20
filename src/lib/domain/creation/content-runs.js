@@ -100,7 +100,7 @@ export async function createContentRun(userId, sessionId, input, key, { db = pri
         || !["queued", "running"].includes(parent.status) || parentStep?.status !== "ready" || parentStep.result?.childRunId
         || parent.eventSequence !== agentLink.sequence || parent.committedCredits + data.maxCredits > parent.maxCredits) throw new AppError("CREATION_RUN_CHANGED", 409);
     }
-    if (await tx.creationRun.count({ where: { userId, ...(parent ? { id: { not: parent.id } } : {}), status: { in: [...RUN_ACTIVE, ...RUN_WAITING] } } })) throw new AppError("CREATION_USER_QUEUE_FULL", 429);
+    if (await tx.creationRun.count({ where: { userId, sessionId, ...(parent ? { id: { not: parent.id } } : {}), status: { in: [...RUN_ACTIVE, ...RUN_WAITING] } } })) throw new AppError("CREATION_SCOPE_BUSY", 409);
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended('creation-admission', 0))::text`;
     if (await tx.creationRun.count({ where: { status: { in: RUN_ACTIVE } } }) >= 1000) throw new AppError("CREATION_QUEUE_FULL", 503);
     const stepIds = Array.from({ length: data.image ? 2 : 1 }, () => randomUUID());
@@ -159,7 +159,7 @@ export async function resumeContentRun(userId, current, data, { db = prisma, env
     ], { env });
     const parent = await verifiedAgentParent(tx, run);
     if (parent && parent.committedCredits - (parent.steps.find(step => step.id === run.input.agentParent.stepId)?.result?.accountedCredits || 0) + data.maxCredits > parent.maxCredits) throw new AppError("CREATION_BUDGET_EXCEEDED", 409);
-    if (await tx.creationRun.count({ where: { userId, id: { notIn: [run.id, ...(parent ? [parent.id] : [])] }, status: { in: [...RUN_ACTIVE, ...RUN_WAITING] } } })) throw new AppError("CREATION_USER_QUEUE_FULL", 429);
+    if (await tx.creationRun.count({ where: { userId, sessionId: run.sessionId, id: { notIn: [run.id, ...(parent ? [parent.id] : [])] }, status: { in: [...RUN_ACTIVE, ...RUN_WAITING] } } })) throw new AppError("CREATION_SCOPE_BUSY", 409);
     if (run.committedCredits + calls * cost + [...imageQuotes.values()].reduce((sum, price) => sum + price, 0) > data.maxCredits) throw new AppError("CREATION_BUDGET_EXCEEDED", 409);
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended('creation-admission', 0))::text`;
     if (await tx.creationRun.count({ where: { status: { in: RUN_ACTIVE } } }) >= 1000) throw new AppError("CREATION_QUEUE_FULL", 503);

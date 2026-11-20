@@ -2,6 +2,7 @@ const messages = {
   CREATION_WORKER_UNAVAILABLE: ["分镜任务服务暂时离线，计划已保留，请稍后重试。", "The storyboard worker is offline. Your plan is preserved; retry later."],
   CREATION_BUDGET_EXCEEDED: ["当前报价超过总预算，请调整预算后继续。", "The current quote exceeds the budget. Adjust the budget to continue."],
   CREATION_USER_QUEUE_FULL: ["已有创作计划进行中，请完成或停止该计划后继续。", "Another creation plan is active. Complete or stop it before continuing."],
+  CREATION_SCOPE_BUSY: ["当前项目已有生成计划，请完成或停止该计划后继续；其他项目可独立生成。", "This project already has a generation plan. Complete or stop it first; other projects can generate independently."],
   CREATION_RUN_CHANGED: ["计划进度已更新，请等待刷新后再操作。", "The plan changed. Wait for progress to refresh before continuing."],
   MOTION_SCENE_CHANGED: ["原镜头已被修改或删除，未覆盖新内容。可将此结果作为新片段加入工程。", "The original shot changed or was removed. Add this result as a new clip instead."],
   VIDEO_VARIANT_REQUIRED: ["请选择当前模型已支持的清晰度与声音组合。", "Choose a supported quality and audio combination."],

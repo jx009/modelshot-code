@@ -72,12 +72,13 @@ it("does not allow client-supplied internal parent links or executor code", () =
   expect(messages[0].content).toContain("content.create");
   expect(messages[0].content).not.toContain("Every node:");
 });
-it("rejects over-wide artifact fan-in and applies normal active-run limits on resume", async () => {
+it("rejects over-wide artifact fan-in and applies session-scoped limits on resume", async () => {
   const inputs = Array.from({ length: 9 }, (_, i) => contentStep(`source-${i}`));
   expect(agentPlanSchema.safeParse({ title: "Too wide", steps: [...inputs, { ...contentStep("join"), dependsOn: inputs.map(item => item.id) }] }).success).toBe(false);
   const f = fixture(); f.run.status = "failed";
   f.db.creationRun.count.mockResolvedValue(1);
-  await expect(resumeAgentRun("u", f.snapshot(), { expectedSequence: 1, maxCredits: 20, retryFailed: true }, f)).rejects.toThrow("CREATION_USER_QUEUE_FULL");
+  await expect(resumeAgentRun("u", f.snapshot(), { expectedSequence: 1, maxCredits: 20, retryFailed: true }, f)).rejects.toThrow("CREATION_SCOPE_BUSY");
+  expect(f.db.creationRun.count).toHaveBeenCalledWith({ where: { userId: "u", sessionId: "s", id: { notIn: ["root"] }, status: { in: expect.arrayContaining(["running", "awaiting_input"]) } } });
   expect(f.run.status).toBe("failed");
 });
 it("creates one durable planner and replays the same key without new admission or message", async () => {
@@ -87,6 +88,17 @@ it("creates one durable planner and replays the same key without new admission o
   const again = await createAgentRun("u", "s", request, "agent-create-key-123", f);
   expect(again.id).toBe(first.id); expect(f.ensureWorkers).toHaveBeenCalledTimes(1); expect(mocks.message).toHaveBeenCalledTimes(1);
   await expect(createAgentRun("u", "s", { ...request, prompt: "Different" }, "agent-create-key-123", f)).rejects.toThrow("IDEMPOTENCY_CONFLICT");
+});
+
+it("admits and resumes agent plans independently across sessions", async () => {
+  const state = fixture();
+  state.db.creationRun.count.mockImplementation(async ({ where }) => where.userId && where.sessionId !== "new-session" ? 1 : 0);
+  const created = await createAgentRun("u", "new-session", { kind: "agent", prompt: "Independent deck", maxCredits: 10 }, "independent-plan-key", state);
+  expect(created.sessionId).toBe("new-session");
+  const current = state.runs.get(created.id);
+  current.status = "awaiting_input";
+  await expect(resumeAgentRun("u", structuredClone(current), { expectedSequence: current.eventSequence, maxCredits: 10, retryFailed: false }, state)).resolves.toMatchObject({ status: "queued" });
+  expect(state.run.status).toBe("running");
 });
 it("publishes a paid plan once and waits for explicit approval before child admission", async () => {
   const f = fixture();

@@ -119,9 +119,11 @@ it("cancels all active jobs and settles each before ending the deck without doub
 
 it("upgrades resumed serial plans, keeps successful calls and retries only failed calls", async () => {
   const f = fixture(["failed", "failed", "ready"]); f.run.status = "failed";
+  f.db.creationRun.count = vi.fn(async ({ where }) => where.userId && where.sessionId !== "session" ? 1 : 0);
   f.jobs.get("job0").status = "succeeded";
   f.run.steps[2].dependsOn = ["page0"]; f.run.steps[3].dependsOn = ["page1"];
   await resumeContentRun("u", structuredClone(f.run), { expectedSequence: 1, maxCredits: 100, retryFailed: true }, f);
+  expect(f.db.creationRun.count).toHaveBeenCalledWith({ where: { userId: "u", sessionId: "session", id: { notIn: ["run"] }, status: { in: expect.arrayContaining(["running", "awaiting_input"]) } } });
   expect(f.run.steps[1]).toMatchObject({ status: "running", jobId: "job0", attempt: 0 });
   expect(f.run.steps[2]).toMatchObject({ status: "ready", jobId: null, attempt: 1, dependsOn: ["outline"] });
   expect(f.run.steps[3]).toMatchObject({ status: "ready", jobId: null, attempt: 0, dependsOn: ["outline"] });

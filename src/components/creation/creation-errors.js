@@ -193,6 +193,7 @@ const messages = {
   CREATION_WORKER_UNAVAILABLE: ["创作服务暂不可用，请稍后重试。", "The creation service is unavailable. Try again shortly."],
   CREATION_LANGUAGE_WORKER_UNAVAILABLE: ["创作服务暂不可用，请稍后重试。", "The creation service is unavailable. Try again shortly."],
   CREATION_USER_QUEUE_FULL: ["请先完成或取消当前创作任务。", "Finish or cancel your current creation first."],
+  CREATION_SCOPE_BUSY: ["当前会话或文档已有创作计划，请先完成或取消；其他会话可独立创建。", "This session or document already has a creation plan. Finish or cancel it first; other sessions can create independently."],
   CREATION_BUDGET_EXCEEDED: ["任务预算不足，请核对所需积分后调整预算。", "The task budget is too low. Review the required credits and adjust it."],
   INSUFFICIENT_CREDITS: ["积分不足，请充值后继续。", "You need more credits to continue."],
   PRICE_CHANGED: ["模型价格已变化，请核对预算后继续。", "The model price changed. Review the budget before continuing."],

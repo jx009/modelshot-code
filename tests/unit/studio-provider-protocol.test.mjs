@@ -171,4 +171,10 @@ describe("studio real HTTP protocol against isolated fixture", () => {
     const body = JSON.parse(calls.at(-1).body);
     expect(body.content).toEqual([{ type: "text", text: "Orbit --duration 10 --watermark false --ratio 9:16" }]);
   });
+  it("omits the ratio command for first-frame Ark tasks because the output follows the image", async () => {
+    await videoRequest({ videoURL: base, videoKey: "fixture", videoModel: "endpoint-123" }, { image: png, prompt: "Orbit", duration: 5, ratio: "16:9", resolution: "720p" });
+    const body = JSON.parse(calls.at(-1).body);
+    expect(body.content[0].text).toBe("Orbit --duration 5 --watermark false --resolution 720p");
+    expect(body.content[1]).toMatchObject({ type: "image_url", role: "first_frame" });
+  });
 });

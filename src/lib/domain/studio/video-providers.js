@@ -103,8 +103,12 @@ export async function videoRequest(config, { image, imageUrl, references = [], m
     return { state: "pending", requestId: id };
   }
   if (kind !== "volcengine") throw new AppError("VIDEO_PROTOCOL_UNSUPPORTED", 422);
+  // 图生视频（首帧 / 首尾帧）时方舟不接受 --ratio：输出比例跟随首帧图，
+  // 传了会返回 InvalidParameter.TaskTypeConstraint 并整条拒绝。
+  const command = `${prompt} --duration ${duration} --watermark false${image ? "" : ` --ratio ${ratio}`}${resolution ? ` --resolution ${resolution}` : ""}`;
+  const content = [{ type: "text", text: command }, ...(image ? [{ type: "image_url", image_url: { url: `data:image/png;base64,${image.toString("base64")}` }, role: "first_frame" }] : [])];
   const data = await request(config, `/contents/generations/tasks${requestId ? `/${encodedId}` : ""}`, { signal, headers: { "Content-Type": "application/json" },
-    ...(!requestId ? { body: JSON.stringify({ model: config.videoModel, content: [{ type: "text", text: `${prompt} --duration ${duration} --watermark false --ratio ${ratio}${resolution ? ` --resolution ${resolution}` : ""}` }, ...(image ? [{ type: "image_url", image_url: { url: `data:image/png;base64,${image.toString("base64")}` }, role: "first_frame" }] : [])] }) } : {}) });
+    ...(!requestId ? { body: JSON.stringify({ model: config.videoModel, content }) } : {}) });
   if (!requestId) return { state: "pending", requestId: taskId(data.id) };
   if (["failed", "cancelled", "expired"].includes(data.status)) return { state: "failed" };
   if (data.status !== "succeeded") {

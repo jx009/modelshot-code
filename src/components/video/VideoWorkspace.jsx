@@ -58,6 +58,7 @@ const errorCopy = {
   MOTION_RENDER_UNAVAILABLE: "视频导出服务未就绪，请更新 tools 镜像。",
   MOTION_RENDER_BUSY: "视频合成服务正在处理其他作品，请稍后重试。",
   VIDEO_PROVIDER_REJECTED: "上游视频模型拒绝了请求，请检查模型配置或稍后重试。",
+  VIDEO_IMAGE_REAL_PERSON: "首帧画面被识别为包含真人，无法用于图生视频。请改用不出现真人形象的首帧，或换成纯文生视频的模型。",
   VIDEO_MEDIA_FORMAT_INVALID: "不支持此素材格式，请使用 MP4、MOV 或常见音频文件。",
   MOTION_RESULT_INVALID: "模型未返回有效的视频工程，本次未完成。可简化描述后重试。",
   MOTION_MEDIA_INVALID: "视频工程引用了不可用素材，请重新选择素材。",

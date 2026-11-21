@@ -29,6 +29,7 @@ const messages = {
   VIDEO_FIELDS_REQUIRED: ["请选择原视频或补齐当前模型所需的创作参数。", "Choose an original video or complete the required settings."],
   VIDEO_SOURCE_NOT_FOUND: ["原作品不可用，请选择同一视频服务账号下、接口兼容的已完成视频。", "Choose a completed video with a compatible API on the same upstream account."],
   VIDEO_MEDIA_CHANGED: ["素材已在另一处修改，请重新打开项目。", "Media changed elsewhere. Reopen the project."],
+  VIDEO_IMAGE_REAL_PERSON: ["首帧画面被识别为包含真人，无法用于图生视频。请改用不出现真人形象的首帧，或换成纯文生视频的模型。", "The first frame was flagged as containing a real person and cannot be animated. Use a frame without people, or choose a text-to-video model."],
   VIDEO_MEDIA_INVALID: ["无法读取这段媒体，请检查文件或稍后重试。", "Could not read this media. Check the file or retry later."],
   VIDEO_MEDIA_TOO_LARGE: ["素材超出此操作的文件大小限制。", "The media file exceeds this operation’s size limit."],
   VIDEO_TOO_LONG: ["分镜最多 40 段，总长不能超过 180 秒。", "A composition supports up to 40 scenes and 180 seconds."],

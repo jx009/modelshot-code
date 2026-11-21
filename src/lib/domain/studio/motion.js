@@ -76,7 +76,13 @@ export async function renderMotion(config, userId, composition, { db, store, sig
     form.append("files", new Blob([await store.get(asset.objectKey)], { type: asset.contentType }), id);
   }
   const response = await fetch(`${config.toolsURL}/motion/render`, { method: "POST", headers: { Authorization: `Bearer ${config.toolsKey}` }, body: form, signal });
-  if (!response.ok) throw new AppError(response.status === 429 ? "MOTION_RENDER_BUSY" : "MOTION_RENDER_FAILED", response.status);
+  // 工具服务的拒绝原因只在响应体里；不带走的话任务详情只剩一个状态码。
+  if (!response.ok) {
+    let body = "";
+    try { body = (await response.text()).replace(/\s+/g, " ").slice(0, 300); } catch { /* 响应体不可读 */ }
+    throw Object.assign(new AppError(response.status === 429 ? "MOTION_RENDER_BUSY" : "MOTION_RENDER_FAILED", response.status),
+      { providerStatus: response.status, providerPath: "/motion/render", providerBody: body });
+  }
   const chunks = []; let size = 0;
   for await (const chunk of response.body) { size += chunk.length; if (size > 128 * 1024 * 1024) throw new AppError("VIDEO_TOO_LARGE", 413); chunks.push(chunk); }
   return Buffer.concat(chunks);

@@ -17,7 +17,10 @@ def run(args, timeout=60):
     try:
         return subprocess.run(args, check=True, capture_output=True, timeout=timeout)
     except (subprocess.SubprocessError, OSError) as exc:
-        raise HTTPException(422, "Media processing failed") from exc
+        # ffmpeg 的 stderr 是唯一能说明失败原因的线索；回一行给调用方，否则只剩「失败」两个字。
+        output = getattr(exc, "stderr", b"") or b""
+        lines = [row.strip() for row in output.decode("utf-8", "replace").strip().splitlines() if row.strip()]
+        raise HTTPException(422, "Media processing failed: " + (lines[-1][:300] if lines else type(exc).__name__)) from exc
 
 def inspect_media(path):
     with path.open("rb") as source: header = source.read(16)
@@ -238,15 +241,18 @@ def join_scenes(outputs, scenes, durations, directory, deadline):
         return joined, total, starts
     args = ["ffmpeg", "-v", "error", "-nostdin", "-y", "-threads", "1", "-filter_complex_threads", "1"]
     for path in outputs: args += ["-i", str(path)]
-    graph = "".join(f"[{i}:v]settb=AVTB,fps=24,format=yuv420p,setpts=PTS-STARTPTS[v{i}];[{i}:a]aresample=48000,asetpts=PTS-STARTPTS[a{i}];" for i in range(len(outputs)))
+    # fps 输出 1/24，concat 输出 AVTB；xfade 要求两路时间基一致，所以每一段
+    # 交给下一个滤镜前都先回到 AVTB，硬切与淡入淡出混用时才不会配置失败。
+    graph = "".join(f"[{i}:v]fps=24,format=yuv420p,settb=AVTB,setpts=PTS-STARTPTS[v{i}];[{i}:a]aresample=48000,asetpts=PTS-STARTPTS[a{i}];" for i in range(len(outputs)))
     video, audio, elapsed = "v0", "a0", durations[0]
     for i in range(1, len(outputs)):
         if fades[i - 1]:
-            graph += f"[{video}][v{i}]xfade=transition=fade:duration={FADE}:offset={round(elapsed - FADE, 3)}[x{i}];[{audio}][a{i}]acrossfade=d={FADE}[y{i}];"
+            graph += f"[{video}][v{i}]xfade=transition=fade:duration={FADE}:offset={round(elapsed - FADE, 3)}[c{i}];[{audio}][a{i}]acrossfade=d={FADE}[d{i}];"
             elapsed += durations[i] - FADE
         else:
-            graph += f"[{video}][{audio}][v{i}][a{i}]concat=n=2:v=1:a=1[x{i}][y{i}];"
+            graph += f"[{video}][{audio}][v{i}][a{i}]concat=n=2:v=1:a=1[c{i}][d{i}];"
             elapsed += durations[i]
+        graph += f"[c{i}]settb=AVTB,setpts=PTS-STARTPTS[x{i}];[d{i}]aresample=48000,asetpts=PTS-STARTPTS[y{i}];"
         video, audio = f"x{i}", f"y{i}"
     args += ["-filter_complex", graph.rstrip(";"), "-map", f"[{video}]", "-map", f"[{audio}]", "-c:v", "libx264", "-threads", "1", "-preset", "veryfast", "-crf", "22", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(joined)]
     run(args, max(1, min(240, deadline - time.monotonic())))

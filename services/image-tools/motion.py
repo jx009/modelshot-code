@@ -223,7 +223,7 @@ def render_scene(index, scene, duration, size, media, directory, subtitles, dead
         audio += f"[sa];[3:a]atrim=duration={duration},asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo[na];[sa][na]amix=inputs=2:duration=first:normalize=0[a]"
     else:
         audio += "[a]"
-    args += ["-filter_complex", base + overlay + audio, "-map", "[v]", "-map", "[a]", "-t", str(duration), "-c:v", "libx264", "-threads", "1", "-preset", "veryfast", "-crf", "22", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(output)]
+    args += ["-filter_complex", base + overlay + audio, "-map", "[v]", "-map", "[a]", "-t", str(duration), "-c:v", "libx264", "-pix_fmt", "yuv420p", "-threads", "1", "-preset", "veryfast", "-crf", "22", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(output)]
     run(args, max(1, min(150, deadline - time.monotonic())))
     return output, (min(duration, voice[1]["duration"]) if voice else 0)
 
@@ -254,7 +254,7 @@ def join_scenes(outputs, scenes, durations, directory, deadline):
             elapsed += durations[i]
         graph += f"[c{i}]settb=AVTB,setpts=PTS-STARTPTS[x{i}];[d{i}]aresample=48000,asetpts=PTS-STARTPTS[y{i}];"
         video, audio = f"x{i}", f"y{i}"
-    args += ["-filter_complex", graph.rstrip(";"), "-map", f"[{video}]", "-map", f"[{audio}]", "-c:v", "libx264", "-threads", "1", "-preset", "veryfast", "-crf", "22", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(joined)]
+    args += ["-filter_complex", graph.rstrip(";"), "-map", f"[{video}]", "-map", f"[{audio}]", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-threads", "1", "-preset", "veryfast", "-crf", "22", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(joined)]
     run(args, max(1, min(240, deadline - time.monotonic())))
     return joined, total, starts
 

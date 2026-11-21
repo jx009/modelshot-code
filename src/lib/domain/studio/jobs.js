@@ -164,7 +164,8 @@ async function submitAdmittedJob(userId, data, key, db, deps, posterContext = nu
   if (data.tool === "video") {
     const selection = selectVideoVariant(config.videoOptions || videoModelOptions(config.videoKind), data.params.videoVariant);
     if (selection.error) throw new AppError(selection.error, 422);
-    if (selection.variant) config = { ...config, videoOptions: selection.options };
+    // 规格（清晰度 / 声音组合）自带单次价，优先于通道的「每次模型请求积分」。
+    if (selection.variant) config = { ...config, videoOptions: selection.options, videoCreditCost: selection.variant.creditCost };
     // 按秒计费：先确定本次输出的清晰度，报价与扣费都按同一档计算。
     if (config.videoPricing) {
       const resolutions = pricedResolutions(config.videoPricing);
@@ -175,7 +176,11 @@ async function submitAdmittedJob(userId, data, key, db, deps, posterContext = nu
       // 幂等摘要已在上面按原始入参算好，这里补默认值不会影响同一请求的重试。
       data.params = { ...data.params, resolution };
       config = { ...config, videoResolution: resolution };
-    } else if (data.params.resolution) throw new AppError("VIDEO_RESOLUTION_UNSUPPORTED", 422);
+    } else if (data.params.resolution) {
+      // 通道没有按秒价格表（或刚被清空）：清晰度不参与计费，也不传给上游。
+      const { resolution: _unused, ...params } = data.params;
+      data.params = params;
+    }
   }
   if (data.tool === "inpaint" && config.imageKind === "dashscope" && data.referenceAssetIds?.length > 1) throw new AppError("TOO_MANY_EDIT_REFERENCES", 422);
   const caps = deps.capabilities || await capabilities(db, config);
@@ -194,8 +199,9 @@ async function submitAdmittedJob(userId, data, key, db, deps, posterContext = nu
       if (!heartbeat || +heartbeat.updatedAt <= Date.now() - 90000) throw new AppError("WORKER_UNAVAILABLE", 503);
     }
     const tool = caps.tools.find(t => t.id === data.tool);
+    // 视频：配了按秒价格表就按「每秒积分 × 时长」；否则是单次价——规格自带的价格优先，其次是通道的「每次模型请求积分」。
     const cost = data.tool === "video"
-      ? config.videoPricing ? videoJobCost(config.videoPricing, config.videoCreditCost ?? tool?.cost, data.params.duration, config.videoResolution) : imageCreditCost(tool, data.params.size, 0)
+      ? videoJobCost(config.videoPricing, config.videoCreditCost ?? tool?.cost ?? 0, data.params.duration, config.videoResolution)
       : imageCreditCost(tool, data.params.size, 0);
     // Preview availability only gates choosing an object. Once a valid owned
     // mask exists, an outage of the preview service must not block image editing.

@@ -164,6 +164,13 @@ export default function useVideoProject({ documentId, mode, userId, guardNavigat
     void poll(); return () => { abort.abort(); clearTimeout(timer); document.removeEventListener("visibilitychange", wake); window.removeEventListener("focus", wake); };
   }, [id, loading, loadFailed, pollEpoch, change, save]);
 
+  // 放弃未确认的提交：只清本地恢复凭据，服务端任务（若已入队）仍由轮询接管。
+  // 没有这条出口时，网络中断会把发送入口永久锁死在 pendingSubmission。
+  function clearSubmission() {
+    submission.current = null; setPendingSubmission(false);
+    try { sessionStorage.removeItem(`${storageKey}:submission`); } catch { /* Best effort cleanup. */ }
+  }
+
   async function submit(tool, prompt, offer, restore = false) {
     if (submitting.current || loading || loadFailed || applying || !restore && (jobsLoading || jobs.some(job => !terminalStatus(job.status)) || !offer?.available)) return;
     submitting.current = true; setWorking(true); setError("");
@@ -190,14 +197,13 @@ export default function useVideoProject({ documentId, mode, userId, guardNavigat
       setPendingSubmission(true);
       const job = await api("/api/studio/jobs", { method: "POST", key: pending.key, body: pending.body, timeoutMs: 45000 });
       if (!job?.id || !job?.documentId) throw new Error("VIDEO_SUBMISSION_UNCONFIRMED");
-      setJobs(current => [job, ...current.filter(row => row.id !== job.id)]); submission.current = null; setPendingSubmission(false);
-      try { sessionStorage.removeItem(`${storageKey}:submission`); } catch { /* Best effort cleanup. */ }
+      setJobs(current => [job, ...current.filter(row => row.id !== job.id)]); clearSubmission();
       change(current => ({ ...current, content: { ...current.content, jobs: [...new Set([...current.content.jobs, job.id])].slice(-100) } }));
       // Admission has succeeded. A subsequent save failure must not tell the user
       // that generation failed or encourage another paid submission.
       await save().catch(() => {}); setPollEpoch(value => value + 1); return job;
     } catch (failure) {
-      if (submissionRejected(failure)) { submission.current = null; setPendingSubmission(false); try { sessionStorage.removeItem(`${storageKey}:submission`); } catch { /* Best effort cleanup. */ } }
+      if (submissionRejected(failure)) clearSubmission();
       setError(failure.message); return null;
     } finally { submitting.current = false; setWorking(false); }
   }
@@ -243,6 +249,8 @@ export default function useVideoProject({ documentId, mode, userId, guardNavigat
   }
   return { id, draft, change, save, refresh, jobs, loading, loadFailed, jobsLoading, applying, error, setError, saving, dirty, working, uploadProgress, upload, submit, recovery, pendingSubmission,
     recoverSubmission: () => submit(null, "", null, true),
+    // 放弃后立刻刷新任务列表：若原请求其实已入队，轮询会先看到它并挡住下一次付费提交。
+    discardSubmission() { clearSubmission(); setError(""); setPollEpoch(value => value + 1); },
     recover() { if (recovery) { if (!documentId && recovery.id) { idRef.current = recovery.id; version.current = recovery.version; setId(recovery.id); } pendingSave.current = recovery.pendingSave || null; createKey.current = recovery.createKey || pendingSave.current?.body?.createKey || createKey.current; if (pendingSave.current) pendingSave.current = { ...pendingSave.current, sequence: revision.current }; setError(""); change(recovery.draft); setRecovery(null); } },
     discardRecovery() { setRecovery(null); localStorage.removeItem(storageKey); },
     active: jobs.some(job => !terminalStatus(job.status)),

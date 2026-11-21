@@ -55,6 +55,8 @@
 .vg-source-dialog h2 { font-size:20px; margin:0 0 8px; }
 .vg-source-dialog p,.vg-submission-recovery p { font-size:13px; line-height:1.6; color:var(--secondary-text); }
 .vg-source-dialog button,.vg-submission-recovery button { border:1px solid var(--divider); border-radius:8px; padding:8px 12px; color:var(--primary-text); background:var(--bg-page); cursor:pointer; }
+.vg-submission-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+.vg-submission-recovery button.is-quiet { border-color:transparent; background:transparent; color:var(--secondary-text); text-decoration:underline; }
 .vg-source-dialog button[aria-pressed=true] { border-color:var(--primary); }
 .vg-source-dialog button:disabled { opacity:.4; cursor:not-allowed; }
 .vg-mode-choice,.vg-source-dialog footer { display:flex; gap:8px; margin:16px 0; }
